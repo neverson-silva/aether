@@ -4,6 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -290,4 +293,18 @@ func (r *Router) Handler() http.Handler {
 
 func (r *Router) Engine() *gin.Engine {
 	return r.engine
+}
+
+func (r *Router) ServeFrontend(distDir string) {
+	if _, err := os.Stat(filepath.Join(distDir, "index.html")); err != nil {
+		return
+	}
+	r.engine.Static("/assets", filepath.Join(distDir, "assets"))
+	r.engine.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "não encontrado"})
+			return
+		}
+		c.File(filepath.Join(distDir, "index.html"))
+	})
 }
