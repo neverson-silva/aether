@@ -20,6 +20,7 @@ import (
 	deployhttp "aether/internal/deployments/http"
 	domainshttp "aether/internal/domains/http"
 	gitopshttp "aether/internal/gitops/http"
+	hosthttp "aether/internal/host/http"
 	jobshttp "aether/internal/jobs/http"
 	mirrorshttp "aether/internal/mirrors/http"
 	orgshttp "aether/internal/orgs/http"
@@ -60,11 +61,12 @@ type Router struct {
 	volumes     *volumeshttp.Handler
 	orgs        *orgshttp.Handler
 	variables   *variableshttp.Handler
+	host        *hosthttp.Handler
 	ready       func(context.Context) error
 	authLimiter *RateLimiter
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -79,7 +81,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -314,6 +316,11 @@ func (r *Router) routes() {
 		authed.PATCH("/projects/:projectID/environments/:envID/variables/:key", r.variables.SetEnvironmentVariable)
 		authed.DELETE("/projects/:projectID/environments/:envID/variables/:key", r.variables.DeleteEnvironmentVariable)
 		authed.POST("/projects/:projectID/environments/:envID/default", r.variables.SetDefaultEnvironment)
+
+		authed.GET("/host/stats", r.host.Stats)
+		authed.GET("/host/stats/stream", r.host.StatsStream)
+		authed.GET("/host/events", r.host.Events)
+		authed.GET("/host/logs", r.host.Logs)
 	}
 }
 
