@@ -28,6 +28,7 @@ import (
 	settingshttp "aether/internal/settings/http"
 	snapshotshttp "aether/internal/snapshots/http"
 	specshttp "aether/internal/specs/http"
+	statshttp "aether/internal/stats/http"
 	templateshttp "aether/internal/templates/http"
 	variableshttp "aether/internal/variables/http"
 	volumeshttp "aether/internal/volumes/http"
@@ -64,11 +65,12 @@ type Router struct {
 	variables   *variableshttp.Handler
 	host        *hosthttp.Handler
 	specs       *specshttp.Handler
+	stats       *statshttp.Handler
 	ready       func(context.Context) error
 	authLimiter *RateLimiter
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -83,7 +85,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -335,6 +337,9 @@ func (r *Router) routes() {
 		authed.GET("/apps/:appID/export", r.specs.ExportRuntime)
 		authed.GET("/apps/:appID/deployments/compare", r.specs.Compare)
 		authed.GET("/system/summary", r.specs.SystemSummary)
+		authed.GET("/apps/:appID/stats", r.stats.AppStats)
+		authed.GET("/databases/:dbID/stats", r.stats.DatabaseStats)
+		authed.GET("/databases/:dbID/logs", r.stats.DatabaseLogs)
 	}
 }
 
