@@ -1,0 +1,10 @@
+# Artefatos de build e downloads de spikes (não versionar)
+rust-minicore/target/
+lang-go-rust/go-minicore/minicore
+runtime-driver/minicore
+traefik-dynamic/traefik
+traefik-dynamic/traefik.tar.gz
+traefik-dynamic/CHANGELOG.md
+traefik-dynamic/LICENSE.md
+**/__pycache__/
+*.pyc

@@ -1,0 +1,276 @@
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  created_at: string;
+}
+
+export interface Org {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface OrgDetail {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  avatar: string;
+  color: string;
+  owner_user_id: string;
+  role?: string;
+}
+
+export interface OrgMember {
+  org_id: string;
+  user_id: string;
+  email: string;
+  name: string;
+  role: string;
+  projects: string[];
+}
+
+export interface AuditLog {
+  id: string;
+  org_id: string;
+  user_id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  details: string;
+  created_at: string;
+}
+
+export interface Me {
+  id: string;
+  email: string;
+  name: string;
+  global_role?: string;
+  org: Org;
+  organizations?: OrgRoleView[];
+}
+
+export interface OrgRoleView {
+  id: string;
+  slug: string;
+  name: string;
+  color?: string;
+  role: string;
+}
+
+export interface Member {
+  user_id: string;
+  email: string;
+  name: string;
+  role: string;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  scopes: string[];
+  created_at: string;
+}
+
+export interface Project {
+  id: string;
+  org_id: string;
+  name: string;
+  slug?: string;
+  description?: string;
+  color?: string;
+  created_at: string;
+}
+
+export interface Resources {
+  cpus: string;
+  mem_mb: number;
+}
+
+export interface HealthCheck {
+  enabled: boolean;
+  path: string;
+  interval_ms: number;
+  timeout_ms: number;
+  retries: number;
+}
+
+export interface Volume {
+  name: string;
+  mount_path: string;
+}
+
+export interface App {
+  image_retention?: number;
+  id: string;
+  org_id: string;
+  project_id: string;
+  name: string;
+  source_type: "image" | "git";
+  image: string;
+  git_url: string;
+  git_branch: string;
+  dockerfile: string;
+  build_type: string;
+  preview_domain: string;
+  server_id: string;
+  cluster_id: string;
+  environment_id: string;
+  port: number;
+  resources: Resources;
+  health_check: HealthCheck;
+  volumes: Volume[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EnvVar {
+  app_id: string;
+  name: string;
+  value: string;
+  secret: boolean;
+}
+
+export interface AppDetail {
+  app: App;
+  env: EnvVar[];
+  internal_host?: string;
+  internal_network?: string;
+}
+
+export interface Deployment {
+  id: string;
+  app_id: string;
+  number: number;
+  status: string;
+  commit: string;
+  image_ref: string;
+  container_id: string;
+  error: string;
+  created_at: string;
+  started_at: string;
+  finished_at: string;
+}
+
+export interface ContainerStats {
+  CPUPercent: number;
+  MemBytes: number;
+  MemLimit: number;
+  Pids: number;
+}
+
+export interface Stats {
+  state: string;
+  stats: ContainerStats;
+}
+
+export interface Domain {
+  id: string;
+  app_id: string;
+  host: string;
+  https: boolean;
+  cert_status: string;
+  created_at: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  sequence: number;
+  type: string;
+  payload: string;
+  ts: string;
+}
+
+export interface Backup {
+  id: string;
+  path: string;
+  size: number;
+  created_at: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+export interface Database {
+  id: string;
+  org_id: string;
+  project_id: string;
+  name: string;
+  engine: string;
+  version: string;
+  port: number;
+  db_name: string;
+  mem_mb: number;
+  storage_mb: number;
+  status: string;
+  container_id: string;
+  user: string;
+  created_at: string;
+}
+
+export interface CronJob {
+  id: string;
+  app_id: string;
+  name: string;
+  schedule: string;
+  command: string;
+  enabled: boolean;
+  last_run: string;
+  next_run: string;
+}
+
+export interface Worker {
+  id: string;
+  app_id: string;
+  name: string;
+  command: string;
+  replicas: number;
+  enabled: boolean;
+  status: string;
+  container_id: string;
+}
+
+export interface Preview {
+  id: string;
+  app_id: string;
+  branch: string;
+  deployment_id: string;
+  container_id: string;
+  domain: string;
+  status: string;
+  created_at: string;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  version: string;
+  definition: string;
+}
+
+export interface S3Destination {
+  id: string;
+  org_id: string;
+  name: string;
+  endpoint: string;
+  bucket: string;
+  region: string;
+  created_at: string;
+}
+
+export interface NotificationChannel {
+  id: string;
+  org_id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+  created_at: string;
+}
