@@ -19,11 +19,12 @@ import (
 	gitopshttp "aether/internal/gitops/http"
 	jobshttp "aether/internal/jobs/http"
 	mirrorshttp "aether/internal/mirrors/http"
-	volumeshttp "aether/internal/volumes/http"
+	orgshttp "aether/internal/orgs/http"
 	pipelineshttp "aether/internal/pipelines/http"
 	settingshttp "aether/internal/settings/http"
 	snapshotshttp "aether/internal/snapshots/http"
 	templateshttp "aether/internal/templates/http"
+	volumeshttp "aether/internal/volumes/http"
 	webhookshttp "aether/internal/webhooks/http"
 )
 
@@ -53,11 +54,12 @@ type Router struct {
 	webhooks    *webhookshttp.Handler
 	mirrors     *mirrorshttp.Handler
 	volumes     *volumeshttp.Handler
+	orgs        *orgshttp.Handler
 	ready       func(context.Context) error
 	authLimiter *RateLimiter
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -72,7 +74,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -255,6 +257,18 @@ func (r *Router) routes() {
 		authed.GET("/apps/:appID/volumes", r.volumes.List)
 
 		authed.GET("/certificates", r.domains.Certificates)
+
+		authed.GET("/organizations", r.orgs.List)
+		authed.POST("/organizations", r.orgs.Create)
+		authed.GET("/organizations/:orgID", r.orgs.Get)
+		authed.PATCH("/organizations/:orgID", r.orgs.Update)
+		authed.DELETE("/organizations/:orgID", r.orgs.Delete)
+		authed.GET("/organizations/:orgID/members", r.orgs.Members)
+		authed.PATCH("/organizations/:orgID/members/:userID", r.orgs.UpdateMember)
+		authed.DELETE("/organizations/:orgID/members/:userID", r.orgs.RemoveMember)
+		authed.POST("/organizations/:orgID/members/:userID/projects/:projectID", r.orgs.AssignProject)
+		authed.DELETE("/organizations/:orgID/members/:userID/projects/:projectID", r.orgs.RemoveAssignment)
+		authed.GET("/organizations/:orgID/audit", r.orgs.Audit)
 	}
 }
 
