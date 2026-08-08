@@ -162,6 +162,14 @@ func (r *Router) routes() {
 		authed.GET("/apps/:appID/logs", r.deployments.Logs)
 		authed.GET("/deployments/:depID", r.deployments.Get)
 
+		authed.POST("/apps/:appID/start", r.deployments.AppStart)
+		authed.POST("/apps/:appID/stop", r.deployments.AppStop)
+		authed.POST("/apps/:appID/restart", r.deployments.AppRestart)
+		authed.POST("/apps/:appID/rebuild", r.deployments.AppRebuild)
+		authed.GET("/apps/:appID/timeline", r.deployments.AppTimeline)
+		authed.GET("/apps/states", r.deployments.AppStates)
+		authed.GET("/apps/states/stream", r.deployments.AppStatesStream)
+
 		authed.POST("/apps/:appID/domains", r.domains.AddDomain)
 		authed.GET("/apps/:appID/domains", r.domains.ListDomains)
 		authed.DELETE("/apps/:appID/domains/:host", r.domains.RemoveDomain)
