@@ -121,6 +121,9 @@ func (r *Router) routes() {
 		authed.POST("/api-keys", r.auth.CreateKeyV1)
 		authed.DELETE("/api-keys/:keyID", r.auth.DeleteKeyV1)
 		authed.GET("/auth/audit", r.auth.Audit)
+		authed.POST("/auth/totp/enroll", r.auth.TOTPEnroll)
+		authed.POST("/auth/totp/verify", r.auth.TOTPVerify)
+		authed.DELETE("/auth/totp", r.auth.TOTPDisable)
 
 		authed.GET("/projects", r.apps.ListProjects)
 		authed.POST("/projects", r.apps.CreateProject)
@@ -248,6 +251,10 @@ func (r *Router) routes() {
 		authed.POST("/s3-destinations", r.settings.CreateS3)
 		authed.GET("/s3-destinations", r.settings.ListS3)
 		authed.DELETE("/s3-destinations/:destID", r.settings.DeleteS3)
+
+		authed.GET("/sso", r.settings.ListSSO)
+		authed.POST("/sso", r.settings.CreateSSO)
+		authed.DELETE("/sso/:providerID", r.settings.DeleteSSO)
 
 		authed.GET("/webhooks", r.webhooks.List)
 		authed.POST("/webhooks", r.webhooks.Create)
