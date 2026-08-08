@@ -117,6 +117,9 @@ func (r *Router) routes() {
 		authed.GET("/auth/keys", r.auth.ListKeys)
 		authed.POST("/auth/keys", r.auth.CreateKey)
 		authed.DELETE("/auth/keys/:keyID", r.auth.DeleteKey)
+		authed.GET("/api-keys", r.auth.ListKeysV1)
+		authed.POST("/api-keys", r.auth.CreateKeyV1)
+		authed.DELETE("/api-keys/:keyID", r.auth.DeleteKeyV1)
 		authed.GET("/auth/audit", r.auth.Audit)
 
 		authed.GET("/projects", r.apps.ListProjects)
@@ -231,6 +234,8 @@ func (r *Router) routes() {
 
 		authed.GET("/registry", r.clusters.GetRegistry)
 		authed.POST("/registry", r.clusters.SetRegistry)
+		authed.GET("/registry/images", r.clusters.RegistryImages)
+		authed.DELETE("/registry/images/:repo/:tag", r.clusters.RegistryImageDelete)
 
 		authed.GET("/pipelines", r.pipelines.List)
 		authed.POST("/pipelines", r.pipelines.Create)
