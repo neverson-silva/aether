@@ -114,6 +114,7 @@ func (r *Router) routes() {
 	}
 	authRoutes.POST("/auth/register", r.auth.Register)
 	authRoutes.POST("/auth/login", r.auth.Login)
+	authRoutes.POST("/auth/logout", r.auth.Logout)
 
 	authed := api.Group("")
 	authed.Use(r.auth.Middleware())
@@ -131,6 +132,12 @@ func (r *Router) routes() {
 		authed.POST("/auth/totp/enroll", r.auth.TOTPEnroll)
 		authed.POST("/auth/totp/verify", r.auth.TOTPVerify)
 		authed.DELETE("/auth/totp", r.auth.TOTPDisable)
+		authed.GET("/me", r.auth.MeV1)
+		authed.GET("/members", r.auth.MembersV1)
+		authed.POST("/members", r.auth.AddMemberV1)
+		authed.PATCH("/members/:userID", r.auth.UpdateMemberV1)
+		authed.GET("/auth/status", r.auth.AuthStatus)
+		authed.GET("/metrics", r.auth.Metrics)
 
 		authed.GET("/projects", r.apps.ListProjects)
 		authed.POST("/projects", r.apps.CreateProject)
