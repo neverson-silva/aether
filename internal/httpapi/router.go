@@ -27,6 +27,7 @@ import (
 	settingshttp "aether/internal/settings/http"
 	snapshotshttp "aether/internal/snapshots/http"
 	templateshttp "aether/internal/templates/http"
+	variableshttp "aether/internal/variables/http"
 	volumeshttp "aether/internal/volumes/http"
 	webhookshttp "aether/internal/webhooks/http"
 )
@@ -58,11 +59,12 @@ type Router struct {
 	mirrors     *mirrorshttp.Handler
 	volumes     *volumeshttp.Handler
 	orgs        *orgshttp.Handler
+	variables   *variableshttp.Handler
 	ready       func(context.Context) error
 	authLimiter *RateLimiter
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -77,7 +79,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -284,6 +286,18 @@ func (r *Router) routes() {
 		authed.POST("/organizations/:orgID/members/:userID/projects/:projectID", r.orgs.AssignProject)
 		authed.DELETE("/organizations/:orgID/members/:userID/projects/:projectID", r.orgs.RemoveAssignment)
 		authed.GET("/organizations/:orgID/audit", r.orgs.Audit)
+
+		authed.GET("/projects/:projectID/variables", r.variables.ListVariables)
+		authed.POST("/projects/:projectID/variables", r.variables.SetVariable)
+		authed.DELETE("/projects/:projectID/variables/:key", r.variables.DeleteVariable)
+		authed.GET("/projects/:projectID/variables/audit", r.variables.Audit)
+		authed.GET("/projects/:projectID/variables/export", r.variables.Export)
+		authed.POST("/projects/:projectID/variables/import", r.variables.Import)
+		authed.GET("/projects/:projectID/environments/:envID/variables", r.variables.ListEnvironmentVariables)
+		authed.POST("/projects/:projectID/environments/:envID/variables", r.variables.SetEnvironmentVariable)
+		authed.PATCH("/projects/:projectID/environments/:envID/variables/:key", r.variables.SetEnvironmentVariable)
+		authed.DELETE("/projects/:projectID/environments/:envID/variables/:key", r.variables.DeleteEnvironmentVariable)
+		authed.POST("/projects/:projectID/environments/:envID/default", r.variables.SetDefaultEnvironment)
 	}
 }
 
