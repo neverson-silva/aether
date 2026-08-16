@@ -19,6 +19,7 @@ import type {
   Database,
   Deployment,
   Domain,
+  ResolvedVariable,
   LoginResponse,
   Me,
   Member,
@@ -161,6 +162,14 @@ export function useApps() {
   return useQuery({ queryKey: qk.apps, queryFn: () => apiGet<App[]>("/api/v1/apps") });
 }
 
+export function useProjectApps(projectId: string) {
+  return useQuery({
+    queryKey: ["apps", "project", projectId],
+    queryFn: () => apiGet<App[]>(`/api/v1/apps?project_id=${projectId}`),
+    enabled: !!projectId,
+  });
+}
+
 export function useAppDetail(id: string) {
   return useQuery({
     queryKey: qk.app(id),
@@ -255,8 +264,16 @@ export function useDomains(appID: string) {
 export function useAddDomain(appID: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { host: string; https: boolean }) =>
+    mutationFn: (body: { host: string; https: boolean; container_port?: number; path?: string; internal_path?: string; strip_path?: boolean }) =>
       apiPost(`/api/v1/apps/${appID}/domains`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.domains(appID) }),
+  });
+}
+
+export function useGenerateFreeDomain(appID: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (https?: boolean) => apiPost<Domain>(`/api/v1/apps/${appID}/domains/generate`, { https: https ?? true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.domains(appID) }),
   });
 }
@@ -1210,8 +1227,11 @@ export interface VariableAudit {
 export function useEnvVars(projectId: string, environmentId: string | null) {
   return useQuery({
     queryKey: ["env-vars", projectId, environmentId],
-    queryFn: () => apiGet<EnvironmentVariable[]>(`/api/v1/projects/${projectId}/environments/${environmentId}/variables?secrets=1`),
-    enabled: !!environmentId,
+    enabled: !!projectId && !!environmentId,
+    queryFn: async () => {
+      const data = await apiGet<{ variables: EnvironmentVariable[] }>(`/api/v1/projects/${projectId}/environments/${environmentId}/variables?secrets=1`);
+      return data.variables ?? [];
+    },
   });
 }
 
@@ -1237,9 +1257,17 @@ export function useEnvVarAudit(projectId: string, environmentId: string | null) 
 
 export function useAppDetailSecrets(id: string, enabled: boolean) {
   return useQuery({
-    queryKey: ["app", id, "secrets"],
+    queryKey: [...qk.app(id), "secrets"],
     queryFn: () => apiGet<AppDetail>(`/api/v1/apps/${id}?secrets=1`),
     enabled,
+  });
+}
+
+export function useEffectiveVariables(appID: string) {
+  return useQuery({
+    queryKey: ["apps", appID, "effective-variables"],
+    queryFn: () => apiGet<{ variables: ResolvedVariable[] }>(`/api/v1/apps/${appID}/variables/effective`),
+    enabled: !!appID,
   });
 }
 
@@ -1256,7 +1284,10 @@ export interface ProjectVariable {
 export function useProjectVars(projectId: string) {
   return useQuery({
     queryKey: ["project-vars", projectId],
-    queryFn: () => apiGet<ProjectVariable[]>(`/api/v1/projects/${projectId}/variables?secrets=1`),
+    queryFn: async () => {
+      const data = await apiGet<{ variables: ProjectVariable[] }>(`/api/v1/projects/${projectId}/variables?secrets=1`);
+      return data.variables ?? [];
+    },
   });
 }
 
@@ -1321,6 +1352,7 @@ export interface TemplateItem {
   icon: string;
   version: string;
   definition: string;
+  compose_yaml?: string;
   readme: string;
   homepage: string;
   github: string;
@@ -1379,6 +1411,7 @@ export function useDeploymentLog(appID: string, depID: string | null) {
   return useQuery({
     queryKey: ["deploy-log", appID, depID],
     enabled: !!depID,
+    refetchInterval: depID ? 2500 : false,
     queryFn: () => apiGet<DeploymentLog>(`/api/v1/apps/${appID}/deployments/${depID}/log`),
   });
 }
