@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_spa=0
+if [ -f angular.json ] || [ -f vite.config.js ] || [ -f vite.config.ts ] || [ -f vite.config.mjs ] || [ -f svelte.config.js ] || [ -f svelte.config.ts ]; then
+  is_spa=1
+fi
+if [ "$is_spa" = 0 ]; then
+  for f in gatsby-config.js gatsby-config.ts docusaurus.config.js docusaurus.config.ts .eleventy.js eleventy.config.js eleventy.config.cjs; do
+    [ -f "$f" ] && is_spa=1
+  done
+  for f in next.config.js next.config.mjs next.config.ts; do
+    if [ -f "$f" ] && grep -qE "output[[:space:]]*:[[:space:]]*['\"]export['\"]" "$f"; then
+      is_spa=1
+    fi
+  done
+fi
+if [ "$is_spa" = 0 ] && [ -f package.json ]; then
+  case "$(cat package.json)" in
+    *'"@angular/core"'*|*'"react-scripts"'*|*'"vue-cli-service"'*|*'"@vue/cli-service"'*|*'"vite"'*|*'"@vitejs/plugin-react"'*|*'"astro"'*) is_spa=1 ;;
+  esac
+fi
+if [ "$is_spa" = 0 ]; then
+  echo "aether/spa-static: no SPA markers found"
+  exit 100
+fi
+
+PLAN_PATH="${CNB_BUILD_PLAN_PATH:-$2}"
+if [ -n "$PLAN_PATH" ]; then
+  : > "$PLAN_PATH"
+fi
+echo "aether/spa-static: SPA detected — building static output"

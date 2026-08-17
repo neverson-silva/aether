@@ -1,0 +1,36 @@
+# Go
+/bin/
+*.test
+*.out
+
+# Node / Vite
+web/node_modules/
+web/dist/
+web/.vite/
+spikes/web/node_modules/
+spikes/web/dist/
+spikes/web/.vite/
+node_modules/
+
+# Logs e estado
+*.log
+/logs/
+/data/
+/cache/
+/certs/
+/keys/
+/builds/
+/.aether/
+.pgpass
+
+# Segredos
+*.pem
+*.key
+.env
+.env.*
+master.key
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/

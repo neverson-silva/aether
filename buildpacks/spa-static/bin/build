@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAYERS_DIR="$1"
+PLATFORM_DIR="$2"
+PLAN_PATH="$3"
+
+node_layer="$LAYERS_DIR/spa-node"
+static_layer="$LAYERS_DIR/spa-static"
+mkdir -p "$node_layer" "$static_layer/htdocs" "$static_layer/bin"
+
+NODE_MAJOR="22"
+if [ -f /workspace/package.json ]; then
+  major="$(grep -oE '"engines"[^}]*"node"[[:space:]]*:[[:space:]]*"[^"]*"' /workspace/package.json | grep -oE '[0-9]+' | head -1 || true)"
+  case "$major" in
+    ''|0) ;;
+    [0-9]*) NODE_MAJOR="$major" ;;
+  esac
+fi
+
+NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | grep -oE "\"version\":\"v${NODE_MAJOR}\.[0-9]+\.[0-9]+\"" | head -1 | grep -oE 'v[0-9.]+' | tr -d 'v' || true)"
+NODE_VER="${NODE_VER:-22.19.4}"
+
+echo "aether/spa-static: installing Node v$NODE_VER (engines.node major $NODE_MAJOR)..."
+curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-linux-x64.tar.xz"
+tar -xJf /tmp/node.tar.xz -C "$node_layer" --strip-components=1
+rm -f /tmp/node.tar.xz
+export PATH="$node_layer/bin:$PATH"
+node --version && npm --version
+
+cd /workspace
+
+PM="npm"
+if [ -f pnpm-lock.yaml ]; then
+  PM="pnpm"
+  npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
+elif [ -f yarn.lock ]; then
+  PM="yarn"
+  npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
+fi
+
+case "$PM" in
+  pnpm)
+    pnpm install --frozen-lockfile
+    ;;
+  yarn)
+    yarn install --frozen-lockfile --non-interactive
+    ;;
+  *)
+    if [ -f package-lock.json ]; then
+      npm ci --no-audit --no-fund
+    else
+      npm install --no-audit --no-fund
+    fi
+    ;;
+esac
+
+echo "aether/spa-static: running $PM run build..."
+case "$PM" in
+  pnpm) pnpm run build ;;
+  yarn) yarn run build ;;
+  *) npm run build ;;
+esac
+
+OUT="dist"
+if [ -f /workspace/angular.json ]; then
+  OUT="$(grep -oE '"outputPath"[[:space:]]*:[[:space:]]*"[^"]+"' /workspace/angular.json | head -1 | grep -oE '"[^"]+"$' | tr -d '"' || true)"
+  if [ -z "$OUT" ]; then
+    proj="$(grep -oE '"[a-zA-Z0-9_-]+"[[:space:]]*:[[:space:]]*\{' /workspace/angular.json | head -1 | grep -oE '"[a-zA-Z0-9_-]+"' | tr -d '"' || true)"
+    OUT="dist/${proj:-app}"
+  fi
+elif ls /workspace/vite.config.* >/dev/null 2>&1; then
+  OUT="$(grep -hoE 'outDir\s*:\s*["'"'"'][^"'"'"']+' /workspace/vite.config.* 2>/dev/null | head -1 | sed -E 's/.*["'"'"']//' || true)"
+  OUT="${OUT:-dist}"
+fi
+OUT="${OUT#./}"
+OUT="${OUT%/}"
+
+if [ -d "/workspace/$OUT" ] && [ -n "$(ls -A /workspace/$OUT 2>/dev/null)" ]; then
+  cp -a "/workspace/$OUT/." "$static_layer/htdocs/"
+elif [ -d /workspace/dist ] && [ -n "$(ls -A /workspace/dist 2>/dev/null)" ]; then
+  cp -a /workspace/dist/. "$static_layer/htdocs/"
+else
+  echo "aether/spa-static: WARN — output not found at /workspace/$OUT; serving empty root"
+fi
+
+if [ ! -f "$static_layer/htdocs/index.html" ]; then
+  found="$(find "$static_layer/htdocs" -name index.html -maxdepth 5 2>/dev/null | head -1)"
+  if [ -n "$found" ]; then
+    dir="$(dirname "$found")"
+    cp -a "$dir/." "$static_layer/htdocs/"
+    rm -rf "$dir"
+    echo "aether/spa-static: normalized site root from $dir"
+  fi
+fi
+
+SWS_VER="v2.44.0"
+case "$(uname -m)" in
+  x86_64|amd64) SWS_ARCH="x86_64-unknown-linux-gnu" ;;
+  aarch64|arm64) SWS_ARCH="aarch64-unknown-linux-gnu" ;;
+  *) echo "aether/spa-static: unsupported arch $(uname -m)"; exit 1 ;;
+esac
+curl -fsSLo /tmp/sws.tgz "https://github.com/static-web-server/static-web-server/releases/download/$SWS_VER/static-web-server-$SWS_VER-$SWS_ARCH.tar.gz"
+tar -xzf /tmp/sws.tgz -C "$static_layer/bin" --strip-components=1 static-web-server-$SWS_VER-$SWS_ARCH/static-web-server
+rm -f /tmp/sws.tgz
+"$static_layer/bin/static-web-server" --version
+
+cat > "$static_layer/bin/start.sh" <<'SH'
+#!/bin/sh
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(dirname "$DIR")/htdocs"
+PORT="${PORT:-8080}"
+exec "$DIR/static-web-server" \
+  --host 0.0.0.0 \
+  --port "$PORT" \
+  --root "$ROOT" \
+  --page-fallback "$ROOT/index.html" \
+  --cache-control-headers \
+  --log-level error \
+  --log-remote-address false
+SH
+chmod +x "$static_layer/bin/start.sh"
+
+cat > "$node_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = false
+EOF
+
+cat > "$static_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$LAYERS_DIR/launch.toml" <<'EOF'
+[[processes]]
+  type = "web"
+  command = ["start.sh"]
+  default = true
+EOF
+
+echo "aether/spa-static: SPA built and served (root: /layers/spa-static/htdocs, PORT=\$PORT, pm=$PM)"

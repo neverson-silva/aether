@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_static=0
+if [ -f angular.json ] || [ -f vite.config.js ] || [ -f vite.config.ts ] || [ -f vite.config.mjs ] \
+  || [ -f svelte.config.js ] || [ -f svelte.config.ts ] \
+  || [ -f gatsby-config.js ] || [ -f gatsby-config.ts ] \
+  || [ -f docusaurus.config.js ] || [ -f docusaurus.config.ts ] \
+  || [ -f .eleventy.js ] || [ -f eleventy.config.js ]; then
+  is_static=1
+fi
+if [ "$is_static" = 0 ] && [ -f package.json ]; then
+  case "$(cat package.json)" in
+    *'"@angular/core"'*|*'"react-scripts"'*|*'"vue-cli-service"'*|*'"@vue/cli-service"'*|*'"vite"'*|*'"@vitejs/plugin-react"'*) is_static=1 ;;
+  esac
+fi
+if [ "$is_static" = 1 ]; then
+  echo "aether/node-server: SPA/SSG — ignorado (grupo spa-static)"
+  exit 100
+fi
+
+[ -f package.json ] || { echo "aether/node-server: sem package.json"; exit 100; }
+
+start="$(grep -oE '"start"[[:space:]]*:[[:space:]]*"[^"]*"' package.json | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+startprod="$(grep -oE '"start:prod"[[:space:]]*:[[:space:]]*"[^"]*"' package.json | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+[ -n "$start$startprod" ] || { echo "aether/node-server: sem start/start:prod"; exit 100; }
+
+case "${start:-$startprod}" in
+  *"ng serve"*|*"vite"*|*"react-scripts start"*|*"next dev"*|*"nuxt dev"*|*"astro dev"*|*"gatsby develop"*|*"vue-cli-service serve"*|*"webpack-dev-server"*|*"quasar dev"*|*"docusaurus start"*|*"svelte-kit dev"*|*"expo start"*|*"ionic serve"*)
+    echo "aether/node-server: start é dev server — ignorado"
+    exit 100 ;;
+esac
+
+echo "aether/node-server: Node server detectado (start=${start:-$startprod})"

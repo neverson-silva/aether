@@ -1,0 +1,693 @@
+package worker
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+
+	deploydomain "aether/internal/deployments/domain"
+	"aether/internal/druntime/queue"
+	"aether/internal/git"
+	"aether/internal/planner"
+)
+
+type DeploymentStore interface {
+	ListQueued(ctx context.Context) ([]deploydomain.Deployment, error)
+	ListReady(ctx context.Context) ([]deploydomain.Deployment, error)
+	GetDeployment(ctx context.Context, id uuid.UUID) (*deploydomain.Deployment, error)
+	ListByApp(ctx context.Context, appID uuid.UUID, limit int) ([]deploydomain.Deployment, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status deploydomain.Status, errMsg, imageRef, containerID string, startedAt, finishedAt *time.Time) error
+}
+
+type Worker struct {
+	Store          DeploymentStore
+	Runtime        Runtime
+	Logger         *slog.Logger
+	LogsDir        string
+	BuildsDir      string
+	UploadsDir     string
+	IngressNetwork string
+	Notifier       DeployNotifier
+	LogNotifier    LogNotifier
+	CnbBuilder     string
+	Queue          queue.Queue
+
+	mu       sync.Mutex
+	inFlight map[uuid.UUID]bool
+}
+
+type DeployNotifier interface {
+	NotifyDeploy(ctx context.Context, event deploydomain.DeployEvent)
+}
+
+type LogNotifier interface {
+	NotifyDeployLog(ctx context.Context, appID, depID uuid.UUID, line string)
+}
+
+func (w *Worker) Run(ctx context.Context, interval time.Duration) {
+	if w.Queue != nil {
+		w.runQueue(ctx)
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.processQueued(ctx)
+		}
+	}
+}
+
+func (w *Worker) runQueue(ctx context.Context) {
+	w.mu.Lock()
+	w.inFlight = map[uuid.UUID]bool{}
+	w.mu.Unlock()
+	consumer, err := w.Queue.NewConsumer(ctx, "deployments", "workers", "aether-deploy")
+	if err != nil {
+		w.log(ctx, "queue consumer", err)
+		return
+	}
+	defer consumer.Close()
+	lastDrain := time.Time{}
+	for {
+		if time.Since(lastDrain) > 60*time.Second {
+			w.drainQueued(ctx)
+			lastDrain = time.Now()
+		}
+		job, err := consumer.Next(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			w.log(ctx, "queue next", err)
+			continue
+		}
+		depID, err := uuid.Parse(job.DeploymentID)
+		if err != nil {
+			_ = consumer.Ack(ctx, job)
+			continue
+		}
+		w.mu.Lock()
+		if w.inFlight[depID] {
+			w.mu.Unlock()
+			_ = consumer.Nack(ctx, job)
+			continue
+		}
+		w.inFlight[depID] = true
+		w.mu.Unlock()
+		dep, err := w.Store.GetDeployment(ctx, depID)
+		if err != nil || dep == nil || dep.Status != deploydomain.StatusQueued {
+			w.mu.Lock()
+			delete(w.inFlight, depID)
+			w.mu.Unlock()
+			_ = consumer.Ack(ctx, job)
+			continue
+		}
+		w.deploy(ctx, dep)
+		w.mu.Lock()
+		delete(w.inFlight, depID)
+		w.mu.Unlock()
+		_ = consumer.Ack(ctx, job)
+	}
+}
+
+func (w *Worker) drainQueued(ctx context.Context) {
+	queued, err := w.Store.ListQueued(ctx)
+	if err != nil {
+		w.log(ctx, "drain queued", err)
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i := range queued {
+		dep := &queued[i]
+		if w.inFlight[dep.ID] {
+			continue
+		}
+		if time.Since(dep.CreatedAt) < 5*time.Second {
+			continue
+		}
+		_ = w.Queue.Enqueue(ctx, "deployments", queue.Job{
+			DeploymentID: dep.ID.String(), AppID: dep.AppID.String(),
+		})
+	}
+}
+
+func (w *Worker) processQueued(ctx context.Context) {
+	queued, err := w.Store.ListQueued(ctx)
+	if err != nil {
+		w.log(ctx, "list queue", err)
+		return
+	}
+	for i := range queued {
+		w.deploy(ctx, &queued[i])
+	}
+}
+
+func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
+	spec, hc, err := buildSpec(dep)
+	if err != nil {
+		w.fail(ctx, dep, "", err)
+		return
+	}
+	w.setStatus(ctx, dep, deploydomain.StatusBuilding, spec.Image, "")
+	built := false
+	switch {
+	case spec.UploadID != "" && dep.ImageRef == "":
+		image, err := w.buildUploadSource(ctx, dep, spec)
+		if err != nil {
+			w.fail(ctx, dep, "", err)
+			return
+		}
+		spec.Image = image
+		built = true
+	case spec.GitURL != "" && dep.ImageRef == "":
+		image, err := w.buildGitSource(ctx, dep, spec)
+		if err != nil {
+			w.fail(ctx, dep, "", err)
+			return
+		}
+		spec.Image = image
+		built = true
+	}
+	if !built {
+		w.appendLog(dep, "pulling image "+spec.Image)
+		out, err := w.Runtime.Pull(ctx, spec.Image)
+		if err != nil {
+			w.appendLog(dep, out)
+			w.fail(ctx, dep, "", err)
+			return
+		}
+		if trimmed := strings.TrimSpace(out); trimmed != "" {
+			w.appendLog(dep, trimmed)
+		}
+	}
+	w.appendLog(dep, "starting container "+spec.Name)
+	containerPort := spec.ContainerPort
+	if containerPort == 0 {
+		containerPort, _ = w.Runtime.ExposedPort(ctx, spec.Image)
+	}
+	if containerPort == 0 {
+		containerPort = spec.Port
+	}
+	w.removeOldContainers(ctx, dep.AppID, dep.ID)
+	containerID, err := w.Runtime.Run(ctx, RunSpec{
+		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: spec.Port, ContainerPort: containerPort,
+		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8],
+		MemMB: spec.MemMB, CPUs: spec.CPUs,
+	})
+	if err != nil {
+		w.fail(ctx, dep, "", err)
+		return
+	}
+	w.appendLog(dep, "container "+containerID+" started")
+	w.setStatus(ctx, dep, deploydomain.StatusStarting, spec.Image, containerID)
+	w.setStatus(ctx, dep, deploydomain.StatusHealthChecking, spec.Image, containerID)
+	if !hc.Enabled {
+		w.appendLog(dep, "health check disabled, deploy ready")
+		w.setStatus(ctx, dep, deploydomain.StatusReady, spec.Image, containerID)
+		return
+	}
+	hostPort, err := w.Runtime.Port(ctx, containerID)
+	if err != nil {
+		w.fail(ctx, dep, containerID, err)
+		return
+	}
+	w.appendLog(dep, "health check http://127.0.0.1:"+hostPort+hc.Path)
+	if err := w.checkHealth(ctx, hostPort, hc); err != nil {
+		w.fail(ctx, dep, containerID, err)
+		return
+	}
+	w.appendLog(dep, "deploy ready")
+	w.setStatus(ctx, dep, deploydomain.StatusReady, spec.Image, containerID)
+}
+
+func (w *Worker) removeOldContainers(ctx context.Context, appID, currentDepID uuid.UUID) {
+	deps, err := w.Store.ListByApp(ctx, appID, 50)
+	if err != nil {
+		return
+	}
+	for i := range deps {
+		d := &deps[i]
+		if d.ID == currentDepID || d.ContainerID == "" {
+			continue
+		}
+		_ = w.Runtime.Remove(ctx, d.ContainerID)
+	}
+}
+
+func (w *Worker) checkHealth(ctx context.Context, hostPort string, hc healthCheck) error {
+	timeout := time.Duration(hc.TimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	retries := hc.Retries
+	if retries <= 0 {
+		retries = 10
+	}
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := w.Runtime.HealthCheck(ctx, hostPort, hc.Path); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		retries--
+		if retries <= 0 {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if lastErr == nil {
+		lastErr = context.DeadlineExceeded
+	}
+	return lastErr
+}
+
+func (w *Worker) buildGitSource(ctx context.Context, dep *deploydomain.Deployment, spec runSpec) (string, error) {
+	if w.BuildsDir == "" {
+		return "", errors.New("builds directory not configured")
+	}
+	srcDir := filepath.Join(w.BuildsDir, "sources", dep.ID.String())
+	if err := os.RemoveAll(srcDir); err != nil {
+		return "", err
+	}
+	w.appendLog(dep, "cloning "+spec.GitURL)
+	branch := spec.GitBranch
+	if branch == "" {
+		branch = "main"
+	}
+	if err := git.Clone(ctx, spec.GitURL, branch, srcDir); err != nil {
+		return "", err
+	}
+	tag := "aether/" + dep.AppID.String()[:8] + ":" + strconv.Itoa(dep.Number)
+	return w.buildFromDir(ctx, dep, spec, srcDir, tag)
+}
+
+func (w *Worker) buildUploadSource(ctx context.Context, dep *deploydomain.Deployment, spec runSpec) (string, error) {
+	if w.UploadsDir == "" {
+		return "", errors.New("uploads directory not configured")
+	}
+	srcDir := filepath.Join(w.UploadsDir, spec.UploadID)
+	if st, err := os.Stat(srcDir); err != nil || !st.IsDir() {
+		return "", fmt.Errorf("upload %q not found", spec.UploadID)
+	}
+	tag := "aether/" + dep.AppID.String()[:8] + ":" + strconv.Itoa(dep.Number)
+	return w.buildFromDir(ctx, dep, spec, srcDir, tag)
+}
+
+func (w *Worker) buildFromDir(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
+	switch spec.BuildType {
+	case "dockerfile":
+		return w.buildDockerfile(ctx, dep, spec, srcDir, tag)
+	case "custom":
+		return w.buildCommandSource(ctx, dep, spec, srcDir, tag)
+	default:
+		df := spec.Dockerfile
+		if df == "" {
+			df = "Dockerfile"
+		}
+		if _, err := os.Stat(filepath.Join(srcDir, df)); err == nil {
+			return w.buildDockerfile(ctx, dep, spec, srcDir, tag)
+		}
+		return w.buildSmartBuild(ctx, dep, spec, srcDir, tag)
+	}
+}
+
+func (w *Worker) streamCmd(ctx context.Context, dep *deploydomain.Deployment, cmd *exec.Cmd) (string, error) {
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+	var out bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(pr)
+		sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+		for sc.Scan() {
+			line := strings.TrimRight(sc.Text(), "\r")
+			out.WriteString(line + "\n")
+			if line != "" {
+				w.appendLog(dep, line)
+			}
+		}
+	}()
+	err := cmd.Run()
+	_ = pw.Close()
+	<-done
+	return out.String(), err
+}
+
+func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
+	img := "aether/" + dep.AppID.String()[:8]
+	builder := w.CnbBuilder
+	if builder == "" {
+		builder = "127.0.0.1:5000/builder:node-spa"
+	}
+	spa := isStaticSPA(srcDir)
+
+	if plan, err := planner.Detect(srcDir); err == nil {
+		w.appendLog(dep, fmt.Sprintf("cnb: detectado framework=%q tipo=%q build=%q output=%q",
+			plan.Framework, plan.AppType, plan.BuildCommand, plan.OutputDir))
+		if spa {
+			w.appendLog(dep, "cnb: SPA detectada — grupo aether/spa-static (static server + SPA fallback)")
+		} else {
+			w.appendLog(dep, "cnb: app servidor — grupo aether/node-server (start:prod > start)")
+		}
+	}
+
+	w.appendLog(dep, "cnb (smartbuild): buildando "+img+" com builder "+builder)
+	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
+	for _, e := range cnbBuildEnv(srcDir, spec) {
+		args = append(args, "--env", e)
+	}
+	cmd := exec.CommandContext(ctx, "pack", args...)
+	cmd.Env = append(os.Environ(), "PACK_VOLUME_KEY=aether-"+dep.AppID.String()[:8])
+	out, err := w.streamCmd(ctx, dep, cmd)
+	if err != nil {
+		if strings.Contains(out, "No buildpack groups passed detection") {
+			w.appendLog(dep, "cnb: nenhum buildpack detectou a aplicação. Configuração manual necessária: forneça um Dockerfile na fonte ou use build_type custom (install/build/start).")
+			return "", fmt.Errorf("nenhum buildpack CNB detectou a aplicação: forneça um Dockerfile na fonte ou use build_type custom")
+		}
+		w.appendLog(dep, "fail: "+strings.TrimSpace(out)+": "+err.Error())
+		return "", fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
+	}
+	if _, err := exec.CommandContext(ctx, "podman", "tag", img+":latest", tag).CombinedOutput(); err != nil {
+		return "", err
+	}
+	return tag, nil
+}
+
+func cnbBuildEnv(srcDir string, spec runSpec) []string {
+	var out []string
+	for _, e := range spec.Env {
+		if strings.HasPrefix(e, "BP_") || strings.HasPrefix(e, "CNB_") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+var staticSPADevStarts = []*regexp.Regexp{
+	regexp.MustCompile(`\bng serve\b`),
+	regexp.MustCompile(`\bvite\b`),
+	regexp.MustCompile(`\breact-scripts start\b`),
+	regexp.MustCompile(`\bnext dev\b`),
+	regexp.MustCompile(`\bnuxt dev\b`),
+	regexp.MustCompile(`\bastro dev\b`),
+	regexp.MustCompile(`\bgatsby develop\b`),
+	regexp.MustCompile(`\bvue-cli-service serve\b`),
+	regexp.MustCompile(`\bwebpack-dev-server\b`),
+	regexp.MustCompile(`\bquasar dev\b`),
+	regexp.MustCompile(`\bdocusaurus start\b`),
+	regexp.MustCompile(`\bsvelte-kit dev\b`),
+	regexp.MustCompile(`\bexpo start\b`),
+	regexp.MustCompile(`\bionic serve\b`),
+}
+
+func isStaticSPA(srcDir string) bool {
+	b, err := os.ReadFile(filepath.Join(srcDir, "package.json"))
+	if err != nil {
+		return false
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if json.Unmarshal(b, &pkg) != nil {
+		return false
+	}
+	_, hasBuild := pkg.Scripts["build"]
+	start, hasStart := pkg.Scripts["start"]
+	if !hasBuild {
+		return false
+	}
+	if !hasStart {
+		return true
+	}
+	startCmd := strings.ToLower(start)
+	for _, re := range staticSPADevStarts {
+		if re.MatchString(startCmd) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *Worker) buildDockerfile(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
+	dockerfile := spec.Dockerfile
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	if !filepath.IsAbs(dockerfile) {
+		dockerfile = filepath.Join(srcDir, dockerfile)
+	}
+	if _, err := os.Stat(dockerfile); err != nil {
+		return "", fmt.Errorf("Dockerfile not found em %s", dockerfile)
+	}
+	w.writeBuildEnv(srcDir, spec.Env)
+	w.appendLog(dep, "building image (Dockerfile) "+tag)
+	out, err := w.Runtime.Build(ctx, srcDir, dockerfile, tag)
+	if err != nil {
+		w.appendLog(dep, out)
+		return "", err
+	}
+	if trimmed := strings.TrimSpace(out); trimmed != "" {
+		w.appendLog(dep, trimmed)
+	}
+	return tag, nil
+}
+
+func (w *Worker) buildCommandSource(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
+	dockerfile, nginxConf := generateCommandDockerfile(spec, srcDir)
+	if err := os.WriteFile(filepath.Join(srcDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		return "", err
+	}
+	if nginxConf != "" {
+		if err := os.WriteFile(filepath.Join(srcDir, "nginx.conf"), []byte(nginxConf), 0o644); err != nil {
+			return "", err
+		}
+	}
+	w.writeBuildEnv(srcDir, spec.Env)
+	df := filepath.Join(srcDir, "Dockerfile")
+	w.appendLog(dep, "building image (install/build + nginx) "+tag)
+	out, err := w.Runtime.Build(ctx, srcDir, df, tag)
+	if err != nil {
+		w.appendLog(dep, out)
+		return "", err
+	}
+	if trimmed := strings.TrimSpace(out); trimmed != "" {
+		w.appendLog(dep, trimmed)
+	}
+	return tag, nil
+}
+
+func (w *Worker) writeBuildEnv(srcDir string, env []string) {
+	if len(env) == 0 {
+		return
+	}
+	var sb strings.Builder
+	for _, e := range env {
+		sb.WriteString(e + "\n")
+	}
+	_ = os.WriteFile(filepath.Join(srcDir, ".env"), []byte(sb.String()), 0o600)
+}
+
+func (w *Worker) setStatus(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status, imageRef, containerID string) {
+	if err := dep.Transition(status); err != nil {
+		w.log(ctx, "transition "+string(status), err)
+		return
+	}
+	dep.ImageRef = imageRef
+	dep.ContainerID = containerID
+	if err := w.Store.UpdateStatus(ctx, dep.ID, dep.Status, dep.Error, dep.ImageRef, dep.ContainerID, dep.StartedAt, dep.FinishedAt); err != nil {
+		w.log(ctx, "persist status "+string(status), err)
+	}
+	w.notify(ctx, dep, status)
+}
+
+func (w *Worker) notify(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status) {
+	if w.Notifier == nil {
+		return
+	}
+	w.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{
+		AppID: dep.AppID, DepID: dep.ID, Status: string(status), Detail: dep.Error,
+	})
+}
+
+func (w *Worker) fail(ctx context.Context, dep *deploydomain.Deployment, containerID string, cause error) {
+	dep.Error = cause.Error()
+	w.appendLog(dep, "fail: "+cause.Error())
+	if containerID != "" {
+		_ = w.Runtime.Remove(ctx, containerID)
+	}
+	w.setStatus(ctx, dep, deploydomain.StatusFailed, dep.ImageRef, "")
+}
+
+func (w *Worker) appendLog(dep *deploydomain.Deployment, line string) {
+	if line != "" && w.LogNotifier != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		w.LogNotifier.NotifyDeployLog(ctx, dep.AppID, dep.ID, line)
+		cancel()
+	}
+	if w.LogsDir == "" {
+		return
+	}
+	dir := filepath.Join(w.LogsDir, "deployments")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, dep.ID.String()+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339), line)
+}
+
+func (w *Worker) log(ctx context.Context, msg string, err error) {
+	if w.Logger != nil {
+		w.Logger.Error(msg, "err", err)
+	}
+}
+
+type healthCheck struct {
+	Enabled   bool   `json:"enabled"`
+	Path      string `json:"path"`
+	TimeoutMS int    `json:"timeout_ms"`
+	Retries   int    `json:"retries"`
+}
+
+type runSpec struct {
+	Name          string      `json:"name"`
+	Image         string      `json:"image"`
+	GitURL        string      `json:"git_url"`
+	GitBranch     string      `json:"git_branch"`
+	UploadID      string      `json:"upload_id"`
+	BuildType     string      `json:"build_type"`
+	Dockerfile    string      `json:"dockerfile"`
+	InstallCmd    string      `json:"install_command"`
+	BuildCmd      string      `json:"build_command"`
+	StartCmd      string      `json:"start_command"`
+	RootFolder    string      `json:"root_folder"`
+	DistFolder    string      `json:"dist_folder"`
+	Env           []string    `json:"env"`
+	Port          int         `json:"port"`
+	ContainerPort int         `json:"container_port"`
+	Network       string      `json:"network"`
+	NetworkAlias  string      `json:"network_alias"`
+	MemMB         int         `json:"mem_mb"`
+	CPUs          string      `json:"cpus"`
+	HealthCheck   healthCheck `json:"health_check"`
+}
+
+func buildSpec(dep *deploydomain.Deployment) (runSpec, healthCheck, error) {
+	var spec runSpec
+	if len(dep.DeploySpec) > 0 {
+		if err := json.Unmarshal(dep.DeploySpec, &spec); err != nil {
+			return runSpec{}, healthCheck{}, err
+		}
+	}
+	if spec.Image == "" {
+		spec.Image = dep.ImageRef
+	}
+	if spec.Image == "" && spec.GitURL == "" && spec.UploadID == "" {
+		return runSpec{}, healthCheck{}, deploydomain.ErrValidation
+	}
+	if spec.HealthCheck.Path == "" {
+		spec.HealthCheck.Path = "/"
+	}
+	if spec.ContainerPort == 0 && spec.BuildType == "custom" {
+		spec.ContainerPort = 80
+	}
+	spec.Name = "aether-" + dep.ID.String()[:8] + "-" + strconv.Itoa(dep.Number)
+	var vars map[string]string
+	if len(dep.EnvSnapshot) > 0 && json.Unmarshal(dep.EnvSnapshot, &vars) == nil {
+		env := make([]string, 0, 8)
+		for k, v := range vars {
+			env = append(env, k+"="+v)
+		}
+		spec.Env = env
+	}
+	if spec.Port > 0 {
+		hasPORT := false
+		for _, e := range spec.Env {
+			if strings.HasPrefix(e, "PORT=") {
+				hasPORT = true
+				break
+			}
+		}
+		if !hasPORT {
+			spec.Env = append(spec.Env, "PORT="+strconv.Itoa(spec.Port))
+		}
+	}
+	return spec, spec.HealthCheck, nil
+}
+
+func generateCommandDockerfile(spec runSpec, srcDir string) (string, string) {
+	install := strings.TrimSpace(spec.InstallCmd)
+	if install == "" {
+		install = "npm install"
+	}
+	build := strings.TrimSpace(spec.BuildCmd)
+	if build == "" {
+		build = "npm run build"
+	}
+	dist := strings.TrimSpace(strings.TrimPrefix(spec.DistFolder, "./"))
+	if dist == "" {
+		dist = "dist"
+		if plan, err := planner.Detect(srcDir); err == nil && plan.OutputDir != "" {
+			dist = strings.Trim(strings.TrimPrefix(plan.OutputDir, "./"), "/")
+		}
+	}
+	dist = strings.Trim(dist, "/")
+
+	nginx := "server {\n" +
+		"    listen 80;\n" +
+		"    server_name _;\n" +
+		"    root /usr/share/nginx/html;\n" +
+		"    index index.html;\n" +
+		"    location ~ /\\.env { deny all; }\n" +
+		"    location / {\n" +
+		"        try_files $uri $uri/ /index.html;\n" +
+		"    }\n" +
+		"}\n"
+
+	var sb strings.Builder
+	sb.WriteString("# syntax=docker/dockerfile:1\n")
+	sb.WriteString("FROM node:22-alpine AS build\n")
+	sb.WriteString("WORKDIR /app\n")
+	sb.WriteString("COPY package*.json ./\n")
+	sb.WriteString("RUN " + install + "\n")
+	sb.WriteString("COPY . .\n")
+	sb.WriteString("RUN " + build + "\n")
+	sb.WriteString("\nFROM nginx:alpine\n")
+	sb.WriteString("COPY nginx.conf /etc/nginx/conf.d/default.conf\n")
+	sb.WriteString("COPY --from=build /app/" + dist + " /usr/share/nginx/html\n")
+	sb.WriteString("EXPOSE 80\n")
+	sb.WriteString("CMD [\"nginx\", \"-g\", \"daemon off;\"]\n")
+	return sb.String(), nginx
+}
+
+func shellJoin(cmd string) string {
+	return strings.ReplaceAll(cmd, "\"", "\\\"")
+}
