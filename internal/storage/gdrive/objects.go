@@ -193,9 +193,6 @@ type listState struct {
 	PageToken string
 }
 
-// initListState resolves the prefix to a starting folder and builds the
-// initial BFS queue. The last prefix segment acts as a name filter on the
-// starting folder's immediate children, mirroring S3 prefix semantics.
 func (p *Provider) initListState(ctx context.Context, prefix string) (*listState, error) {
 	prefix = strings.TrimPrefix(prefix, "/")
 	state := &listState{}
@@ -277,7 +274,6 @@ func (p *Provider) CopyObject(ctx context.Context, input storage.CopyObjectInput
 		return nil, err
 	}
 
-	// S3 copy overwrites the destination; drop a previous file with the key.
 	existing, err := p.findObject(ctx, folderID, name)
 	if err != nil {
 		return nil, err

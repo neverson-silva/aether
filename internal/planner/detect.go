@@ -18,10 +18,7 @@ func regexQuotedPairs(s string) [][]string {
 	return out
 }
 
-// detectOutputDir resolves the build output directory, respecting custom
-// build.outDir in vite.config when present.
 func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
-	// custom outDir from vite.config
 	for _, name := range []string{"vite.config.ts", "vite.config.js", "vite.config.mjs"} {
 		cfg := read(name)
 		if cfg != "" {
@@ -39,7 +36,6 @@ func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
 	case "React (CRA/Webpack)":
 		return "build"
 	case "Angular":
-		// angular.json outputPath (best effort)
 		cfg := read("angular.json")
 		m := regexp.MustCompile(`"outputPath"\s*:\s*"([^"]+)"`).FindStringSubmatch(cfg)
 		if len(m) > 1 {
@@ -62,7 +58,6 @@ func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
 	case "SvelteKit":
 		return "build"
 	}
-	// structure sniff
 	for _, d := range []string{"dist", "build", "out", "public", ".output/public"} {
 		if fi, err := os.Stat(filepath.Join(srcDir, d)); err == nil && fi.IsDir() {
 			return d
@@ -71,7 +66,6 @@ func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
 	return "dist"
 }
 
-// detectRouting classifies the app type.
 func detectRouting(p *Plan) {
 	ssr := p.Framework == "Next.js" || p.Framework == "Nuxt" || p.Framework == "Remix" ||
 		p.Framework == "SvelteKit" || p.Framework == "TanStack Start" || p.Framework == "Fresh"
@@ -89,7 +83,6 @@ func detectRouting(p *Plan) {
 		p.AppType = TypeSPA
 		p.SPAFallback = true
 	default:
-		// check for index.html → static; else unknown
 		p.AppType = TypeStatic
 		p.SPAFallback = false
 	}
@@ -102,7 +95,6 @@ func discoverIndex(srcDir string, p *Plan) {
 				p.IndexFile = "index.html"
 				return
 			}
-			// Angular style dist/<project>
 			entries, _ := os.ReadDir(filepath.Join(srcDir, d))
 			for _, e := range entries {
 				if e.IsDir() {

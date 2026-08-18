@@ -200,7 +200,7 @@ function AppDetail() {
 
   return (
     <div className="space-y-lg">
-      {/* Header */}      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <span className="material-symbols-outlined text-primary text-[32px] shrink-0">
@@ -248,7 +248,6 @@ function AppDetail() {
 
       {tab === "overview" && (
         <>
-          {/* Deploy Settings */}
           <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-8">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -296,7 +295,6 @@ function AppDetail() {
             </div>
           </div>
 
-          {/* Provider */}
           <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 space-y-8 mb-8">
             <div className="flex items-center justify-between">
               <div>

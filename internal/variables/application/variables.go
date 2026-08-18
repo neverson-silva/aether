@@ -178,8 +178,6 @@ func (v *Variables) SetDefaultEnvironment(ctx context.Context, projectID, orgID,
 	return v.Store.SetDefaultEnvironment(ctx, projectID, environmentID)
 }
 
-// scope resolve o escopo da variável: uuid.Nil = projeto, senão o ambiente.
-// Valida que o ambiente pertence ao projeto.
 func (v *Variables) scope(ctx context.Context, projectID uuid.UUID, environmentID *uuid.UUID) (uuid.UUID, error) {
 	if environmentID == nil {
 		return uuid.Nil, nil

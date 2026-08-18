@@ -46,8 +46,6 @@ func GenerateDockerfile(p *Plan) string {
 	return sb.String()
 }
 
-// generateNodeDockerfile produces a multi-stage Node runtime for SSR apps
-// (Next.js, Nuxt, Remix, SvelteKit, TanStack Start, Fresh).
 func generateNodeDockerfile(p *Plan) string {
 	buildImage := "node:22-alpine"
 	if p.PackageManager == "bun" {

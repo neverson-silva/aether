@@ -6,6 +6,7 @@ package pg
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -39,7 +40,7 @@ type Querier interface {
 	CreatePipelineRun(ctx context.Context, arg CreatePipelineRunParams) (PipelineRun, error)
 	CreatePreview(ctx context.Context, arg CreatePreviewParams) (Preview, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (CreateProjectRow, error)
-	CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (S3Destination, error)
+	CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (CreateS3DestinationRow, error)
 	CreateServerToken(ctx context.Context, tokenHash string) error
 	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error)
 	CreateSnapshotSchedule(ctx context.Context, arg CreateSnapshotScheduleParams) (SnapshotSchedule, error)
@@ -107,7 +108,7 @@ type Querier interface {
 	GetPreviewByID(ctx context.Context, id uuid.UUID) (Preview, error)
 	GetProject(ctx context.Context, arg GetProjectParams) (GetProjectRow, error)
 	GetRegistrySettings(ctx context.Context) (RegistrySetting, error)
-	GetS3Destination(ctx context.Context, arg GetS3DestinationParams) (S3Destination, error)
+	GetS3Destination(ctx context.Context, arg GetS3DestinationParams) (GetS3DestinationRow, error)
 	GetServer(ctx context.Context, id uuid.UUID) (Server, error)
 	GetSnapshot(ctx context.Context, id uuid.UUID) (Snapshot, error)
 	GetSnapshotSchedule(ctx context.Context, id uuid.UUID) (SnapshotSchedule, error)
@@ -119,6 +120,8 @@ type Querier interface {
 	GetWorker(ctx context.Context, id uuid.UUID) (Worker, error)
 	HasUsers(ctx context.Context) (bool, error)
 	IncrementTemplateInstalls(ctx context.Context, id uuid.UUID) error
+	InsertMonitoringResourceSample(ctx context.Context, arg InsertMonitoringResourceSampleParams) error
+	InsertMonitoringSample(ctx context.Context, arg InsertMonitoringSampleParams) error
 	LastReadyDeployment(ctx context.Context, appID uuid.UUID) (Deployment, error)
 	ListAPIKeysByOrg(ctx context.Context, orgID uuid.UUID) ([]ListAPIKeysByOrgRow, error)
 	ListAlertEventsByOrg(ctx context.Context, arg ListAlertEventsByOrgParams) ([]AlertEvent, error)
@@ -145,6 +148,8 @@ type Querier interface {
 	ListEnvironments(ctx context.Context, projectID uuid.UUID) ([]Environment, error)
 	ListGitOpsByOrg(ctx context.Context, orgID uuid.UUID) ([]Gitop, error)
 	ListMirrors(ctx context.Context) ([]RegistryMirror, error)
+	ListMonitoringResourceSamples(ctx context.Context, arg ListMonitoringResourceSamplesParams) ([]ListMonitoringResourceSamplesRow, error)
+	ListMonitoringSamples(ctx context.Context, arg ListMonitoringSamplesParams) ([]MonitoringSample, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListOIDCProviders(ctx context.Context, orgID uuid.UUID) ([]OidcProvider, error)
 	ListOrgMembers(ctx context.Context, orgID uuid.UUID) ([]ListOrgMembersRow, error)
@@ -158,7 +163,7 @@ type Querier interface {
 	ListProjects(ctx context.Context, orgID uuid.UUID) ([]ListProjectsRow, error)
 	ListProvisioningDomains(ctx context.Context, arg ListProvisioningDomainsParams) ([]ListProvisioningDomainsRow, error)
 	ListQueuedDeployments(ctx context.Context) ([]Deployment, error)
-	ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]S3Destination, error)
+	ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]ListS3DestinationsRow, error)
 	ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]SnapshotSchedule, error)
 	ListServers(ctx context.Context) ([]Server, error)
 	ListSnapshotsByOrg(ctx context.Context, arg ListSnapshotsByOrgParams) ([]Snapshot, error)
@@ -171,6 +176,8 @@ type Querier interface {
 	MarkDeploymentRolledBack(ctx context.Context, id uuid.UUID) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error
 	NextDeploymentNumber(ctx context.Context, appID uuid.UUID) (int32, error)
+	PurgeMonitoringResourceSamples(ctx context.Context, ts time.Time) error
+	PurgeMonitoringSamples(ctx context.Context, ts time.Time) error
 	RecordVariableAudit(ctx context.Context, arg RecordVariableAuditParams) error
 	RemoveProjectAssignment(ctx context.Context, arg RemoveProjectAssignmentParams) error
 	ResolveAlertEvent(ctx context.Context, id uuid.UUID) error
@@ -197,6 +204,8 @@ type Querier interface {
 	UpdateOrg(ctx context.Context, arg UpdateOrgParams) (UpdateOrgRow, error)
 	UpdatePreviewResult(ctx context.Context, arg UpdatePreviewResultParams) error
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (UpdateProjectRow, error)
+	UpdateS3Destination(ctx context.Context, arg UpdateS3DestinationParams) (UpdateS3DestinationRow, error)
+	UpdateS3DestinationOAuth(ctx context.Context, arg UpdateS3DestinationOAuthParams) error
 	UpdateWorker(ctx context.Context, arg UpdateWorkerParams) (Worker, error)
 	UpsertAppEnv(ctx context.Context, arg UpsertAppEnvParams) error
 	UpsertAppPolicy(ctx context.Context, arg UpsertAppPolicyParams) (AppPolicy, error)

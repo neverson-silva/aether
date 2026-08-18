@@ -223,8 +223,11 @@ func (f *fakeRuntime) Restart(ctx context.Context, containerID string) error {
 	return nil
 }
 
-func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (ContainerStats, error) {
-	return ContainerStats{CPUPercent: 1.5, MemUsage: 1024, MemLimit: 2048}, nil
+func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (ContainerStats, error) {	return ContainerStats{CPUPercent: 1.5, MemUsage: 1024, MemLimit: 2048}, nil
+}
+
+func (f *fakeRuntime) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
+	return nil, nil
 }
 
 func TestWorkerDeployGitBuild(t *testing.T) {

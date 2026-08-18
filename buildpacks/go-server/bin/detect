@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ -f go.mod ] || { echo "aether/go-server: sem go.mod"; exit 100; }
+echo "aether/go-server: Go app detectada"

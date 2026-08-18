@@ -24,7 +24,7 @@ type AppStore interface {
 }
 
 type DestinationStore interface {
-	GetS3ByID(ctx context.Context, id, orgID uuid.UUID) (*settingsdomain.S3Destination, error)
+	GetS3(ctx context.Context, id, orgID uuid.UUID) (*settingsdomain.S3Destination, error)
 }
 
 func (v *Volumes) BackupVolume(ctx context.Context, appID, orgID, destinationID uuid.UUID, volumeName string) (*domain.Backup, error) {
@@ -32,7 +32,7 @@ func (v *Volumes) BackupVolume(ctx context.Context, appID, orgID, destinationID 
 	if err != nil {
 		return nil, err
 	}
-	dest, err := v.Destinations.GetS3ByID(ctx, destinationID, orgID)
+	dest, err := v.Destinations.GetS3(ctx, destinationID, orgID)
 	if err != nil {
 		return nil, err
 	}

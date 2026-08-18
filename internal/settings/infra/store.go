@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"database/sql"
+	"time"
 	"errors"
 
 	"github.com/google/uuid"
@@ -50,13 +51,17 @@ func (s *Store) SaveBranding(ctx context.Context, branding *domain.Branding) (*d
 
 func (s *Store) CreateS3(ctx context.Context, dest *domain.S3Destination) (*domain.S3Destination, error) {
 	row, err := s.q.CreateS3Destination(ctx, gen.CreateS3DestinationParams{
-		OrgID: dest.OrgID, Name: dest.Name, Endpoint: dest.Endpoint, Bucket: dest.Bucket,
-		Region: dest.Region, AccessKeyEnc: dest.AccessKeyEnc, SecretKeyEnc: dest.SecretKeyEnc,
+		OrgID: dest.OrgID, Name: dest.Name, Type: string(dest.Type), Endpoint: dest.Endpoint,
+		Bucket: dest.Bucket, Region: dest.Region, AccountID: dest.AccountID,
+		AccessKeyEnc: dest.AccessKeyEnc, SecretKeyEnc: dest.SecretKeyEnc,
+		GoogleClientID: dest.GoogleClientID, GoogleClientSecretEnc: dest.GoogleClientSecretEnc,
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return s3FromRow(row), nil
+	return s3Model(row.ID, row.OrgID, row.Name, row.Type, row.Endpoint, row.Bucket, row.Region, row.AccountID,
+		row.AccessKeyEnc, row.SecretKeyEnc, row.OauthStatus, row.OauthEmail, row.AccessTokenEnc, row.RefreshTokenEnc,
+		row.GoogleClientID, row.GoogleClientSecretEnc, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (s *Store) ListS3ByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.S3Destination, error) {
@@ -66,21 +71,47 @@ func (s *Store) ListS3ByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.S3De
 	}
 	out := make([]domain.S3Destination, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *s3FromRow(r))
+		out = append(out, *s3Model(r.ID, r.OrgID, r.Name, r.Type, r.Endpoint, r.Bucket, r.Region, r.AccountID,
+			r.AccessKeyEnc, r.SecretKeyEnc, r.OauthStatus, r.OauthEmail, r.AccessTokenEnc, r.RefreshTokenEnc,
+			r.GoogleClientID, r.GoogleClientSecretEnc, r.CreatedAt, r.UpdatedAt))
 	}
 	return out, nil
 }
 
-func (s *Store) DeleteS3(ctx context.Context, id, orgID uuid.UUID) error {
-	return mapErr(s.q.DeleteS3Destination(ctx, gen.DeleteS3DestinationParams{ID: id, OrgID: orgID}))
-}
-
-func (s *Store) GetS3ByID(ctx context.Context, id, orgID uuid.UUID) (*domain.S3Destination, error) {
+func (s *Store) GetS3(ctx context.Context, id, orgID uuid.UUID) (*domain.S3Destination, error) {
 	row, err := s.q.GetS3Destination(ctx, gen.GetS3DestinationParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return s3FromRow(row), nil
+	return s3Model(row.ID, row.OrgID, row.Name, row.Type, row.Endpoint, row.Bucket, row.Region, row.AccountID,
+		row.AccessKeyEnc, row.SecretKeyEnc, row.OauthStatus, row.OauthEmail, row.AccessTokenEnc, row.RefreshTokenEnc,
+		row.GoogleClientID, row.GoogleClientSecretEnc, row.CreatedAt, row.UpdatedAt), nil
+}
+
+func (s *Store) UpdateS3(ctx context.Context, dest *domain.S3Destination) (*domain.S3Destination, error) {
+	row, err := s.q.UpdateS3Destination(ctx, gen.UpdateS3DestinationParams{
+		ID: dest.ID, OrgID: dest.OrgID, Name: dest.Name, Type: string(dest.Type),
+		Endpoint: dest.Endpoint, Bucket: dest.Bucket, Region: dest.Region, AccountID: dest.AccountID,
+		AccessKeyEnc: dest.AccessKeyEnc, SecretKeyEnc: dest.SecretKeyEnc,
+		GoogleClientID: dest.GoogleClientID, GoogleClientSecretEnc: dest.GoogleClientSecretEnc,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return s3Model(row.ID, row.OrgID, row.Name, row.Type, row.Endpoint, row.Bucket, row.Region, row.AccountID,
+		row.AccessKeyEnc, row.SecretKeyEnc, row.OauthStatus, row.OauthEmail, row.AccessTokenEnc, row.RefreshTokenEnc,
+		row.GoogleClientID, row.GoogleClientSecretEnc, row.CreatedAt, row.UpdatedAt), nil
+}
+
+func (s *Store) UpdateS3OAuth(ctx context.Context, id, orgID uuid.UUID, status domain.OAuthStatus, email, accessTokenEnc, refreshTokenEnc string) error {
+	return mapErr(s.q.UpdateS3DestinationOAuth(ctx, gen.UpdateS3DestinationOAuthParams{
+		ID: id, OrgID: orgID, OauthStatus: string(status), OauthEmail: email,
+		AccessTokenEnc: accessTokenEnc, RefreshTokenEnc: refreshTokenEnc,
+	}))
+}
+
+func (s *Store) DeleteS3(ctx context.Context, id, orgID uuid.UUID) error {
+	return mapErr(s.q.DeleteS3Destination(ctx, gen.DeleteS3DestinationParams{ID: id, OrgID: orgID}))
 }
 
 func (s *Store) CreateOIDC(ctx context.Context, provider *domain.OIDCProvider) (*domain.OIDCProvider, error) {
@@ -148,9 +179,24 @@ func brandingFromRow(row gen.Branding) *domain.Branding {
 
 func s3FromRow(row gen.S3Destination) *domain.S3Destination {
 	return &domain.S3Destination{
-		ID: row.ID, OrgID: row.OrgID, Name: row.Name, Endpoint: row.Endpoint,
-		Bucket: row.Bucket, Region: row.Region, AccessKeyEnc: row.AccessKeyEnc,
-		SecretKeyEnc: row.SecretKeyEnc, CreatedAt: row.CreatedAt,
+		ID: row.ID, OrgID: row.OrgID, Name: row.Name,
+		Type: domain.DestinationType(row.Type), Endpoint: row.Endpoint,
+		Bucket: row.Bucket, Region: row.Region, AccountID: row.AccountID,
+		AccessKeyEnc: row.AccessKeyEnc, SecretKeyEnc: row.SecretKeyEnc,
+		OAuthStatus: domain.OAuthStatus(row.OauthStatus), OAuthEmail: row.OauthEmail,
+		AccessTokenEnc: row.AccessTokenEnc, RefreshTokenEnc: row.RefreshTokenEnc,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	}
+}
+
+func s3Model(id, orgID uuid.UUID, name, typ, endpoint, bucket, region, accountID, ak, sk, status, email, atEnc, rtEnc, gClientID, gSecretEnc string, createdAt, updatedAt time.Time) *domain.S3Destination {
+	return &domain.S3Destination{
+		ID: id, OrgID: orgID, Name: name, Type: domain.DestinationType(typ),
+		Endpoint: endpoint, Bucket: bucket, Region: region, AccountID: accountID,
+		AccessKeyEnc: ak, SecretKeyEnc: sk, OAuthStatus: domain.OAuthStatus(status),
+		OAuthEmail: email, AccessTokenEnc: atEnc, RefreshTokenEnc: rtEnc,
+		GoogleClientID: gClientID, GoogleClientSecretEnc: gSecretEnc,
+		CreatedAt: createdAt, UpdatedAt: updatedAt,
 	}
 }
 
@@ -182,3 +228,6 @@ func mapErr(err error) error {
 	}
 	return err
 }
+
+
+

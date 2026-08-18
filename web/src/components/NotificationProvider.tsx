@@ -89,7 +89,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       await apiPost(`/api/v1/notifications/${id}/read`);
       qc.invalidateQueries({ queryKey: ["notifications"] });
     } catch {
-      /* ignore */
     }
   };
 
@@ -100,7 +99,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       await apiPost("/api/v1/notifications/read-all");
       qc.invalidateQueries({ queryKey: ["notifications"] });
     } catch {
-      /* ignore */
     }
   };
 
@@ -181,7 +179,6 @@ function BellDropdown() {
           try {
             parsed = JSON.parse(n.payload || "{}");
           } catch {
-            /* ignore */
           }
           const meta =
             n.type.includes("failed")
@@ -209,7 +206,7 @@ function BellDropdown() {
             >
               <span className={`material-symbols-outlined text-[16px] shrink-0 mt-0.5 ${meta.color}`}>{meta.icon}</span>
               <span className="flex-1 min-w-0">
-                <span className={`block font-body-sm text-body-sm ${!n.read ? "text-on-surface font-semibold" : "text-on-surface-variant"}`}>{n.message}</span>
+                <span className={`font-body-sm text-body-sm line-clamp-5 break-words ${!n.read ? "text-on-surface font-semibold" : "text-on-surface-variant"}`} title={n.message}>{n.message}</span>
                 <span className="block font-code-md text-code-md text-on-surface-variant/60">{relativeTime(n.created_at)}</span>
               </span>
               {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-1.5" />}

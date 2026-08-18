@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+markers=0
+[ -f Gemfile ] && markers=1
+[ -f config.ru ] && markers=1
+[ -f Rakefile ] && markers=1
+for f in *.gemspec; do
+  [ -f "$f" ] && markers=1
+done
+if [ "$markers" = 0 ]; then
+  echo "aether/ruby-server: sem Gemfile/config.ru/Rakefile/*.gemspec"
+  exit 100
+fi
+echo "aether/ruby-server: Ruby app detectada"

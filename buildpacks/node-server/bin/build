@@ -5,95 +5,300 @@ LAYERS_DIR="$1"
 PLATFORM_DIR="$2"
 PLAN_PATH="$3"
 
-node_layer="$LAYERS_DIR/node"
-app_layer="$LAYERS_DIR/node-app"
-mkdir -p "$node_layer" "$app_layer/bin"
+case "$(uname -m)" in
+  x86_64|amd64)  ARCH="x64";  NODE_ARCH="linux-x64";  BUN_ARCH="x64";     DENO_ARCH="x86_64-unknown-linux-gnu" ;;
+  aarch64|arm64) ARCH="arm64"; NODE_ARCH="linux-arm64"; BUN_ARCH="aarch64"; DENO_ARCH="aarch64-unknown-linux-gnu" ;;
+  *) echo "aether/node-server: unsupported arch $(uname -m)"; exit 1 ;;
+esac
 
-NODE_MAJOR="22"
-if [ -f /workspace/package.json ]; then
-  major="$(grep -oE '"engines"[^}]*"node"[[:space:]]*:[[:space:]]*"[^"]*"' /workspace/package.json | grep -oE '[0-9]+' | head -1 || true)"
-  case "$major" in
-    ''|0) ;;
-    [0-9]*) NODE_MAJOR="$major" ;;
-  esac
+# extract_zip <zip> <dest> — trata subdiretório único (bun-linux-*/deno-*/)
+extract_zip() {
+  local zip="$1" dest="$2" tmp n
+  tmp="$(mktemp -d)"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -o -q "$zip" -d "$tmp"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$zip" "$tmp"
+  else
+    busybox unzip -o "$zip" -d "$tmp" 2>/dev/null || { echo "aether/node-server: no unzip available"; exit 1; }
+  fi
+  n=0
+  for item in "$tmp"/*; do [ -e "$item" ] && n=$((n+1)); done
+  if [ "$n" = 1 ] && [ -d "$tmp"/* ]; then
+    cp -a "$tmp"/*/. "$dest/"
+  else
+    cp -a "$tmp"/. "$dest/"
+  fi
+  rm -rf "$tmp"
+}
+
+# ---------------------------------------------------------------------------
+# Runtime detection: deno > bun > node (paths absolutos — CWD não é o app dir)
+# ---------------------------------------------------------------------------
+RUNTIME="node"
+if [ -f /workspace/deno.json ] || [ -f /workspace/deno.jsonc ] || [ -f /workspace/deno.lock ] || [ -f /workspace/import_map.json ] \
+  || grep -qE '"engines"[^}]*"deno"' /workspace/package.json 2>/dev/null \
+  || grep -qE '"start(:prod)?"[[:space:]]*:[[:space:]]*"[^"]*deno[[:space:]]' /workspace/package.json 2>/dev/null; then
+  RUNTIME="deno"
+elif [ -f /workspace/bun.lockb ] || [ -f /workspace/bun.lock ] || [ -f /workspace/bunfig.toml ] \
+  || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"bun@' /workspace/package.json 2>/dev/null \
+  || grep -qE '"engines"[^}]*"bun"' /workspace/package.json 2>/dev/null \
+  || grep -qE '"start(:prod)?"[[:space:]]*:[[:space:]]*"[^"]*bun[[:space:]]' /workspace/package.json 2>/dev/null; then
+  RUNTIME="bun"
 fi
+echo "aether/node-server: runtime=$RUNTIME (arch=$ARCH)"
 
-NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | grep -oE "\"version\":\"v${NODE_MAJOR}\.[0-9]+\.[0-9]+\"" | head -1 | grep -oE 'v[0-9.]+' | tr -d 'v' || true)"
-NODE_VER="${NODE_VER:-22.19.4}"
+# ---------------------------------------------------------------------------
+# Layers
+# ---------------------------------------------------------------------------
+runtime_layer="$LAYERS_DIR/runtime"
+app_layer="$LAYERS_DIR/app"
+mkdir -p "$runtime_layer/bin" "$app_layer/bin"
+export PATH="$runtime_layer/bin:$PATH"
 
-echo "aether/node-server: installing Node v$NODE_VER (engines.node major $NODE_MAJOR)..."
-curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-linux-x64.tar.xz"
-tar -xJf /tmp/node.tar.xz -C "$node_layer" --strip-components=1
-rm -f /tmp/node.tar.xz
-export PATH="$node_layer/bin:$PATH"
-node --version && npm --version
-
-cd /workspace
-
-PM="npm"
-if [ -f pnpm-lock.yaml ]; then
-  PM="pnpm"
-  npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
-elif [ -f yarn.lock ]; then
-  PM="yarn"
-  npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
-fi
-
-case "$PM" in
-  pnpm)
-    pnpm install --frozen-lockfile
+# ---------------------------------------------------------------------------
+# Install runtime binary
+# ---------------------------------------------------------------------------
+case "$RUNTIME" in
+  bun)
+    echo "aether/node-server: installing Bun (latest)..."
+    curl -fsSLo /tmp/bun.zip "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$BUN_ARCH.zip"
+    extract_zip /tmp/bun.zip "$runtime_layer/bin"
+    rm -f /tmp/bun.zip
+    chmod +x "$runtime_layer/bin/bun"
+    bun --version
     ;;
-  yarn)
-    yarn install --frozen-lockfile --non-interactive
+  deno)
+    echo "aether/node-server: installing Deno (latest)..."
+    curl -fsSLo /tmp/deno.zip "https://github.com/denoland/deno/releases/latest/download/deno-$DENO_ARCH.zip"
+    extract_zip /tmp/deno.zip "$runtime_layer/bin"
+    rm -f /tmp/deno.zip
+    chmod +x "$runtime_layer/bin/deno"
+    deno --version
     ;;
   *)
-    if [ -f package-lock.json ]; then
-      npm ci --no-audit --no-fund
-    else
-      npm install --no-audit --no-fund
+    NODE_MAJOR="22"
+    if [ -f /workspace/package.json ]; then
+      major="$(grep -oE '"engines"[^}]*"node"[[:space:]]*:[[:space:]]*"[^"]*"' /workspace/package.json | grep -oE '[0-9]+' | head -1 || true)"
+      case "$major" in
+        ''|0) ;;
+        [0-9]*) NODE_MAJOR="$major" ;;
+      esac
     fi
+    NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | grep -oE "\"version\":\"v${NODE_MAJOR}\.[0-9]+\.[0-9]+\"" | head -1 | grep -oE 'v[0-9.]+' | tr -d 'v' || true)"
+    NODE_VER="${NODE_VER:-22.19.4}"
+    echo "aether/node-server: installing Node v$NODE_VER (engines.node major $NODE_MAJOR, $NODE_ARCH)..."
+    curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-$NODE_ARCH.tar.xz"
+    tar -xJf /tmp/node.tar.xz -C "$runtime_layer" --strip-components=1
+    rm -f /tmp/node.tar.xz
+    node --version && npm --version
     ;;
 esac
 
-if grep -qE '"build"[[:space:]]*:' package.json; then
-  echo "aether/node-server: running $PM run build..."
-  case "$PM" in
-    pnpm) pnpm run build ;;
-    yarn) yarn run build ;;
-    *) npm run build ;;
+cd /workspace
+export NODE_ENV=production
+
+# ---------------------------------------------------------------------------
+# Install dependencies (deterministic: frozen quando há lockfile)
+# ---------------------------------------------------------------------------
+PM="npm"
+case "$RUNTIME" in
+  bun)
+    if [ -f bun.lock ]; then
+      bun install --frozen-lockfile --no-progress
+    else
+      bun install --no-progress
+    fi
+    PM="bun"
+    ;;
+  deno)
+    # deps resolvidas por import maps — sem npm install
+    PM="deno"
+    ;;
+  *)
+    if [ -f pnpm-lock.yaml ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@' package.json; then
+      PM="pnpm"
+      npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
+    elif [ -f yarn.lock ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"yarn@' package.json; then
+      PM="yarn"
+      npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
+    fi
+
+    case "$PM" in
+      pnpm)
+        pnpm install --frozen-lockfile
+        ;;
+      yarn)
+        yarn install --frozen-lockfile --non-interactive
+        ;;
+      *)
+        if [ -f package-lock.json ]; then
+          npm ci --no-audit --no-fund
+        else
+          npm install --no-audit --no-fund
+        fi
+        ;;
+    esac
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Framework profile (node) / native compile (bun/deno)
+# ---------------------------------------------------------------------------
+PROFILE="generic"
+EXEC_LINE=""
+BUILD_RUN=0
+
+case "$RUNTIME" in
+  bun)
+    start_val="$(grep -oE '"start(:prod)?"[[:space:]]*:[[:space:]]*"[^"]*"' package.json | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+    entry="$(echo "$start_val" | sed -E 's/^bun[[:space:]]+//' | tr -d ' ')"
+    if [ -n "$entry" ] && [ -f "$entry" ]; then
+      echo "aether/node-server: Bun native compile ($entry)..."
+      bun build --compile --minify --sourcemap "$entry" --outfile "$app_layer/bin/app"
+      PROFILE="bun-compiled"
+      EXEC_LINE='exec "$(dirname "$0")/app"'
+    else
+      if grep -qE '"build"[[:space:]]*:' package.json; then
+        echo "aether/node-server: bun run build..."
+        bun run build
+      fi
+      BUILD_RUN=1
+    fi
+    ;;
+  deno)
+    task="$(grep -oE '"start"[[:space:]]*:[[:space:]]*"[^"]*"' deno.json deno.jsonc 2>/dev/null | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+    [ -n "$task" ] || task="$(grep -oE '"start"[[:space:]]*:[[:space:]]*"[^"]*"' package.json 2>/dev/null | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+    flags="$(echo "$task" | sed -E 's/^deno[[:space:]]+(run|task[[:space:]]+run)?[[:space:]]*//; s/--watch.*$//' || true)"
+    entry="$(echo "$task" | grep -oE '(src/)?[a-zA-Z0-9_./-]+\.(ts|js|mts|mjs)$' | head -1 || true)"
+    if [ -n "$entry" ] && [ -f "$entry" ]; then
+      echo "aether/node-server: Deno native compile ($entry)..."
+      deno compile $(echo "$flags" | grep -oE '\-A|\-\-allow-[a-z-]+|\-\-unstable-[a-z-]+' | tr '\n' ' ') -o "$app_layer/bin/app" "$entry"
+      PROFILE="deno-compiled"
+      EXEC_LINE='exec "$(dirname "$0")/app"'
+    else
+      if grep -qE '"build"[[:space:]]*:' deno.json deno.jsonc 2>/dev/null; then
+        echo "aether/node-server: deno task build..."
+        deno task build
+      fi
+      BUILD_RUN=1
+    fi
+    ;;
+  *)
+    # ---- framework profiles (Node) ----
+    if [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ]; then
+      PROFILE="next"
+    elif [ -f nuxt.config.js ] || [ -f nuxt.config.ts ] || [ -f nuxt.config.mjs ]; then
+      PROFILE="nuxt"
+    elif [ -f svelte.config.js ] || [ -f svelte.config.ts ]; then
+      PROFILE="sveltekit"
+    elif [ -f astro.config.mjs ] || [ -f astro.config.js ] || [ -f astro.config.ts ]; then
+      PROFILE="astro"
+    elif [ -f remix.config.js ] || grep -qE '"@remix-run/(node|react)"' package.json; then
+      PROFILE="remix"
+    fi
+
+    # build (framework-aware env)
+    case "$PROFILE" in
+      next)   export NEXT_TELEMETRY_DISABLED=1 ;;
+      nuxt)   export NUXT_TELEMETRY_DISABLED=1 ;;
+      astro)  export ASTRO_TELEMETRY_DISABLED=1 ;;
+    esac
+    if grep -qE '"build"[[:space:]]*:' package.json; then
+      echo "aether/node-server: $PM run build (profile=$PROFILE)..."
+      case "$PM" in
+        pnpm) pnpm run build ;;
+        yarn) yarn run build ;;
+        *) npm run build ;;
+      esac
+    fi
+
+    # start (framework-specific, produção)
+    case "$PROFILE" in
+      next)
+        if grep -qE "output[[:space:]]*:[[:space:]]*['\"]standalone['\"]" next.config.* 2>/dev/null \
+          && [ -d .next/standalone ]; then
+          if [ -d .next/static ] && [ -d .next/standalone/.next ]; then
+            cp -a .next/static .next/standalone/.next/ 2>/dev/null || true
+          fi
+          [ -d public ] && cp -a public .next/standalone/ 2>/dev/null || true
+          EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec node .next/standalone/server.js'
+        else
+          EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec npx next start -p ${PORT:-8080}'
+        fi
+        ;;
+      nuxt)
+        EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec node .output/server/index.mjs'
+        ;;
+      sveltekit)
+        EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec node build/index.js'
+        ;;
+      astro)
+        EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec node ./dist/server/entry.mjs'
+        ;;
+      remix)
+        EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec npx remix-serve ./build/server/index.js'
+        ;;
+      *)
+        BUILD_RUN=1
+        ;;
+    esac
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Fallback genérico (script start)
+# ---------------------------------------------------------------------------
+if [ "$BUILD_RUN" = 1 ]; then
+  script=""
+  value=""
+  for cand in start:prod start; do
+    v="$(grep -oE "\"$cand\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" package.json | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+    if [ -n "$v" ]; then script="$cand"; value="$v"; break; fi
+  done
+  case "$RUNTIME" in
+    bun)
+      [ -n "$value" ] || { echo "aether/node-server: sem start script"; exit 1; }
+      case "$value" in
+        bun\ *) EXEC_LINE="export NODE_ENV=production; exec $value" ;;
+        node\ *) EXEC_LINE="export NODE_ENV=production; exec ${value#node }" ;;
+        *) EXEC_LINE="export NODE_ENV=production; exec bun run $script" ;;
+      esac
+      ;;
+    deno)
+      task="$(grep -oE '"start"[[:space:]]*:[[:space:]]*"[^"]*"' deno.json deno.jsonc 2>/dev/null | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
+      if [ -n "$task" ]; then
+        EXEC_LINE="exec deno task start"
+      else
+        [ -n "$value" ] || value=""
+        case "$value" in
+          deno\ *) EXEC_LINE="exec $value" ;;
+          *) EXEC_LINE="exec deno task start" ;;
+        esac
+      fi
+      ;;
+    *)
+      [ -n "$script" ] || { echo "aether/node-server: sem start script"; exit 1; }
+      echo "aether/node-server: start script $script -> $value"
+      if [ "${value#node }" != "$value" ]; then
+        EXEC_LINE="export NODE_ENV=production; exec node ${value#node }"
+      else
+        EXEC_LINE="export NODE_ENV=production; exec $PM run $script"
+      fi
+      ;;
   esac
 fi
 
-script=""
-value=""
-for cand in start:prod start; do
-  v="$(grep -oE "\"$cand\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" package.json | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
-  if [ -n "$v" ]; then
-    script="$cand"
-    value="$v"
-    break
-  fi
-done
-[ -n "$script" ] || { echo "aether/node-server: sem start script"; exit 1; }
-echo "aether/node-server: start script $script -> $value"
+[ -n "$EXEC_LINE" ] || { echo "aether/node-server: sem comando de start resolvido"; exit 1; }
 
-if [ "${value#node }" != "$value" ]; then
-  rest="${value#node }"
-  cat > "$app_layer/bin/start.sh" <<SH
+cat > "$app_layer/bin/start.sh" <<SH
 #!/bin/sh
 set -e
-exec node $rest
+$EXEC_LINE
 SH
-else
-  cat > "$app_layer/bin/start.sh" <<SH
-#!/bin/sh
-set -e
-exec $PM run $script
-SH
-fi
 chmod +x "$app_layer/bin/start.sh"
 
-cat > "$node_layer.toml" <<'EOF'
+cat > "$runtime_layer.toml" <<'EOF'
 [types]
   build = true
   launch = true
@@ -112,4 +317,4 @@ cat > "$LAYERS_DIR/launch.toml" <<'EOF'
   default = true
 EOF
 
-echo "aether/node-server: web process -> $script ($value, pm=$PM)"
+echo "aether/node-server: web process pronto (profile=$PROFILE, runtime=$RUNTIME, pm=$PM)"

@@ -273,14 +273,23 @@ export interface Template {
   definition: string;
 }
 
+export type DestinationType = "aws" | "cloudflare-r2" | "minio" | "custom-s3" | "google-drive";
+export type OAuthStatus = "" | "connecting" | "connected" | "reauth_required" | "error";
+
 export interface S3Destination {
   id: string;
   org_id: string;
   name: string;
+  type: DestinationType;
   endpoint: string;
   bucket: string;
   region: string;
+  account_id: string;
+  oauth_status: OAuthStatus;
+  oauth_email: string;
+  google_client_id: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface NotificationChannel {

@@ -48,6 +48,9 @@ import (
 	gitopshttp "aether/internal/gitops/http"
 	gitopsInfra "aether/internal/gitops/infra"
 	hostApp "aether/internal/host/application"
+	monitoringApp "aether/internal/monitoring/application"
+	monitoringhttp "aether/internal/monitoring/http"
+	monitoringInfra "aether/internal/monitoring/infra"
 	hosthttp "aether/internal/host/http"
 	jobsApp "aether/internal/jobs/application"
 	jobshttp "aether/internal/jobs/http"
@@ -164,6 +167,7 @@ func main() {
 	defer stopWorker()
 	deployWorker := &worker.Worker{
 		Store:          deployStore,
+		Apps:           appsStore,
 		Runtime:        deployWorkerRuntime,
 		LogsDir:        cfg.LogsDir,
 		BuildsDir:      cfg.BuildsDir,
@@ -235,6 +239,8 @@ func main() {
 	settingsSvc := &settingsApp.Settings{
 		Store: settingsStore, Passwords: dbCipher,
 		OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL),
+		GoogleRedirectURI:  cfg.GoogleOAuthRedirectURI,
+		PublicURL:          cfg.PublicURL,
 	}
 	settingsHandler := settingshttp.New(settingsSvc).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, error) {
 		user, token, err := svc.SSOLogin(ctx, email, name)
@@ -272,7 +278,7 @@ func main() {
 	composeSvc.ProjectVars = variablesStore
 	jobsSvc.Resolver = deploySvc.Resolver
 
-	hostSvc := &hostApp.Host{LogsDir: cfg.LogsDir}
+	hostSvc := &hostApp.Host{LogsDir: cfg.LogsDir, AgentFile: filepath.Join(cfg.StateDir, "host-stats.json")}
 	hostHandler := hosthttp.New(hostSvc)
 
 	specsSvc := &specsApp.Specs{Apps: appsStore, Deployments: deployStore, Runtime: deployWorkerRuntime}
@@ -332,12 +338,16 @@ func main() {
 	})
 	realtimeHandler := realtimehttp.New(realtimeSvc, realtimeHub)
 
+	monitoringSvc := monitoringApp.NewMonitoring(deployWorkerRuntime, hostSvc, slog.Default(), monitoringInfra.NewStore(pool))
+	go monitoringSvc.Run(workerCtx, 2*time.Second)
+	monitoringHandler := monitoringhttp.New(monitoringSvc)
+
 	router := apihttp.New(apihttp.Options{
 		Logger:          logger,
 		CORSOrigins:     []string{"*"},
 		RequestTimeout:  60 * time.Second,
 		AuthRateLimiter: apihttp.NewRateLimiter(2, 5),
-	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler)
+	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler)
 	router.SetReadiness(func(ctx context.Context) error {
 		return pool.Ping(ctx)
 	})

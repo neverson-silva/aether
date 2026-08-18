@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 
 	"aether/internal/templates/domain"
 	variablesDomain "aether/internal/variables/domain"
@@ -87,5 +88,80 @@ func TestComposeWriteEnvFileEnvOverrides(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(composeDir, ".env"))
 	if string(data) != "HOST=staging.example.com\n" {
 		t.Fatalf("env deveria sobrescrever project: %q", string(data))
+	}
+}
+
+func TestInjectComposeLabels(t *testing.T) {
+	src := `services:
+  api:
+    image: nginx:alpine
+    labels:
+      - app=custom
+  worker:
+    image: alpine
+    environment:
+      - X=1
+`
+	out, err := injectComposeLabels(src, map[string]string{
+		"aether.owner":        "user",
+		"aether.service-type": "compose",
+		"aether.service-id":   "abc",
+	})
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	var doc map[string]map[string]map[string]any
+	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("invalid yaml after inject: %v", err)
+	}
+	apiLabels := doc["services"]["api"]["labels"].([]any)
+	found := false
+	for _, l := range apiLabels {
+		if s, ok := l.(string); ok && s == "aether.owner=user" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("api service labels missing aether.owner: %v", apiLabels)
+	}
+	workerLabels := doc["services"]["worker"]["labels"].(map[string]any)
+	if workerLabels["aether.service-id"] != "abc" {
+		t.Fatalf("worker labels wrong: %v", workerLabels)
+	}
+	// environment must survive
+	if v := doc["services"]["worker"]["environment"].([]any); len(v) != 1 {
+		t.Fatalf("environment not preserved: %v", v)
+	}
+}
+
+func TestInjectComposeLabelsPreservesAnchors(t *testing.T) {
+	src := `x-common: &common
+  restart: always
+services:
+  api:
+    <<: *common
+    image: nginx
+`
+	out, err := injectComposeLabels(src, map[string]string{"aether.owner": "user"})
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("invalid yaml: %v", err)
+	}
+	svc := doc["services"].(map[string]any)["api"].(map[string]any)
+	if svc["restart"] != "always" {
+		t.Fatalf("anchor merge lost: %v", svc)
+	}
+	labels := svc["labels"].(map[string]any)
+	if labels["aether.owner"] != "user" {
+		t.Fatalf("labels missing: %v", labels)
+	}
+}
+
+func TestInjectComposeLabelsRejectsInvalid(t *testing.T) {
+	if _, err := injectComposeLabels("not: [valid", map[string]string{"aether.owner": "user"}); err == nil {
+		t.Fatal("expected error for invalid yaml")
 	}
 }

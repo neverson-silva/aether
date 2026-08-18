@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAYERS_DIR="$1"
+PLATFORM_DIR="$2"
+PLAN_PATH="$3"
+
+case "$(uname -m)" in
+  x86_64|amd64)  ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  *) echo "aether/go-server: unsupported arch $(uname -m)"; exit 1 ;;
+esac
+
+go_layer="$LAYERS_DIR/go"
+app_layer="$LAYERS_DIR/go-app"
+mkdir -p "$go_layer/bin" "$app_layer/bin"
+export PATH="$go_layer/bin:$PATH"
+export GOCACHE="$go_layer/.cache"
+export GOMODCACHE="$go_layer/.mod"
+
+# ---------------------------------------------------------------------------
+# Versão do Go a partir do go.mod (go 1.2x)
+# ---------------------------------------------------------------------------
+GO_MINOR="$(grep -oE '^go[[:space:]]+1\.[0-9]+' /workspace/go.mod | head -1 | grep -oE '1\.[0-9]+' || true)"
+GO_MINOR="${GO_MINOR:-1.24}"
+echo "aether/go-server: go.mod pede go $GO_MINOR"
+
+# última patch da minor (go.dev/dl/?mode=json)
+GO_VER="$(curl -fsSL "https://go.dev/dl/?mode=json" | grep -oE "\"version\":\"go${GO_MINOR//./\\.}\.[0-9]+\"" | head -1 | grep -oE 'go[0-9.]+' | tr -d 'go' || true)"
+GO_VER="${GO_VER:-$(echo $GO_MINOR).0}"
+echo "aether/go-server: instalando Go $GO_VER (linux-$ARCH)..."
+curl -fsSLo /tmp/go.tgz "https://go.dev/dl/go$GO_VER.linux-$ARCH.tar.gz"
+mkdir -p /tmp/go-x
+tar -xzf /tmp/go.tgz -C /tmp/go-x
+mv /tmp/go-x/go/* "$go_layer/"
+rm -f /tmp/go.tgz
+go version
+
+# ---------------------------------------------------------------------------
+# Build (determinístico, otimizado)
+# ---------------------------------------------------------------------------
+cd /workspace
+echo "aether/go-server: go build (CGO=0, trimpath, ldflags)..."
+export CGO_ENABLED=0
+GOFLAGS="-buildvcs=false -trimpath"
+GO_LDFLAGS="-s -w"
+for maindir in . $(ls -d cmd/* 2>/dev/null); do
+  if [ "$maindir" = "." ] || [ -d "$maindir" ]; then
+    if CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags "$GO_LDFLAGS" -o "$app_layer/bin/app" "$maindir" 2>/tmp/goerr; then
+      break
+    fi
+  fi
+done
+[ -x "$app_layer/bin/app" ] || { echo "aether/go-server: build falhou — nenhum main encontrado em ./ ou ./cmd/*"; cat /tmp/goerr | tail -5; exit 1; }
+
+cat > "$app_layer/bin/start.sh" <<'SH'
+#!/bin/sh
+set -e
+PORT="${PORT:-8080}"
+export PORT
+exec "$(dirname "$0")/app"
+SH
+chmod +x "$app_layer/bin/start.sh"
+
+cat > "$go_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$app_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$LAYERS_DIR/launch.toml" <<'EOF'
+[[processes]]
+  type = "web"
+  command = ["start.sh"]
+  default = true
+EOF
+
+echo "aether/go-server: web process pronto (binário estático, PORT=\$PORT)"

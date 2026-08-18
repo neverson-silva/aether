@@ -1,0 +1,11 @@
+api = "0.10"
+
+[buildpack]
+  id = "aether/ruby-server"
+  version = "0.1.0"
+  name = "Aether Ruby Server"
+  homepage = "https://github.com/aether"
+
+  [[buildpack.licenses]]
+    type = "MIT"
+    uri = "https://opensource.org/license/mit"

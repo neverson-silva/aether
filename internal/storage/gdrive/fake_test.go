@@ -234,7 +234,6 @@ func fakeToFile(f *fakeFile) *File {
 	}
 }
 
-// root returns the ID of the fake root folder for assertions.
 func (c *fakeDriveClient) root() string { return c.rootID }
 
 func (c *fakeDriveClient) hasFile(key string) bool {

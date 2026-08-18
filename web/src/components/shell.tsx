@@ -78,6 +78,18 @@ export function Shell() {
   const { data: appDetail } = useAppDetail(appMatch?.[1] ?? "");
   const { setOpen } = usePalette();
   const [mobileNav, setMobileNav] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("aether_sidebar_collapsed") === "1");
+
+  const toggleSidebar = () => {
+    if (window.innerWidth < 1024) {
+      setMobileNav(true);
+      return;
+    }
+    setCollapsed((c) => {
+      localStorage.setItem("aether_sidebar_collapsed", c ? "0" : "1");
+      return !c;
+    });
+  };
 
   const activePath = useMemo(() => {
     const p = location.pathname;
@@ -106,7 +118,7 @@ export function Shell() {
   return (
     <div style={brandVars} className="bg-background text-on-background h-dvh overflow-hidden flex font-body-md selection:bg-primary-container selection:text-on-primary-container">
       {mobileNav && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileNav(false)} />}
-      <aside className={`fixed left-0 top-0 h-full w-[240px] bg-surface-container-low font-body-md text-body-md border-r border-outline-variant flex flex-col py-md px-sm z-50 transition-transform duration-200 lg:translate-x-0 ${mobileNav ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed left-0 top-0 h-full w-[256px] bg-surface-container-low font-body-md text-body-md border-r border-outline-variant flex flex-col py-md px-sm z-50 transition-transform duration-200 ${mobileNav ? "translate-x-0" : "-translate-x-full"} ${collapsed ? "lg:-translate-x-full" : "lg:translate-x-0"}`}>
         <div className="flex items-center justify-between px-sm mb-md">
           <button onClick={() => setMobileNav(false)} className="lg:hidden text-on-surface-variant hover:text-on-surface">
             <span className="material-symbols-outlined">close</span>
@@ -175,10 +187,14 @@ export function Shell() {
         </div>
       </aside>
 
-      <header className="fixed top-0 right-0 w-full lg:w-[calc(100%-240px)] text-primary font-label-caps text-label-caps border-b border-outline-variant flex justify-between items-center h-14 px-lg z-40 glass-panel">
+      <header className={`fixed top-0 right-0 w-full text-primary font-label-caps text-label-caps border-b border-outline-variant flex justify-between items-center h-14 px-lg z-40 glass-panel ${collapsed ? "lg:w-full" : "lg:w-[calc(100%-256px)]"}`}>
         <div className="flex items-center gap-md min-w-0">
-          <button onClick={() => setMobileNav(true)} className="lg:hidden text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high shrink-0" aria-label="Open menu">
-            <span className="material-symbols-outlined text-[20px]">menu</span>
+          <button
+            onClick={toggleSidebar}
+            className="text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high shrink-0"
+            aria-label={collapsed ? "Open sidebar" : "Close sidebar"}
+          >
+            <span className="material-symbols-outlined text-[20px]">{collapsed ? "menu" : "menu_open"}</span>
           </button>
           <span className="hidden md:flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors shrink-0">
             <span className="material-symbols-outlined text-[16px]">cloud</span>
@@ -217,7 +233,7 @@ export function Shell() {
         </div>
       </header>
 
-      <main className="lg:ml-[240px] flex-1 flex flex-col h-full relative min-w-0">
+      <main className={`flex-1 flex flex-col h-full relative min-w-0 ${collapsed ? "lg:ml-0" : "lg:ml-[256px]"}`}>
         <div className="flex-1 overflow-y-auto mt-14 p-margin-desktop bg-surface-dim">
           <div className="max-w-[1600px] mx-auto space-y-lg">
             <Outlet />

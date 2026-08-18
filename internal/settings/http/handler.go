@@ -28,12 +28,29 @@ func (h *Handler) WithSSOLogin(login func(ctx context.Context, email, name strin
 }
 
 type s3Req struct {
-	Name      string `json:"name"`
-	Endpoint  string `json:"endpoint"`
-	Bucket    string `json:"bucket"`
-	Region    string `json:"region"`
-	AccessKey string `json:"access_key"`
-	SecretKey string `json:"secret_key"`
+	Name           string `json:"name"`
+	Type           string `json:"type"`
+	Endpoint       string `json:"endpoint"`
+	Bucket         string `json:"bucket"`
+	Region         string `json:"region"`
+	AccountID      string `json:"account_id"`
+	AccessKey      string `json:"access_key"`
+	SecretKey      string `json:"secret_key"`
+	GoogleClientID string `json:"google_client_id"`
+	GoogleSecret   string `json:"google_client_secret"`
+}
+
+func (r *s3Req) toDomain() *domain.S3Destination {
+	typ := domain.DestinationType(r.Type)
+	if typ == "" {
+		typ = domain.TypeCustomS3
+	}
+	return &domain.S3Destination{
+		Name: r.Name, Type: typ, Endpoint: r.Endpoint, Bucket: r.Bucket,
+		Region: r.Region, AccountID: r.AccountID,
+		AccessKeyEnc: r.AccessKey, SecretKeyEnc: r.SecretKey,
+		GoogleClientID: r.GoogleClientID, GoogleClientSecretEnc: r.GoogleSecret,
+	}
 }
 
 func (h *Handler) GetBranding(c *gin.Context) {
@@ -74,12 +91,33 @@ func (h *Handler) CreateS3(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	dest, err := h.settings.CreateS3(c.Request.Context(), orgID(c), req.Name, req.Endpoint, req.Bucket, req.Region, req.AccessKey, req.SecretKey)
+	dest, err := h.settings.CreateS3(c.Request.Context(), orgID(c), req.toDomain())
 	if err != nil {
 		abort(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, s3DTO(dest))
+}
+
+func (h *Handler) UpdateS3(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("destID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	var req s3Req
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	dest := req.toDomain()
+	dest.ID = id
+	updated, err := h.settings.UpdateS3(c.Request.Context(), orgID(c), dest)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, s3DTO(updated))
 }
 
 func (h *Handler) ListS3(c *gin.Context) {
@@ -93,6 +131,58 @@ func (h *Handler) ListS3(c *gin.Context) {
 		out = append(out, s3DTO(&dests[i]))
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) TestS3(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("destID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	if err := h.settings.TestConnection(c.Request.Context(), orgID(c), id); err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+
+
+
+func (h *Handler) GoogleConnect(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("destID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	authURL, err := h.settings.GoogleConnect(c.Request.Context(), orgID(c), id)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"auth_url": authURL})
+}
+
+func (h *Handler) GoogleCallback(c *gin.Context) {
+	state := c.Query("state")
+	code := c.Query("code")
+	oauthErr := c.Query("error")
+	oauthErrDesc := c.Query("error_description")
+	redirect, _ := h.settings.GoogleCallback(c.Request.Context(), state, code, oauthErr, oauthErrDesc)
+	c.Redirect(http.StatusFound, redirect)
+}
+
+func (h *Handler) GoogleDisconnect(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("destID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	if err := h.settings.GoogleDisconnect(c.Request.Context(), orgID(c), id); err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 }
 
 func (h *Handler) DeleteS3(c *gin.Context) {
@@ -242,8 +332,10 @@ func brandingDTO(b *domain.Branding) gin.H {
 
 func s3DTO(d *domain.S3Destination) gin.H {
 	return gin.H{
-		"id": d.ID, "org_id": d.OrgID, "name": d.Name, "endpoint": d.Endpoint,
-		"bucket": d.Bucket, "region": d.Region, "created_at": d.CreatedAt,
+		"id": d.ID, "org_id": d.OrgID, "name": d.Name, "type": d.Type,
+		"endpoint": d.Endpoint, "bucket": d.Bucket, "region": d.Region, "account_id": d.AccountID,
+		"oauth_status": d.OAuthStatus, "oauth_email": d.OAuthEmail,
+		"created_at": d.CreatedAt, "updated_at": d.UpdatedAt,
 	}
 }
 

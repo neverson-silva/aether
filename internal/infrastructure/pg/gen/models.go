@@ -291,6 +291,31 @@ type Member struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type MonitoringResourceSample struct {
+	Ts         time.Time `json:"ts"`
+	ResourceID string    `json:"resource_id"`
+	Name       string    `json:"name"`
+	Owner      string    `json:"owner"`
+	Cpu        float64   `json:"cpu"`
+	Mem        int64     `json:"mem"`
+	NetRx      float64   `json:"net_rx"`
+	NetTx      float64   `json:"net_tx"`
+}
+
+type MonitoringSample struct {
+	Ts           time.Time `json:"ts"`
+	HostCpu      float64   `json:"host_cpu"`
+	HostMem      float64   `json:"host_mem"`
+	AetherCpu    float64   `json:"aether_cpu"`
+	AetherMem    int64     `json:"aether_mem"`
+	AetherMemPct float64   `json:"aether_mem_pct"`
+	UserCpu      float64   `json:"user_cpu"`
+	UserMem      int64     `json:"user_mem"`
+	UserMemPct   float64   `json:"user_mem_pct"`
+	NetRx        float64   `json:"net_rx"`
+	NetTx        float64   `json:"net_tx"`
+}
+
 type Notification struct {
 	ID        uuid.UUID `json:"id"`
 	OrgID     uuid.UUID `json:"org_id"`
@@ -421,15 +446,24 @@ type RegistrySetting struct {
 }
 
 type S3Destination struct {
-	ID           uuid.UUID `json:"id"`
-	OrgID        uuid.UUID `json:"org_id"`
-	Name         string    `json:"name"`
-	Endpoint     string    `json:"endpoint"`
-	Bucket       string    `json:"bucket"`
-	Region       string    `json:"region"`
-	AccessKeyEnc string    `json:"access_key_enc"`
-	SecretKeyEnc string    `json:"secret_key_enc"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID                    uuid.UUID `json:"id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	CreatedAt             time.Time `json:"created_at"`
+	Type                  string    `json:"type"`
+	AccountID             string    `json:"account_id"`
+	OauthStatus           string    `json:"oauth_status"`
+	OauthEmail            string    `json:"oauth_email"`
+	AccessTokenEnc        string    `json:"access_token_enc"`
+	RefreshTokenEnc       string    `json:"refresh_token_enc"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
 }
 
 type Server struct {

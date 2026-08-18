@@ -2,8 +2,8 @@ api = "0.10"
 
 [buildpack]
   id = "aether/spa-static"
-  version = "0.1.0"
-  name = "Aether Static SPA Server"
+  version = "0.2.0"
+  name = "Aether Static SPA Server (Node/Bun/Deno)"
   homepage = "https://github.com/aether"
 
   [[buildpack.licenses]]

@@ -5,63 +5,164 @@ LAYERS_DIR="$1"
 PLATFORM_DIR="$2"
 PLAN_PATH="$3"
 
+case "$(uname -m)" in
+  x86_64|amd64)  ARCH="x64";  NODE_ARCH="linux-x64";  BUN_ARCH="x64";     DENO_ARCH="x86_64-unknown-linux-gnu" ;;
+  aarch64|arm64) ARCH="arm64"; NODE_ARCH="linux-arm64"; BUN_ARCH="aarch64"; DENO_ARCH="aarch64-unknown-linux-gnu" ;;
+  *) echo "aether/spa-static: unsupported arch $(uname -m)"; exit 1 ;;
+esac
+
+# extract_zip <zip> <dest> — extrai tratando subdiretório único (bun-linux-*/deno-*/)
+extract_zip() {
+  local zip="$1" dest="$2" tmp n
+  tmp="$(mktemp -d)"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -o -q "$zip" -d "$tmp"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$zip" "$tmp"
+  else
+    busybox unzip -o "$zip" -d "$tmp" 2>/dev/null || { echo "aether/spa-static: no unzip available"; exit 1; }
+  fi
+  n=0
+  for item in "$tmp"/*; do [ -e "$item" ] && n=$((n+1)); done
+  if [ "$n" = 1 ] && [ -d "$tmp"/* ]; then
+    cp -a "$tmp"/*/. "$dest/"
+  else
+    cp -a "$tmp"/. "$dest/"
+  fi
+  rm -rf "$tmp"
+}
+
 node_layer="$LAYERS_DIR/spa-node"
 static_layer="$LAYERS_DIR/spa-static"
 mkdir -p "$node_layer" "$static_layer/htdocs" "$static_layer/bin"
 
-NODE_MAJOR="22"
-if [ -f /workspace/package.json ]; then
-  major="$(grep -oE '"engines"[^}]*"node"[[:space:]]*:[[:space:]]*"[^"]*"' /workspace/package.json | grep -oE '[0-9]+' | head -1 || true)"
-  case "$major" in
-    ''|0) ;;
-    [0-9]*) NODE_MAJOR="$major" ;;
-  esac
-fi
-
-NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | grep -oE "\"version\":\"v${NODE_MAJOR}\.[0-9]+\.[0-9]+\"" | head -1 | grep -oE 'v[0-9.]+' | tr -d 'v' || true)"
-NODE_VER="${NODE_VER:-22.19.4}"
-
-echo "aether/spa-static: installing Node v$NODE_VER (engines.node major $NODE_MAJOR)..."
-curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-linux-x64.tar.xz"
-tar -xJf /tmp/node.tar.xz -C "$node_layer" --strip-components=1
-rm -f /tmp/node.tar.xz
 export PATH="$node_layer/bin:$PATH"
-node --version && npm --version
+
+# ---------------------------------------------------------------------------
+# Runtime detection (deno > bun > node) — paths absolutos (CWD não é o app dir)
+# ---------------------------------------------------------------------------
+RUNTIME="node"
+if [ -f /workspace/deno.json ] || [ -f /workspace/deno.jsonc ] || [ -f /workspace/deno.lock ] || [ -f /workspace/import_map.json ] \
+  || [ -f /workspace/_config.ts ] || [ -f /workspace/_config.tsx ]; then
+  RUNTIME="deno"
+elif [ -f /workspace/bun.lockb ] || [ -f /workspace/bun.lock ] || [ -f /workspace/bunfig.toml ] \
+  || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"bun@' /workspace/package.json 2>/dev/null \
+  || grep -qE '"engines"[^}]*"bun"' /workspace/package.json 2>/dev/null; then
+  RUNTIME="bun"
+fi
+echo "aether/spa-static: runtime=$RUNTIME (arch=$ARCH)"
+
+# ---------------------------------------------------------------------------
+# Install runtime binary
+# ---------------------------------------------------------------------------
+case "$RUNTIME" in
+  bun)
+    echo "aether/spa-static: installing Bun (latest)..."
+    curl -fsSLo /tmp/bun.zip "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-$BUN_ARCH.zip"
+    extract_zip /tmp/bun.zip "$node_layer/bin"
+    rm -f /tmp/bun.zip
+    chmod +x "$node_layer/bin/bun"
+    bun --version
+    ;;
+  deno)
+    echo "aether/spa-static: installing Deno (latest)..."
+    curl -fsSLo /tmp/deno.zip "https://github.com/denoland/deno/releases/latest/download/deno-$DENO_ARCH.zip"
+    extract_zip /tmp/deno.zip "$node_layer/bin"
+    rm -f /tmp/deno.zip
+    chmod +x "$node_layer/bin/deno"
+    deno --version
+    ;;
+  *)
+    NODE_MAJOR="22"
+    if [ -f /workspace/package.json ]; then
+      major="$(grep -oE '"engines"[^}]*"node"[[:space:]]*:[[:space:]]*"[^"]*"' /workspace/package.json | grep -oE '[0-9]+' | head -1 || true)"
+      case "$major" in
+        ''|0) ;;
+        [0-9]*) NODE_MAJOR="$major" ;;
+      esac
+    fi
+    NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | grep -oE "\"version\":\"v${NODE_MAJOR}\.[0-9]+\.[0-9]+\"" | head -1 | grep -oE 'v[0-9.]+' | tr -d 'v' || true)"
+    NODE_VER="${NODE_VER:-22.19.4}"
+    echo "aether/spa-static: installing Node v$NODE_VER (engines.node major $NODE_MAJOR, $NODE_ARCH)..."
+    curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-$NODE_ARCH.tar.xz"
+    tar -xJf /tmp/node.tar.xz -C "$node_layer" --strip-components=1
+    rm -f /tmp/node.tar.xz
+    node --version && npm --version
+    ;;
+esac
 
 cd /workspace
 
+# ---------------------------------------------------------------------------
+# Install dependencies
+# ---------------------------------------------------------------------------
 PM="npm"
-if [ -f pnpm-lock.yaml ]; then
-  PM="pnpm"
-  npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
-elif [ -f yarn.lock ]; then
-  PM="yarn"
-  npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
-fi
-
-case "$PM" in
-  pnpm)
-    pnpm install --frozen-lockfile
+case "$RUNTIME" in
+  bun)
+    if [ -f bun.lock ]; then
+      bun install --frozen-lockfile --no-progress
+    else
+      bun install --no-progress
+    fi
+    PM="bun"
     ;;
-  yarn)
-    yarn install --frozen-lockfile --non-interactive
+  deno)
+    # deno SSG (Lume etc.): sem install — as deps são cacheadas via import maps
+    echo "aether/spa-static: deno detected — deps resolvidas por deno (sem npm install)"
+    PM="deno"
     ;;
   *)
-    if [ -f package-lock.json ]; then
-      npm ci --no-audit --no-fund
-    else
-      npm install --no-audit --no-fund
+    if [ -f pnpm-lock.yaml ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@' package.json; then
+      PM="pnpm"
+      npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
+    elif [ -f yarn.lock ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"yarn@' package.json; then
+      PM="yarn"
+      npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
     fi
+
+    case "$PM" in
+      pnpm)
+        pnpm install --frozen-lockfile
+        ;;
+      yarn)
+        yarn install --frozen-lockfile --non-interactive
+        ;;
+      *)
+        if [ -f package-lock.json ]; then
+          npm ci --no-audit --no-fund
+        else
+          npm install --no-audit --no-fund
+        fi
+        ;;
+    esac
     ;;
 esac
 
-echo "aether/spa-static: running $PM run build..."
-case "$PM" in
-  pnpm) pnpm run build ;;
-  yarn) yarn run build ;;
-  *) npm run build ;;
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+case "$RUNTIME" in
+  bun)
+    echo "aether/spa-static: running bun run build..."
+    bun run build
+    ;;
+  deno)
+    echo "aether/spa-static: running deno task build..."
+    deno task build
+    ;;
+  *)
+    echo "aether/spa-static: running $PM run build..."
+    case "$PM" in
+      pnpm) pnpm run build ;;
+      yarn) yarn run build ;;
+      *) npm run build ;;
+    esac
+    ;;
 esac
 
+# ---------------------------------------------------------------------------
+# Resolve output dir
+# ---------------------------------------------------------------------------
 OUT="dist"
 if [ -f /workspace/angular.json ]; then
   OUT="$(grep -oE '"outputPath"[[:space:]]*:[[:space:]]*"[^"]+"' /workspace/angular.json | head -1 | grep -oE '"[^"]+"$' | tr -d '"' || true)"
@@ -72,6 +173,13 @@ if [ -f /workspace/angular.json ]; then
 elif ls /workspace/vite.config.* >/dev/null 2>&1; then
   OUT="$(grep -hoE 'outDir\s*:\s*["'"'"'][^"'"'"']+' /workspace/vite.config.* 2>/dev/null | head -1 | sed -E 's/.*["'"'"']//' || true)"
   OUT="${OUT:-dist}"
+elif [ -f /workspace/_config.ts ] || [ -f /workspace/_config.tsx ] || [ -f /workspace/_config.js ] || [ -f /workspace/_config.jsx ]; then
+  # Lume — destino padrão _site (respeita --dest no task build quando possível)
+  OUT="$(grep -oE '\-\-dest[=[:space:]]+[^[:space:]]+' /workspace/deno.json /workspace/deno.jsonc 2>/dev/null | head -1 | grep -oE '[^=[:space:]]+$' || true)"
+  OUT="${OUT:-_site}"
+elif [ "$RUNTIME" = "deno" ] && { [ -f /workspace/deno.json ] || [ -f /workspace/deno.jsonc ]; }; then
+  OUT="$(grep -oE '--dest[=[:space:]]+[^[:space:]]+' /workspace/deno.json /workspace/deno.jsonc 2>/dev/null | head -1 | grep -oE '[^=[:space:]]+$' || true)"
+  OUT="${OUT:-_site}"
 fi
 OUT="${OUT#./}"
 OUT="${OUT%/}"
@@ -80,6 +188,10 @@ if [ -d "/workspace/$OUT" ] && [ -n "$(ls -A /workspace/$OUT 2>/dev/null)" ]; th
   cp -a "/workspace/$OUT/." "$static_layer/htdocs/"
 elif [ -d /workspace/dist ] && [ -n "$(ls -A /workspace/dist 2>/dev/null)" ]; then
   cp -a /workspace/dist/. "$static_layer/htdocs/"
+elif [ -d /workspace/build ] && [ -n "$(ls -A /workspace/build 2>/dev/null)" ]; then
+  cp -a /workspace/build/. "$static_layer/htdocs/"
+elif [ -d /workspace/_site ] && [ -n "$(ls -A /workspace/_site 2>/dev/null)" ]; then
+  cp -a /workspace/_site/. "$static_layer/htdocs/"
 else
   echo "aether/spa-static: WARN — output not found at /workspace/$OUT; serving empty root"
 fi
@@ -141,4 +253,4 @@ cat > "$LAYERS_DIR/launch.toml" <<'EOF'
   default = true
 EOF
 
-echo "aether/spa-static: SPA built and served (root: /layers/spa-static/htdocs, PORT=\$PORT, pm=$PM)"
+echo "aether/spa-static: SPA built and served (root: /layers/spa-static/htdocs, PORT=\$PORT, runtime=$RUNTIME, pm=$PM)"

@@ -16,7 +16,6 @@ export type { ToastLevel } from "./toast";
 export { CardMenu } from "./card-menu";
 export { MetricCard, fmtBytes, fmtDate } from "./metrics";
 
-/* App* — primitivas de design system */
 export { AppButton } from "./button";
 export type { AppButtonVariant, AppButtonSize } from "./button";
 export { AppLink } from "./app-link";

@@ -3,6 +3,7 @@ package application
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -19,9 +20,75 @@ import (
 
 type Host struct {
 	LogsDir string
+	// AgentFile is the path of the host-stats.json written by the macOS host
+	// agent (scripts/host-agent.sh). When present and fresh, it is the source
+	// of truth for HOST metrics; otherwise local (runtime/VM) metrics are used
+	// and explicitly labeled with Source.
+	AgentFile string
 }
 
+type agentStats struct {
+	TS           int64     `json:"ts"`
+	Source       string    `json:"source"`
+	CPUPercent   float64   `json:"cpu_percent"`
+	CPUCores     int       `json:"cpu_cores"`
+	MemTotal     uint64    `json:"mem_total"`
+	MemUsed      uint64    `json:"mem_used"`
+	MemPercent   float64   `json:"mem_percent"`
+	DiskTotal    uint64    `json:"disk_total"`
+	DiskUsed     uint64    `json:"disk_used"`
+	DiskPercent  float64   `json:"disk_percent"`
+	NetRxBytes   uint64    `json:"net_rx_bytes"`
+	NetTxBytes   uint64    `json:"net_tx_bytes"`
+	Load         []float64 `json:"load"`
+	Uptime       uint64    `json:"uptime"`
+	Hostname     string    `json:"hostname"`
+	OS           string    `json:"os"`
+}
+
+const agentFreshWindow = 15 * time.Second
+
 func (h *Host) Stats(ctx context.Context) domain.Stats {
+	runtimeCores, _ := cpu.Counts(true)
+	stats := h.localStats()
+	stats.RuntimeCores = runtimeCores
+	if agent, ok := h.agentStats(); ok {
+		stats.CPUPercent = agent.CPUPercent
+		stats.CPUCores = agent.CPUCores
+		stats.MemTotal, stats.MemUsed, stats.MemPercent = agent.MemTotal, agent.MemUsed, agent.MemPercent
+		stats.Disk.Total, stats.Disk.Used, stats.Disk.Percent = agent.DiskTotal, agent.DiskUsed, agent.DiskPercent
+		stats.Net.RxBytes, stats.Net.TxBytes = agent.NetRxBytes, agent.NetTxBytes
+		stats.Uptime = agent.Uptime
+		stats.Hostname = agent.Hostname
+		stats.OS = agent.OS
+		stats.Source = agent.Source
+		if stats.Source == "" {
+			stats.Source = "host-agent"
+		}
+	}
+	return stats
+}
+
+func (h *Host) agentStats() (agentStats, bool) {
+	if h.AgentFile == "" {
+		return agentStats{}, false
+	}
+	info, err := os.Stat(h.AgentFile)
+	if err != nil || time.Since(info.ModTime()) > agentFreshWindow {
+		return agentStats{}, false
+	}
+	raw, err := os.ReadFile(h.AgentFile)
+	if err != nil {
+		return agentStats{}, false
+	}
+	var a agentStats
+	if err := json.Unmarshal(raw, &a); err != nil || a.MemTotal == 0 {
+		return agentStats{}, false
+	}
+	return a, true
+}
+
+func (h *Host) localStats() domain.Stats {
 	cpuPercent, _ := cpu.Percent(0, false)
 	memStat, _ := mem.VirtualMemory()
 	diskStat, _ := disk.Usage("/")
@@ -41,6 +108,7 @@ func (h *Host) Stats(ctx context.Context) domain.Stats {
 		Uptime:   uptime,
 		Hostname: hostInfo.Hostname,
 		OS:       hostInfo.Platform + " " + hostInfo.PlatformVersion,
+		Source:   "runtime",
 	}
 	if len(cpuPercent) > 0 {
 		stats.CPUPercent = cpuPercent[0]

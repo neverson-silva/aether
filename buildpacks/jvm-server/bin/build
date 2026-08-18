@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAYERS_DIR="$1"
+PLATFORM_DIR="$2"
+PLAN_PATH="$3"
+
+case "$(uname -m)" in
+  x86_64|amd64)  ARCH="x64"      ;;
+  aarch64|arm64) ARCH="aarch64"  ;;
+  *) echo "aether/jvm-server: unsupported arch $(uname -m)"; exit 1 ;;
+esac
+
+jdk_layer="$LAYERS_DIR/jdk"
+tools_layer="$LAYERS_DIR/tools"
+app_layer="$LAYERS_DIR/jvm-app"
+mkdir -p "$tools_layer/bin" "$app_layer/bin"
+export PATH="$tools_layer/bin:$PATH"
+
+# ---------------------------------------------------------------------------
+# GraalVM? (native-image em Quarkus/Spring/Micronaut ou marcadores explícitos)
+# ---------------------------------------------------------------------------
+GRAALVM=0
+if [ -f /workspace/pom.xml ]; then
+  if grep -qiE 'quarkus|micronaut|native-image|graalvm' /workspace/pom.xml \
+    && grep -qiE 'native|graalvm' /workspace/pom.xml; then
+    GRAALVM=1
+  fi
+  if grep -qiE '<id>native</id>|native-maven-plugin' /workspace/pom.xml; then
+    GRAALVM=1
+  fi
+fi
+for f in build.gradle build.gradle.kts; do
+  [ -f "/workspace/$f" ] && grep -qiE 'graalvm|native-image|nativeCompile|quarkus.*native|micronaut.*native' "/workspace/$f" && GRAALVM=1
+done
+find /workspace -maxdepth 2 -name 'native-image.properties' 2>/dev/null | grep -q . && GRAALVM=1
+
+# ---------------------------------------------------------------------------
+# Java version: maven.compiler.release / java.version / gradle sourceCompat/toolchain
+# ---------------------------------------------------------------------------
+JAVA_MAJOR="21"
+if [ -f /workspace/pom.xml ]; then
+  v="$(grep -oE '<maven.compiler.release>[0-9]+' /workspace/pom.xml | head -1 | grep -oE '[0-9]+' || true)"
+  [ -z "$v" ] && v="$(grep -oE '<java.version>[0-9]+' /workspace/pom.xml | head -1 | grep -oE '[0-9]+' || true)"
+  [ -z "$v" ] && v="$(grep -oE '<release>[0-9]+' /workspace/pom.xml | head -1 | grep -oE '[0-9]+' || true)"
+  [ -n "$v" ] && JAVA_MAJOR="$v"
+fi
+for f in build.gradle build.gradle.kts; do
+  if [ -f "/workspace/$f" ]; then
+    v="$(grep -oE 'sourceCompatibility[[:space:]]*=[[:space:]]*[0-9]+' "/workspace/$f" | head -1 | grep -oE '[0-9]+' || true)"
+    [ -z "$v" ] && v="$(grep -oE 'languageVersion[[:space:]]*=[[:space:]]*JavaLanguageVersion.of\([0-9]+' "/workspace/$f" | head -1 | grep -oE '[0-9]+' || true)"
+    [ -n "$v" ] && JAVA_MAJOR="$v"
+  fi
+done
+echo "aether/jvm-server: Java major=$JAVA_MAJOR graalvm=$GRAALVM arch=$ARCH"
+
+# ---------------------------------------------------------------------------
+# JDK
+# ---------------------------------------------------------------------------
+if [ "$GRAALVM" = 1 ]; then
+  echo "aether/jvm-server: instalando GraalVM Community JDK..."
+  RELEASES="$(curl -fsSL 'https://api.github.com/repos/graalvm/graalvm-ce-builds/releases?per_page=30' || true)"
+  GASSET="$(echo "$RELEASES" | grep -oE '"name": *"graalvm-community-jdk-[^"]*linux-'"$ARCH"'[^"]*bin\.tar\.gz"' | head -1 | sed -E 's/.*"name": *"([^"]+)"/\1/' || true)"
+  GTAG="$(echo "$RELEASES" | grep -oE '"tag_name": *"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"/\1/' || true)"
+  if [ -z "$GASSET" ] || [ -z "$GTAG" ]; then
+    echo "aether/jvm-server: GraalVM não encontrado para $ARCH — fallback Temurin"
+    curl -fsSLo /tmp/jdk.tar.gz "https://api.adoptium.net/v3/binary/latest/$JAVA_MAJOR/ga/linux/$ARCH/jdk/hotspot/normal/eclipse"
+  else
+    echo "aether/jvm-server: GraalVM asset $GASSET"
+    curl -fsSLo /tmp/jdk.tar.gz "https://github.com/graalvm/graalvm-ce-builds/releases/download/$GTAG/$GASSET"
+  fi
+  mkdir -p "$jdk_layer"
+  tar -xzf /tmp/jdk.tar.gz -C "$jdk_layer" --strip-components=1
+  rm -f /tmp/jdk.tar.gz
+else
+  echo "aether/jvm-server: instalando Temurin JDK $JAVA_MAJOR..."
+  curl -fsSLo /tmp/jdk.tar.gz "https://api.adoptium.net/v3/binary/latest/$JAVA_MAJOR/ga/linux/$ARCH/jdk/hotspot/normal/eclipse"
+  mkdir -p "$jdk_layer"
+  tar -xzf /tmp/jdk.tar.gz -C "$jdk_layer" --strip-components=1
+  rm -f /tmp/jdk.tar.gz
+fi
+JDK_HOME="$jdk_layer"
+export JAVA_HOME="$JDK_HOME"
+export PATH="$JDK_HOME/bin:$tools_layer/bin:$PATH"
+java -version 2>&1 | head -1
+if [ "$GRAALVM" = 1 ]; then
+  "$JDK_HOME/bin/native-image" --version 2>&1 | head -1 || true
+fi
+
+# ---------------------------------------------------------------------------
+# Build tools
+# ---------------------------------------------------------------------------
+USE_GRADLE=0
+if [ -f /workspace/gradlew ]; then
+  USE_GRADLE=1
+elif [ -f /workspace/build.gradle ] || [ -f /workspace/build.gradle.kts ] || [ -f /workspace/settings.gradle ] || [ -f /workspace/settings.gradle.kts ]; then
+  USE_GRADLE=1
+fi
+
+cd /workspace
+
+if [ "$USE_GRADLE" = 1 ]; then
+  echo "aether/jvm-server: Gradle build detectado"
+  if [ ! -x /workspace/gradlew ]; then
+    echo "aether/jvm-server: baixando Gradle (sem wrapper)..."
+    GVER="$(curl -fsSL https://services.gradle.org/versions/current | grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"/\1/' || true)"
+    GVER="${GVER:-8.14.3}"
+    curl -fsSLo /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-$GVER-bin.zip"
+    unzip -q /tmp/gradle.zip -d "$tools_layer"
+    rm -f /tmp/gradle.zip
+    ln -sf "$tools_layer"/gradle-*/bin/gradle "$tools_layer/bin/gradle"
+    export GRADLE_OPTS="-Dorg.gradle.daemon=false"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Build (native vs jar)
+# ---------------------------------------------------------------------------
+JAR=""
+NATIVE_BIN=""
+if [ "$USE_GRADLE" = 1 ]; then
+  GW="./gradlew --no-daemon"
+  [ -x /workspace/gradlew ] || GW="gradle --no-daemon"
+  if [ "$GRAALVM" = 1 ]; then
+    if grep -qE 'quarkus' build.gradle build.gradle.kts 2>/dev/null; then
+      echo "aether/jvm-server: quarkus native (gradle)..."
+      $GW build -x test -Dquarkus.package.type=native >/tmp/buiderr 2>&1 \
+        || { echo "aether/jvm-server: native falhou — fallback para jar"; $GW build -x test >>/tmp/buiderr 2>&1 || { tail -15 /tmp/buiderr; exit 1; }; }
+    elif grep -qE 'micronaut' build.gradle build.gradle.kts 2>/dev/null; then
+      echo "aether/jvm-server: micronaut native (gradle)..."
+      $GW nativeCompile >/tmp/buiderr 2>&1 \
+        || { echo "aether/jvm-server: native falhou — fallback para jar"; $GW build -x test >>/tmp/buiderr 2>&1 || { tail -15 /tmp/buiderr; exit 1; }; }
+    else
+      echo "aether/jvm-server: nativeCompile (gradle)..."
+      $GW nativeCompile >/tmp/buiderr 2>&1 \
+        || { echo "aether/jvm-server: native falhou — fallback para jar"; $GW build -x test >>/tmp/buiderr 2>&1 || { tail -15 /tmp/buiderr; exit 1; }; }
+    fi
+  else
+    $GW build -x test >/tmp/buiderr 2>&1 || { tail -15 /tmp/buiderr; exit 1; }
+  fi
+  NATIVE_BIN="$(find build/native/nativeCompile -maxdepth 1 -type f -perm -111 2>/dev/null | head -1 || true)"
+  [ -z "$JAR" ] && JAR="$(ls build/libs/*.jar 2>/dev/null | grep -v -- '-plain' | head -1 || true)"
+else
+  echo "aether/jvm-server: baixando Maven..."
+  MVER="3.9.11"
+  curl -fsSLo /tmp/mvn.tgz "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/$MVER/apache-maven-$MVER-bin.tar.gz"
+  tar -xzf /tmp/mvn.tgz -C "$tools_layer" --strip-components=1
+  rm -f /tmp/mvn.tgz
+  export MAVEN_OPTS="-Dmaven.repo.local=$tools_layer/.m2"
+
+  if [ "$GRAALVM" = 1 ]; then
+    echo "aether/jvm-server: build nativo (maven)..."
+    { mvn -q -DskipTests package -Pnative \
+      || mvn -q -DskipTests package -Dquarkus.package.type=native \
+      || mvn -q -DskipTests package -Dpackaging=native-image; } >/tmp/buiderr 2>&1 \
+      || { echo "aether/jvm-server: native falhou — fallback para jar regular"; mvn -q -DskipTests package >>/tmp/buiderr 2>&1 || { tail -20 /tmp/buiderr; exit 1; }; }
+  else
+    mvn -q -DskipTests package >/tmp/buiderr 2>&1 || { tail -20 /tmp/buiderr; exit 1; }
+  fi
+  NATIVE_BIN="$(find target -maxdepth 2 -type f -perm -111 ! -name '*.so' 2>/dev/null | grep -vE 'classes|/lib/' | head -1 || true)"
+  [ -z "$JAR" ] && JAR="$(ls target/*.jar 2>/dev/null | grep -v -- '-sources\|-javadoc\|original-' | head -1 || true)"
+fi
+
+# ---------------------------------------------------------------------------
+# Start (com flags de performance JVM container-aware)
+# ---------------------------------------------------------------------------
+start_line=""
+if [ -n "$NATIVE_BIN" ] && [ -x "$NATIVE_BIN" ]; then
+  cp -a "$NATIVE_BIN" "$app_layer/bin/app"
+  chmod +x "$app_layer/bin/app"
+  start_line='exec "$(dirname "$0")/app"'
+elif [ -n "$JAR" ]; then
+  cp -a "$JAR" "$app_layer/bin/app.jar"
+  export JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+  if unzip -p "$app_layer/bin/app.jar" META-INF/MANIFEST.MF 2>/dev/null | grep -qE 'Main-Class:'; then
+    start_line='export JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"; export PORT="${PORT:-8080}"; exec java -jar "$(dirname "$0")/app.jar"'
+  else
+    MAIN_CLASS="$(cd /workspace && find src -name '*.java' | head -40 | xargs -I{} sh -c 'grep -lE "public[[:space:]]+static[[:space:]]+void[[:space:]]+main" "{}" 2>/dev/null' | head -1 | sed -E 's#src/(main/java|kotlin)/(.*)\.java#\2#; s#/#.#g; s#\.java##' || true)"
+    [ -n "$MAIN_CLASS" ] || MAIN_CLASS="$(cd /workspace && find src -name '*.kt' | head -40 | xargs -I{} sh -c 'grep -lE "fun[[:space:]]+main" "{}" 2>/dev/null' | head -1 | sed -E 's#src/main/kotlin/(.*)\.kt#\1#; s#/#.#g' || true)"
+    if [ -n "$MAIN_CLASS" ]; then
+      start_line="export JAVA_TOOL_OPTIONS=\"-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError\"; export PORT=\"\${PORT:-8080}\"; exec java -cp \"\$(dirname \"\$0\")/app.jar\" $MAIN_CLASS"
+    else
+      echo "aether/jvm-server: jar sem Main-Class e sem main() encontrado — deployará, mas pode não iniciar"
+      start_line='export JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"; export PORT="${PORT:-8080}"; exec java -jar "$(dirname "$0")/app.jar"'
+    fi
+  fi
+else
+  echo "aether/jvm-server: nenhum artefato (jar/binário nativo) encontrado"
+  exit 1
+fi
+
+cat > "$app_layer/bin/start.sh" <<SH
+#!/bin/sh
+set -e
+$start_line
+SH
+chmod +x "$app_layer/bin/start.sh"
+
+cat > "$jdk_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$tools_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = false
+EOF
+
+cat > "$app_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$LAYERS_DIR/launch.toml" <<'EOF'
+[[processes]]
+  type = "web"
+  command = ["start.sh"]
+  default = true
+EOF
+
+echo "aether/jvm-server: web process pronto (graalvm=$GRAALVM)"

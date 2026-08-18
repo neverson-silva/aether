@@ -111,6 +111,108 @@ export interface HostStats {
   os: string;
 }
 
+export type ResourceOwner = "aether" | "user" | "system" | "unknown";
+
+export interface MonitoringResource {
+  id: string;
+  name: string;
+  owner: ResourceOwner;
+  service_type: string;
+  service_id: string;
+  project_id: string;
+  state: string;
+  active: boolean;
+  cpu_percent: number;
+  cpu_of_host: number;
+  mem_usage: number;
+  mem_limit: number;
+  mem_percent: number;
+  net_input: number;
+  net_output: number;
+  net_rx_rate: number;
+  net_tx_rate: number;
+  has_net_rate: boolean;
+  block_input: number;
+  block_output: number;
+  block_rx_rate: number;
+  block_tx_rate: number;
+  has_block_rate: boolean;
+  storage: number | null;
+}
+
+export interface MonitoringAggregate {
+  cpu_of_host: number;
+  mem_usage: number;
+  mem_percent: number;
+  net_rx_rate: number;
+  net_tx_rate: number;
+  storage_usage: number;
+  count: number;
+  running_count: number;
+  available: boolean;
+}
+
+export interface MonitoringHost {
+  cpu_percent: number;
+  cpu_cores: number;
+  runtime_cores: number;
+  mem_total: number;
+  mem_used: number;
+  mem_percent: number;
+  disk_total: number;
+  disk_used: number;
+  disk_percent: number;
+  net_rx_rate: number;
+  net_tx_rate: number;
+  load: number[];
+  uptime: number;
+  hostname: string;
+  os: string;
+  source: string;
+}
+
+export interface MonitoringCollector {
+  collect_count: number;
+  error_count: number;
+  last_collect_ms: number;
+  resources: number;
+  with_stats: number;
+  last_error?: string;
+  up_since: string;
+}
+
+export interface MonitoringSnapshot {
+  ts: string;
+  host: MonitoringHost;
+  aether: MonitoringAggregate;
+  user: MonitoringAggregate;
+  system: MonitoringAggregate;
+  resources: MonitoringResource[];
+  collector: MonitoringCollector;
+}
+
+export interface MonitoringHistoryPoint {
+  ts: number;
+  host_cpu: number;
+  host_mem: number;
+  aether_cpu: number;
+  aether_mem: number;
+  aether_mem_pct: number;
+  user_cpu: number;
+  user_mem: number;
+  user_mem_pct: number;
+  net_rx: number;
+  net_tx: number;
+}
+
+export interface MonitoringResourcePoint {
+  ts: number;
+  cpu: number;
+  mem: number;
+  net_rx: number;
+  net_tx: number;
+}
+
 export interface Branding {
   org_id: string;
   name: string;

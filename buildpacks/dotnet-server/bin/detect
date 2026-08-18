@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+markers=0
+for f in *.csproj *.sln global.json; do
+  [ -f "$f" ] && markers=1
+done
+if [ "$markers" = 0 ]; then
+  echo "aether/dotnet-server: sem .csproj/.sln/global.json"
+  exit 100
+fi
+echo "aether/dotnet-server: .NET app detectada"

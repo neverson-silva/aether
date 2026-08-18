@@ -785,7 +785,7 @@ export function useHostStats() {
         const s = JSON.parse((ev as MessageEvent).data) as HostStats;
         setStats(s);
         setHistory((prev) => [...prev.slice(-59), { cpu: s.cpu_percent, mem: s.mem_percent }]);
-      } catch { /* ignore */ }
+      } catch {}
     });
     return () => { active = false; es.close(); };
   }, []);
@@ -808,7 +808,7 @@ export function useHostLogs(follow: boolean) {
       try {
         const l = JSON.parse((ev as MessageEvent).data) as { line: string };
         setLines((prev) => [...prev, l].slice(-400));
-      } catch { /* ignore */ }
+      } catch {}
     });
     return () => { active = false; es.close(); };
   }, [follow]);
@@ -1089,7 +1089,7 @@ export function useAppStates() {
       try {
         const s = JSON.parse((ev as MessageEvent).data) as { app_id: string; state: string };
         setStates((prev) => ({ ...prev, [s.app_id]: s.state }));
-      } catch { /* ignore */ }
+      } catch {}
     });
     return () => { active = false; es.close(); };
   }, []);

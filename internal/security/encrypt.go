@@ -117,7 +117,6 @@ func (e *EnvelopeCrypto) Decrypt(data []byte) ([]byte, error) {
 	version := data[0]
 	switch version {
 	case encVersionV1:
-		// ok
 	default:
 		return nil, ErrCipherVersion
 	}
@@ -163,7 +162,6 @@ func bytesEqual(a, b []byte) bool {
 	return v == 0
 }
 
-// Encode/Decode base64 helpers para persistência em colunas TEXT.
 
 // EncodeCiphertext serializa em base64 para armazenamento.
 func EncodeCiphertext(enc []byte) string {

@@ -132,7 +132,6 @@ export function VariablePicker({
             e.preventDefault();
             onClose();
           } else {
-            // repassa a digitação para o input real (o picker é não-interativo)
             if (e.key.length === 1 && inputRef.current?.parentElement) {
               const ev = new KeyboardEvent("keydown", { key: e.key, bubbles: true });
               (inputRef.current.parentElement as HTMLElement).dispatchEvent(ev);

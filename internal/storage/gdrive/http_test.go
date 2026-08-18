@@ -163,7 +163,6 @@ func TestHTTPResumableUploadChunked(t *testing.T) {
 		}
 		rng := r.Header.Get("Content-Range")
 		if !strings.Contains(rng, "bytes 0-") && !strings.Contains(rng, "/*") && !strings.Contains(rng, "256000") {
-			// first chunk: bytes 0-262143/*
 			if rng != "bytes 0-262143/*" && rng != "bytes 0-255999/*" && rng != "bytes 0-1000/*" {
 				t.Errorf("unexpected Content-Range %q", rng)
 			}

@@ -14,6 +14,21 @@ info() { echo "[aether-builder] $*"; }
 
 command -v podman >/dev/null 2>&1 || { info "podman não encontrado."; exit 1; }
 
+HOST_ARCH="$(podman info --format '{{.Host.Arch}}' 2>/dev/null || uname -m)"
+case "$HOST_ARCH" in
+  aarch64|arm64)
+    LIFECYCLE_ARCH="linux.arm64"
+    ;;
+  x86_64|amd64)
+    LIFECYCLE_ARCH="linux.x86-64"
+    ;;
+  *)
+    info "arquitetura desconhecida: $HOST_ARCH"
+    exit 1
+    ;;
+esac
+info "arquitetura do runtime: $HOST_ARCH (lifecycle $LIFECYCLE_ARCH)"
+
 ctx="$WORK/cnb-buildcontext"
 rm -rf "$ctx"
 mkdir -p "$ctx"
@@ -72,7 +87,7 @@ FROM paketobuildpacks/build-jammy-base
 
 USER root
 
-ADD https://github.com/buildpacks/lifecycle/releases/download/v$LIFECYCLE_VER/lifecycle-v$LIFECYCLE_VER+linux.x86-64.tgz /tmp/lifecycle.tgz
+ADD https://github.com/buildpacks/lifecycle/releases/download/v$LIFECYCLE_VER/lifecycle-v$LIFECYCLE_VER+$LIFECYCLE_ARCH.tgz /tmp/lifecycle.tgz
 
 RUN mkdir -p /cnb/lifecycle /cnb/buildpacks \
   && tar -xzf /tmp/lifecycle.tgz -C /cnb/lifecycle --strip-components=1 \
@@ -100,5 +115,5 @@ podman build \
   --build-arg BUILDER_METADATA="$(cat "$ctx/builder-meta.json")" \
   --build-arg BUILDER_ORDER="$(cat "$ctx/order-label.json")" \
   -t "$BUILDER_NAME" "$ctx"
-podman push --remove-signatures "$BUILDER_NAME"
+podman push --remove-signatures --tls-verify=false "$BUILDER_NAME"
 info "builder publicado: $BUILDER_NAME"

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+markers=0
+for f in pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradlew gradlew.bat; do
+  [ -f "$f" ] && markers=1
+done
+if [ "$markers" = 0 ]; then
+  echo "aether/jvm-server: sem pom.xml/build.gradle/settings.gradle/gradlew"
+  exit 100
+fi
+echo "aether/jvm-server: JVM app detectada (Java/Kotlin/Groovy)"

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAYERS_DIR="$1"
+PLATFORM_DIR="$2"
+PLAN_PATH="$3"
+
+case "$(uname -m)" in
+  x86_64|amd64)  TRIPLE="x86_64" ;;
+  aarch64|arm64) TRIPLE="aarch64" ;;
+  *) echo "aether/rust-server: unsupported arch $(uname -m)"; exit 1 ;;
+esac
+
+rust_layer="$LAYERS_DIR/rust"
+app_layer="$LAYERS_DIR/rust-app"
+mkdir -p "$rust_layer/bin" "$app_layer/bin"
+export PATH="$rust_layer/bin:$PATH"
+export CARGO_HOME="$rust_layer/cargo"
+export RUSTUP_HOME="$rust_layer/rustup"
+
+# ---------------------------------------------------------------------------
+# Toolchain stable (latest) via static.rust-lang.org
+# ---------------------------------------------------------------------------
+RUST_VER="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
+  | sed -n '/^\[pkg.rust\]/,/^\[/p' | grep -oE 'version = "[0-9.]+' | head -1 | grep -oE '[0-9.]+' || true)"
+RUST_VER="${RUST_VER:-1.97.1}"
+echo "aether/rust-server: instalando Rust $RUST_VER ($TRIPLE-unknown-linux-gnu)..."
+curl -fsSLo /tmp/rust.tgz "https://static.rust-lang.org/dist/rust-$RUST_VER-$TRIPLE-unknown-linux-gnu.tar.gz"
+mkdir -p /tmp/rust-x
+tar -xzf /tmp/rust.tgz -C /tmp/rust-x
+rm -f /tmp/rust.tgz
+cd "/tmp/rust-x/rust-$RUST_VER-$TRIPLE-unknown-linux-gnu"
+./install.sh --prefix="$rust_layer" --without=rust-docs --disable-ldconfig >/dev/null 2>&1
+cd /workspace
+rm -rf /tmp/rust-x
+rustc --version && cargo --version
+
+# linker para cargo build (cc/gcc)
+apt-get update -qq >/dev/null 2>&1 || true
+apt-get install -y -qq build-essential >/dev/null 2>&1 || true
+
+# ---------------------------------------------------------------------------
+# Build release (perfil de produção: LTO + codegen-units=1 + strip)
+# ---------------------------------------------------------------------------
+cd /workspace
+echo "aether/rust-server: cargo build --release (lto, codegen-units=1, strip)..."
+export CARGO_PROFILE_RELEASE_LTO="thin"
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="1"
+export CARGO_PROFILE_RELEASE_STRIP="symbols"
+export CARGO_PROFILE_RELEASE_PANIC="abort"
+export CARGO_PROFILE_RELEASE_OPT_LEVEL="3"
+cargo build --release --locked 2>/tmp/cargoerr || cargo build --release 2>>/tmp/cargoerr
+
+PKG="$(grep -m1 -A3 '^\[package\]' Cargo.toml | grep -oE '^name[[:space:]]*=[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"/\1/' || true)"
+BIN=""
+if [ -n "$PKG" ] && [ -x "target/release/$PKG" ]; then
+  BIN="target/release/$PKG"
+else
+  BIN="$(find target/release -maxdepth 1 -type f -perm -111 ! -name '*.d' ! -name '*.so' 2>/dev/null | head -1 || true)"
+fi
+[ -n "$BIN" ] || { echo "aether/rust-server: binário não encontrado em target/release"; cat /tmp/cargoerr | tail -5; exit 1; }
+cp -a "$BIN" "$app_layer/bin/app"
+chmod +x "$app_layer/bin/app"
+
+cat > "$app_layer/bin/start.sh" <<'SH'
+#!/bin/sh
+set -e
+PORT="${PORT:-8080}"
+export PORT
+exec "$(dirname "$0")/app"
+SH
+chmod +x "$app_layer/bin/start.sh"
+
+cat > "$rust_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$app_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$LAYERS_DIR/launch.toml" <<'EOF'
+[[processes]]
+  type = "web"
+  command = ["start.sh"]
+  default = true
+EOF
+
+echo "aether/rust-server: web process pronto ($BIN)"

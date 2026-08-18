@@ -12,7 +12,7 @@ export function useHostLogs(follow: boolean) {
       try {
         const l = JSON.parse((ev as MessageEvent).data) as { line: string };
         setLines((prev) => [...prev, l].slice(-400));
-      } catch { /* ignore */ }
+      } catch {}
     });
     return () => { active = false; es.close(); };
   }, [follow]);

@@ -3,6 +3,8 @@ package application
 import (
 	"context"
 	"errors"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -57,7 +59,10 @@ func TestBranding(t *testing.T) {
 
 func TestS3Destinations(t *testing.T) {
 	e := newEnv(t)
-	dest, err := e.svc.CreateS3(e.ctx, e.orgID, "backups", "s3.amazonaws.com", "bucket", "", "AKIA123", "secret456")
+	dest, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
+		Name: "backups", Type: domain.TypeCustomS3, Endpoint: "s3.amazonaws.com",
+		Bucket: "bucket", AccessKeyEnc: "AKIA123", SecretKeyEnc: "secret456",
+	})
 	if err != nil {
 		t.Fatalf("create s3: %v", err)
 	}
@@ -67,7 +72,10 @@ func TestS3Destinations(t *testing.T) {
 	if dest.AccessKeyEnc == "AKIA123" || dest.AccessKeyEnc == "" {
 		t.Fatalf("access key deveria estar encriptada")
 	}
-	if _, err := e.svc.CreateS3(e.ctx, e.orgID, "", "x", "y", "", "a", "b"); !errors.Is(err, domain.ErrValidation) {
+	if _, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
+		Name: "", Type: domain.TypeCustomS3, Endpoint: "x", Bucket: "y",
+		AccessKeyEnc: "a", SecretKeyEnc: "b",
+	}); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("name vazio deveria falhar: %v", err)
 	}
 	list, err := e.svc.ListS3(e.ctx, e.orgID)
@@ -76,6 +84,117 @@ func TestS3Destinations(t *testing.T) {
 	}
 	if err := e.svc.DeleteS3(e.ctx, dest.ID, e.orgID); err != nil {
 		t.Fatalf("delete: %v", err)
+	}
+}
+
+func TestEndpointResolution(t *testing.T) {
+	cases := []struct {
+		typ      domain.DestinationType
+		region   string
+		account  string
+		userEp   string
+		expected string
+	}{
+		{domain.TypeAWS, "sa-east-1", "", "", "https://s3.sa-east-1.amazonaws.com"},
+		{domain.TypeAWS, "", "", "", "https://s3.us-east-1.amazonaws.com"},
+		{domain.TypeCloudflareR2, "", "abc123", "", "https://abc123.r2.cloudflarestorage.com"},
+		{domain.TypeMinIO, "", "", "http://localhost:9000", "http://localhost:9000"},
+		{domain.TypeCustomS3, "", "", "https://storage.example.com", "https://storage.example.com"},
+		{domain.TypeGoogleDrive, "", "", "", ""},
+	}
+	for _, c := range cases {
+		got := ResolveEndpoint(c.typ, c.region, c.account, c.userEp)
+		if got != c.expected {
+			t.Fatalf("%s: got %q want %q", c.typ, got, c.expected)
+		}
+	}
+}
+
+func TestGoogleDriveDestination(t *testing.T) {
+	e := newEnv(t)
+	dest, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
+		Name: "drive", Type: domain.TypeGoogleDrive, Bucket: "backups",
+	})
+	if err != nil {
+		t.Fatalf("create drive: %v", err)
+	}
+	if dest.Endpoint != "" || dest.AccessKeyEnc != "" {
+		t.Fatalf("drive não deve ter endpoint/creds: %+v", dest)
+	}
+	if dest.OAuthStatus != domain.OAuthNone {
+		t.Fatalf("drive status inesperado: %s", dest.OAuthStatus)
+	}
+	got, err := e.svc.GetS3(e.ctx, dest.ID, e.orgID)
+	if err != nil || got.Type != domain.TypeGoogleDrive {
+		t.Fatalf("get: %v %+v", err, got)
+	}
+}
+
+func TestGoogleConnectRequiresConfig(t *testing.T) {
+	e := newEnv(t)
+	dest, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{Name: "drive", Type: domain.TypeGoogleDrive})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := e.svc.GoogleConnect(e.ctx, e.orgID, dest.ID); !errors.Is(err, ErrGoogleNotConfigured) {
+		t.Fatalf("sem config deveria falhar: %v", err)
+	}
+	configured, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
+		Name: "drive2", Type: domain.TypeGoogleDrive,
+		GoogleClientID: "client", GoogleClientSecretEnc: "secret",
+	})
+	if err != nil {
+		t.Fatalf("create configurado: %v", err)
+	}
+	if configured.GoogleClientSecretEnc == "secret" || configured.GoogleClientSecretEnc == "" {
+		t.Fatalf("secret deveria estar encriptado: %+v", configured)
+	}
+	authURL, err := e.svc.GoogleConnect(e.ctx, e.orgID, configured.ID)
+	if err != nil {
+		t.Fatalf("connect com config: %v", err)
+	}
+	if !strings.Contains(authURL, "client_id=client") {
+		t.Fatalf("auth url sem client id: %s", authURL)
+	}
+}
+
+func TestGoogleCallbackStateValidation(t *testing.T) {
+	e := newEnv(t)
+	e.svc.PublicURL = "http://localhost:8080"
+	dest, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
+		Name: "drive", Type: domain.TypeGoogleDrive,
+		GoogleClientID: "client", GoogleClientSecretEnc: "secret",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	redirect, err := e.svc.GoogleCallback(e.ctx, "bogus-state", "code", "", "")
+	if err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	if !strings.Contains(redirect, "error%3Ainvalid_state") {
+		t.Fatalf("state inválido deveria falhar: %s", redirect)
+	}
+	state, err := e.svc.GoogleConnect(e.ctx, e.orgID, dest.ID)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	parsed, _ := url.Parse(state)
+	st := parsed.Query().Get("state")
+	redirect, err = e.svc.GoogleCallback(e.ctx, st, "code", "access_denied", "user denied")
+	if err != nil {
+		t.Fatalf("callback deny: %v", err)
+	}
+	if !strings.Contains(redirect, "error%3Aaccess_denied") {
+		t.Fatalf("deny deveria propagar: %s", redirect)
+	}
+	redirect, _ = e.svc.GoogleCallback(e.ctx, st, "code", "", "")
+	if !strings.Contains(redirect, "error%3Atoken_exchange") {
+		t.Fatalf("code sem exchange deveria falhar: %s", redirect)
+	}
+	redirect, _ = e.svc.GoogleCallback(e.ctx, st, "code", "", "")
+	if !strings.Contains(redirect, "error%3Ainvalid_state") {
+		t.Fatalf("state consumido deveria falhar: %s", redirect)
 	}
 }
 

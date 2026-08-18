@@ -2,8 +2,8 @@ api = "0.10"
 
 [buildpack]
   id = "aether/node-server"
-  version = "0.1.0"
-  name = "Aether Node Server"
+  version = "0.2.0"
+  name = "Aether Node/Bun/Deno Server"
   homepage = "https://github.com/aether"
 
   [[buildpack.licenses]]

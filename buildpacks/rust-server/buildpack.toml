@@ -1,0 +1,11 @@
+api = "0.10"
+
+[buildpack]
+  id = "aether/rust-server"
+  version = "0.1.0"
+  name = "Aether Rust Server"
+  homepage = "https://github.com/aether"
+
+  [[buildpack.licenses]]
+    type = "MIT"
+    uri = "https://opensource.org/license/mit"

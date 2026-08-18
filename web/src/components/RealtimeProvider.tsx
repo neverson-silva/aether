@@ -88,7 +88,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         try {
           fn(ev, replay);
         } catch {
-          /* ignore */
         }
       });
     },
@@ -105,12 +104,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     seqRef.current = seq;
     setLastSeq(seq);
     const ws = new WebSocket(`${proto}//${window.location.host}${base}/api/v1/ws/realtime`);
-    const pingRef = { id: 0 as ReturnType<typeof setInterval> | undefined };
+    const pingRef = { id: 0 as number | undefined };
     ws.onopen = () => {
       attemptRef.current = 0;
       setConnected(true);
       ws.send(JSON.stringify({ op: "subscribe", subs: ["org"], seq }));
-      pingRef.id = setInterval(() => {
+      pingRef.id = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: "ping" }));
       }, 25000);
     };
@@ -125,7 +124,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     };
     ws.onerror = () => ws.close();
     ws.onclose = () => {
-      if (pingRef.id !== undefined) clearInterval(pingRef.id);
+      if (pingRef.id !== undefined) window.clearInterval(pingRef.id);
       setConnected(false);
       const saved = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
       if (seqRef.current > 0 && saved < seqRef.current) {

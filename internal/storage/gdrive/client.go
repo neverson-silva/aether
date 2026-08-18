@@ -79,9 +79,6 @@ type DriveClient interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, error)
 }
 
-// driveHTTPClient talks to the Drive REST API over the authenticated
-// *http.Client supplied by the caller. baseURL/uploadBase only exist to support
-// proxies and tests; leave empty for the Google endpoints.
 type driveHTTPClient struct {
 	http       *http.Client
 	baseURL    string
@@ -114,9 +111,6 @@ type driveErrorEnvelope struct {
 	} `json:"error"`
 }
 
-// doJSON issues a JSON request/response against the Drive REST API. in is a
-// struct to marshal, or nil for requests without a body. out receives the
-// decoded response, or nil when the response body is not JSON.
 func (c *driveHTTPClient) doJSON(ctx context.Context, method, u string, in, out any) error {
 	var body io.Reader
 	if in != nil {
@@ -281,10 +275,6 @@ func (c *driveHTTPClient) DownloadFile(ctx context.Context, fileID string) (io.R
 	return resp.Body, nil
 }
 
-// uploadMedia uses Drive's resumable upload: it starts a session with the
-// metadata, then pushes the media with a single PUT when the length is known
-// or in 256KB chunks otherwise. method/endpoint select create (POST files) or
-// update (PATCH files/{id}).
 func (c *driveHTTPClient) uploadMedia(ctx context.Context, method, endpoint string, meta map[string]any, media io.Reader, contentType string) (*File, error) {
 	if contentType == "" {
 		contentType = "application/octet-stream"

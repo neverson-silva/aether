@@ -97,7 +97,6 @@ export function EnvRowsEditor({
         try {
           el.setSelectionRange(caret, caret);
         } catch {
-          /* input oculto */
         }
       }
     });

@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 
+	appsdomain "aether/internal/apps/domain"
 	deploydomain "aether/internal/deployments/domain"
 	"aether/internal/druntime/queue"
 	"aether/internal/git"
@@ -35,8 +36,13 @@ type DeploymentStore interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status deploydomain.Status, errMsg, imageRef, containerID string, startedAt, finishedAt *time.Time) error
 }
 
+type AppStore interface {
+	GetAppByID(ctx context.Context, id uuid.UUID) (*appsdomain.App, error)
+}
+
 type Worker struct {
 	Store          DeploymentStore
+	Apps           AppStore
 	Runtime        Runtime
 	Logger         *slog.Logger
 	LogsDir        string
@@ -210,10 +216,21 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
 		containerPort = spec.Port
 	}
 	w.removeOldContainers(ctx, dep.AppID, dep.ID)
+	labels := map[string]string{
+		"aether.owner":        "user",
+		"aether.service-type": "app",
+		"aether.service-id":   dep.AppID.String(),
+	}
+	if w.Apps != nil {
+		if app, err := w.Apps.GetAppByID(ctx, dep.AppID); err == nil {
+			labels["aether.service-name"] = app.Name
+			labels["aether.project-id"] = app.ProjectID.String()
+		}
+	}
 	containerID, err := w.Runtime.Run(ctx, RunSpec{
 		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: spec.Port, ContainerPort: containerPort,
 		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8],
-		MemMB: spec.MemMB, CPUs: spec.CPUs,
+		MemMB: spec.MemMB, CPUs: spec.CPUs, Labels: labels,
 	})
 	if err != nil {
 		w.fail(ctx, dep, "", err)
@@ -377,7 +394,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	}
 
 	w.appendLog(dep, "cnb (smartbuild): buildando "+img+" com builder "+builder)
-	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
+	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=if-not-present", "--platform", "linux/" + runtime.GOARCH}
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}

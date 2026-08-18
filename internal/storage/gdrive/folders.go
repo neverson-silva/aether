@@ -72,7 +72,6 @@ func (p *Provider) ensureFolderPath(ctx context.Context, segs []string) (string,
 	return parent, nil
 }
 
-// resolveKey walks the folder hierarchy and returns the file at key, or nil.
 func (p *Provider) resolveKey(ctx context.Context, key string) (*File, error) {
 	segs := strings.Split(key, "/")
 	parent := p.rootID

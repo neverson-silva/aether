@@ -23,6 +23,7 @@ import (
 	hosthttp "aether/internal/host/http"
 	jobshttp "aether/internal/jobs/http"
 	mirrorshttp "aether/internal/mirrors/http"
+	monitoringhttp "aether/internal/monitoring/http"
 	orgshttp "aether/internal/orgs/http"
 	pipelineshttp "aether/internal/pipelines/http"
 	realtimehttp "aether/internal/realtime/http"
@@ -68,11 +69,12 @@ type Router struct {
 	specs       *specshttp.Handler
 	stats       *statshttp.Handler
 	realtime    *realtimehttp.Handler
+	monitoring  *monitoringhttp.Handler
 	ready       func(context.Context) error
 	authLimiter *RateLimiter
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler, monitoring *monitoringhttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -87,7 +89,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -299,7 +301,12 @@ func (r *Router) routes() {
 		authed.PUT("/branding", r.settings.SaveBranding)
 		authed.POST("/s3-destinations", r.settings.CreateS3)
 		authed.GET("/s3-destinations", r.settings.ListS3)
+		authed.PATCH("/s3-destinations/:destID", r.settings.UpdateS3)
+		authed.POST("/s3-destinations/:destID/test", r.settings.TestS3)
 		authed.DELETE("/s3-destinations/:destID", r.settings.DeleteS3)
+		authed.POST("/s3-destinations/:destID/google/connect", r.settings.GoogleConnect)
+		authed.GET("/s3-destinations/google/callback", r.settings.GoogleCallback)
+		authed.POST("/s3-destinations/:destID/google/disconnect", r.settings.GoogleDisconnect)
 
 		authed.GET("/sso", r.settings.ListSSO)
 		authed.POST("/sso", r.settings.CreateSSO)
@@ -355,6 +362,13 @@ func (r *Router) routes() {
 		authed.GET("/host/stats/stream", r.host.StatsStream)
 		authed.GET("/host/events", r.host.Events)
 		authed.GET("/host/logs", r.host.Logs)
+
+		authed.GET("/monitoring", r.monitoring.Overview)
+		authed.GET("/monitoring/resources", r.monitoring.Resources)
+		authed.GET("/monitoring/resources/:id/history", r.monitoring.ResourceHistory)
+		authed.GET("/monitoring/history", r.monitoring.History)
+		authed.GET("/monitoring/collector", r.monitoring.Collector)
+		authed.GET("/monitoring/stream", r.monitoring.Stream)
 
 		authed.POST("/detect", r.specs.Detect)
 		authed.POST("/analyze", r.specs.Analyze)

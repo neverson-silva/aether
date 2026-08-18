@@ -108,7 +108,6 @@ function Marketplace() {
       await install.mutateAsync({ id: target!.id, project_id: values.project_id });
       toast(`Template "${target!.name}" installed as a compose stack`);
       setTarget(null);
-      // navega para o stack recém-instalado
       const stacks = await apiGet<{ id: string; name: string }[]>("/api/v1/compose");
       const byName = stacks.find((s) => s.name === target!.name) ?? stacks[0];
       if (byName) navigate({ to: "/compose/$id", params: { id: byName.id } });

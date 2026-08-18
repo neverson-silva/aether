@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAYERS_DIR="$1"
+PLATFORM_DIR="$2"
+PLAN_PATH="$3"
+
+case "$(uname -m)" in
+  x86_64|amd64)  ARCH="x64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  *) echo "aether/dotnet-server: unsupported arch $(uname -m)"; exit 1 ;;
+esac
+
+dotnet_layer="$LAYERS_DIR/dotnet"
+app_layer="$LAYERS_DIR/dotnet-app"
+mkdir -p "$dotnet_layer" "$app_layer/bin"
+export PATH="$dotnet_layer:$PATH"
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_NOLOGO=1
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT="${DOTNET_SYSTEM_GLOBALIZATION_INVARIANT:-1}"
+
+# ---------------------------------------------------------------------------
+# Canal do SDK a partir do global.json (ex.: "version": "8.0.101")
+# ---------------------------------------------------------------------------
+CHANNEL="8.0"
+if [ -f /workspace/global.json ]; then
+  major="$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+' /workspace/global.json | head -1 | grep -oE '[0-9]+\.[0-9]+' || true)"
+  [ -n "$major" ] && CHANNEL="$major"
+fi
+echo "aether/dotnet-server: instalando .NET SDK channel $CHANNEL ($ARCH)..."
+curl -fsSLo /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh
+chmod +x /tmp/dotnet-install.sh
+/tmp/dotnet-install.sh --channel "$CHANNEL" --architecture "$ARCH" --install-dir "$dotnet_layer" >/dev/null 2>&1
+rm -f /tmp/dotnet-install.sh
+dotnet --version
+
+# ---------------------------------------------------------------------------
+# Publish (determinístico, ReadyToRun para warm-start)
+# ---------------------------------------------------------------------------
+cd /workspace
+RID="linux-$ARCH"
+echo "aether/dotnet-server: dotnet publish -c Release -r $RID (self-contained + ReadyToRun)..."
+dotnet publish -c Release -r "$RID" --self-contained true \
+  -p:PublishReadyToRun=true -p:PublishReadyToRunShowWarnings=true \
+  -p:Deterministic=true -p:DebugType=None \
+  -o "$app_layer/out" 2>/tmp/dotneterr \
+  || { echo "aether/dotnet-server: publish falhou"; cat /tmp/dotneterr | tail -8; exit 1; }
+
+# assembly name: <AssemblyName> ou nome do .csproj (evita escolher dll do framework)
+DLL=""
+ASM="$(grep -oE '<AssemblyName>[^<]+' /workspace/*.csproj 2>/dev/null | head -1 | sed -E 's/<AssemblyName>//' || true)"
+[ -n "$ASM" ] || ASM="$(ls /workspace/*.csproj 2>/dev/null | head -1 | sed -E 's#.*/##; s#\.csproj$##' || true)"
+if [ -n "$ASM" ] && [ -f "$app_layer/out/$ASM.dll" ]; then
+  DLL="$app_layer/out/$ASM.dll"
+else
+  # fallback: dll que NÃO é do framework (primeira sem prefixo Microsoft.)
+  for f in "$app_layer/out"/*.dll; do
+    b="$(basename "$f")"
+    case "$b" in
+      Microsoft.*|System.*) continue ;;
+      *) DLL="$f"; break ;;
+    esac
+  done
+fi
+[ -n "$DLL" ] || { echo "aether/dotnet-server: nenhum .dll do app em out/"; exit 1; }
+DLL_NAME="$(basename "$DLL")"
+
+cat > "$app_layer/bin/start.sh" <<SH
+#!/bin/sh
+set -e
+export PORT="\${PORT:-8080}"
+export ASPNETCORE_URLS="http://0.0.0.0:\$PORT"
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT="\${DOTNET_SYSTEM_GLOBALIZATION_INVARIANT:-1}"
+exec dotnet "\$(dirname "\$0")/../out/$DLL_NAME"
+SH
+chmod +x "$app_layer/bin/start.sh"
+
+cat > "$dotnet_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$app_layer.toml" <<'EOF'
+[types]
+  build = true
+  launch = true
+EOF
+
+cat > "$LAYERS_DIR/launch.toml" <<'EOF'
+[[processes]]
+  type = "web"
+  command = ["start.sh"]
+  default = true
+EOF
+
+echo "aether/dotnet-server: web process pronto ($DLL_NAME)"

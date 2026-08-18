@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -233,7 +234,19 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 		return err
 	}
 	file := filepath.Join(dir, "docker-compose.yml")
-	if err := os.WriteFile(file, []byte(app.Compose), 0o644); err != nil {
+	content := app.Compose
+	if len(args) > 0 && args[0] == "up" {
+		if injected, err := injectComposeLabels(content, map[string]string{
+			"aether.owner":        "user",
+			"aether.service-type": "compose",
+			"aether.service-id":   app.ID.String(),
+			"aether.project-id":   app.ProjectID.String(),
+			"aether.service-name": app.Name,
+		}); err == nil {
+			content = injected
+		}
+	}
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
 		return err
 	}
 	if c.ProjectVars != nil {
@@ -248,9 +261,75 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 	return nil
 }
 
-// writeEnvFile grava as Project + Environment Variables do stack em <dir>/.env,
-// permitindo que o Docker Compose interpole ${VAR} nos services. Precedência:
-// Environment > Project. Sem vazar secrets para logs ou API.
+func injectComposeLabels(content string, labels map[string]string) (string, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return "", err
+	}
+	root := &doc
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	if root.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("compose root is not a mapping")
+	}
+	var services *yaml.Node
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "services" {
+			services = root.Content[i+1]
+			break
+		}
+	}
+	if services == nil || services.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("compose has no services mapping")
+	}
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		svc := services.Content[i+1]
+		if svc.Kind != yaml.MappingNode {
+			continue
+		}
+		svc = injectServiceLabels(svc, labels)
+		services.Content[i+1] = svc
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return "", err
+	}
+	_ = enc.Close()
+	return buf.String(), nil
+}
+
+func injectServiceLabels(svc *yaml.Node, labels map[string]string) *yaml.Node {
+	for i := 0; i+1 < len(svc.Content); i += 2 {
+		if svc.Content[i].Value != "labels" {
+			continue
+		}
+		existing := svc.Content[i+1]
+		switch existing.Kind {
+		case yaml.MappingNode:
+			for k, v := range labels {
+				existing.Content = append(existing.Content, keyNode(k), valueNode(v))
+			}
+		case yaml.SequenceNode:
+			for k, v := range labels {
+				existing.Content = append(existing.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k + "=" + v})
+			}
+		}
+		return svc
+	}
+	labelsNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	for k, v := range labels {
+		labelsNode.Content = append(labelsNode.Content, keyNode(k), valueNode(v))
+	}
+	svc.Content = append(svc.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "labels"}, labelsNode)
+	return svc
+}
+
+func keyNode(k string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k} }
+func valueNode(v string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v} }
+
 func (c *Compose) writeEnvFile(ctx context.Context, dir string, app *domain.ComposeApp) {
 	merged := map[string]string{}
 	project, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, uuid.Nil)
@@ -283,8 +362,6 @@ func (c *Compose) writeEnvFile(ctx context.Context, dir string, app *domain.Comp
 	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte(sb.String()), 0o600)
 }
 
-// prepareConfig seeda o config.json do AFFiNE no volume nomeado compartilhado
-// (evita bind-mounts com path da VM), seguindo o install oficial.
 func (c *Compose) prepareConfig(ctx context.Context, dir, compose string) {
 	if !strings.Contains(compose, "/root/.affine/config") {
 		return

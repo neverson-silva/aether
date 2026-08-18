@@ -9,4 +9,5 @@ var (
 	ErrUnsupportedOperation = errors.New("unsupported operation")
 	ErrAuthentication       = errors.New("authentication failed")
 	ErrPermissionDenied     = errors.New("permission denied")
+	ErrInvalidConfig        = errors.New("invalid provider config")
 )

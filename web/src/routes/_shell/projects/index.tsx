@@ -96,7 +96,6 @@ function Projects() {
 
   return (
     <div className="flex flex-col gap-lg max-w-[1280px] w-full mx-auto">
-      {/* Header Section */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-md border-b border-outline-variant pb-md">
         <div className="flex flex-col gap-xs">
           <h1 className="font-headline-sm text-[32px] leading-[40px] font-bold text-primary tracking-tight">My Projects</h1>
@@ -127,7 +126,6 @@ function Projects() {
         </div>
       </header>
 
-      {/* Projects section */}
       <section className="flex flex-col gap-md">
         <div className="flex items-center gap-sm">
           <h2 className="font-headline-md text-headline-md font-semibold text-primary">Projects</h2>

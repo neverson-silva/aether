@@ -14,7 +14,7 @@ export function useHostStats() {
         const s = JSON.parse((ev as MessageEvent).data) as HostStats;
         setStats(s);
         setHistory((prev) => [...prev.slice(-59), { cpu: s.cpu_percent, mem: s.mem_percent }]);
-      } catch { /* ignore */ }
+      } catch {}
     });
     return () => { active = false; es.close(); };
   }, []);

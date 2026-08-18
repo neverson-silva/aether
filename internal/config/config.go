@@ -22,6 +22,9 @@ type Config struct {
 	ChallengeAddr        string
 	AgentAddr            string
 	TraefikBin           string
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	GoogleOAuthRedirectURI  string
 	PublicURL            string
 	CertEmail            string
 	ACMEDirectory        string
@@ -93,6 +96,9 @@ func Load() (*Config, error) {
 		AgentAddr:     envOr("AETHER_AGENT_ADDR", "127.0.0.1:9443"),
 		TraefikBin:    envOr("AETHER_TRAEFIK_BIN", ""),
 		PublicURL:     envOr("AETHER_PUBLIC_URL", ""),
+		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
+		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+		GoogleOAuthRedirectURI:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URI"),
 
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		DatabaseHost:             envOr("DATABASE_HOST", "127.0.0.1"),

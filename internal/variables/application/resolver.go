@@ -131,7 +131,6 @@ func (r *Resolver) decryptEnvVar(v appsdomain.EnvVar) string {
 
 var placeholderRe = regexp.MustCompile(`\$\{\{?([A-Za-z_][A-Za-z0-9_.]*)\}?\}`)
 
-// varScopes guarda os valores por escopo para resolução de placeholders.
 type varScopes struct {
 	merged      map[string]string
 	project     map[string]string
@@ -163,7 +162,6 @@ func (s *varScopes) lookup(scope, name string) (string, bool) {
 	}
 }
 
-// splitScope separa "project.NAME" em ("project","NAME"); sem prefixo → efetivo.
 func splitScope(name string) (string, string) {
 	if i := strings.Index(name, "."); i > 0 {
 		prefix := name[:i]
@@ -176,7 +174,6 @@ func splitScope(name string) (string, string) {
 }
 
 // resolve expande placeholders no valor efetivo de uma chave, com resolução
-// por escopo (${{project.X}}, ${{environment.X}}, ${{service.X}}) e ciclo guard.
 func (s *varScopes) resolve(key string) (string, error) {
 	return s.resolveKey("merged", key, map[string]bool{})
 }

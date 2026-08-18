@@ -94,7 +94,6 @@ func (h *Handler) UpdateDomain(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	// atualiza host/https/porta/path e reprovisiona
 	if req.Host == "" {
 		abort(c, domain.ErrValidation)
 		return

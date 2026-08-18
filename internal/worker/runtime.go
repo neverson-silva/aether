@@ -22,6 +22,7 @@ type RunSpec struct {
 	NetworkAlias  string
 	MemMB         int
 	CPUs          string
+	Labels        map[string]string
 }
 
 type Runtime interface {
@@ -39,6 +40,7 @@ type Runtime interface {
 	Stop(ctx context.Context, containerID string) error
 	Restart(ctx context.Context, containerID string) error
 	Stats(ctx context.Context, containerID string) (ContainerStats, error)
+	ListContainers(ctx context.Context) ([]ContainerInfo, error)
 }
 
 type ContainerStats struct {
@@ -51,6 +53,15 @@ type ContainerStats struct {
 	NetOutput   uint64  `json:"net_output"`
 	BlockInput  uint64  `json:"block_input"`
 	BlockOutput uint64  `json:"block_output"`
+}
+
+type ContainerInfo struct {
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	State    string            `json:"state"`
+	Labels   map[string]string `json:"labels"`
+	Stats    ContainerStats    `json:"stats"`
+	HasStats bool              `json:"has_stats"`
 }
 
 type podmanRuntime struct{}
@@ -197,6 +208,75 @@ func parsePercent(s string) float64 {
 	return v
 }
 
+func (podmanRuntime) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
+	psOut, err := exec.CommandContext(ctx, "podman", "ps", "-a", "--format", "json").CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
+	var psRows []struct {
+		Id     string            `json:"Id"`
+		Names  []string          `json:"Names"`
+		State  string            `json:"State"`
+		Labels map[string]string `json:"Labels"`
+	}
+	if err := json.Unmarshal(psOut, &psRows); err != nil {
+		return nil, err
+	}
+
+	statsByID := map[string]ContainerStats{}
+	if stOut, err := exec.CommandContext(ctx, "podman", "stats", "--no-stream", "--format", "json").CombinedOutput(); err == nil {
+		var stRows []struct {
+			ID       string `json:"id"`
+			CPUPerc  string `json:"cpu_percent"`
+			MemUsage string `json:"mem_usage"`
+			MemLimit string `json:"mem_limit"`
+			MemPerc  string `json:"mem_percent"`
+			NetIO    string `json:"net_io"`
+			BlockIO  string `json:"block_io"`
+		}
+		if json.Unmarshal(stOut, &stRows) == nil {
+			for _, r := range stRows {
+				mem, memLimit := splitBytesPair(r.MemUsage)
+				netIn, netOut := splitBytesPair(r.NetIO)
+				blockIn, blockOut := splitBytesPair(r.BlockIO)
+				id := strings.TrimPrefix(r.ID, "sha256:")
+				statsByID[id] = ContainerStats{
+					CPUPercent:  parsePercent(r.CPUPerc),
+					MemUsage:    mem,
+					MemBytes:    mem,
+					MemLimit:    memLimit,
+					MemPercent:  parsePercent(r.MemPerc),
+					NetInput:    netIn,
+					NetOutput:   netOut,
+					BlockInput:  blockIn,
+					BlockOutput: blockOut,
+				}
+			}
+		}
+	}
+
+	out := make([]ContainerInfo, 0, len(psRows))
+	for _, r := range psRows {
+		id := strings.TrimPrefix(r.Id, "sha256:")
+		name := ""
+		if len(r.Names) > 0 {
+			name = r.Names[0]
+		}
+		info := ContainerInfo{ID: id, Name: name, State: r.State, Labels: r.Labels}
+		// podman ps returns the full id while podman stats returns the short
+		// id; match by prefix to pair them up.
+		for stID, st := range statsByID {
+			if strings.HasPrefix(id, stID) {
+				info.Stats = st
+				info.HasStats = true
+				break
+			}
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
 func (podmanRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	args := []string{"run", "-d", "--name", spec.Name}
 	if spec.Network != "" {
@@ -213,6 +293,9 @@ func (podmanRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	}
 	if spec.CPUs != "" {
 		args = append(args, "--cpus", spec.CPUs)
+	}
+	for k, v := range spec.Labels {
+		args = append(args, "--label", k+"="+v)
 	}
 	if spec.Port > 0 {
 		if spec.ContainerPort > 0 {

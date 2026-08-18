@@ -60,10 +60,8 @@ func Detect(srcDir string) (*Plan, error) {
 		return string(b)
 	}
 
-	// lockfile presence
 	p.HasLockfile = has("bun.lockb") || has("bun.lock") || has("pnpm-lock.yaml") || has("package-lock.json") || has("yarn.lock")
 
-	// --- package manager ---
 	switch {
 	case has("bun.lockb") || has("bun.lock"):
 		p.PackageManager = "bun"
@@ -79,32 +77,25 @@ func Detect(srcDir string) (*Plan, error) {
 		p.PackageManager = "npm"
 	}
 
-	// --- framework from package.json ---
 	pkg := read("package.json")
 	framework, library, buildScript := detectFromPackage(pkg)
 	p.Framework = framework
 	p.Library = library
 
-	// --- fallback detection from config files & structure ---
 	if p.Framework == "" {
 		detectFromFiles(srcDir, read, p)
 	}
 
-	// --- build command ---
 	p.BuildCommand = detectBuildCommand(p, buildScript)
 
-	// --- output dir ---
 	p.OutputDir = detectOutputDir(srcDir, p, read)
 
-	// --- routing / app type ---
 	detectRouting(p)
 
-	// --- index file discovery ---
 	discoverIndex(srcDir, p)
 
 	p.Detected = p.Framework != "" && p.AppType != TypeUnknown
 
-	// --- generate configs ---
 	if p.AppType == TypeSSR {
 		p.WebServer = "node"
 		p.ContainerPort = 3000
@@ -146,7 +137,6 @@ func detectFromPackage(pkg string) (framework, library, buildScript string) {
 		return "Fresh", "Preact", buildScript
 	}
 
-	// SSG
 	switch {
 	case has(`"astro"`):
 		return "Astro", "Astro", buildScript
@@ -162,7 +152,6 @@ func detectFromPackage(pkg string) (framework, library, buildScript string) {
 		return "Eleventy", "Eleventy", buildScript
 	}
 
-	// SPAs
 	switch {
 	case has(`"react"`):
 		if has(`"vite"`) {
@@ -221,7 +210,6 @@ func detectFromFiles(srcDir string, read func(string) string, p *Plan) {
 	case has("rspack.config.js"):
 		p.Framework = "Rspack"
 	}
-	// structure fallback
 	if p.Framework == "" {
 		switch {
 		case has("src/main.tsx") || has("src/main.jsx"):

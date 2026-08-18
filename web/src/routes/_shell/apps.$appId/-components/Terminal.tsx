@@ -140,7 +140,6 @@ export function Terminal({ appID }: { appID: string }) {
         try {
           fit.fit();
         } catch {
-          /* noop */
         }
         if (alive()) sendResize();
       });

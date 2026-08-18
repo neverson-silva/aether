@@ -14,6 +14,17 @@ if [ "$is_spa" = 0 ]; then
       is_spa=1
     fi
   done
+  # Lume (SSG para Deno)
+  if [ -f _config.ts ] || [ -f _config.js ] || [ -f _config.jsx ] || [ -f _config.tsx ]; then
+    is_spa=1
+  fi
+  # Deno SSG genérico: deno.json com task build e SEM start task
+  if [ "$is_spa" = 0 ] && { [ -f deno.json ] || [ -f deno.jsonc ]; }; then
+    f="deno.json"; [ -f deno.jsonc ] && f="deno.jsonc"
+    if grep -qE '"build"[[:space:]]*:' "$f" && ! grep -qE '"start"[[:space:]]*:' "$f"; then
+      is_spa=1
+    fi
+  fi
 fi
 if [ "$is_spa" = 0 ] && [ -f package.json ]; then
   case "$(cat package.json)" in
@@ -25,7 +36,7 @@ if [ "$is_spa" = 0 ]; then
   exit 100
 fi
 
-PLAN_PATH="${CNB_BUILD_PLAN_PATH:-$2}"
+PLAN_PATH="${CNB_BUILD_PLAN_PATH:-${1:-}}"
 if [ -n "$PLAN_PATH" ]; then
   : > "$PLAN_PATH"
 fi

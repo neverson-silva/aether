@@ -30,7 +30,6 @@ export function CreateServiceLauncher({ open, onClose, fixedProjectId, fixedEnvi
     }
   }, [launcherMounted]);
 
-  // quando o launcher terminou de fechar e há uma escolha pendente, abre o wizard
   useEffect(() => {
     if (pending && !active && !launcherMounted) {
       setWizardOpen(true);

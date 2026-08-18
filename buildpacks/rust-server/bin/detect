@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ -f Cargo.toml ] || { echo "aether/rust-server: sem Cargo.toml"; exit 100; }
+echo "aether/rust-server: Rust app detectada"

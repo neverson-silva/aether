@@ -701,6 +701,41 @@ ensure_builder() {
 }
 
 # ---------------------------------------------------------------------------
+# HOST AGENT (host machine — macOS or Linux)
+# The API runs inside a container; the host agent runs natively on the host
+# machine and writes the real host metrics to $STATE_DIR/host-stats.json
+# (mounted into the API container at /var/lib/aether). The watchdog couples
+# the agent to the API lifecycle: agent starts when the API is up, and is
+# terminated whenever the API goes down for any reason.
+
+start_agent() {
+  [[ -x "$PROJECT_ROOT/scripts/host-watchdog.sh" ]] || return 0
+  local pidfile="$STATE_DIR/host-agent.pid"
+  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+    info "Host watchdog already running (pid $(cat "$pidfile"))."
+    return 0
+  fi
+  mkdir -p "$STATE_DIR/logs"
+  nohup bash "$PROJECT_ROOT/scripts/host-watchdog.sh" >> "$STATE_DIR/logs/host-agent.log" 2>&1 &
+  echo "$!" > "$pidfile"
+  sleep 1
+  if kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+    info "Host watchdog started (pid $(cat "$pidfile")) → real host metrics while the API is up."
+  else
+    warn "Host watchdog failed to start — monitoring will report runtime metrics."
+  fi
+}
+
+stop_agent() {
+  local pidfile="$STATE_DIR/host-agent.pid"
+  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+    kill "$(cat "$pidfile")" >/dev/null 2>&1
+    rm -f "$pidfile"
+    info "Host watchdog stopped (host agent terminated)."
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # LIFECYCLE
 stop_api() {
   local changed=0
@@ -725,6 +760,12 @@ status_cmd() {
       || warn "  readiness: failing"
   else
     warn "API: STOPPED"
+  fi
+  local apidfile="$STATE_DIR/host-agent.pid"
+  if [[ -f "$apidfile" ]] && kill -0 "$(cat "$apidfile" 2>/dev/null)" 2>/dev/null; then
+    info "Host agent: RUNNING (pid $(cat "$apidfile")) → real host metrics"
+  else
+    warn "Host agent: STOPPED — monitoring will report runtime metrics"
   fi
   if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$PG_CONTAINER"; then
     info "PostgreSQL: RUNNING (container $PG_CONTAINER)"
@@ -763,6 +804,7 @@ main() {
   case "${1:-install}" in
     stop)
       ensure_runtime
+      stop_agent
       stop_api
       return 0
       ;;
@@ -778,6 +820,7 @@ main() {
       ;;
     start)
       ensure_runtime
+      start_agent
       ensure_network
       ensure_postgres
       ensure_redis
@@ -808,7 +851,8 @@ main() {
   info "4/6 Building the API + frontend image..."
   build_api_image
 
-  info "5/6 Starting the API container..."
+  info "5/6 Starting the host agent + API container..."
+  start_agent
   start_api
   start_web
 

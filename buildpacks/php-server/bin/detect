@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+markers=0
+[ -f composer.json ] && markers=1
+[ -f wp-config.php ] && markers=1
+[ -f artisan ] && markers=1
+if [ "$markers" = 0 ] && [ -f index.php ]; then
+  grep -q '<?php' index.php && markers=1
+fi
+# não roubar apps JS com start script (package.json + index.php é incomum)
+if [ "$markers" = 1 ] && [ -f package.json ] && grep -qE '"start"' package.json; then
+  echo "aether/php-server: app JS com start — não é PHP"
+  exit 100
+fi
+if [ "$markers" = 0 ]; then
+  echo "aether/php-server: sem marcadores PHP (composer.json/wp-config.php/artisan/index.php)"
+  exit 100
+fi
+echo "aether/php-server: PHP app detectada"

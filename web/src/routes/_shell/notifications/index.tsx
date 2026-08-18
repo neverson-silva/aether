@@ -346,7 +346,7 @@ function Notifications() {
             {(showOnlyUnread ? notifList.filter((n) => !n.read) : notifList).map((n) => {
               const meta = notifMeta(n.type);
               let parsed: Record<string, string> = {};
-              try { parsed = JSON.parse(n.payload || "{}"); } catch { /* ignore */ }
+              try { parsed = JSON.parse(n.payload || "{}"); } catch {}
               return (
                 <button
                   key={n.id}
@@ -359,7 +359,7 @@ function Notifications() {
                 >
                   <span className={`material-symbols-outlined text-[16px] shrink-0 mt-0.5 ${meta.color}`}>{meta.icon}</span>
                   <span className="flex-1 min-w-0">
-                    <span className={`block font-body-sm text-body-sm ${n.read ? "text-on-surface-variant" : "text-on-surface font-medium"}`}>{n.message}</span>
+                    <span className={`font-body-sm text-body-sm line-clamp-5 break-words ${n.read ? "text-on-surface-variant" : "text-on-surface font-medium"}`} title={n.message}>{n.message}</span>
                     <span className="block font-code-md text-code-md text-on-surface-variant/50 mt-0.5">{n.type} · {timeAgo(n.created_at)}</span>
                   </span>
                   {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-2" />}

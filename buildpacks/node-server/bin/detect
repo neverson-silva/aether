@@ -14,9 +14,29 @@ if [ "$is_static" = 0 ] && [ -f package.json ]; then
     *'"@angular/core"'*|*'"react-scripts"'*|*'"vue-cli-service"'*|*'"@vue/cli-service"'*|*'"vite"'*|*'"@vitejs/plugin-react"'*) is_static=1 ;;
   esac
 fi
+# Lume / SSGs de Deno — estáticos
+if [ "$is_static" = 0 ]; then
+  for f in _config.ts _config.js _config.jsx _config.tsx; do
+    [ -f "$f" ] && is_static=1
+  done
+fi
+if [ "$is_static" = 0 ] && { [ -f deno.json ] || [ -f deno.jsonc ]; }; then
+  f="deno.json"; [ -f deno.jsonc ] && f="deno.jsonc"
+  if grep -qE '"build"[[:space:]]*:' "$f" && ! grep -qE '"start"[[:space:]]*:' "$f"; then
+    is_static=1
+  fi
+fi
 if [ "$is_static" = 1 ]; then
   echo "aether/node-server: SPA/SSG — ignorado (grupo spa-static)"
   exit 100
+fi
+
+# --- deno server ---
+if [ -f deno.json ] || [ -f deno.jsonc ] || [ -f deno.lock ] || [ -f import_map.json ] \
+  || grep -qE '"engines"[^}]*"deno"' package.json 2>/dev/null \
+  || grep -qE '"start(:prod)?"[[:space:]]*:[[:space:]]*"[^"]*deno[[:space:]]' package.json 2>/dev/null; then
+  echo "aether/node-server: Deno app detectada"
+  exit 0
 fi
 
 [ -f package.json ] || { echo "aether/node-server: sem package.json"; exit 100; }
@@ -26,7 +46,7 @@ startprod="$(grep -oE '"start:prod"[[:space:]]*:[[:space:]]*"[^"]*"' package.jso
 [ -n "$start$startprod" ] || { echo "aether/node-server: sem start/start:prod"; exit 100; }
 
 case "${start:-$startprod}" in
-  *"ng serve"*|*"vite"*|*"react-scripts start"*|*"next dev"*|*"nuxt dev"*|*"astro dev"*|*"gatsby develop"*|*"vue-cli-service serve"*|*"webpack-dev-server"*|*"quasar dev"*|*"docusaurus start"*|*"svelte-kit dev"*|*"expo start"*|*"ionic serve"*)
+  *"ng serve"*|*"vite"*|*"react-scripts start"*|*"next dev"*|*"nuxt dev"*|*"astro dev"*|*"gatsby develop"*|*"vue-cli-service serve"*|*"webpack-dev-server"*|*"quasar dev"*|*"docusaurus start"*|*"svelte-kit dev"*|*"expo start"*|*"ionic serve"*|*"bun run dev"*|*"bun dev"*|*"deno task dev"*|*"fresh dev"*|*"--watch"*)
     echo "aether/node-server: start é dev server — ignorado"
     exit 100 ;;
 esac

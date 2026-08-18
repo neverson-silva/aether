@@ -7,6 +7,7 @@ package pg
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -66,42 +67,83 @@ func (q *Queries) CreateOIDCProvider(ctx context.Context, arg CreateOIDCProvider
 }
 
 const createS3Destination = `-- name: CreateS3Destination :one
-INSERT INTO s3_destinations (org_id, name, endpoint, bucket, region, access_key_enc, secret_key_enc)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, name, endpoint, bucket, region, access_key_enc, secret_key_enc, created_at
+INSERT INTO s3_destinations (org_id, name, type, endpoint, bucket, region, account_id, access_key_enc, secret_key_enc,
+                             google_client_id, google_client_secret_enc)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, org_id, name, type, endpoint, bucket, region, account_id, access_key_enc, secret_key_enc,
+          oauth_status, oauth_email, access_token_enc, refresh_token_enc,
+          google_client_id, google_client_secret_enc, created_at, updated_at
 `
 
 type CreateS3DestinationParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	Name         string    `json:"name"`
-	Endpoint     string    `json:"endpoint"`
-	Bucket       string    `json:"bucket"`
-	Region       string    `json:"region"`
-	AccessKeyEnc string    `json:"access_key_enc"`
-	SecretKeyEnc string    `json:"secret_key_enc"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Type                  string    `json:"type"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccountID             string    `json:"account_id"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
 }
 
-func (q *Queries) CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (S3Destination, error) {
+type CreateS3DestinationRow struct {
+	ID                    uuid.UUID `json:"id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Type                  string    `json:"type"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccountID             string    `json:"account_id"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	OauthStatus           string    `json:"oauth_status"`
+	OauthEmail            string    `json:"oauth_email"`
+	AccessTokenEnc        string    `json:"access_token_enc"`
+	RefreshTokenEnc       string    `json:"refresh_token_enc"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+func (q *Queries) CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (CreateS3DestinationRow, error) {
 	row := q.db.QueryRowContext(ctx, createS3Destination,
 		arg.OrgID,
 		arg.Name,
+		arg.Type,
 		arg.Endpoint,
 		arg.Bucket,
 		arg.Region,
+		arg.AccountID,
 		arg.AccessKeyEnc,
 		arg.SecretKeyEnc,
+		arg.GoogleClientID,
+		arg.GoogleClientSecretEnc,
 	)
-	var i S3Destination
+	var i CreateS3DestinationRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
 		&i.Name,
+		&i.Type,
 		&i.Endpoint,
 		&i.Bucket,
 		&i.Region,
+		&i.AccountID,
 		&i.AccessKeyEnc,
 		&i.SecretKeyEnc,
+		&i.OauthStatus,
+		&i.OauthEmail,
+		&i.AccessTokenEnc,
+		&i.RefreshTokenEnc,
+		&i.GoogleClientID,
+		&i.GoogleClientSecretEnc,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -181,7 +223,9 @@ func (q *Queries) GetOIDCProvider(ctx context.Context, id uuid.UUID) (OidcProvid
 }
 
 const getS3Destination = `-- name: GetS3Destination :one
-SELECT id, org_id, name, endpoint, bucket, region, access_key_enc, secret_key_enc, created_at
+SELECT id, org_id, name, type, endpoint, bucket, region, account_id, access_key_enc, secret_key_enc,
+       oauth_status, oauth_email, access_token_enc, refresh_token_enc,
+       google_client_id, google_client_secret_enc, created_at, updated_at
 FROM s3_destinations
 WHERE id = $1 AND org_id = $2
 `
@@ -191,19 +235,49 @@ type GetS3DestinationParams struct {
 	OrgID uuid.UUID `json:"org_id"`
 }
 
-func (q *Queries) GetS3Destination(ctx context.Context, arg GetS3DestinationParams) (S3Destination, error) {
+type GetS3DestinationRow struct {
+	ID                    uuid.UUID `json:"id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Type                  string    `json:"type"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccountID             string    `json:"account_id"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	OauthStatus           string    `json:"oauth_status"`
+	OauthEmail            string    `json:"oauth_email"`
+	AccessTokenEnc        string    `json:"access_token_enc"`
+	RefreshTokenEnc       string    `json:"refresh_token_enc"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+func (q *Queries) GetS3Destination(ctx context.Context, arg GetS3DestinationParams) (GetS3DestinationRow, error) {
 	row := q.db.QueryRowContext(ctx, getS3Destination, arg.ID, arg.OrgID)
-	var i S3Destination
+	var i GetS3DestinationRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
 		&i.Name,
+		&i.Type,
 		&i.Endpoint,
 		&i.Bucket,
 		&i.Region,
+		&i.AccountID,
 		&i.AccessKeyEnc,
 		&i.SecretKeyEnc,
+		&i.OauthStatus,
+		&i.OauthEmail,
+		&i.AccessTokenEnc,
+		&i.RefreshTokenEnc,
+		&i.GoogleClientID,
+		&i.GoogleClientSecretEnc,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -289,31 +363,63 @@ func (q *Queries) ListOIDCProviders(ctx context.Context, orgID uuid.UUID) ([]Oid
 }
 
 const listS3Destinations = `-- name: ListS3Destinations :many
-SELECT id, org_id, name, endpoint, bucket, region, access_key_enc, secret_key_enc, created_at
+SELECT id, org_id, name, type, endpoint, bucket, region, account_id, access_key_enc, secret_key_enc,
+       oauth_status, oauth_email, access_token_enc, refresh_token_enc,
+       google_client_id, google_client_secret_enc, created_at, updated_at
 FROM s3_destinations
 WHERE org_id = $1
 ORDER BY name
 `
 
-func (q *Queries) ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]S3Destination, error) {
+type ListS3DestinationsRow struct {
+	ID                    uuid.UUID `json:"id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Type                  string    `json:"type"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccountID             string    `json:"account_id"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	OauthStatus           string    `json:"oauth_status"`
+	OauthEmail            string    `json:"oauth_email"`
+	AccessTokenEnc        string    `json:"access_token_enc"`
+	RefreshTokenEnc       string    `json:"refresh_token_enc"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]ListS3DestinationsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listS3Destinations, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []S3Destination{}
+	items := []ListS3DestinationsRow{}
 	for rows.Next() {
-		var i S3Destination
+		var i ListS3DestinationsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
 			&i.Name,
+			&i.Type,
 			&i.Endpoint,
 			&i.Bucket,
 			&i.Region,
+			&i.AccountID,
 			&i.AccessKeyEnc,
 			&i.SecretKeyEnc,
+			&i.OauthStatus,
+			&i.OauthEmail,
+			&i.AccessTokenEnc,
+			&i.RefreshTokenEnc,
+			&i.GoogleClientID,
+			&i.GoogleClientSecretEnc,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -326,6 +432,119 @@ func (q *Queries) ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]S3
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateS3Destination = `-- name: UpdateS3Destination :one
+UPDATE s3_destinations
+SET name = $3, type = $4, endpoint = $5, bucket = $6, region = $7, account_id = $8,
+    access_key_enc = $9, secret_key_enc = $10,
+    google_client_id = $11, google_client_secret_enc = $12, updated_at = now()
+WHERE id = $1 AND org_id = $2
+RETURNING id, org_id, name, type, endpoint, bucket, region, account_id, access_key_enc, secret_key_enc,
+          oauth_status, oauth_email, access_token_enc, refresh_token_enc,
+          google_client_id, google_client_secret_enc, created_at, updated_at
+`
+
+type UpdateS3DestinationParams struct {
+	ID                    uuid.UUID `json:"id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Type                  string    `json:"type"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccountID             string    `json:"account_id"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
+}
+
+type UpdateS3DestinationRow struct {
+	ID                    uuid.UUID `json:"id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Name                  string    `json:"name"`
+	Type                  string    `json:"type"`
+	Endpoint              string    `json:"endpoint"`
+	Bucket                string    `json:"bucket"`
+	Region                string    `json:"region"`
+	AccountID             string    `json:"account_id"`
+	AccessKeyEnc          string    `json:"access_key_enc"`
+	SecretKeyEnc          string    `json:"secret_key_enc"`
+	OauthStatus           string    `json:"oauth_status"`
+	OauthEmail            string    `json:"oauth_email"`
+	AccessTokenEnc        string    `json:"access_token_enc"`
+	RefreshTokenEnc       string    `json:"refresh_token_enc"`
+	GoogleClientID        string    `json:"google_client_id"`
+	GoogleClientSecretEnc string    `json:"google_client_secret_enc"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpdateS3Destination(ctx context.Context, arg UpdateS3DestinationParams) (UpdateS3DestinationRow, error) {
+	row := q.db.QueryRowContext(ctx, updateS3Destination,
+		arg.ID,
+		arg.OrgID,
+		arg.Name,
+		arg.Type,
+		arg.Endpoint,
+		arg.Bucket,
+		arg.Region,
+		arg.AccountID,
+		arg.AccessKeyEnc,
+		arg.SecretKeyEnc,
+		arg.GoogleClientID,
+		arg.GoogleClientSecretEnc,
+	)
+	var i UpdateS3DestinationRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Endpoint,
+		&i.Bucket,
+		&i.Region,
+		&i.AccountID,
+		&i.AccessKeyEnc,
+		&i.SecretKeyEnc,
+		&i.OauthStatus,
+		&i.OauthEmail,
+		&i.AccessTokenEnc,
+		&i.RefreshTokenEnc,
+		&i.GoogleClientID,
+		&i.GoogleClientSecretEnc,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateS3DestinationOAuth = `-- name: UpdateS3DestinationOAuth :exec
+UPDATE s3_destinations
+SET oauth_status = $3, oauth_email = $4, access_token_enc = $5, refresh_token_enc = $6, updated_at = now()
+WHERE id = $1 AND org_id = $2
+`
+
+type UpdateS3DestinationOAuthParams struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	OauthStatus     string    `json:"oauth_status"`
+	OauthEmail      string    `json:"oauth_email"`
+	AccessTokenEnc  string    `json:"access_token_enc"`
+	RefreshTokenEnc string    `json:"refresh_token_enc"`
+}
+
+func (q *Queries) UpdateS3DestinationOAuth(ctx context.Context, arg UpdateS3DestinationOAuthParams) error {
+	_, err := q.db.ExecContext(ctx, updateS3DestinationOAuth,
+		arg.ID,
+		arg.OrgID,
+		arg.OauthStatus,
+		arg.OauthEmail,
+		arg.AccessTokenEnc,
+		arg.RefreshTokenEnc,
+	)
+	return err
 }
 
 const upsertBranding = `-- name: UpsertBranding :one

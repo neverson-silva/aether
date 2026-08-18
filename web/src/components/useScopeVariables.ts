@@ -29,7 +29,6 @@ export function useScopeVariables(input: ScopeInput = {}): VarGroup[] {
   return useMemo<VarGroup[]>(() => {
     const groups: VarGroup[] = [];
 
-    // Service
     const svcItems: PickedVar[] = [];
     if (input.serviceName) {
       svcItems.unshift({ name: "SERVICE_NAME", description: "Current service name.", scope: "service", value: input.serviceName });
@@ -39,7 +38,6 @@ export function useScopeVariables(input: ScopeInput = {}): VarGroup[] {
     }
     if (svcItems.length) groups.push({ scope: "service", items: svcItems });
 
-    // Project
     const projItems: PickedVar[] = [];
     const proj = projects?.[0];
     if (proj) {
@@ -53,21 +51,18 @@ export function useScopeVariables(input: ScopeInput = {}): VarGroup[] {
     }
     groups.push({ scope: "project", items: projItems });
 
-    // Organization
     const orgItems: PickedVar[] = [
       { name: "ORGANIZATION_NAME", description: "Current organization name.", scope: "organization", value: currentOrg?.name },
       { name: "ORGANIZATION_SLUG", description: "Current organization slug.", scope: "organization", value: currentOrg?.slug },
     ];
     groups.push({ scope: "organization", items: orgItems });
 
-    // Environment (shared project env)
     const envItems: PickedVar[] = [];
     for (const v of input.projectEnvs ?? []) {
       envItems.push({ name: v.name, description: v.secret ? "Secret environment variable." : undefined, scope: "environment", value: v.secret ? undefined : v.value });
     }
     if (envItems.length) groups.push({ scope: "environment", items: envItems });
 
-    // Secrets (separate)
     const secretItems: PickedVar[] = [];
     for (const v of input.serviceVars ?? []) {
       if (v.secret) secretItems.push({ name: v.key, description: "Encrypted secret.", scope: "secrets" });
@@ -77,7 +72,6 @@ export function useScopeVariables(input: ScopeInput = {}): VarGroup[] {
     }
     if (secretItems.length) groups.push({ scope: "secrets", items: secretItems });
 
-    // System
     groups.push({ scope: "system", items: SYSTEM_VARS });
 
     return groups;

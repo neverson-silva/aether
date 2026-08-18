@@ -181,7 +181,6 @@ export function EnvEditorModal({
         try {
           el.setSelectionRange(caret, caret);
         } catch {
-          /* input oculto */
         }
       }
     });
