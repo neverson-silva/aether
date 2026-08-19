@@ -42,6 +42,7 @@ type Config struct {
 	DatabaseSSLMode          string
 	DatabaseSchema           string
 	DatabasePoolMin          int
+	DatabasePortBase         int
 	DatabasePoolMax          int
 	DatabaseConnectTimeout   int
 	DatabaseIdleTimeout      int
@@ -103,6 +104,7 @@ func Load() (*Config, error) {
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		DatabaseHost:             envOr("DATABASE_HOST", "127.0.0.1"),
 		DatabasePort:             envInt("DATABASE_PORT", 5432),
+		DatabasePortBase:         envInt("AETHER_DATABASE_PORT_BASE", 20000),
 		DatabaseName:             envOr("DATABASE_NAME", "aether"),
 		DatabaseUser:             envOr("DATABASE_USER", "postgres"),
 		DatabasePassword:         os.Getenv("DATABASE_PASSWORD"),

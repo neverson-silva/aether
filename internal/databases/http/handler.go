@@ -96,6 +96,62 @@ func (h *Handler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
+func (h *Handler) Deploy(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	db, err := h.databases.Deploy(c.Request.Context(), id, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, databaseDTO(db))
+}
+
+func (h *Handler) Rebuild(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	db, err := h.databases.Rebuild(c.Request.Context(), id, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, databaseDTO(db))
+}
+
+func (h *Handler) Start(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	db, err := h.databases.Start(c.Request.Context(), id, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, databaseDTO(db))
+}
+
+func (h *Handler) Stop(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	db, err := h.databases.Stop(c.Request.Context(), id, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, databaseDTO(db))
+}
+
 func databaseDTO(db *domain.Database) gin.H {
 	return gin.H{
 		"id": db.ID, "org_id": db.OrgID, "project_id": db.ProjectID, "name": db.Name,

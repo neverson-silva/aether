@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -132,11 +133,12 @@ func TestGoogleDriveDestination(t *testing.T) {
 
 func TestGoogleConnectRequiresConfig(t *testing.T) {
 	e := newEnv(t)
+	req := httptest.NewRequest("GET", "http://localhost:5173/api/v1/s3-destinations/test/google/connect", nil)
 	dest, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{Name: "drive", Type: domain.TypeGoogleDrive})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := e.svc.GoogleConnect(e.ctx, e.orgID, dest.ID); !errors.Is(err, ErrGoogleNotConfigured) {
+	if _, err := e.svc.GoogleConnect(e.ctx, req, e.orgID, dest.ID); !errors.Is(err, ErrGoogleNotConfigured) {
 		t.Fatalf("sem config deveria falhar: %v", err)
 	}
 	configured, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
@@ -149,18 +151,21 @@ func TestGoogleConnectRequiresConfig(t *testing.T) {
 	if configured.GoogleClientSecretEnc == "secret" || configured.GoogleClientSecretEnc == "" {
 		t.Fatalf("secret deveria estar encriptado: %+v", configured)
 	}
-	authURL, err := e.svc.GoogleConnect(e.ctx, e.orgID, configured.ID)
+	authURL, err := e.svc.GoogleConnect(e.ctx, req, e.orgID, configured.ID)
 	if err != nil {
 		t.Fatalf("connect com config: %v", err)
 	}
 	if !strings.Contains(authURL, "client_id=client") {
 		t.Fatalf("auth url sem client id: %s", authURL)
 	}
+	if !strings.Contains(authURL, url.QueryEscape("http://localhost:5173/api/v1/s3-destinations/google/callback")) {
+		t.Fatalf("auth url sem redirect_uri derivado: %s", authURL)
+	}
 }
 
 func TestGoogleCallbackStateValidation(t *testing.T) {
 	e := newEnv(t)
-	e.svc.PublicURL = "http://localhost:8080"
+	req := httptest.NewRequest("GET", "http://localhost:8080/api/v1/s3-destinations/google/callback", nil)
 	dest, err := e.svc.CreateS3(e.ctx, e.orgID, &domain.S3Destination{
 		Name: "drive", Type: domain.TypeGoogleDrive,
 		GoogleClientID: "client", GoogleClientSecretEnc: "secret",
@@ -168,33 +173,49 @@ func TestGoogleCallbackStateValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	redirect, err := e.svc.GoogleCallback(e.ctx, "bogus-state", "code", "", "")
+	redirect, err := e.svc.GoogleCallback(e.ctx, req, "bogus-state", "code", "", "")
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
 	if !strings.Contains(redirect, "error%3Ainvalid_state") {
 		t.Fatalf("state inválido deveria falhar: %s", redirect)
 	}
-	state, err := e.svc.GoogleConnect(e.ctx, e.orgID, dest.ID)
+	state, err := e.svc.GoogleConnect(e.ctx, req, e.orgID, dest.ID)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	parsed, _ := url.Parse(state)
 	st := parsed.Query().Get("state")
-	redirect, err = e.svc.GoogleCallback(e.ctx, st, "code", "access_denied", "user denied")
+	redirect, err = e.svc.GoogleCallback(e.ctx, req, st, "code", "access_denied", "user denied")
 	if err != nil {
 		t.Fatalf("callback deny: %v", err)
 	}
 	if !strings.Contains(redirect, "error%3Aaccess_denied") {
 		t.Fatalf("deny deveria propagar: %s", redirect)
 	}
-	redirect, _ = e.svc.GoogleCallback(e.ctx, st, "code", "", "")
+	redirect, _ = e.svc.GoogleCallback(e.ctx, req, st, "code", "", "")
 	if !strings.Contains(redirect, "error%3Atoken_exchange") {
 		t.Fatalf("code sem exchange deveria falhar: %s", redirect)
 	}
-	redirect, _ = e.svc.GoogleCallback(e.ctx, st, "code", "", "")
+	redirect, _ = e.svc.GoogleCallback(e.ctx, req, st, "code", "", "")
 	if !strings.Contains(redirect, "error%3Ainvalid_state") {
 		t.Fatalf("state consumido deveria falhar: %s", redirect)
+	}
+}
+
+func TestGoogleBaseURLFromRequest(t *testing.T) {
+	e := newEnv(t)
+	req := httptest.NewRequest("GET", "http://app.example.com/api/v1/s3-destinations/google/callback", nil)
+	if got := e.svc.baseURL(req); got != "http://app.example.com" {
+		t.Fatalf("derivado do host = %q", got)
+	}
+	req.Header.Set("X-Forwarded-Proto", "https")
+	if got := e.svc.baseURL(req); got != "https://app.example.com" {
+		t.Fatalf("derivado com X-Forwarded-Proto = %q", got)
+	}
+	e.svc.PublicURL = "https://aether.myserver.com"
+	if got := e.svc.baseURL(req); got != "https://aether.myserver.com" {
+		t.Fatalf("PublicURL deve ter precedência = %q", got)
 	}
 }
 

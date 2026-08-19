@@ -193,6 +193,7 @@ type Querier interface {
 	TouchAPIKey(ctx context.Context, id uuid.UUID) error
 	UpdateApp(ctx context.Context, arg UpdateAppParams) (App, error)
 	UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (CronJob, error)
+	UpdateDatabasePort(ctx context.Context, arg UpdateDatabasePortParams) error
 	UpdateDatabaseStatus(ctx context.Context, arg UpdateDatabaseStatusParams) error
 	UpdateDeploymentStatus(ctx context.Context, arg UpdateDeploymentStatusParams) error
 	UpdateDomainFields(ctx context.Context, arg UpdateDomainFieldsParams) error

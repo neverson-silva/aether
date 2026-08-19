@@ -17,6 +17,9 @@ type Databases struct {
 	Store     domain.Store
 	Apps      AppStore
 	Passwords domain.PasswordCipher
+	Runtime   ContainerRuntime
+	Network   string
+	PortBase  int
 }
 
 type AppStore interface {

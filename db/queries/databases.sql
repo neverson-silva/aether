@@ -19,6 +19,11 @@ UPDATE databases
 SET status = $2, container_id = $3
 WHERE id = $1;
 
+-- name: UpdateDatabasePort :exec
+UPDATE databases
+SET port = $2
+WHERE id = $1;
+
 -- name: DeleteDatabase :exec
 DELETE FROM databases
 WHERE id = $1 AND org_id = $2;

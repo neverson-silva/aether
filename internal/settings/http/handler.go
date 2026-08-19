@@ -155,7 +155,7 @@ func (h *Handler) GoogleConnect(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	authURL, err := h.settings.GoogleConnect(c.Request.Context(), orgID(c), id)
+	authURL, err := h.settings.GoogleConnect(c.Request.Context(), c.Request, orgID(c), id)
 	if err != nil {
 		abort(c, err)
 		return
@@ -168,7 +168,7 @@ func (h *Handler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
 	oauthErr := c.Query("error")
 	oauthErrDesc := c.Query("error_description")
-	redirect, _ := h.settings.GoogleCallback(c.Request.Context(), state, code, oauthErr, oauthErrDesc)
+	redirect, _ := h.settings.GoogleCallback(c.Request.Context(), c.Request, state, code, oauthErr, oauthErrDesc)
 	c.Redirect(http.StatusFound, redirect)
 }
 
@@ -335,6 +335,7 @@ func s3DTO(d *domain.S3Destination) gin.H {
 		"id": d.ID, "org_id": d.OrgID, "name": d.Name, "type": d.Type,
 		"endpoint": d.Endpoint, "bucket": d.Bucket, "region": d.Region, "account_id": d.AccountID,
 		"oauth_status": d.OAuthStatus, "oauth_email": d.OAuthEmail,
+		"google_client_id": d.GoogleClientID,
 		"created_at": d.CreatedAt, "updated_at": d.UpdatedAt,
 	}
 }
@@ -353,6 +354,8 @@ func abort(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 	case errors.Is(err, domain.ErrForbidden):
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
+	case errors.Is(err, domain.ErrReauthRequired):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "google drive reauthentication required"})
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 	}

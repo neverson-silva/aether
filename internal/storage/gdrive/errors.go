@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 
+	"google.golang.org/api/googleapi"
+
 	"aether/internal/storage"
 )
 
 func mapError(err error) error {
-	var gerr *googleError
+	var gerr *googleapi.Error
 	if !errors.As(err, &gerr) {
 		return err
 	}

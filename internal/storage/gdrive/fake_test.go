@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"google.golang.org/api/googleapi"
 )
 
 type fakeDriveClient struct {
@@ -74,7 +76,7 @@ func (c *fakeDriveClient) realCreateFile(_ context.Context, input CreateFileInpu
 	defer c.mu.Unlock()
 	if input.ParentID != "" {
 		if _, ok := c.files[input.ParentID]; !ok {
-			return nil, &googleError{Code: 404, Message: "parent not found"}
+			return nil, &googleapi.Error{Code: 404, Message: "parent not found"}
 		}
 	}
 	id := c.allocate()
@@ -95,7 +97,7 @@ func (c *fakeDriveClient) realGetFile(_ context.Context, fileID string) (*File, 
 	defer c.mu.Unlock()
 	f, ok := c.files[fileID]
 	if !ok || f.Deleted {
-		return nil, &googleError{Code: 404, Message: "file not found"}
+		return nil, &googleapi.Error{Code: 404, Message: "file not found"}
 	}
 	return fakeToFile(f), nil
 }
@@ -105,7 +107,7 @@ func (c *fakeDriveClient) realUpdateFile(_ context.Context, fileID string, input
 	defer c.mu.Unlock()
 	f, ok := c.files[fileID]
 	if !ok || f.Deleted {
-		return nil, &googleError{Code: 404, Message: "file not found"}
+		return nil, &googleapi.Error{Code: 404, Message: "file not found"}
 	}
 	if input.MimeType != "" {
 		f.MimeType = input.MimeType
@@ -126,7 +128,7 @@ func (c *fakeDriveClient) realDeleteFile(_ context.Context, fileID string) error
 	defer c.mu.Unlock()
 	f, ok := c.files[fileID]
 	if !ok || f.Deleted {
-		return &googleError{Code: 404, Message: "file not found"}
+		return &googleapi.Error{Code: 404, Message: "file not found"}
 	}
 	f.Deleted = true
 	return nil
@@ -155,7 +157,7 @@ func (c *fakeDriveClient) realListFiles(_ context.Context, input ListFilesInput)
 	if input.PageToken != "" {
 		n, err := strconv.Atoi(input.PageToken)
 		if err != nil {
-			return nil, &googleError{Code: 400, Message: "bad token"}
+			return nil, &googleapi.Error{Code: 400, Message: "bad token"}
 		}
 		offset = n
 	}
@@ -177,7 +179,7 @@ func (c *fakeDriveClient) realCopyFile(_ context.Context, fileID string, input C
 	defer c.mu.Unlock()
 	src, ok := c.files[fileID]
 	if !ok || src.Deleted {
-		return nil, &googleError{Code: 404, Message: "file not found"}
+		return nil, &googleapi.Error{Code: 404, Message: "file not found"}
 	}
 	id := c.allocate()
 	f := &fakeFile{
@@ -194,7 +196,7 @@ func (c *fakeDriveClient) realDownloadFile(_ context.Context, fileID string) (io
 	defer c.mu.Unlock()
 	f, ok := c.files[fileID]
 	if !ok || f.Deleted {
-		return nil, &googleError{Code: 404, Message: "file not found"}
+		return nil, &googleapi.Error{Code: 404, Message: "file not found"}
 	}
 	return io.NopCloser(bytes.NewReader(f.Content)), nil
 }

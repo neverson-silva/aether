@@ -350,7 +350,7 @@ func (s *Settings) GoogleProvider(dest *domain.S3Destination) (storage.Provider,
 		return nil, err
 	}
 	return gdrive.NewProvider(gdrive.Config{
-		Client: client, RootFolderID: "root",
+		Client: client, RootFolderID: "root", RootFolderName: dest.Bucket,
 	})
 }
 
@@ -361,10 +361,8 @@ func (s *Settings) TestConnection(ctx context.Context, orgID uuid.UUID, destID u
 		return err
 	}
 	if dest.IsOAuth() {
-		if _, err := s.googleAccessToken(ctx, dest); err != nil {
-			return err
-		}
-		return nil
+		_, err := s.GoogleProvider(dest)
+		return err
 	}
 	provider, err := s.S3Provider(dest)
 	if err != nil {

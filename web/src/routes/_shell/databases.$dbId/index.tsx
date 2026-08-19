@@ -1,16 +1,39 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { useDatabaseDetail, useDeleteDatabase } from "../../../hooks";
+import {
+  useDatabaseDetail,
+  useDeleteDatabase,
+  useDatabaseDeploy,
+  useDatabaseRebuild,
+  useDatabaseStart,
+  useDatabaseStop,
+  useBackups,
+  useBackupDatabase,
+  useRestoreDatabase,
+} from "../../../hooks";
 import { getServer } from "../../../api/client";
 import { TechIcon } from "../../../components/TechIcon";
 import { Button, Card, ConfirmDialog, StatusPill, useToast } from "../../../components/ui";
+import { DbTerminal } from "./-components/DbTerminal";
 
-type Tab = "overview" | "logs" | "metrics" | "settings";
+type Tab = "overview" | "deployments" | "previews" | "terminal" | "metrics" | "logs" | "settings" | "backup";
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "overview", label: "Overview", icon: "dashboard" },
+  { id: "deployments", label: "Deployments", icon: "rocket_launch" },
+  { id: "previews", label: "Previews", icon: "preview" },
+  { id: "terminal", label: "Terminal", icon: "terminal" },
+  { id: "metrics", label: "Metrics", icon: "monitor_heart" },
+  { id: "logs", label: "Logs", icon: "terminal" },
+  { id: "settings", label: "Settings", icon: "settings" },
+  { id: "backup", label: "Backup", icon: "backup" },
+];
 
 function dbPill(status: string): { status: string; pulse: boolean } {
-  if (status === "ready") return { status: "running", pulse: true };
-  if (status === "creating" || status === "starting") return { status: "provisioning", pulse: true };
-  if (status === "failed") return { status: "error", pulse: false };
+  if (status === "ready" || status === "running") return { status: "running", pulse: true };
+  if (status === "creating" || status === "starting" || status === "provisioning") return { status: "provisioning", pulse: true };
+  if (status === "failed" || status === "error") return { status: "error", pulse: false };
+  if (status === "stopped") return { status: "stopped", pulse: false };
   return { status, pulse: false };
 }
 
@@ -25,6 +48,13 @@ function DatabaseDetail() {
   const { dbId } = useParams({ strict: false }) as { dbId: string };
   const { data } = useDatabaseDetail(dbId);
   const deleteDb = useDeleteDatabase();
+  const deploy = useDatabaseDeploy();
+  const rebuild = useDatabaseRebuild();
+  const start = useDatabaseStart();
+  const stop = useDatabaseStop();
+  const backupDb = useBackupDatabase();
+  const restoreDb = useRestoreDatabase();
+  const { data: backups } = useBackups();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("overview");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -36,6 +66,8 @@ function DatabaseDetail() {
   const [loadingStats, setLoadingStats] = useState(false);
 
   const db = data?.database;
+  const running = db?.status === "running" || db?.status === "ready";
+  const dbBackups = (backups ?? []).filter((b) => b.app_id === dbId);
 
   useEffect(() => {
     if (!logFollow) return;
@@ -68,12 +100,12 @@ function DatabaseDetail() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: "overview", label: "Overview", icon: "dashboard" },
-    { id: "logs", label: "Logs", icon: "terminal" },
-    { id: "metrics", label: "Metrics", icon: "monitor_heart" },
-    { id: "settings", label: "Settings", icon: "settings" },
-  ];
+  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+    fn().then(
+      () => toast(okMsg),
+      (e) => toast(e instanceof Error ? e.message : "operation failed", "error")
+    );
+  };
 
   return (
     <div className="space-y-lg">
@@ -90,6 +122,25 @@ function DatabaseDetail() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
+            className="bg-on-surface text-surface hover:bg-on-surface/90"
+            leftIcon="rocket_launch"
+            onClick={() => run(() => deploy.mutateAsync(dbId), "Deploy started")}
+          >
+            Deploy
+          </Button>
+          <Button variant="subtle" leftIcon="refresh" onClick={() => run(() => rebuild.mutateAsync(dbId), "Rebuild started")}>
+            Rebuild
+          </Button>
+          {running ? (
+            <Button variant="danger" leftIcon="stop_circle" onClick={() => run(() => stop.mutateAsync(dbId), "Database stopped")}>
+              Stop
+            </Button>
+          ) : (
+            <Button variant="success" leftIcon="play_arrow" onClick={() => run(() => start.mutateAsync(dbId), "Database started")}>
+              Start
+            </Button>
+          )}
+          <Button
             onClick={() => {
               if (data?.dsn) window.open(`http://127.0.0.1:${db?.port}`, "_blank");
               else toast("Add a domain to open the URL", "error");
@@ -105,12 +156,12 @@ function DatabaseDetail() {
         </div>
       </div>
 
-      <div className="flex items-center gap-sm border-b border-outline-variant">
-        {tabs.map((t) => (
+      <div className="flex items-center gap-sm border-b border-outline-variant overflow-x-auto">
+        {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-sm px-md py-2.5 font-label-caps text-label-caps uppercase border-b-2 -mb-px transition-colors ${
+            className={`flex items-center gap-sm px-md py-2.5 font-label-caps text-label-caps uppercase border-b-2 -mb-px transition-colors whitespace-nowrap ${
               tab === t.id ? "border-primary text-primary" : "border-transparent text-on-surface-variant hover:text-on-surface"
             }`}
           >
@@ -123,6 +174,35 @@ function DatabaseDetail() {
       {tab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 flex flex-col gap-6">
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="font-headline-sm text-headline-sm text-on-surface">Deploy Settings</h3>
+                  <p className="text-body-sm text-on-surface-variant">Deploy, rebuild or control this database</p>
+                </div>
+                <span className="px-3 py-1.5 bg-surface-container-high border border-outline-variant rounded text-body-sm font-medium text-on-surface-variant uppercase">
+                  {db?.engine}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button className="bg-on-surface text-surface hover:bg-on-surface/90" leftIcon="rocket_launch" onClick={() => run(() => deploy.mutateAsync(dbId), "Deploy started")}>
+                  Deploy
+                </Button>
+                <Button variant="subtle" leftIcon="refresh" onClick={() => run(() => rebuild.mutateAsync(dbId), "Rebuild started")}>
+                  Rebuild
+                </Button>
+                {running ? (
+                  <Button variant="danger" leftIcon="stop_circle" onClick={() => run(() => stop.mutateAsync(dbId), "Database stopped")}>
+                    Stop
+                  </Button>
+                ) : (
+                  <Button variant="success" leftIcon="play_arrow" onClick={() => run(() => start.mutateAsync(dbId), "Database started")}>
+                    Start
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <Card>
               <h3 className="font-label-caps text-label-caps text-on-surface-variant mb-6 uppercase">Database details</h3>
               <div className="space-y-4">
@@ -208,6 +288,26 @@ function DatabaseDetail() {
         </div>
       )}
 
+      {tab === "deployments" && (
+        <Card>
+          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Deployments</h2>
+          <p className="font-body-sm text-body-sm text-on-surface-variant">
+            No deployments yet. Use Deploy to start the database container from the official image.
+          </p>
+        </Card>
+      )}
+
+      {tab === "previews" && (
+        <Card>
+          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Previews</h2>
+          <p className="font-body-sm text-body-sm text-on-surface-variant">
+            Deploy previews are available for git-based services. Databases are provisioned from official images and do not support previews.
+          </p>
+        </Card>
+      )}
+
+      {tab === "terminal" && <DbTerminal dbId={dbId} />}
+
       {tab === "logs" && (
         <Card>
           <div className="flex items-center justify-between mb-md">
@@ -268,6 +368,66 @@ function DatabaseDetail() {
             </div>
           )}
         </Card>
+      )}
+
+      {tab === "backup" && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-lg">
+          <Card>
+            <div className="flex items-center justify-between mb-md">
+              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Create backup</h2>
+            </div>
+            <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
+              Create a point-in-time backup of this database to the configured storage destination.
+            </p>
+            <Button
+              leftIcon="backup"
+              onClick={() =>
+                backupDb.mutate(dbId, {
+                  onSuccess: () => toast("Backup created"),
+                  onError: (e) => toast(e.message, "error"),
+                })
+              }
+            >
+              Create backup
+            </Button>
+          </Card>
+          <div className="xl:col-span-2">
+            <Card>
+              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Database backups</h2>
+              {dbBackups.length === 0 ? (
+                <p className="font-body-sm text-body-sm text-on-surface-variant">No backups for this database yet.</p>
+              ) : (
+                <div className="space-y-sm">
+                  {dbBackups.map((b) => (
+                    <div key={b.id} className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60">
+                      <div className="min-w-0">
+                        <p className="font-code-md text-code-md text-on-surface truncate">{b.path}</p>
+                        <p className="font-code-md text-code-md text-on-surface-variant/60">
+                          {fmtBytes(b.size)} · {new Date(b.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        leftIcon="restore"
+                        onClick={() =>
+                          restoreDb.mutate(
+                            { dbId, backupId: b.id },
+                            {
+                              onSuccess: () => toast("Restore started"),
+                              onError: (e) => toast(e.message, "error"),
+                            }
+                          )
+                        }
+                      >
+                        Restore
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
       )}
 
       {tab === "settings" && (

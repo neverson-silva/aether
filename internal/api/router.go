@@ -227,8 +227,13 @@ func (r *Router) routes() {
 		authed.GET("/databases", r.databases.List)
 		authed.GET("/databases/:dbID", r.databases.Get)
 		authed.DELETE("/databases/:dbID", r.databases.Delete)
+		authed.POST("/databases/:dbID/deploy", r.databases.Deploy)
+		authed.POST("/databases/:dbID/rebuild", r.databases.Rebuild)
+		authed.POST("/databases/:dbID/start", r.databases.Start)
+		authed.POST("/databases/:dbID/stop", r.databases.Stop)
 		authed.POST("/databases/:dbID/backup", r.backups.CreateDatabaseBackup)
 		authed.POST("/databases/:dbID/restore", r.backups.RestoreDatabase)
+		authed.GET("/ws/db-terminal/:dbID", r.databases.DbTerminal)
 
 		authed.GET("/backups", r.backups.List)
 		authed.POST("/backups", r.backups.CreateStateBackup)

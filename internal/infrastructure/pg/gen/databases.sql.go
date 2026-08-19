@@ -156,6 +156,22 @@ func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Da
 	return items, nil
 }
 
+const updateDatabasePort = `-- name: UpdateDatabasePort :exec
+UPDATE databases
+SET port = $2
+WHERE id = $1
+`
+
+type UpdateDatabasePortParams struct {
+	ID   uuid.UUID `json:"id"`
+	Port int32     `json:"port"`
+}
+
+func (q *Queries) UpdateDatabasePort(ctx context.Context, arg UpdateDatabasePortParams) error {
+	_, err := q.db.ExecContext(ctx, updateDatabasePort, arg.ID, arg.Port)
+	return err
+}
+
 const updateDatabaseStatus = `-- name: UpdateDatabaseStatus :exec
 UPDATE databases
 SET status = $2, container_id = $3

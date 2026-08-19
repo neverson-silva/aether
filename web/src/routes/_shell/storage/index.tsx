@@ -57,7 +57,7 @@ const PROVIDERS: Record<DestinationType, ProviderDef> = {
   "google-drive": {
     label: "Google Drive",
     description: "Connect your Google account; Drive is exposed through the built-in S3 wrapper.",
-    fields: ["oauth"],
+    fields: ["bucket", "oauth"],
   },
 };
 
@@ -131,7 +131,6 @@ export function Storage() {
   useEffect(() => {
     if (type === "google-drive") {
       setValue("endpoint", "");
-      setValue("bucket", "");
       setValue("region", "");
       setValue("account_id", "");
       setValue("access_key", "");
@@ -169,6 +168,7 @@ export function Storage() {
       } else {
         if (!editing || v.google_client_id) body.google_client_id = v.google_client_id || "";
         if (!editing || v.google_client_secret) body.google_client_secret = v.google_client_secret || "";
+        body.bucket = v.bucket || "";
       }
       if (editing) {
         await updateS3.mutateAsync({ id: editing.id, body });
@@ -285,7 +285,7 @@ export function Storage() {
                     <Input icon="badge" placeholder="xxxx.apps.googleusercontent.com" {...register("google_client_id")} />
                   </Field>
                   <Field label="Client Secret" hint={errors.google_client_secret?.message}>
-                    <Input icon="vpn_key" type="password" placeholder={editing ? "Leave blank to keep" : "GOCSPX-..."} {...register("google_client_secret")} />
+                    <Input icon="vpn_key" type="password" placeholder={editing ? "•••••••• (leave blank to keep)" : "GOCSPX-..."} {...register("google_client_secret")} />
                   </Field>
                 </div>
                 {editing && (
@@ -302,8 +302,11 @@ export function Storage() {
             )}
 
             {showField("bucket") && (
-              <Field label="Bucket" hint={errors.bucket?.message}>
-                <Input icon="storage" placeholder="aether-backups" {...register("bucket")} />
+              <Field
+                label={type === "google-drive" ? "Root folder name" : "Bucket"}
+                hint={errors.bucket?.message || (type === "google-drive" ? "Folder created at the root of Drive; empty = Drive root" : undefined)}
+              >
+                <Input icon="storage" placeholder={type === "google-drive" ? "aether-backups" : "aether-backups"} {...register("bucket")} />
               </Field>
             )}
 

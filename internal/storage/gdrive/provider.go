@@ -1,6 +1,7 @@
 package gdrive
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,10 +11,10 @@ import (
 )
 
 type Config struct {
-	Client       *http.Client
-	RootFolderID string
-	BaseURL      string
-	UploadBase   string
+	Client         *http.Client
+	RootFolderID   string
+	RootFolderName string
+	BaseURL        string
 }
 
 type Provider struct {
@@ -29,9 +30,21 @@ func NewProvider(config Config) (*Provider, error) {
 	if strings.TrimSpace(config.RootFolderID) == "" {
 		return nil, errors.New("gdrive: root folder id is required")
 	}
+	client, err := newDriveServiceClient(config.Client, config.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	rootID := config.RootFolderID
+	if name := strings.TrimSpace(config.RootFolderName); name != "" && name != "root" {
+		id, err := resolveRootFolder(context.Background(), client, name)
+		if err != nil {
+			return nil, err
+		}
+		rootID = id
+	}
 	return &Provider{
-		client: newDriveHTTPClient(config.Client, config.BaseURL, config.UploadBase),
-		rootID: config.RootFolderID,
+		client: client,
+		rootID: rootID,
 		caps: storage.Capabilities{
 			Streaming:       true,
 			ResumableUpload: true,
@@ -70,4 +83,21 @@ func (p *Provider) normalizeKey(key string) (string, error) {
 		return "", fmt.Errorf("%w: %q", storage.ErrInvalidObjectKey, key)
 	}
 	return nk, nil
+}
+
+func resolveRootFolder(ctx context.Context, client DriveClient, name string) (string, error) {
+	out, err := client.ListFiles(ctx, ListFilesInput{ParentID: "root", Name: name, MimeType: folderMIME, PageSize: 100})
+	if err != nil {
+		return "", err
+	}
+	for _, f := range out.Files {
+		if f.Name == name && f.MimeType == folderMIME {
+			return f.ID, nil
+		}
+	}
+	f, err := client.CreateFile(ctx, CreateFileInput{Name: name, MimeType: folderMIME, ParentID: "root"})
+	if err != nil {
+		return "", err
+	}
+	return f.ID, nil
 }

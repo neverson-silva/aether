@@ -65,6 +65,10 @@ func (s *Store) UpdateDatabaseStatus(ctx context.Context, id uuid.UUID, status, 
 	return mapErr(s.q.UpdateDatabaseStatus(ctx, gen.UpdateDatabaseStatusParams{ID: id, Status: status, ContainerID: containerID}))
 }
 
+func (s *Store) UpdateDatabasePort(ctx context.Context, id uuid.UUID, port int) error {
+	return mapErr(s.q.UpdateDatabasePort(ctx, gen.UpdateDatabasePortParams{ID: id, Port: int32(port)}))
+}
+
 func (s *Store) DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error {
 	return mapErr(s.q.DeleteDatabase(ctx, gen.DeleteDatabaseParams{ID: id, OrgID: orgID}))
 }

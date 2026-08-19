@@ -200,7 +200,7 @@ func main() {
 		os.Exit(1)
 	}
 	databasesStore := databasesInfra.NewStore(pool)
-	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher}
+	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, PortBase: cfg.DatabasePortBase}
 	databasesHandler := databaseshttp.New(databasesSvc)
 
 	backupsStore := backupsInfra.NewStore(pool)

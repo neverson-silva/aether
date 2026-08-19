@@ -25,7 +25,7 @@ const (
 )
 
 // GoogleConnect starts the OAuth flow for a Google Drive destination.
-func (s *Settings) GoogleConnect(ctx context.Context, orgID, destID uuid.UUID) (string, error) {
+func (s *Settings) GoogleConnect(ctx context.Context, r *http.Request, orgID, destID uuid.UUID) (string, error) {
 	dest, err := s.Store.GetS3(ctx, destID, orgID)
 	if err != nil {
 		return "", err
@@ -48,13 +48,29 @@ func (s *Settings) GoogleConnect(ctx context.Context, orgID, destID uuid.UUID) (
 	}
 	params := url.Values{}
 	params.Set("client_id", dest.GoogleClientID)
-	params.Set("redirect_uri", s.googleRedirectURI())
+	params.Set("redirect_uri", s.googleRedirectURI(r))
 	params.Set("response_type", "code")
 	params.Set("scope", googleDriveScope)
 	params.Set("state", state)
 	params.Set("access_type", "offline")
 	params.Set("prompt", "consent")
 	return googleAuthEndpoint + "?" + params.Encode(), nil
+}
+
+func (s *Settings) baseURL(r *http.Request) string {
+	if s.PublicURL != "" {
+		return strings.TrimSuffix(s.PublicURL, "/")
+	}
+	if r == nil {
+		return ""
+	}
+	scheme := "http"
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
 }
 
 // googleClientSecret returns the destination's OAuth client secret.
@@ -81,11 +97,11 @@ type googleUserInfo struct {
 	Email string `json:"email"`
 }
 
-func (s *Settings) googleRedirectURI() string {
+func (s *Settings) googleRedirectURI(r *http.Request) string {
 	if s.GoogleRedirectURI != "" {
 		return s.GoogleRedirectURI
 	}
-	return strings.TrimSuffix(s.PublicURL, "/") + "/api/v1/s3-destinations/google/callback"
+	return s.baseURL(r) + "/api/v1/s3-destinations/google/callback"
 }
 
 func (s *Settings) httpClient() *http.Client {
@@ -96,9 +112,10 @@ func (s *Settings) httpClient() *http.Client {
 }
 
 // GoogleCallback validates the OAuth state and exchanges the code for tokens.
-func (s *Settings) GoogleCallback(ctx context.Context, state, code, oauthError, oauthErrorDescription string) (string, error) {
+func (s *Settings) GoogleCallback(ctx context.Context, r *http.Request, state, code, oauthError, oauthErrorDescription string) (string, error) {
+	base := s.baseURL(r)
 	redirect := func(status string) string {
-		return strings.TrimSuffix(s.PublicURL, "/") + "/storage?oauth=google-drive&status=" + url.QueryEscape(status)
+		return base + "/storage?oauth=google-drive&status=" + url.QueryEscape(status)
 	}
 	if oauthError != "" {
 		return redirect("error:" + oauthError), nil
@@ -122,7 +139,7 @@ func (s *Settings) GoogleCallback(ctx context.Context, state, code, oauthError, 
 		return redirect("error:not_configured"), nil
 	}
 
-	tokens, err := s.exchangeCode(ctx, code, dest.GoogleClientID, secret)
+	tokens, err := s.exchangeCode(ctx, code, dest.GoogleClientID, secret, s.googleRedirectURI(r))
 	if err != nil {
 		return redirect("error:token_exchange"), nil
 	}
@@ -144,14 +161,16 @@ func (s *Settings) GoogleCallback(ctx context.Context, state, code, oauthError, 
 	if err := s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthConnected, email, accessEnc, refreshEnc); err != nil {
 		return redirect("error:storage"), nil
 	}
+	dest.OAuthStatus = domain.OAuthConnected
+	_, _ = s.GoogleProvider(dest)
 	return redirect("connected"), nil
 }
 
-func (s *Settings) exchangeCode(ctx context.Context, code, clientID, clientSecret string) (googleTokenResponse, error) {
+func (s *Settings) exchangeCode(ctx context.Context, code, clientID, clientSecret, redirectURI string) (googleTokenResponse, error) {
 	form := url.Values{}
 	form.Set("client_id", clientID)
 	form.Set("client_secret", clientSecret)
-	form.Set("redirect_uri", s.googleRedirectURI())
+	form.Set("redirect_uri", redirectURI)
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
 	return s.tokenRequest(ctx, form)

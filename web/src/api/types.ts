@@ -206,6 +206,9 @@ export interface Backup {
   path: string;
   size: number;
   created_at: string;
+  kind?: string;
+  dest?: string;
+  app_id?: string;
 }
 
 export interface LoginResponse {

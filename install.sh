@@ -12,7 +12,7 @@ NET_NAME="${AETHER_NET:-aether-net}"
 
 PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
-PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-5432}}"
+PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
 
 REDIS_CONTAINER="aether-redis"
 REDIS_IMAGE="${AETHER_REDIS_IMAGE:-docker.io/library/redis:7-alpine}"
@@ -336,6 +336,8 @@ load_db_credentials() {
 DB_USER='$DB_USER'
 DB_NAME='$DB_NAME'
 DB_PASSWORD='$DB_PASSWORD'
+PG_PORT='$PG_PORT'
+REDIS_PORT='$REDIS_PORT'
 EOF
   chmod 600 "$CRED_FILE"
   info "Database credentials generated automatically (saved to $CRED_FILE, 0600)."

@@ -63,5 +63,6 @@ type Store interface {
 	GetDatabase(ctx context.Context, id uuid.UUID) (*Database, error)
 	ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Database, error)
 	UpdateDatabaseStatus(ctx context.Context, id uuid.UUID, status, containerID string) error
+	UpdateDatabasePort(ctx context.Context, id uuid.UUID, port int) error
 	DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error
 }

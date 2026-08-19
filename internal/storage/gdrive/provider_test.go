@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/api/googleapi"
+
 	"aether/internal/storage"
 )
 
@@ -325,7 +327,7 @@ func TestErrorMapping(t *testing.T) {
 	client.files["locked"] = &fakeFile{ID: "locked", Name: "locked", MimeType: "application/octet-stream", ParentID: client.rootID}
 	client.mu.Unlock()
 	client.deleteFile = func(_ context.Context, fileID string) error {
-		return &googleError{Code: 403, Message: "forbidden"}
+		return &googleapi.Error{Code: 403, Message: "forbidden"}
 	}
 	err = p.DeleteObject(ctx, storage.DeleteObjectInput{Key: "locked"})
 	if !errors.Is(err, storage.ErrPermissionDenied) {
@@ -334,7 +336,7 @@ func TestErrorMapping(t *testing.T) {
 
 	// Drive 401 -> ErrAuthentication
 	client.listFiles = func(_ context.Context, _ ListFilesInput) (*ListFilesOutput, error) {
-		return nil, &googleError{Code: 401, Message: "unauthorized"}
+		return nil, &googleapi.Error{Code: 401, Message: "unauthorized"}
 	}
 	_, err = p.ListObjects(ctx, storage.ListObjectsInput{})
 	if !errors.Is(err, storage.ErrAuthentication) {
@@ -350,7 +352,7 @@ func TestContextPropagation(t *testing.T) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
-			return nil, &googleError{Code: 500, Message: "should not happen"}
+			return nil, &googleapi.Error{Code: 500, Message: "should not happen"}
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
