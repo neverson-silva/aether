@@ -85,6 +85,11 @@ func (p *Provider) normalizeKey(key string) (string, error) {
 	return nk, nil
 }
 
+// EnsureRootFolder resolves or creates a top-level folder with the given name.
+func EnsureRootFolder(ctx context.Context, client DriveClient, name string) (string, error) {
+	return resolveRootFolder(ctx, client, name)
+}
+
 func resolveRootFolder(ctx context.Context, client DriveClient, name string) (string, error) {
 	out, err := client.ListFiles(ctx, ListFilesInput{ParentID: "root", Name: name, MimeType: folderMIME, PageSize: 100})
 	if err != nil {

@@ -1,26 +1,30 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import {
+import { createFileRoute, useParams, useRouter } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";import {
   useDatabaseDetail,
   useDeleteDatabase,
   useDatabaseDeploy,
   useDatabaseRebuild,
   useDatabaseStart,
   useDatabaseStop,
+  useDatabaseDeployments,
   useBackups,
   useBackupDatabase,
   useRestoreDatabase,
 } from "../../../hooks";
+import type { DatabaseDeployment } from "../../../hooks/use-database-deployments";
 import { getServer } from "../../../api/client";
 import { TechIcon } from "../../../components/TechIcon";
-import { Button, Card, ConfirmDialog, StatusPill, useToast } from "../../../components/ui";
+import { Button, Card, ConfirmDialog, StatusPill, DeploymentStatus, useToast } from "../../../components/ui";
 import { DbTerminal } from "./-components/DbTerminal";
+import { DatabaseDeploymentLogModal } from "./-components/DatabaseDeploymentLogModal";
+import { DomainsPanel } from "../../../components/DomainsPanel";
 
-type Tab = "overview" | "deployments" | "previews" | "terminal" | "metrics" | "logs" | "settings" | "backup";
+type Tab = "overview" | "deployments" | "domains" | "previews" | "terminal" | "metrics" | "logs" | "settings" | "backup";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "overview", label: "Overview", icon: "dashboard" },
   { id: "deployments", label: "Deployments", icon: "rocket_launch" },
+  { id: "domains", label: "Domains", icon: "language" },
   { id: "previews", label: "Previews", icon: "preview" },
   { id: "terminal", label: "Terminal", icon: "terminal" },
   { id: "metrics", label: "Metrics", icon: "monitor_heart" },
@@ -31,7 +35,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 function dbPill(status: string): { status: string; pulse: boolean } {
   if (status === "ready" || status === "running") return { status: "running", pulse: true };
-  if (status === "creating" || status === "starting" || status === "provisioning") return { status: "provisioning", pulse: true };
+  if (status === "creating" || status === "starting" || status === "provisioning") return { status: "pending deploy", pulse: true };
   if (status === "failed" || status === "error") return { status: "error", pulse: false };
   if (status === "stopped") return { status: "stopped", pulse: false };
   return { status, pulse: false };
@@ -46,6 +50,7 @@ function fmtBytes(n: number): string {
 
 function DatabaseDetail() {
   const { dbId } = useParams({ strict: false }) as { dbId: string };
+  const router = useRouter();
   const { data } = useDatabaseDetail(dbId);
   const deleteDb = useDeleteDatabase();
   const deploy = useDatabaseDeploy();
@@ -55,10 +60,12 @@ function DatabaseDetail() {
   const backupDb = useBackupDatabase();
   const restoreDb = useRestoreDatabase();
   const { data: backups } = useBackups();
+  const { data: deployments } = useDatabaseDeployments(dbId);
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("overview");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [logDep, setLogDep] = useState<DatabaseDeployment | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logFollow, setLogFollow] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
@@ -100,6 +107,8 @@ function DatabaseDetail() {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const maskedDsn = (dsn: string) => dsn.replace(/\/\/[^@/]+@/, "//***@");
+
   const run = (fn: () => Promise<unknown>, okMsg: string) => {
     fn().then(
       () => toast(okMsg),
@@ -122,27 +131,14 @@ function DatabaseDetail() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
-            className="bg-on-surface text-surface hover:bg-on-surface/90"
-            leftIcon="rocket_launch"
-            onClick={() => run(() => deploy.mutateAsync(dbId), "Deploy started")}
+            onClick={() => router.navigate({ to: "/databases/$dbId/studio", params: { dbId } })}
           >
-            Deploy
+            <span className="material-symbols-outlined text-[18px]">table_view</span>
+            Open Studio
           </Button>
-          <Button variant="subtle" leftIcon="refresh" onClick={() => run(() => rebuild.mutateAsync(dbId), "Rebuild started")}>
-            Rebuild
-          </Button>
-          {running ? (
-            <Button variant="danger" leftIcon="stop_circle" onClick={() => run(() => stop.mutateAsync(dbId), "Database stopped")}>
-              Stop
-            </Button>
-          ) : (
-            <Button variant="success" leftIcon="play_arrow" onClick={() => run(() => start.mutateAsync(dbId), "Database started")}>
-              Start
-            </Button>
-          )}
           <Button
             onClick={() => {
-              if (data?.dsn) window.open(`http://127.0.0.1:${db?.port}`, "_blank");
+              if (data?.dsn) window.open(`http://${data.public_host || "127.0.0.1"}:${db?.port}`, "_blank");
               else toast("Add a domain to open the URL", "error");
             }}
           >
@@ -267,7 +263,7 @@ function DatabaseDetail() {
                 </Button>
               </div>
               <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-md font-code-md text-code-md text-on-surface break-all">
-                {data?.dsn ?? "Loading..."}
+                {data?.dsn ? maskedDsn(data.dsn) : "Loading..."}
               </div>
               <p className="font-code-md text-code-md text-on-surface-variant/60 mt-sm">
                 The connection string is only shown here and in the environment variables of this project's services.
@@ -291,11 +287,51 @@ function DatabaseDetail() {
       {tab === "deployments" && (
         <Card>
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Deployments</h2>
-          <p className="font-body-sm text-body-sm text-on-surface-variant">
-            No deployments yet. Use Deploy to start the database container from the official image.
-          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-outline-variant font-label-caps text-label-caps text-on-surface-variant/60 uppercase">
+                  <th className="px-sm py-2">#</th>
+                  <th className="px-sm py-2">Status</th>
+                  <th className="px-sm py-2">Trigger</th>
+                  <th className="px-sm py-2">Container</th>
+                  <th className="px-sm py-2">Started</th>
+                  <th className="px-sm py-2">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(deployments ?? []).map((d) => (
+                  <tr key={d.id} onClick={() => setLogDep(d)} className="border-b border-outline-variant/40 hover:bg-surface-container-high transition-colors cursor-pointer">
+                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant">#{d.number}</td>
+                    <td className="px-sm py-2">
+                      <DeploymentStatus status={d.status} />
+                    </td>
+                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant">{d.trigger}</td>
+                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant/60 max-w-[220px] truncate">{d.container_id || "—"}</td>
+                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant/60">
+                      {d.created_at ? new Date(d.created_at).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                    </td>
+                    <td className="px-sm py-2">
+                      {d.error ? (
+                        <span className="font-code-md text-code-md text-error/80 max-w-[180px] truncate inline-block align-middle" title={d.error}>{d.error}</span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {(deployments ?? []).length === 0 && (
+            <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">
+              No deployments yet. Use Deploy to start the database container from the official image.
+            </p>
+          )}
         </Card>
       )}
+
+      <DatabaseDeploymentLogModal dbId={dbId} deployment={logDep} onClose={() => setLogDep(null)} />
 
       {tab === "previews" && (
         <Card>
@@ -307,6 +343,8 @@ function DatabaseDetail() {
       )}
 
       {tab === "terminal" && <DbTerminal dbId={dbId} />}
+
+      {tab === "domains" && <DomainsPanel kind="databases" id={dbId} />}
 
       {tab === "logs" && (
         <Card>
@@ -454,7 +492,7 @@ function DatabaseDetail() {
           deleteDb.mutate(dbId, {
             onSuccess: () => {
               toast("Database deleted");
-              window.location.href = "/databases";
+              window.location.href = `/projects/${db?.project_id}`;
             },
             onError: (e) => toast(e.message, "error"),
           })

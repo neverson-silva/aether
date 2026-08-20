@@ -241,6 +241,7 @@ type Domain struct {
 	RetryCount    int32         `json:"retry_count"`
 	LastError     string        `json:"last_error"`
 	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
+	ServiceType   string        `json:"service_type"`
 }
 
 type EnvVariable struct {

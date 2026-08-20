@@ -73,6 +73,8 @@ func (f *fakeRuntime) Remove(ctx context.Context, containerID string) error {
 	return nil
 }
 
+func (f *fakeRuntime) RemoveByLabel(ctx context.Context, label string) error { return nil }
+
 func (f *fakeRuntime) FollowLogs(ctx context.Context, containerID string, writer io.Writer) error {
 	return nil
 }
@@ -228,6 +230,10 @@ func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (ContainerS
 
 func (f *fakeRuntime) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
 	return nil, nil
+}
+
+func (f *fakeRuntime) Exec(ctx context.Context, containerID string, env []string, args ...string) (string, string, error) {
+	return "", "", nil
 }
 
 func TestWorkerDeployGitBuild(t *testing.T) {

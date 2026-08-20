@@ -122,6 +122,7 @@ func (h *Handler) DeleteCompose(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
+	_ = h.compose.Down(c.Request.Context(), id, orgID(c))
 	if err := h.templates.DeleteCompose(c.Request.Context(), id, orgID(c)); err != nil {
 		abort(c, err)
 		return

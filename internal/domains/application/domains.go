@@ -9,17 +9,34 @@ import (
 	"github.com/google/uuid"
 
 	appsdomain "aether/internal/apps/domain"
+	databasesdomain "aether/internal/databases/domain"
 	"aether/internal/domains/domain"
+)
+
+const (
+	ServiceTypeApp = "app"
+	ServiceTypeDB  = "db"
 )
 
 type Domains struct {
 	Store       domain.Store
 	Apps        AppStore
+	DBs         DBStore
 	Provisioner *Provisioner
 }
 
 type AppStore interface {
 	GetApp(ctx context.Context, id, orgID uuid.UUID) (*appsdomain.App, error)
+}
+
+type DBStore interface {
+	GetDatabase(ctx context.Context, id uuid.UUID) (*databasesdomain.Database, error)
+}
+
+type serviceRef struct {
+	alias string
+	name  string
+	port  int
 }
 
 type AddDomainInput struct {
@@ -32,8 +49,30 @@ type AddDomainInput struct {
 	ServerID      uuid.UUID
 }
 
-func (d *Domains) Add(ctx context.Context, appID, orgID uuid.UUID, in AddDomainInput) (*domain.Domain, error) {
-	app, err := d.Apps.GetApp(ctx, appID, orgID)
+func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, serviceType string, orgID uuid.UUID) (*serviceRef, error) {
+	if serviceType == ServiceTypeDB {
+		db, err := d.DBs.GetDatabase(ctx, serviceID)
+		if err != nil {
+			return nil, err
+		}
+		if db.OrgID != orgID {
+			return nil, domain.ErrNotFound
+		}
+		return &serviceRef{alias: d.Provisioner.Alias(serviceID, serviceType), name: db.Name, port: db.Port}, nil
+	}
+	app, err := d.Apps.GetApp(ctx, serviceID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	port := app.Port
+	if app.BuildType == "custom" {
+		port = 80
+	}
+	return &serviceRef{alias: d.Provisioner.Alias(serviceID, ServiceTypeApp), name: app.Name, port: port}, nil
+}
+
+func (d *Domains) Add(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, in AddDomainInput) (*domain.Domain, error) {
+	ref, err := d.resolveService(ctx, serviceID, serviceType, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -42,14 +81,10 @@ func (d *Domains) Add(ctx context.Context, appID, orgID uuid.UUID, in AddDomainI
 		return nil, err
 	}
 	if in.ContainerPort <= 0 {
-		if app.BuildType == "custom" {
-			in.ContainerPort = 80
-		} else {
-			in.ContainerPort = app.Port
-		}
+		in.ContainerPort = ref.port
 	}
 	dom, err := d.Store.CreateDomain(ctx, &domain.Domain{
-		AppID: appID, ServerID: in.ServerID, Host: in.Host, HTTPS: in.HTTPS,
+		AppID: serviceID, ServiceType: serviceType, ServerID: in.ServerID, Host: in.Host, HTTPS: in.HTTPS,
 		Path: orDefault(in.Path, "/"), InternalPath: orDefault(in.InternalPath, "/"),
 		StripPath: in.StripPath, ContainerPort: in.ContainerPort,
 		Status: string(domain.DomainProvisioning),
@@ -60,52 +95,52 @@ func (d *Domains) Add(ctx context.Context, appID, orgID uuid.UUID, in AddDomainI
 	return dom, nil
 }
 
-func (d *Domains) GenerateFreeDomain(ctx context.Context, appID, orgID uuid.UUID, https bool) (*domain.Domain, error) {
-	app, err := d.Apps.GetApp(ctx, appID, orgID)
+func (d *Domains) GenerateFreeDomain(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, https bool) (*domain.Domain, error) {
+	ref, err := d.resolveService(ctx, serviceID, serviceType, orgID)
 	if err != nil {
 		return nil, err
 	}
 	in := AddDomainInput{
-		Host: d.Provisioner.GenerateFreeDomain(app.Name), HTTPS: https,
+		Host: d.Provisioner.GenerateFreeDomain(ref.name, serviceID), HTTPS: https,
 		Path: "/", InternalPath: "/",
 	}
-	return d.Add(ctx, appID, orgID, in)
+	return d.Add(ctx, serviceID, orgID, serviceType, in)
 }
 
-func (d *Domains) List(ctx context.Context, appID, orgID uuid.UUID) ([]domain.Domain, error) {
-	if _, err := d.Apps.GetApp(ctx, appID, orgID); err != nil {
+func (d *Domains) List(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string) ([]domain.Domain, error) {
+	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
 		return nil, err
 	}
-	return d.Store.ListDomains(ctx, appID)
+	return d.Store.ListDomains(ctx, serviceID)
 }
 
-func (d *Domains) Remove(ctx context.Context, appID, orgID uuid.UUID, host string) error {
-	if _, err := d.Apps.GetApp(ctx, appID, orgID); err != nil {
+func (d *Domains) Remove(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, host string) error {
+	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
 		return err
 	}
-	dom, err := d.Store.GetDomainByHost(ctx, appID, strings.ToLower(host))
+	dom, err := d.Store.GetDomainByHost(ctx, serviceID, strings.ToLower(host))
 	if err != nil {
 		return err
 	}
-	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, appID, string(domain.DomainRemoving), dom.CertStatus)
+	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, serviceID, string(domain.DomainRemoving), dom.CertStatus)
 	if err := d.Provisioner.RemoveDomainConfig(dom); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, appID, string(domain.DomainRemoved), dom.CertStatus)
-	return d.Store.DeleteDomain(ctx, dom.ID, appID)
+	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, serviceID, string(domain.DomainRemoved), dom.CertStatus)
+	return d.Store.DeleteDomain(ctx, dom.ID, serviceID)
 }
 
-func (d *Domains) Reprovision(ctx context.Context, appID, orgID uuid.UUID, domainID uuid.UUID) error {
-	dom, err := d.getAppDomain(ctx, appID, orgID, domainID)
+func (d *Domains) Reprovision(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, domainID uuid.UUID) error {
+	dom, err := d.getServiceDomain(ctx, serviceID, orgID, domainID, serviceType)
 	if err != nil {
 		return err
 	}
-	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, appID, string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
+	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, serviceID, string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
 	return nil
 }
 
-func (d *Domains) UpdateDomain(ctx context.Context, appID, orgID uuid.UUID, domainID uuid.UUID, in AddDomainInput) error {
-	dom, err := d.getAppDomain(ctx, appID, orgID, domainID)
+func (d *Domains) UpdateDomain(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, domainID uuid.UUID, in AddDomainInput) error {
+	dom, err := d.getServiceDomain(ctx, serviceID, orgID, domainID, serviceType)
 	if err != nil {
 		return err
 	}
@@ -116,33 +151,33 @@ func (d *Domains) UpdateDomain(ctx context.Context, appID, orgID uuid.UUID, doma
 	if in.ContainerPort <= 0 {
 		in.ContainerPort = dom.ContainerPort
 	}
-	_ = d.Store.UpdateDomainFields(ctx, dom.ID, appID, in.Host, in.HTTPS,
+	_ = d.Store.UpdateDomainFields(ctx, dom.ID, serviceID, in.Host, in.HTTPS,
 		orDefault(in.Path, "/"), orDefault(in.InternalPath, "/"), in.StripPath, in.ContainerPort)
 	return nil
 }
 
-func (d *Domains) GetDomain(ctx context.Context, appID, orgID uuid.UUID, domainID uuid.UUID) (*domain.Domain, error) {
-	return d.getAppDomain(ctx, appID, orgID, domainID)
+func (d *Domains) GetDomain(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, domainID uuid.UUID) (*domain.Domain, error) {
+	return d.getServiceDomain(ctx, serviceID, orgID, domainID, serviceType)
 }
 
-func (d *Domains) Verify(ctx context.Context, appID, orgID uuid.UUID, domainID uuid.UUID) error {
-	dom, err := d.getAppDomain(ctx, appID, orgID, domainID)
+func (d *Domains) Verify(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, domainID uuid.UUID) error {
+	dom, err := d.getServiceDomain(ctx, serviceID, orgID, domainID, serviceType)
 	if err != nil {
 		return err
 	}
-	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, appID, string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
+	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, serviceID, string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
 	return nil
 }
 
-func (d *Domains) getAppDomain(ctx context.Context, appID, orgID, domainID uuid.UUID) (*domain.Domain, error) {
-	if _, err := d.Apps.GetApp(ctx, appID, orgID); err != nil {
+func (d *Domains) getServiceDomain(ctx context.Context, serviceID, orgID, domainID uuid.UUID, serviceType string) (*domain.Domain, error) {
+	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
 		return nil, err
 	}
 	dom, err := d.Store.GetDomainByID(ctx, domainID)
 	if err != nil {
 		return nil, err
 	}
-	if dom.AppID != appID {
+	if dom.AppID != serviceID {
 		return nil, domain.ErrNotFound
 	}
 	return dom, nil

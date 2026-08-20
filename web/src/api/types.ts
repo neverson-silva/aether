@@ -178,6 +178,7 @@ export interface Stats {
 export interface Domain {
   id: string;
   app_id: string;
+  service_type: string;
   server_id: string;
   host: string;
   https: boolean;
@@ -189,6 +190,11 @@ export interface Domain {
   cert_status: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface HostInfo {
+  public_ip: string;
+  free_domain_base: string;
 }
 
 export interface TimelineEvent {
@@ -302,4 +308,116 @@ export interface NotificationChannel {
   type: string;
   enabled: boolean;
   created_at: string;
+}
+
+export interface StudioMeta {
+  engine: string;
+  version: string;
+  status: string;
+  schemas: number;
+  tables: number;
+  views: number;
+  functions: number;
+}
+
+export interface StudioObject {
+  name: string;
+  type: string;
+}
+
+export interface StudioObjectSummary {
+  tables: number;
+  views: number;
+  mat_views: number;
+  functions: number;
+  procedures: number;
+  triggers: number;
+  sequences: number;
+  types: number;
+  extensions: number;
+}
+
+export interface StudioColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  default?: string | null;
+  primary_key: boolean;
+  unique: boolean;
+  identity: string;
+  generated: string;
+  collation?: string | null;
+  comment: string;
+}
+
+export interface StudioIndex {
+  name: string;
+  method: string;
+  unique: boolean;
+  columns: string[];
+  predicate: string;
+  primary: boolean;
+}
+
+export interface StudioConstraint {
+  name: string;
+  type: string;
+  column: string;
+  ref_table?: string;
+  ref_column?: string;
+  definition: string;
+}
+
+export interface StudioForeignKey {
+  name: string;
+  columns: string[];
+  ref_table: string;
+  ref_columns: string[];
+  on_delete: string;
+  on_update: string;
+}
+
+export interface StudioTrigger {
+  name: string;
+  event: string;
+  timing: string;
+  function: string;
+  enabled: string;
+}
+
+export interface StudioTableDetail {
+  schema: string;
+  name: string;
+  type: string;
+  owner: string;
+  columns: StudioColumn[];
+  indexes: StudioIndex[];
+  constraints: StudioConstraint[];
+  foreign_keys: StudioForeignKey[];
+  triggers: StudioTrigger[];
+}
+
+export interface StudioQueryError {
+  message: string;
+  position?: number;
+  line?: number;
+  column?: number;
+  suggestion?: string;
+}
+
+export interface StudioQueryResult {
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+  duration_ms: number;
+  read_only: boolean;
+  truncated: boolean;
+  message?: string;
+  error?: StudioQueryError;
+}
+
+export interface StudioExecResult {
+  message: string;
+  command_tag: string;
+  duration_ms: number;
 }

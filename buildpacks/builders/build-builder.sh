@@ -11,19 +11,19 @@
 # Depois: pack build my-app -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
 # ============================================================================
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
 
 ARCH="${1:-$(uname -m)}"
 case "$ARCH" in
-  x86_64|amd64) LIFE_ARCH="x86_64"; REG_ARCH="" ;;
-  aarch64|arm64) LIFE_ARCH="aarch64"; REG_ARCH="" ;;
+  x86_64|amd64) LIFE_ARCH="x86-64"; REG_ARCH="" ;;
+  aarch64|arm64) LIFE_ARCH="arm64"; REG_ARCH="" ;;
   *) echo "arch não suportada: $ARCH"; exit 1 ;;
 esac
 
 REGISTRY="127.0.0.1:5000"
 BUILDER_TAG="$REGISTRY/builder:node-spa"
-LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.15}"
+LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
 RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
 STACK_ID="io.buildpacks.stacks.aether"
 
@@ -58,8 +58,8 @@ mkdir -p "$CTX/cnb/lifecycle" "$CTX/cnb/buildpacks"
 # 2.1 lifecycle (CNB)
 LIF_VER_FULL="${LIFECYCLE_VER#v}"
 info "baixando lifecycle $LIF_VER_FULL ($LIFE_ARCH)..."
-curl -fsSLo /tmp/lifecycle.tgz "https://github.com/buildpacks/lifecycle/releases/download/v$LIF_VER_FULL/lifecycle-v$LIF_VER_FULL-linux-$LIFE_ARCH.tgz"
-tar -xzf /tmp/lifecycle.tgz -C "$CTX/cnb/lifecycle"
+curl -fsSLo /tmp/lifecycle.tgz "https://github.com/buildpacks/lifecycle/releases/download/v$LIF_VER_FULL/lifecycle-v$LIF_VER_FULL+linux.$LIFE_ARCH.tgz"
+tar -xzf /tmp/lifecycle.tgz -C "$CTX/cnb"
 rm -f /tmp/lifecycle.tgz
 chmod +x "$CTX/cnb/lifecycle"/*
 "$CTX/cnb/lifecycle/lifecycle" version || true
@@ -69,9 +69,9 @@ BP_META_JSON="["
 for i in "${!ORDER_BPS[@]}"; do
   bp="${ORDER_BPS[$i]}"
   ver="$(grep -oE 'version = "[^"]+"' "$ROOT/buildpacks/$bp/buildpack.toml" | head -1 | sed -E 's/.*"([^"]+)"/\1/')"
-  mkdir -p "$CTX/cnb/buildpacks/aether/$bp/$ver"
-  cp -a "$ROOT/buildpacks/$bp/." "$CTX/cnb/buildpacks/aether/$bp/$ver/"
-  chmod +x "$CTX/cnb/buildpacks/aether/$bp/$ver/bin"/*
+  mkdir -p "$CTX/cnb/buildpacks/aether_$bp/$ver"
+  cp -a "$ROOT/buildpacks/$bp/." "$CTX/cnb/buildpacks/aether_$bp/$ver/"
+  chmod +x "$CTX/cnb/buildpacks/aether_$bp/$ver/bin"/*
   [ "$i" -eq 0 ] || BP_META_JSON="$BP_META_JSON,"
   BP_META_JSON="$BP_META_JSON{\"id\":\"aether/$bp\",\"version\":\"$ver\",\"homepage\":\"https://github.com/aether\"}"
   info "buildpack aether/$bp@$ver"
@@ -102,7 +102,7 @@ image = "$RUN_IMAGE"
 EOF
 
 # 2.5 labels do builder
-BUILDER_META="{\"description\":\"Aether CNB builder\",\"buildpacks\":$BP_META_JSON,\"stack\":{\"runImage\":{\"image\":\"$RUN_IMAGE\",\"mirrors\":[]},\"uid\":0,\"gid\":0},\"lifecycle\":{\"version\":\"$LIF_VER_FULL\",\"api\":{\"buildpack\":\"0.10\",\"platform\":\"0.12\"}}}"
+BUILDER_META="{\"description\":\"Aether CNB builder\",\"buildpacks\":$BP_META_JSON,\"stack\":{\"runImage\":{\"image\":\"$RUN_IMAGE\",\"mirrors\":[]},\"uid\":1001,\"gid\":1000},\"lifecycle\":{\"version\":\"$LIF_VER_FULL\",\"api\":{\"buildpack\":\"0.10\",\"platform\":\"0.12\"}}}"
 STACK_META="{\"id\":\"$STACK_ID\"}"
 
 # 2.6 Dockerfile
@@ -110,29 +110,37 @@ cat > "$CTX/Dockerfile" <<'EOF'
 FROM docker.io/library/ubuntu:24.04
 
 ENV CNB_STACK_ID=io.buildpacks.stacks.aether \
-    CNB_USER_ID=0 \
-    CNB_GROUP_ID=0 \
+    CNB_USER_ID=1001 \
+    CNB_GROUP_ID=1000 \
     CNB_PLATFORM_API=0.12
 
 RUN apt-get update -qq && apt-get install -y -qq \
       bash curl unzip xz-utils git ca-certificates build-essential \
       libssl-dev pkg-config software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1001 -g 1000 -s /bin/bash cnb
 
 COPY cnb /cnb
 
-LABEL io.buildpacks.builder.metadata=__BUILDER_META__ \
-      io.buildpacks.stack.id=__STACK_META__
+RUN chown -R 1001:1000 /cnb
+
+ARG BUILDER_META
+ARG STACK_META
+LABEL io.buildpacks.builder.metadata="$BUILDER_META" \
+      io.buildpacks.stack.id="$STACK_META"
 
 WORKDIR /workspace
+USER 1001:1000
 EOF
-sed -i "s#__BUILDER_META__#$BUILDER_META#; s#__STACK_META__#$STACK_META#" "$CTX/Dockerfile"
 
 # ---------------------------------------------------------------------------
 # 3. Build + push
 # ---------------------------------------------------------------------------
 info "buildando $BUILDER_TAG..."
-podman build -t "$BUILDER_TAG" -f "$CTX/Dockerfile" "$CTX"
+podman build \
+  --build-arg BUILDER_META="$BUILDER_META" \
+  --build-arg STACK_META="$STACK_META" \
+  -t "$BUILDER_TAG" -f "$CTX/Dockerfile" "$CTX"
 info "publicando no registry local..."
 podman push "$BUILDER_TAG"
 

@@ -155,7 +155,7 @@ function ProjectDetail() {
               ? { status: "stopped", pulse: false }
               : state === "dead" || state === "error"
                 ? { status: "error", pulse: false }
-                : { status: "provisioning", pulse: true };
+                : { status: "pending deploy", pulse: true };
       return { type: "app", id: a.id, name: a.name, port: a.port, source: a.source_type, image: a.source_type === "image" ? a.image : a.git_url, pill, status: state ?? "" };
     }),
     ...projDatabases.map((d) => ({ type: "db", id: d.id, name: d.name, port: d.port, engine: d.engine, version: d.version, status: d.status, pill: { status: "running", pulse: false } })),
@@ -164,7 +164,7 @@ function ProjectDetail() {
 
   const dbPill = (status: string): string => {
     if (status === "running" || status === "ready") return "running";
-    if (status === "creating" || status === "provisioning") return "provisioning";
+    if (status === "creating" || status === "provisioning") return "pending deploy";
     if (status === "failed" || status === "error") return "error";
     if (status === "paused") return "paused";
     return status;

@@ -32,7 +32,7 @@ func (s *Store) Close() error {
 
 func (s *Store) CreateDomain(ctx context.Context, d *domain.Domain) (*domain.Domain, error) {
 	row, err := s.q.CreateDomain(ctx, gen.CreateDomainParams{
-		AppID: d.AppID, ServerID: nullUUIDPtr(d.ServerID), Host: d.Host, Https: d.HTTPS,
+		AppID: d.AppID, ServerID: nullUUIDPtr(d.ServerID), ServiceType: d.ServiceType, Host: d.Host, Https: d.HTTPS,
 		Path: d.Path, InternalPath: d.InternalPath, StripPath: d.StripPath,
 		ContainerPort: int32(d.ContainerPort), Status: d.Status, CertStatus: d.CertStatus,
 	})
@@ -179,7 +179,7 @@ func domainFromRow(row gen.CreateDomainRow) *domain.Domain {
 		nextRetryAt = &t
 	}
 	return &domain.Domain{
-		ID: row.ID, AppID: row.AppID, ServerID: serverID, Host: row.Host, HTTPS: row.Https,
+		ID: row.ID, AppID: row.AppID, ServiceType: row.ServiceType, ServerID: serverID, Host: row.Host, HTTPS: row.Https,
 		Path: row.Path, InternalPath: row.InternalPath, StripPath: row.StripPath,
 		ContainerPort: int(row.ContainerPort), Status: row.Status, CertStatus: row.CertStatus,
 		RetryCount: int(row.RetryCount), LastError: row.LastError, NextRetryAt: nextRetryAt,

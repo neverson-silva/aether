@@ -1,0 +1,2 @@
+ALTER TABLE databases DROP CONSTRAINT IF EXISTS databases_status_check;
+ALTER TABLE databases ADD CONSTRAINT databases_status_check CHECK (status IN ('creating', 'starting', 'running', 'stopped', 'failed', 'deleting'));

@@ -3,7 +3,7 @@ import { StatusPill, Table, fmtDate } from "../../../../components/ui";
 import { useDomains } from "../../../../hooks";
 
 export function AppDomains({ appId, appName }: { appId: string; appName: string }) {
-  const { data: domains } = useDomains(appId);
+  const { data: domains } = useDomains("apps", appId);
   if (!domains?.length) return null;
   return (
     <div className="border border-outline-variant/60 rounded p-sm">

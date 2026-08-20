@@ -60,7 +60,7 @@ func newEnv(t *testing.T) *env {
 
 func TestDomainLifecycle(t *testing.T) {
 	e := newEnv(t)
-	d, err := e.svc.Add(e.ctx, e.appID, e.orgID, AddDomainInput{Host: "Api.Example.COM", HTTPS: true})
+	d, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "Api.Example.COM", HTTPS: true})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -68,19 +68,19 @@ func TestDomainLifecycle(t *testing.T) {
 		t.Fatalf("host deveria ser minúsculo: %+v", d)
 	}
 
-	if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, AddDomainInput{Host: "api.example.com"}); !errors.Is(err, domain.ErrConflict) {
+	if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "api.example.com"}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("host duplicado deveria falhar: %v", err)
 	}
 
-	list, err := e.svc.List(e.ctx, e.appID, e.orgID)
+	list, err := e.svc.List(e.ctx, e.appID, e.orgID, ServiceTypeApp)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("list: %v %d", err, len(list))
 	}
 
-	if err := e.svc.Remove(e.ctx, e.appID, e.orgID, "api.example.com"); err != nil {
+	if err := e.svc.Remove(e.ctx, e.appID, e.orgID, ServiceTypeApp, "api.example.com"); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	list, _ = e.svc.List(e.ctx, e.appID, e.orgID)
+	list, _ = e.svc.List(e.ctx, e.appID, e.orgID, ServiceTypeApp)
 	if len(list) != 0 {
 		t.Fatalf("domínio deveria ter sido removido")
 	}
@@ -88,14 +88,14 @@ func TestDomainLifecycle(t *testing.T) {
 
 func TestDomainIsolation(t *testing.T) {
 	e := newEnv(t)
-	if _, err := e.svc.Add(e.ctx, e.appID, uuid.New(), AddDomainInput{Host: "x.example.com"}); !errors.Is(err, appsdomain.ErrNotFound) {
+	if _, err := e.svc.Add(e.ctx, e.appID, uuid.New(), ServiceTypeApp, AddDomainInput{Host: "x.example.com"}); !errors.Is(err, appsdomain.ErrNotFound) {
 		t.Fatalf("org errada deveria falhar: %v", err)
 	}
 }
 
 func TestDomainValidation(t *testing.T) {
 	e := newEnv(t)
-	if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, AddDomainInput{Host: ""}); !errors.Is(err, domain.ErrValidation) {
+	if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: ""}); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("host vazio deveria falhar: %v", err)
 	}
 	if err := e.svc.Provisioner.ValidateHost("localhost"); !errors.Is(err, domain.ErrValidation) {
@@ -107,7 +107,7 @@ func TestDomainValidation(t *testing.T) {
 	if err := e.svc.Provisioner.ValidateHost("app.example.com"); err != nil {
 		t.Fatalf("host válido deveria passar: %v", err)
 	}
-	host := e.svc.Provisioner.GenerateFreeDomain("My App")
+	host := e.svc.Provisioner.GenerateFreeDomain("My App", e.appID)
 	if !strings.HasSuffix(host, ".apps.example.com") || strings.Contains(host, " ") {
 		t.Fatalf("free domain inesperado: %s", host)
 	}
@@ -115,7 +115,7 @@ func TestDomainValidation(t *testing.T) {
 
 func TestProvisionWorkerHTTP(t *testing.T) {
 	e := newEnv(t)
-	d, err := e.svc.Add(e.ctx, e.appID, e.orgID, AddDomainInput{Host: "http.example.com"})
+	d, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "http.example.com"})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestProvisionWorkerHTTP(t *testing.T) {
 
 func TestProvisionWorkerRetry(t *testing.T) {
 	e := newEnv(t)
-	d, err := e.svc.Add(e.ctx, e.appID, e.orgID, AddDomainInput{Host: "https.example.com", HTTPS: true})
+	d, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "https.example.com", HTTPS: true})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestProvisionWorkerRetry(t *testing.T) {
 func TestDomainProvisionIdempotent(t *testing.T) {
 	e := newEnv(t)
 	w := &ProvisionWorker{Store: e.svc.Store, Provisioner: e.svc.Provisioner}
-	_, _ = e.svc.Add(e.ctx, e.appID, e.orgID, AddDomainInput{Host: "idem.example.com"})
+	_, _ = e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "idem.example.com"})
 	w.process(e.ctx)
 	w.process(e.ctx)
 	list, _ := e.svc.Store.ListDomains(e.ctx, e.appID)
@@ -203,7 +203,7 @@ func TestCertificatesAggregate(t *testing.T) {
 	e := newEnv(t)
 	app := &appsdomain.App{OrgID: e.orgID, ProjectID: e.projectID, Name: "api2", SourceType: "image", Image: "nginx", Port: 80}
 	created, _ := e.appsStore.CreateApp(e.ctx, app)
-	if _, err := e.svc.Add(e.ctx, created.ID, e.orgID, AddDomainInput{Host: "secure.example.com", HTTPS: true}); err != nil {
+	if _, err := e.svc.Add(e.ctx, created.ID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "secure.example.com", HTTPS: true}); err != nil {
 		t.Fatalf("add domain: %v", err)
 	}
 	certs, err := e.svc.Certificates(e.ctx, e.orgID)

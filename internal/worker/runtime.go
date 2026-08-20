@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -33,6 +34,7 @@ type Runtime interface {
 	Port(ctx context.Context, containerID string) (hostPort string, err error)
 	HealthCheck(ctx context.Context, hostPort, path string) error
 	Remove(ctx context.Context, containerID string) error
+	RemoveByLabel(ctx context.Context, label string) error
 	FollowLogs(ctx context.Context, containerID string, writer io.Writer) error
 	LogTail(ctx context.Context, containerID string, lines int) ([]string, error)
 	ContainerState(ctx context.Context, containerID string) (string, error)
@@ -41,6 +43,7 @@ type Runtime interface {
 	Restart(ctx context.Context, containerID string) error
 	Stats(ctx context.Context, containerID string) (ContainerStats, error)
 	ListContainers(ctx context.Context) ([]ContainerInfo, error)
+	Exec(ctx context.Context, containerID string, env []string, args ...string) (stdout string, stderr string, err error)
 }
 
 type ContainerStats struct {
@@ -277,6 +280,21 @@ func (podmanRuntime) ListContainers(ctx context.Context) ([]ContainerInfo, error
 	return out, nil
 }
 
+func (podmanRuntime) Exec(ctx context.Context, containerID string, env []string, args ...string) (string, string, error) {
+	execArgs := []string{"exec"}
+	for _, e := range env {
+		execArgs = append(execArgs, "-e", e)
+	}
+	execArgs = append(execArgs, containerID)
+	execArgs = append(execArgs, args...)
+	cmd := exec.CommandContext(ctx, "podman", execArgs...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
 func (podmanRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	args := []string{"run", "-d", "--name", spec.Name}
 	if spec.Network != "" {
@@ -299,12 +317,12 @@ func (podmanRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	}
 	if spec.Port > 0 {
 		if spec.ContainerPort > 0 {
-			args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", spec.Port, spec.ContainerPort))
+			args = append(args, "-p", fmt.Sprintf("0.0.0.0:%d:%d", spec.Port, spec.ContainerPort))
 		} else {
-			args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", spec.Port, spec.Port))
+			args = append(args, "-p", fmt.Sprintf("0.0.0.0:%d:%d", spec.Port, spec.Port))
 		}
 	} else if spec.ContainerPort > 0 {
-		args = append(args, "-p", fmt.Sprintf("127.0.0.1::%d", spec.ContainerPort))
+		args = append(args, "-p", fmt.Sprintf("0.0.0.0::%d", spec.ContainerPort))
 	}
 	args = append(args, spec.Image)
 	out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
@@ -337,6 +355,17 @@ func (podmanRuntime) Port(ctx context.Context, containerID string) (string, erro
 func (podmanRuntime) Remove(ctx context.Context, containerID string) error {
 	_, err := exec.CommandContext(ctx, "podman", "rm", "-f", containerID).CombinedOutput()
 	return err
+}
+
+func (podmanRuntime) RemoveByLabel(ctx context.Context, label string) error {
+	out, err := exec.CommandContext(ctx, "podman", "ps", "-aq", "--filter", "label="+label).CombinedOutput()
+	if err != nil {
+		return err
+	}
+	for _, id := range strings.Fields(string(out)) {
+		_, _ = exec.CommandContext(ctx, "podman", "rm", "-f", id).CombinedOutput()
+	}
+	return nil
 }
 
 func (podmanRuntime) HealthCheck(ctx context.Context, hostPort, path string) error {

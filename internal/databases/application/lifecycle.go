@@ -5,11 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"aether/internal/databases/domain"
+	deploydomain "aether/internal/deployments/domain"
 	"aether/internal/worker"
 )
 
@@ -19,7 +24,10 @@ type ContainerRuntime interface {
 	Stop(ctx context.Context, containerID string) error
 	Restart(ctx context.Context, containerID string) error
 	Remove(ctx context.Context, containerID string) error
+	RemoveByLabel(ctx context.Context, label string) error
 	ContainerState(ctx context.Context, containerID string) (string, error)
+	LogTail(ctx context.Context, containerID string, lines int) ([]string, error)
+	Exec(ctx context.Context, containerID string, env []string, args ...string) (string, string, error)
 }
 
 var dbImages = map[domain.Engine]string{
@@ -110,9 +118,12 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		NetworkAlias:  "db-" + db.ID.String()[:8],
 		MemMB:         db.MemMB,
 		Labels: map[string]string{
-			"aether.resource":    "database",
-			"aether.database-id": db.ID.String(),
-			"aether.project-id":  db.ProjectID.String(),
+			"aether.owner":        "user",
+			"aether.service-type": "database",
+			"aether.service-id":   db.ID.String(),
+			"aether.service-name": db.Name,
+			"aether.project-id":   db.ProjectID.String(),
+			"aether.database-id":  db.ID.String(),
 		},
 	}
 	containerID, err := d.Runtime.Run(ctx, spec)
@@ -134,17 +145,38 @@ func hostPortFree(port int) bool {
 	return true
 }
 
+const databaseHealthTimeout = 120 * time.Second
+
+func (d *Databases) waitHealthy(ctx context.Context, port int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+}
+
 func (d *Databases) allocHostPort(stored int) int {
-	base := d.PortBase
-	if base <= 0 || base > 65500 {
-		base = 20000
-	}
-	limit := base + 1000
 	start := stored
-	if start < base || start >= limit {
-		start = base
+	if start <= 0 {
+		return 0
 	}
-	for p := start; p < limit; p++ {
+	limit := start + 1000
+	if limit > 65535 {
+		limit = 65535
+	}
+	for p := start; p <= limit; p++ {
 		if hostPortFree(p) {
 			return p
 		}
@@ -153,14 +185,48 @@ func (d *Databases) allocHostPort(stored int) int {
 }
 
 func (d *Databases) Deploy(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
+	return d.deployWithTrigger(ctx, id, orgID, "deploy")
+}
+
+func (d *Databases) Rebuild(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
+	return d.deployWithTrigger(ctx, id, orgID, "rebuild")
+}
+
+func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, trigger string) (*domain.Database, error) {
 	db, err := d.Get(ctx, id, orgID)
 	if err != nil {
 		return nil, err
 	}
+	dep := d.recordDeployment(ctx, db, trigger, deploydomain.StatusStarting, "", "")
+	if dep != nil {
+		d.appendDeployLog(dep.ID, "Deploying database '"+db.Name+"' ("+string(db.Engine)+")")
+		d.appendDeployLog(dep.ID, "Pulling image "+dbImages[db.Engine])
+	}
 	containerID, err := d.deploy(ctx, db)
 	if err != nil {
+		if dep != nil {
+			d.appendDeployLog(dep.ID, "Deploy failed: "+err.Error())
+			d.finishDeployment(ctx, dep.ID, deploydomain.StatusFailed, "", err.Error())
+		}
 		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", db.ContainerID)
 		return nil, err
+	}
+	if dep != nil {
+		d.appendDeployLog(dep.ID, "Container started: "+containerID)
+	}
+	_ = d.Store.UpdateDatabaseStatus(ctx, id, "starting", containerID)
+	if err := d.waitHealthy(ctx, db.Port, databaseHealthTimeout); err != nil {
+		_ = d.Runtime.Remove(ctx, containerID)
+		if dep != nil {
+			d.appendDeployLog(dep.ID, "Health check failed: "+err.Error())
+			d.finishDeployment(ctx, dep.ID, deploydomain.StatusFailed, containerID, err.Error())
+		}
+		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", containerID)
+		return nil, fmt.Errorf("database did not become healthy: %w", err)
+	}
+	if dep != nil {
+		d.appendDeployLog(dep.ID, "Database is healthy on port "+strconv.Itoa(db.Port))
+		d.finishDeployment(ctx, dep.ID, deploydomain.StatusReady, containerID, "")
 	}
 	if err := d.Store.UpdateDatabaseStatus(ctx, id, "running", containerID); err != nil {
 		return nil, err
@@ -168,8 +234,90 @@ func (d *Databases) Deploy(ctx context.Context, id, orgID uuid.UUID) (*domain.Da
 	return d.Get(ctx, id, orgID)
 }
 
-func (d *Databases) Rebuild(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
-	return d.Deploy(ctx, id, orgID)
+func (d *Databases) recordDeployment(ctx context.Context, db *domain.Database, trigger string, status deploydomain.Status, containerID, errMsg string) *deploydomain.Deployment {
+	if d.Deployments == nil {
+		return nil
+	}
+	number, err := d.Deployments.NextNumber(ctx, db.ID)
+	if err != nil {
+		return nil
+	}
+	dep := &deploydomain.Deployment{
+		AppID: db.ID, Number: number, Status: status, Trigger: trigger,
+		ContainerID: containerID, Error: errMsg,
+	}
+	created, err := d.Deployments.CreateDeployment(ctx, dep)
+	if err != nil {
+		return nil
+	}
+	return created
+}
+
+func (d *Databases) finishDeployment(ctx context.Context, depID uuid.UUID, status deploydomain.Status, containerID, errMsg string) {
+	if d.Deployments == nil {
+		return
+	}
+	now := time.Now().UTC()
+	_ = d.Deployments.UpdateStatus(ctx, depID, status, errMsg, "", containerID, &now, &now)
+}
+
+func (d *Databases) appendDeployLog(depID uuid.UUID, line string) {
+	if d.LogsDir == "" {
+		return
+	}
+	dir := filepath.Join(d.LogsDir, "deployments")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, depID.String()+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339), line)
+}
+
+func (d *Databases) ListDeployments(ctx context.Context, id, orgID uuid.UUID, limit int) ([]deploydomain.Deployment, error) {
+	if d.Deployments == nil {
+		return nil, nil
+	}
+	db, err := d.Get(ctx, id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return d.Deployments.ListByApp(ctx, db.ID, limit)
+}
+
+func (d *Databases) DeploymentLogs(ctx context.Context, dbID, depID, orgID uuid.UUID, limit int) (string, error) {
+	if _, err := d.Get(ctx, dbID, orgID); err != nil {
+		return "", err
+	}
+	if d.Deployments == nil {
+		return "", nil
+	}
+	dep, err := d.Deployments.GetDeployment(ctx, depID)
+	if err != nil {
+		return "", err
+	}
+	if dep.AppID != dbID {
+		return "", domain.ErrNotFound
+	}
+	if d.LogsDir != "" {
+		if content, err := os.ReadFile(filepath.Join(d.LogsDir, "deployments", depID.String()+".log")); err == nil {
+			return string(content), nil
+		}
+	}
+	if dep.ContainerID == "" || d.Runtime == nil {
+		return "", nil
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	lines, err := d.Runtime.LogTail(ctx, dep.ContainerID, limit)
+	if err != nil {
+		return "", nil
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 func (d *Databases) Start(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {

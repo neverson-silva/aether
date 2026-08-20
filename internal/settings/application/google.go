@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"aether/internal/settings/domain"
+	"aether/internal/storage/gdrive"
 )
 
 const (
@@ -161,8 +162,11 @@ func (s *Settings) GoogleCallback(ctx context.Context, r *http.Request, state, c
 	if err := s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthConnected, email, accessEnc, refreshEnc); err != nil {
 		return redirect("error:storage"), nil
 	}
-	dest.OAuthStatus = domain.OAuthConnected
-	_, _ = s.GoogleProvider(dest)
+	if name := strings.TrimSpace(dest.Bucket); name != "" {
+		if client, err := gdrive.NewTokenClient(tokens.AccessToken); err == nil {
+			_, _ = gdrive.EnsureRootFolder(ctx, client, name)
+		}
+	}
 	return redirect("connected"), nil
 }
 

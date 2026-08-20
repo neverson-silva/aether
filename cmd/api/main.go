@@ -5,6 +5,7 @@ import (
 	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -48,9 +49,7 @@ import (
 	gitopshttp "aether/internal/gitops/http"
 	gitopsInfra "aether/internal/gitops/infra"
 	hostApp "aether/internal/host/application"
-	monitoringApp "aether/internal/monitoring/application"
-	monitoringhttp "aether/internal/monitoring/http"
-	monitoringInfra "aether/internal/monitoring/infra"
+	"aether/internal/hostinfo"
 	hosthttp "aether/internal/host/http"
 	jobsApp "aether/internal/jobs/application"
 	jobshttp "aether/internal/jobs/http"
@@ -58,6 +57,9 @@ import (
 	mirrorsApp "aether/internal/mirrors/application"
 	mirrorshttp "aether/internal/mirrors/http"
 	mirrorsInfra "aether/internal/mirrors/infra"
+	monitoringApp "aether/internal/monitoring/application"
+	monitoringhttp "aether/internal/monitoring/http"
+	monitoringInfra "aether/internal/monitoring/infra"
 	orgsApp "aether/internal/orgs/application"
 	orgshttp "aether/internal/orgs/http"
 	orgsInfra "aether/internal/orgs/infra"
@@ -94,6 +96,9 @@ import (
 )
 
 func main() {
+	migrateOnly := flag.Bool("migrate", false, "apply database migrations and exit")
+	flag.Parse()
+
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("carregar config", "err", err)
@@ -119,6 +124,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+
+	if *migrateOnly {
+		if err := database.Migrate(ctx, pool, "db/migrations"); err != nil {
+			slog.Error("aplicar migrations", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("database migrations applied")
+		return
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
@@ -177,15 +191,24 @@ func main() {
 		Logger:         slog.Default(),
 	}
 	domainsStore := domainsInfra.NewStore(pool)
+	databasesStore := databasesInfra.NewStore(pool)
 	domainsSvc := &domainsApp.Domains{
-		Store: domainsStore, Apps: appsStore,
+		Store: domainsStore, Apps: appsStore, DBs: databasesStore,
 		Provisioner: &domainsApp.Provisioner{
-			TraefikDir:     filepath.Join(cfg.StateDir, "traefik"),
-			FreeDomainBase: cfg.FreeDomainBase,
-			TraefikBin:     cfg.TraefikBin,
+			TraefikDir:         filepath.Join(cfg.StateDir, "traefik"),
+			FreeDomainBase:     cfg.FreeDomainBase,
+			FreeDomainProvider: cfg.FreeDomainProvider,
+			TraefikBin:         cfg.TraefikBin,
 		},
 	}
 	domainsHandler := domainshttp.New(domainsSvc)
+	autoFreeDomain := func(ctx context.Context, id uuid.UUID, serviceType, name string, orgID uuid.UUID) {
+		if !domainsSvc.Provisioner.IsPublicBase() {
+			return
+		}
+		_, _ = domainsSvc.GenerateFreeDomain(ctx, id, orgID, serviceType, true)
+	}
+	appsSvc.OnCreated = autoFreeDomain
 	ensureIngress(workerCtx, cfg)
 	provisionWorker := &domainsApp.ProvisionWorker{Store: domainsStore, Provisioner: domainsSvc.Provisioner}
 	go provisionWorker.Run(workerCtx)
@@ -199,9 +222,10 @@ func main() {
 		slog.Error("cipher de senhas", "err", err)
 		os.Exit(1)
 	}
-	databasesStore := databasesInfra.NewStore(pool)
-	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, PortBase: cfg.DatabasePortBase}
-	databasesHandler := databaseshttp.New(databasesSvc)
+	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
+	databasesSvc.OnCreated = autoFreeDomain
+	databasesStudio := &databasesApp.Studio{Databases: databasesSvc, Timeout: 30 * time.Second, MaxRows: 1000}
+	databasesHandler := databaseshttp.New(databasesSvc, databasesStudio)
 
 	backupsStore := backupsInfra.NewStore(pool)
 	backupsSvc := &backupsApp.Backups{Store: backupsStore, Databases: databasesStore}
@@ -238,9 +262,9 @@ func main() {
 	svc.SSO = settingsStore
 	settingsSvc := &settingsApp.Settings{
 		Store: settingsStore, Passwords: dbCipher,
-		OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL),
-		GoogleRedirectURI:  cfg.GoogleOAuthRedirectURI,
-		PublicURL:          cfg.PublicURL,
+		OIDC:              settingsInfra.NewOIDCDiscoverer(cfg.PublicURL),
+		GoogleRedirectURI: cfg.GoogleOAuthRedirectURI,
+		PublicURL:         cfg.PublicURL,
 	}
 	settingsHandler := settingshttp.New(settingsSvc).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, error) {
 		user, token, err := svc.SSOLogin(ctx, email, name)
@@ -278,7 +302,7 @@ func main() {
 	composeSvc.ProjectVars = variablesStore
 	jobsSvc.Resolver = deploySvc.Resolver
 
-	hostSvc := &hostApp.Host{LogsDir: cfg.LogsDir, AgentFile: filepath.Join(cfg.StateDir, "host-stats.json")}
+	hostSvc := &hostApp.Host{LogsDir: cfg.LogsDir, AgentFile: filepath.Join(cfg.StateDir, "host-stats.json"), PublicIP: hostinfo.PublicIP(), FreeDomainBase: domainsSvc.Provisioner.EffectiveBase()}
 	hostHandler := hosthttp.New(hostSvc)
 
 	specsSvc := &specsApp.Specs{Apps: appsStore, Deployments: deployStore, Runtime: deployWorkerRuntime}
@@ -317,6 +341,8 @@ func main() {
 		Apps: appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
 		Log: eventLog, Notifications: notificationsSvc,
 	}
+	databasesStudio.Cache = rtRuntime.Cache
+	databasesStudio.CatalogTTL = time.Duration(cfg.StudioCacheTTLSeconds) * time.Second
 	deployWorker.Notifier = realtimeSvc
 	deployWorker.LogNotifier = realtimeSvc
 	deploySvc.Queue = rtRuntime.Queue

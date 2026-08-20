@@ -21,6 +21,7 @@ type ContainerRuntime interface {
 	Stop(ctx context.Context, containerID string) error
 	Restart(ctx context.Context, containerID string) error
 	Remove(ctx context.Context, containerID string) error
+	RemoveByLabel(ctx context.Context, label string) error
 }
 
 func (o *AppOps) State(ctx context.Context, appID, orgID uuid.UUID) (string, error) {
@@ -70,6 +71,7 @@ func (o *AppOps) Restart(ctx context.Context, appID, orgID uuid.UUID) (string, e
 
 // Delete para e remove o container do app (se houver). Idempotente.
 func (o *AppOps) Delete(ctx context.Context, appID, orgID uuid.UUID) error {
+	_ = o.Runtime.RemoveByLabel(ctx, "aether.service-id="+appID.String())
 	container, err := o.latestContainer(ctx, appID, orgID)
 	if err != nil {
 		return nil

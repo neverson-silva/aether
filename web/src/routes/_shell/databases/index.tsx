@@ -1,98 +1,31 @@
 import { AppPage, AppPageHeader } from "../../../components/ds";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   useBackupDatabase,
-  useCreateDatabase,
   useDatabases,
   useDeleteDatabase,
-  useProjects,
 } from "../../../hooks";
 import { getServer } from "../../../api/client";
+import { DatabaseWizard } from "../../../components/DatabaseWizard";
 import {
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
-  Field,
-  Input,
-  Modal,
-  Select,
   StatusPill,
   Table,
   useToast,
 } from "../../../components/ui";
 
-const DB_CATEGORIES = [
-  {
-    name: "Relational (SQL)",
-    engines: [
-      { value: "postgres", label: "PostgreSQL", icon: "🐘" },
-      { value: "mysql", label: "MySQL", icon: "🐬" },
-      { value: "mariadb", label: "MariaDB", icon: "🦭" },
-      { value: "mssql", label: "SQL Server", icon: "🔷" },
-      { value: "oracle", label: "Oracle", icon: "🔶" },
-    ],
-  },
-  {
-    name: "Document (NoSQL)",
-    engines: [{ value: "mongodb", label: "MongoDB", icon: "🍃" }],
-  },
-  {
-    name: "In-memory / Cache",
-    engines: [{ value: "redis", label: "Redis", icon: "🔴" }],
-  },
-];
-
-const schema = z.object({
-  project_id: z.string().min(1, "Project is required"),
-  name: z.string().min(1, "Name is required").regex(/^[a-z0-9-_]+$/, "lowercase only"),
-  engine: z.enum(["postgres", "mysql", "mariadb", "redis", "mongodb", "mssql", "oracle"]),
-  version: z.string().optional(),
-});
-
 function DatabasesPage() {
   const { data: databases, isLoading } = useDatabases();
-  const { data: projects } = useProjects();
-  const createDb = useCreateDatabase();
   const deleteDb = useDeleteDatabase();
   const backupDb = useBackupDatabase();
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [dsn, setDsn] = useState<string | null>(null);
-
-  const {
-    register,
-    setValue,
-    watch,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema),
-    defaultValues: { engine: "postgres", version: "" },
-  });
-  const engineValue = watch("engine");
-
-  const submit = async (values: z.infer<typeof schema>) => {
-    try {
-      await createDb.mutateAsync({
-        project_id: values.project_id,
-        name: values.name,
-        engine: values.engine,
-        version: values.version || undefined,
-      });
-      toast("Database provisioning started");
-      setOpen(false);
-      reset();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "failed to create database", "error");
-    }
-  };
 
   return (
     <AppPage>
@@ -100,7 +33,7 @@ function DatabasesPage() {
         title="Databases"
         description="Managed databases as OCI workloads with integrated credentials and backups."
         actions={
-          <Button leftIcon="add" onClick={() => setOpen(true)}>
+          <Button leftIcon="add" onClick={() => setWizardOpen(true)}>
             New database
           </Button>
         }
@@ -112,7 +45,7 @@ function DatabasesPage() {
           icon="storage"
           title="No databases"
           description="Provision PostgreSQL, MySQL, MariaDB, Redis or MongoDB with managed credentials."
-          action={<Button onClick={() => setOpen(true)}>Create your first database</Button>}
+          action={<Button onClick={() => setWizardOpen(true)}>Create your first database</Button>}
         />
       )}
       {!!databases?.length && (
@@ -125,7 +58,7 @@ function DatabasesPage() {
                 <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant">{db.version || "default"}</td>
                 <td className="px-sm py-2">
                   <StatusPill
-                    status={["creating", "starting"].includes(db.status) ? "provisioning" : db.status}
+                    status={["creating", "starting"].includes(db.status) ? "pending deploy" : db.status}
                     pulse={["creating", "starting"].includes(db.status)}
                   />
                 </td>
@@ -183,60 +116,7 @@ function DatabasesPage() {
         )}
       </Card>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New database">
-        <form onSubmit={handleSubmit(submit)} className="space-y-lg" noValidate>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-            <Field label="Project" hint={errors.project_id?.message}>
-              <Select {...register("project_id")}>
-                <option value="">Select...</option>
-                {(projects ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Name" hint={errors.name?.message}>
-              <Input icon="storage" placeholder="main-db" {...register("name")} />
-            </Field>
-            <Field label="Engine" hint={errors.engine?.message}>
-              <div className="space-y-md">
-                {DB_CATEGORIES.map((cat) => (
-                  <div key={cat.name}>
-                    <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">{cat.name}</p>
-                    <div className="grid grid-cols-2 gap-sm">
-                      {cat.engines.map((eng) => (
-                        <button
-                          key={eng.value}
-                          type="button"
-                          onClick={() => setValue("engine", eng.value as never, { shouldValidate: true })}
-                          className={`flex items-center gap-sm px-sm py-2 rounded border transition-colors text-left ${
-                            engineValue === eng.value ? "border-primary bg-primary/10" : "border-outline-variant hover:border-primary/40 bg-surface-container-low"
-                          }`}
-                        >
-                          <span className="text-[18px]">{eng.icon}</span>
-                          <span className="font-body-sm text-body-sm text-on-surface">{eng.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Field>
-            <Field label="Version" hint={errors.version?.message || "postgres: 16/15/14 · mysql: 8/8.0 · mariadb: 11/10.11 · redis: 7/6 · mongo: 7/6 · mssql: 2022 · oracle: 23 — empty = default"}>
-              <Input icon="tag" placeholder="16" {...register("version")} />
-            </Field>
-          </div>
-          <div className="flex justify-end gap-md border-t border-outline-variant pt-lg">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Provisioning..." : "Create database"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      <DatabaseWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
 
       <ConfirmDialog
         open={!!confirmId}

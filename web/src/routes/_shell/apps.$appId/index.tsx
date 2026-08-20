@@ -12,8 +12,8 @@ import { Workers } from "./-components/Workers";
 import { Previews } from "./-components/Previews";
 import { Terminal } from "./-components/Terminal";
 import { ComposeTab } from "./-components/ComposeTab";
+import { DomainsPanel } from "../../../components/DomainsPanel";
 import {
-  useAddDomain,
   useAppDetail,
   useAppDetailSecrets,
   useAppRebuild,
@@ -28,8 +28,6 @@ import {
   useUpdateApp,
   useDomains,
   useNetQ,
-  useRemoveDomain,
-  useGenerateFreeDomain,
   useRollback,
   useSetEnv,
   useSetWebhook,
@@ -59,33 +57,15 @@ import { EnvEditorModal } from "../../../components/EnvEditorModal";
 import { DeploymentsTab } from "./-components/DeploymentsTab";
 
 
-const domainSchema = z.object({
-  host: z.string().min(1, "Host is required").regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "Invalid domain"),
-  https: z.boolean(),
-});
-
 const webhookSchema = z.object({
   secret: z.string().min(1, "Secret is required"),
 });
 
-const TABS = ["overview", "deployments", "compose", "logs", "metrics", "settings", "cron", "workers", "previews", "terminal"] as const;
+const TABS = ["overview", "deployments", "compose", "domains", "logs", "metrics", "settings", "cron", "workers", "previews", "terminal"] as const;
 type Tab = (typeof TABS)[number];
 
 function stateTone(state: string): string {
   return state === "running" ? "active" : state === "no_container" ? "disabled" : "pending";
-}
-
-function domainPill(status: string): string {
-  switch (status) {
-    case "ACTIVE":
-      return "active";
-    case "ERROR":
-      return "error";
-    case "PROVISIONING":
-      return "pending";
-    default:
-      return "disabled";
-  }
 }
 
 function AppDetail() {
@@ -98,7 +78,7 @@ function AppDetail() {
     [detailSecrets, detail]
   );
   const { data: deployments } = useDeployments(appId);
-  const { data: domains } = useDomains(appId);
+  const { data: domains } = useDomains("apps", appId);
   const { data: stats } = useStats(appId);
   const { data: timeline } = useTimeline(appId);
   const { data: states } = useAppStates();
@@ -113,9 +93,6 @@ function AppDetail() {
   const deleteApp = useDeleteApp();
   const setEnv = useSetEnv(appId);
   const deleteEnv = useDeleteEnv(appId);
-  const addDomain = useAddDomain(appId);
-  const removeDomain = useRemoveDomain(appId);
-  const generateFreeDomain = useGenerateFreeDomain(appId);
   const setWebhook = useSetWebhook(appId);
   const updateApp = useUpdateApp(appId);
 
@@ -145,10 +122,6 @@ function AppDetail() {
   const running = state === "running";
   const buildPhase = latest ? ["queued", "building", "starting", "health_checking"].includes(latest.status) : false;
 
-  const domainForm = useForm<z.infer<typeof domainSchema>>({
-    resolver: zodResolver(domainSchema),
-    defaultValues: { host: "", https: false },
-  });
   const webhookForm = useForm<z.infer<typeof webhookSchema>>({
     resolver: zodResolver(webhookSchema),
     defaultValues: { secret: "" },
@@ -168,17 +141,6 @@ function AppDetail() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  };
-
-
-  const submitDomain = async (values: z.infer<typeof domainSchema>) => {
-    try {
-      await addDomain.mutateAsync({ host: values.host.toLowerCase(), https: values.https });
-      toast("Domain added");
-      domainForm.reset();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "error adding domain", "error");
-    }
   };
 
   const submitWebhook = async (values: z.infer<typeof webhookSchema>) => {
@@ -209,7 +171,7 @@ function AppDetail() {
             <h2 className="font-display-lg text-[clamp(1.5rem,4vw,3rem)] leading-[1.1] text-on-surface truncate">{app.name}</h2>
             <div className="px-3 py-1 rounded-full bg-surface-container border border-outline-variant flex items-center gap-2 shrink-0">
               <div className={`w-2 h-2 rounded-full ${latest?.status === "failed" ? "bg-error" : buildPhase ? "bg-[#fbbf24]" : running ? "bg-[#4ade80]" : "bg-on-surface-variant/50"} ${buildPhase || running ? "pulse-dot" : ""}`} />
-              <span className="font-code-md text-code-md text-on-surface">{latest?.status === "failed" ? "Failed" : buildPhase ? "Building" : running ? "Running" : state === "no_container" ? "No container" : "Stopped"}</span>
+              <span className="font-code-md text-code-md text-on-surface">{latest?.status === "failed" ? "Failed" : buildPhase ? "Building" : running ? "Running" : state === "no_container" ? "Pending deploy" : "Stopped"}</span>
             </div>
             <p className="md:ml-4 font-body-md text-body-md text-on-surface-variant">:{app.port}</p>
           </div>
@@ -688,54 +650,6 @@ function AppDetail() {
             }}
           />
 
-          <Card>
-            <div className="flex items-center justify-between mb-md">
-              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Domains</h2>
-              <button onClick={() => generateFreeDomain.mutate(undefined, { onSuccess: () => toast("Free domain generated") })} className="text-primary font-body-sm text-body-sm hover:text-primary-fixed-dim transition-colors flex items-center gap-1">
-                <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-                Generate Free Domain
-              </button>
-            </div>
-            <form onSubmit={domainForm.handleSubmit(submitDomain)} className="space-y-sm mb-md" noValidate>
-              <div className="space-y-xs">
-                {domainForm.formState.errors.host && (
-                  <p className="font-body-sm text-body-sm text-error">{domainForm.formState.errors.host.message}</p>
-                )}
-                <Input icon="language" placeholder="app.example.com" {...domainForm.register("host")} />
-              </div>
-              <div className="flex items-center gap-md">
-                <label className="flex items-center gap-sm cursor-pointer select-none flex-1">
-                  <input type="checkbox" className="w-4 h-4 rounded-sm bg-surface border-outline-variant text-primary" {...domainForm.register("https")} />
-                  <span className="font-body-sm text-body-sm text-on-surface-variant">HTTPS (Let's Encrypt)</span>
-                </label>
-                <Button type="submit">Add</Button>
-              </div>
-            </form>
-            <div className="space-y-sm">
-              {(domains ?? []).map((d) => (
-                <div key={d.id} className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60">
-                  <div className="min-w-0">
-                    <p className="font-code-md text-code-md text-on-surface truncate">{d.host}</p>
-                    <div className="flex items-center gap-sm mt-xs flex-wrap">
-                      <StatusPill status={domainPill(d.status)} pulse={d.status === "PROVISIONING"} />
-                      {d.https && <span className="font-code-md text-[10px] text-on-surface-variant/60">SSL · {d.cert_status || "requested"}</span>}
-                      <span className="font-code-md text-[10px] text-on-surface-variant/60">Port · {d.container_port}</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeDomain.mutate(d.host)}
-                    className="material-symbols-outlined text-[16px] text-on-surface-variant hover:text-error transition-colors shrink-0"
-                  >
-                    close
-                  </button>
-                </div>
-              ))}
-              {(domains ?? []).length === 0 && (
-                <p className="font-body-sm text-body-sm text-on-surface-variant">No domains linked.</p>
-              )}
-            </div>
-          </Card>
-
           <div className="space-y-lg">
             <Autopilot appID={app.id} />
             <Card>
@@ -762,6 +676,7 @@ function AppDetail() {
       {tab === "workers" && <Workers appID={app.id} />}
       {tab === "previews" && <Previews appID={app.id} />}
       {tab === "terminal" && <Terminal appID={app.id} />}
+      {tab === "domains" && <DomainsPanel kind="apps" id={app.id} />}
 
       <Modal open={webhookModal} onClose={() => setWebhookModal(false)} title="Webhook secret">
         <form onSubmit={webhookForm.handleSubmit(submitWebhook)} className="space-y-lg" noValidate>
@@ -786,7 +701,7 @@ function AppDetail() {
           deleteApp.mutate(app.id, {
             onSuccess: () => {
               toast("Application deleted");
-              window.location.href = "/apps";
+              window.location.href = `/projects/${app?.project_id}`;
             },
             onError: (e) => toast(e.message, "error"),
           })

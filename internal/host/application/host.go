@@ -25,6 +25,19 @@ type Host struct {
 	// of truth for HOST metrics; otherwise local (runtime/VM) metrics are used
 	// and explicitly labeled with Source.
 	AgentFile string
+	// PublicIP is the host address used to build user-facing URLs and DSNs.
+	PublicIP string
+	// FreeDomainBase is the wildcard base domain used to generate free subdomains.
+	FreeDomainBase string
+}
+
+type Info struct {
+	PublicIP       string `json:"public_ip"`
+	FreeDomainBase string `json:"free_domain_base"`
+}
+
+func (h *Host) Info() Info {
+	return Info{PublicIP: h.PublicIP, FreeDomainBase: h.FreeDomainBase}
 }
 
 type agentStats struct {

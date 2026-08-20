@@ -7,31 +7,32 @@ import (
 )
 
 type Config struct {
-	StateDir             string
-	DataDir              string
-	CertsDir             string
-	LogsDir              string
-	BuildsDir            string
-	UploadsDir           string
-	CacheDir             string
-	KeysDir              string
-	AlertIntervalSeconds int
-	ImageRetention       int
-	APIAddr              string
-	ProxyEndpoint        string
-	ChallengeAddr        string
-	AgentAddr            string
-	TraefikBin           string
+	StateDir                string
+	DataDir                 string
+	CertsDir                string
+	LogsDir                 string
+	BuildsDir               string
+	UploadsDir              string
+	CacheDir                string
+	KeysDir                 string
+	AlertIntervalSeconds    int
+	ImageRetention          int
+	APIAddr                 string
+	ProxyEndpoint           string
+	ChallengeAddr           string
+	AgentAddr               string
+	TraefikBin              string
 	GoogleOAuthClientID     string
 	GoogleOAuthClientSecret string
 	GoogleOAuthRedirectURI  string
-	PublicURL            string
-	CertEmail            string
-	ACMEDirectory        string
-	FreeDomainBase       string
-	IngressNetwork       string
-	TraefikImage         string
-	MetricsPath          string
+	PublicURL               string
+	CertEmail               string
+	ACMEDirectory           string
+	FreeDomainProvider      string
+	FreeDomainBase          string
+	IngressNetwork          string
+	TraefikImage            string
+	MetricsPath             string
 
 	DatabaseURL              string
 	DatabaseHost             string
@@ -42,7 +43,6 @@ type Config struct {
 	DatabaseSSLMode          string
 	DatabaseSchema           string
 	DatabasePoolMin          int
-	DatabasePortBase         int
 	DatabasePoolMax          int
 	DatabaseConnectTimeout   int
 	DatabaseIdleTimeout      int
@@ -61,7 +61,9 @@ type Config struct {
 	RedisUsername  string
 	RedisDB        int
 
-	CnbBuilder   string
+	StudioCacheTTLSeconds int
+
+	CnbBuilder string
 
 	CookieSecure bool
 }
@@ -83,20 +85,20 @@ func DefaultStateDir() string {
 func Load() (*Config, error) {
 	state := DefaultStateDir()
 	cfg := &Config{
-		StateDir:      state,
-		DataDir:       filepath.Join(state, "data"),
-		CertsDir:      filepath.Join(state, "certs"),
-		LogsDir:       filepath.Join(state, "logs"),
-		BuildsDir:     filepath.Join(state, "builds"),
-		UploadsDir:    filepath.Join(state, "builds", "uploads"),
-		CacheDir:      filepath.Join(state, "cache"),
-		KeysDir:       filepath.Join(state, "keys"),
-		APIAddr:       envOr("AETHER_API_ADDR", "127.0.0.1:8080"),
-		ProxyEndpoint: envOr("AETHER_PROXY_ENDPOINT", "127.0.0.1:15090"),
-		ChallengeAddr: envOr("AETHER_CHALLENGE_ADDR", "127.0.0.1:15001"),
-		AgentAddr:     envOr("AETHER_AGENT_ADDR", "127.0.0.1:9443"),
-		TraefikBin:    envOr("AETHER_TRAEFIK_BIN", ""),
-		PublicURL:     envOr("AETHER_PUBLIC_URL", ""),
+		StateDir:                state,
+		DataDir:                 filepath.Join(state, "data"),
+		CertsDir:                filepath.Join(state, "certs"),
+		LogsDir:                 filepath.Join(state, "logs"),
+		BuildsDir:               filepath.Join(state, "builds"),
+		UploadsDir:              filepath.Join(state, "builds", "uploads"),
+		CacheDir:                filepath.Join(state, "cache"),
+		KeysDir:                 filepath.Join(state, "keys"),
+		APIAddr:                 envOr("AETHER_API_ADDR", "127.0.0.1:8080"),
+		ProxyEndpoint:           envOr("AETHER_PROXY_ENDPOINT", "127.0.0.1:15090"),
+		ChallengeAddr:           envOr("AETHER_CHALLENGE_ADDR", "127.0.0.1:15001"),
+		AgentAddr:               envOr("AETHER_AGENT_ADDR", "127.0.0.1:9443"),
+		TraefikBin:              envOr("AETHER_TRAEFIK_BIN", ""),
+		PublicURL:               envOr("AETHER_PUBLIC_URL", ""),
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 		GoogleOAuthRedirectURI:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URI"),
@@ -104,7 +106,6 @@ func Load() (*Config, error) {
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		DatabaseHost:             envOr("DATABASE_HOST", "127.0.0.1"),
 		DatabasePort:             envInt("DATABASE_PORT", 5432),
-		DatabasePortBase:         envInt("AETHER_DATABASE_PORT_BASE", 20000),
 		DatabaseName:             envOr("DATABASE_NAME", "aether"),
 		DatabaseUser:             envOr("DATABASE_USER", "postgres"),
 		DatabasePassword:         os.Getenv("DATABASE_PASSWORD"),
@@ -125,7 +126,8 @@ func Load() (*Config, error) {
 		ImageRetention:           envInt("AETHER_IMAGE_RETENTION", 5),
 		CertEmail:                envOr("AETHER_CERT_EMAIL", ""),
 		ACMEDirectory:            envOr("AETHER_ACME_DIR", ""),
-		FreeDomainBase:           envOr("AETHER_FREE_DOMAIN_BASE", "apps.aether.local"),
+		FreeDomainProvider:       envOr("AETHER_FREE_DOMAIN_PROVIDER", "nip.io"),
+		FreeDomainBase:           envOr("AETHER_FREE_DOMAIN_BASE", ""),
 		IngressNetwork:           envOr("AETHER_INGRESS_NETWORK", "aether-ingress"),
 		TraefikImage:             envOr("AETHER_TRAEFIK_IMAGE", "docker.io/library/traefik:v3.2"),
 		RuntimeBackend:           envOr("AETHER_RUNTIME_BACKEND", ""),
@@ -134,6 +136,7 @@ func Load() (*Config, error) {
 		RedisUsername:            envOr("AETHER_REDIS_USERNAME", ""),
 		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "127.0.0.1:5000/builder:node-spa"),
 		RedisDB:                  envInt("AETHER_REDIS_DB", 0),
+		StudioCacheTTLSeconds:    envInt("AETHER_STUDIO_CACHE_TTL", 300),
 		CookieSecure:             envBool("AETHER_COOKIE_SECURE", false),
 	}
 	if cfg.ACMEDirectory == "" {

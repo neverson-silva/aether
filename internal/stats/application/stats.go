@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	"aether/internal/worker"
@@ -22,7 +23,7 @@ var (
 type Runtime interface {
 	Stats(ctx context.Context, containerID string) (worker.ContainerStats, error)
 	ContainerState(ctx context.Context, containerID string) (string, error)
-	LogTail(ctx context.Context, containerID string, lines int) ([]string, error)
+	FollowLogs(ctx context.Context, containerID string, writer io.Writer) error
 }
 
 type Stats struct {
@@ -74,7 +75,7 @@ func (s *Stats) DatabaseStats(ctx context.Context, dbID, orgID uuid.UUID) (Conta
 	return s.containerInfo(ctx, db.ContainerID)
 }
 
-func (s *Stats) DatabaseLogs(ctx context.Context, dbID, orgID uuid.UUID, limit int) ([]string, error) {
+func (s *Stats) Database(ctx context.Context, dbID, orgID uuid.UUID) (*databasedomain.Database, error) {
 	db, err := s.Databases.GetDatabase(ctx, dbID)
 	if err != nil {
 		return nil, err
@@ -82,13 +83,11 @@ func (s *Stats) DatabaseLogs(ctx context.Context, dbID, orgID uuid.UUID, limit i
 	if db.OrgID != orgID {
 		return nil, ErrNotFound
 	}
-	if db.ContainerID == "" {
-		return []string{}, nil
-	}
-	if limit <= 0 || limit > 1000 {
-		limit = 100
-	}
-	return s.Runtime.LogTail(ctx, db.ContainerID, limit)
+	return db, nil
+}
+
+func (s *Stats) FollowLogs(ctx context.Context, containerID string, writer io.Writer) error {
+	return s.Runtime.FollowLogs(ctx, containerID, writer)
 }
 
 func (s *Stats) containerInfo(ctx context.Context, containerID string) (ContainerInfo, error) {

@@ -14,11 +14,12 @@ import (
 
 	"github.com/google/uuid"
 
-	appsdomain "aether/internal/apps/domain"
 	alertsdomain "aether/internal/alerts/domain"
+	appsdomain "aether/internal/apps/domain"
 	deploydomain "aether/internal/deployments/domain"
 	"aether/internal/druntime/presence"
 	"aether/internal/druntime/pubsub"
+	"aether/internal/hostinfo"
 	"aether/internal/realtime/domain"
 )
 
@@ -371,13 +372,13 @@ func splitHostPort(hostPort string) (string, int) {
 	host, portStr, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		if p, perr := strconv.Atoi(hostPort); perr == nil {
-			return "127.0.0.1", p
+			return hostinfo.PublicIP(), p
 		}
-		return "127.0.0.1", 80
+		return hostinfo.PublicIP(), 80
 	}
 	port, _ := strconv.Atoi(portStr)
 	if host == "" || host == "0.0.0.0" {
-		host = "127.0.0.1"
+		host = hostinfo.PublicIP()
 	}
 	if port == 0 {
 		port = 80

@@ -55,7 +55,7 @@ const STATUS_TONE: Record<string, string> = {
   queued: "warning",
   pending: "warning",
   building: "warning",
-  provisioning: "warning",
+  "pending deploy": "warning",
   restarting: "warning",
   processing: "warning",
 };

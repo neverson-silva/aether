@@ -27,6 +27,8 @@ func (f fakeOpsRuntime) Restart(ctx context.Context, containerID string) error {
 
 func (f fakeOpsRuntime) Remove(ctx context.Context, containerID string) error { return nil }
 
+func (f fakeOpsRuntime) RemoveByLabel(ctx context.Context, label string) error { return nil }
+
 type fakeOpsAppStore struct {
 	app *appsdomain.App
 }

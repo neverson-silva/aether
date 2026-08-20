@@ -1,0 +1,1 @@
+ALTER TABLE deployments DROP CONSTRAINT deployments_app_id_fkey;

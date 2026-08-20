@@ -24,6 +24,10 @@ func (h *Handler) Stats(c *gin.Context) {
 	c.JSON(http.StatusOK, h.host.Stats(c.Request.Context()))
 }
 
+func (h *Handler) Info(c *gin.Context) {
+	c.JSON(http.StatusOK, h.host.Info())
+}
+
 func (h *Handler) StatsStream(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")

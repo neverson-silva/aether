@@ -18,6 +18,7 @@ var (
 type Domain struct {
 	ID            uuid.UUID
 	AppID         uuid.UUID
+	ServiceType   string
 	ServerID      uuid.UUID
 	Host          string
 	HTTPS         bool

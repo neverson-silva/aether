@@ -361,8 +361,7 @@ func (s *Settings) TestConnection(ctx context.Context, orgID uuid.UUID, destID u
 		return err
 	}
 	if dest.IsOAuth() {
-		_, err := s.GoogleProvider(dest)
-		return err
+		return s.testGoogleConnection(ctx, dest)
 	}
 	provider, err := s.S3Provider(dest)
 	if err != nil {
@@ -373,4 +372,21 @@ func (s *Settings) TestConnection(ctx context.Context, orgID uuid.UUID, destID u
 		return err
 	}
 	return provider.DeleteObject(ctx, storage.DeleteObjectInput{Key: testKey})
+}
+
+func (s *Settings) testGoogleConnection(ctx context.Context, dest *domain.S3Destination) error {
+	client, err := s.googleOAuthClient(dest)
+	if err != nil {
+		return err
+	}
+	dc, err := gdrive.NewClientFromHTTP(client)
+	if err != nil {
+		return err
+	}
+	if name := strings.TrimSpace(dest.Bucket); name != "" {
+		_, err = gdrive.EnsureRootFolder(ctx, dc, name)
+		return err
+	}
+	_, err = dc.ListFiles(ctx, gdrive.ListFilesInput{ParentID: "root", PageSize: 1})
+	return err
 }

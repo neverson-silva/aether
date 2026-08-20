@@ -14,14 +14,15 @@ import (
 )
 
 const createDomain = `-- name: CreateDomain :one
-INSERT INTO domains (app_id, server_id, host, https, path, internal_path, strip_path, container_port, status, cert_status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, app_id, server_id, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+INSERT INTO domains (app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
 `
 
 type CreateDomainParams struct {
 	AppID         uuid.UUID     `json:"app_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
+	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	Path          string        `json:"path"`
@@ -36,6 +37,7 @@ type CreateDomainRow struct {
 	ID            uuid.UUID     `json:"id"`
 	AppID         uuid.UUID     `json:"app_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
+	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	Path          string        `json:"path"`
@@ -55,6 +57,7 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Cre
 	row := q.db.QueryRowContext(ctx, createDomain,
 		arg.AppID,
 		arg.ServerID,
+		arg.ServiceType,
 		arg.Host,
 		arg.Https,
 		arg.Path,
@@ -69,6 +72,7 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Cre
 		&i.ID,
 		&i.AppID,
 		&i.ServerID,
+		&i.ServiceType,
 		&i.Host,
 		&i.Https,
 		&i.Path,
@@ -151,7 +155,7 @@ func (q *Queries) DeletePreview(ctx context.Context, arg DeletePreviewParams) er
 }
 
 const getDomainByHost = `-- name: GetDomainByHost :one
-SELECT id, app_id, server_id, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
 FROM domains
 WHERE app_id = $1 AND host = $2
 `
@@ -165,6 +169,7 @@ type GetDomainByHostRow struct {
 	ID            uuid.UUID     `json:"id"`
 	AppID         uuid.UUID     `json:"app_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
+	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	Path          string        `json:"path"`
@@ -187,6 +192,7 @@ func (q *Queries) GetDomainByHost(ctx context.Context, arg GetDomainByHostParams
 		&i.ID,
 		&i.AppID,
 		&i.ServerID,
+		&i.ServiceType,
 		&i.Host,
 		&i.Https,
 		&i.Path,
@@ -205,7 +211,7 @@ func (q *Queries) GetDomainByHost(ctx context.Context, arg GetDomainByHostParams
 }
 
 const getDomainByID = `-- name: GetDomainByID :one
-SELECT id, app_id, server_id, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
 FROM domains
 WHERE id = $1
 `
@@ -214,6 +220,7 @@ type GetDomainByIDRow struct {
 	ID            uuid.UUID     `json:"id"`
 	AppID         uuid.UUID     `json:"app_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
+	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	Path          string        `json:"path"`
@@ -236,6 +243,7 @@ func (q *Queries) GetDomainByID(ctx context.Context, id uuid.UUID) (GetDomainByI
 		&i.ID,
 		&i.AppID,
 		&i.ServerID,
+		&i.ServiceType,
 		&i.Host,
 		&i.Https,
 		&i.Path,
@@ -353,7 +361,7 @@ func (q *Queries) ListCertificatesByOrg(ctx context.Context, orgID uuid.UUID) ([
 }
 
 const listDomains = `-- name: ListDomains :many
-SELECT id, app_id, server_id, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
 FROM domains
 WHERE app_id = $1
 ORDER BY host
@@ -363,6 +371,7 @@ type ListDomainsRow struct {
 	ID            uuid.UUID     `json:"id"`
 	AppID         uuid.UUID     `json:"app_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
+	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	Path          string        `json:"path"`
@@ -391,6 +400,7 @@ func (q *Queries) ListDomains(ctx context.Context, appID uuid.UUID) ([]ListDomai
 			&i.ID,
 			&i.AppID,
 			&i.ServerID,
+			&i.ServiceType,
 			&i.Host,
 			&i.Https,
 			&i.Path,
@@ -458,7 +468,7 @@ func (q *Queries) ListPreviews(ctx context.Context, appID uuid.UUID) ([]Preview,
 }
 
 const listProvisioningDomains = `-- name: ListProvisioningDomains :many
-SELECT id, app_id, server_id, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
 FROM domains
 WHERE status IN ('PENDING', 'PROVISIONING', 'ERROR')
   AND retry_count < $1
@@ -475,6 +485,7 @@ type ListProvisioningDomainsRow struct {
 	ID            uuid.UUID     `json:"id"`
 	AppID         uuid.UUID     `json:"app_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
+	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	Path          string        `json:"path"`
@@ -503,6 +514,7 @@ func (q *Queries) ListProvisioningDomains(ctx context.Context, arg ListProvision
 			&i.ID,
 			&i.AppID,
 			&i.ServerID,
+			&i.ServiceType,
 			&i.Host,
 			&i.Https,
 			&i.Path,

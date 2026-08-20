@@ -18,6 +18,7 @@ type Apps struct {
 	// LatestDeployments returns the status of the most recent deployment per
 	// app. When nil, the apps list is served without deployment status.
 	LatestDeployments func(ctx context.Context, appIDs []uuid.UUID) (map[uuid.UUID]string, error)
+OnCreated func(ctx context.Context, serviceID uuid.UUID, serviceType, name string, orgID uuid.UUID)
 }
 
 type ContainerRemover interface {
@@ -101,7 +102,14 @@ func (a *Apps) CreateApp(ctx context.Context, orgID, projectID uuid.UUID, app *d
 		return nil, err
 	}
 	applyAppDefaults(app)
-	return a.Store.CreateApp(ctx, app)
+	created, err := a.Store.CreateApp(ctx, app)
+	if err != nil {
+		return nil, err
+	}
+	if a.OnCreated != nil {
+		a.OnCreated(ctx, created.ID, "app", created.Name, orgID)
+	}
+	return created, nil
 }
 
 func (a *Apps) GetApp(ctx context.Context, id, orgID uuid.UUID) (*domain.App, error) {

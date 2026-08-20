@@ -56,7 +56,7 @@ function Apps() {
               db.status === "ready"
                 ? { status: "running", pulse: true }
                 : db.status === "creating" || db.status === "starting"
-                  ? { status: "provisioning", pulse: true }
+                  ? { status: "pending deploy", pulse: true }
                   : db.status === "failed"
                     ? { status: "error", pulse: false }
                     : { status: db.status, pulse: false };
@@ -107,7 +107,7 @@ function Apps() {
                         : latestStatus === "failed" || latestStatus === "cancelled" || latestStatus === "rolled_back"
                           ? { status: "failed", pulse: false }
                           : state === "no_container"
-                            ? { status: "no container", pulse: false }
+                            ? { status: "pending deploy", pulse: false }
                             : { status: "unknown", pulse: false };
             return (
               <Link

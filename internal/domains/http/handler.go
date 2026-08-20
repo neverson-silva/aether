@@ -38,7 +38,7 @@ type createPreviewReq struct {
 }
 
 func (h *Handler) AddDomain(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
@@ -48,7 +48,7 @@ func (h *Handler) AddDomain(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	dom, err := h.domains.Add(c.Request.Context(), appID, orgID(c), application.AddDomainInput{
+	dom, err := h.domains.Add(c.Request.Context(), serviceID, orgID(c), serviceType, application.AddDomainInput{
 		Host: req.Host, HTTPS: req.HTTPS, Path: req.Path, InternalPath: req.InternalPath,
 		StripPath: req.StripPath, ContainerPort: req.ContainerPort,
 	})
@@ -60,7 +60,7 @@ func (h *Handler) AddDomain(c *gin.Context) {
 }
 
 func (h *Handler) GenerateFreeDomain(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
@@ -70,7 +70,7 @@ func (h *Handler) GenerateFreeDomain(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err == nil && req.HTTPS != nil {
 		https = *req.HTTPS
 	}
-	dom, err := h.domains.GenerateFreeDomain(c.Request.Context(), appID, orgID(c), https)
+	dom, err := h.domains.GenerateFreeDomain(c.Request.Context(), serviceID, orgID(c), serviceType, https)
 	if err != nil {
 		abort(c, err)
 		return
@@ -79,7 +79,7 @@ func (h *Handler) GenerateFreeDomain(c *gin.Context) {
 }
 
 func (h *Handler) UpdateDomain(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
@@ -98,7 +98,7 @@ func (h *Handler) UpdateDomain(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.domains.UpdateDomain(c.Request.Context(), appID, orgID(c), domainID, application.AddDomainInput{
+	if err := h.domains.UpdateDomain(c.Request.Context(), serviceID, orgID(c), serviceType, domainID, application.AddDomainInput{
 		Host: req.Host, HTTPS: req.HTTPS, Path: req.Path, InternalPath: req.InternalPath,
 		StripPath: req.StripPath, ContainerPort: req.ContainerPort,
 	}); err != nil {
@@ -109,7 +109,7 @@ func (h *Handler) UpdateDomain(c *gin.Context) {
 }
 
 func (h *Handler) VerifyDomain(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
@@ -119,7 +119,7 @@ func (h *Handler) VerifyDomain(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.domains.Verify(c.Request.Context(), appID, orgID(c), domainID); err != nil {
+	if err := h.domains.Verify(c.Request.Context(), serviceID, orgID(c), serviceType, domainID); err != nil {
 		abort(c, err)
 		return
 	}
@@ -127,7 +127,7 @@ func (h *Handler) VerifyDomain(c *gin.Context) {
 }
 
 func (h *Handler) ReprovisionDomain(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
@@ -137,7 +137,7 @@ func (h *Handler) ReprovisionDomain(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.domains.Reprovision(c.Request.Context(), appID, orgID(c), domainID); err != nil {
+	if err := h.domains.Reprovision(c.Request.Context(), serviceID, orgID(c), serviceType, domainID); err != nil {
 		abort(c, err)
 		return
 	}
@@ -145,7 +145,7 @@ func (h *Handler) ReprovisionDomain(c *gin.Context) {
 }
 
 func (h *Handler) GetDomainStatus(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
@@ -155,7 +155,7 @@ func (h *Handler) GetDomainStatus(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	dom, err := h.domains.GetDomain(c.Request.Context(), appID, orgID(c), domainID)
+	dom, err := h.domains.GetDomain(c.Request.Context(), serviceID, orgID(c), serviceType, domainID)
 	if err != nil {
 		abort(c, err)
 		return
@@ -164,12 +164,12 @@ func (h *Handler) GetDomainStatus(c *gin.Context) {
 }
 
 func (h *Handler) ListDomains(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	domains, err := h.domains.List(c.Request.Context(), appID, orgID(c))
+	domains, err := h.domains.List(c.Request.Context(), serviceID, orgID(c), serviceType)
 	if err != nil {
 		abort(c, err)
 		return
@@ -182,12 +182,12 @@ func (h *Handler) ListDomains(c *gin.Context) {
 }
 
 func (h *Handler) RemoveDomain(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, serviceType, err := resourceID(c)
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.domains.Remove(c.Request.Context(), appID, orgID(c), c.Param("host")); err != nil {
+	if err := h.domains.Remove(c.Request.Context(), serviceID, orgID(c), serviceType, c.Param("host")); err != nil {
 		abort(c, err)
 		return
 	}
@@ -263,11 +263,20 @@ func (h *Handler) Certificates(c *gin.Context) {
 
 func domainDTO(d *domain.Domain) gin.H {
 	return gin.H{
-		"id": d.ID, "app_id": d.AppID, "server_id": d.ServerID, "host": d.Host, "https": d.HTTPS,
+		"id": d.ID, "app_id": d.AppID, "service_type": d.ServiceType, "server_id": d.ServerID, "host": d.Host, "https": d.HTTPS,
 		"path": d.Path, "internal_path": d.InternalPath, "strip_path": d.StripPath,
 		"container_port": d.ContainerPort, "status": d.Status, "cert_status": d.CertStatus,
 		"created_at": d.CreatedAt, "updated_at": d.UpdatedAt,
 	}
+}
+
+func resourceID(c *gin.Context) (uuid.UUID, string, error) {
+	if appID := c.Param("appID"); appID != "" {
+		id, err := uuid.Parse(appID)
+		return id, application.ServiceTypeApp, err
+	}
+	id, err := uuid.Parse(c.Param("dbID"))
+	return id, application.ServiceTypeDB, err
 }
 
 func previewDTO(p *domain.Preview) gin.H {

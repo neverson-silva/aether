@@ -72,6 +72,28 @@ type DriveClient interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, error)
 }
 
+type staticTokenTransport struct {
+	next  http.RoundTripper
+	token string
+}
+
+func (t *staticTokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
+	req2.Header.Set("Authorization", "Bearer "+t.token)
+	return t.next.RoundTrip(req2)
+}
+
+// NewTokenClient builds a Drive client authenticated with a static bearer token.
+func NewTokenClient(accessToken string) (DriveClient, error) {
+	hc := &http.Client{Transport: &staticTokenTransport{next: http.DefaultTransport, token: accessToken}}
+	return newDriveServiceClient(hc, "")
+}
+
+// NewClientFromHTTP builds a Drive client from an HTTP client.
+func NewClientFromHTTP(hc *http.Client) (DriveClient, error) {
+	return newDriveServiceClient(hc, "")
+}
+
 type driveServiceClient struct {
 	svc *drive.Service
 }

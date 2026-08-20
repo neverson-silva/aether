@@ -1,8 +1,6 @@
 package application
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,16 +8,48 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"aether/internal/domains/domain"
+	"aether/internal/hostinfo"
 )
 
 type Provisioner struct {
-	TraefikDir     string
-	FreeDomainBase string
-	TraefikBin     string
+	TraefikDir         string
+	FreeDomainBase     string
+	FreeDomainProvider string
+	TraefikBin         string
 }
 
 var hostPattern = regexp.MustCompile(`^(?i)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$`)
+
+var wildcardDNSProviders = map[string]bool{
+	"nip.io": true, "sslip.io": true, "traefik.me": true,
+}
+
+func (p *Provisioner) EffectiveBase() string {
+	if base := strings.Trim(strings.ToLower(p.FreeDomainBase), "."); base != "" {
+		return base
+	}
+	provider := strings.ToLower(strings.TrimSpace(p.FreeDomainProvider))
+	if wildcardDNSProviders[provider] {
+		return "apps." + hostinfo.PublicIPDashed() + "." + provider
+	}
+	return ""
+}
+
+func (p *Provisioner) IsPublicBase() bool {
+	base := strings.ToLower(strings.TrimSpace(p.FreeDomainBase))
+	if base == "" {
+		return true
+	}
+	for _, suffix := range []string{".local", ".localhost", ".internal", ".lan", ".home.arpa"} {
+		if strings.HasSuffix(base, suffix) {
+			return false
+		}
+	}
+	return true
+}
 
 func (p *Provisioner) ValidateHost(host string) error {
 	host = strings.TrimSpace(host)
@@ -35,10 +65,8 @@ func (p *Provisioner) ValidateHost(host string) error {
 	return nil
 }
 
-func (p *Provisioner) GenerateFreeDomain(slug string) string {
-	buf := make([]byte, 5)
-	_, _ = rand.Read(buf)
-	return fmt.Sprintf("%s-%s.%s", slugify(slug), hex.EncodeToString(buf), strings.TrimPrefix(p.FreeDomainBase, "."))
+func (p *Provisioner) GenerateFreeDomain(slug string, id uuid.UUID) string {
+	return fmt.Sprintf("%s-%s.%s", slugify(slug), id.String()[:8], p.EffectiveBase())
 }
 
 func slugify(s string) string {
@@ -64,14 +92,21 @@ func (p *Provisioner) dynamicDir(serverID string) string {
 
 // WriteDomainConfig grava (idempotente) a config dinâmica do domínio para que o
 // Traefik do server detecte a rota sem redeploy.
-func (p *Provisioner) WriteDomainConfig(d *domain.Domain, appID string, httpsReady bool) error {
+func (p *Provisioner) WriteDomainConfig(d *domain.Domain, alias string, httpsReady bool) error {
 	dir := p.dynamicDir(d.ServerID.String())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	alias := "app-" + appID[:8]
 	content := p.generateDynamicConfig(d, alias, httpsReady)
 	return os.WriteFile(filepath.Join(dir, "domain-"+d.ID.String()+".yml"), []byte(content), 0o644)
+}
+
+func (p *Provisioner) Alias(serviceID uuid.UUID, serviceType string) string {
+	prefix := "app-"
+	if serviceType == ServiceTypeDB {
+		prefix = "db-"
+	}
+	return prefix + serviceID.String()[:8]
 }
 
 func (p *Provisioner) RemoveDomainConfig(d *domain.Domain) error {

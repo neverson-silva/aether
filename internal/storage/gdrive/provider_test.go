@@ -63,6 +63,27 @@ func TestContractAgainstGDriveProvider(t *testing.T) {
 	storage.CheckProviderContract(t, p)
 }
 
+func TestEnsureRootFolder(t *testing.T) {
+	client := newFakeDriveClient("root")
+	ctx := context.Background()
+
+	id, err := EnsureRootFolder(ctx, client, "my-bucket")
+	if err != nil {
+		t.Fatalf("EnsureRootFolder: %v", err)
+	}
+	if id == "" || id == "root" {
+		t.Errorf("expected a created folder id, got %q", id)
+	}
+
+	again, err := EnsureRootFolder(ctx, client, "my-bucket")
+	if err != nil {
+		t.Fatalf("EnsureRootFolder again: %v", err)
+	}
+	if again != id {
+		t.Errorf("second call id = %q, want %q (idempotent)", again, id)
+	}
+}
+
 func TestCapabilities(t *testing.T) {
 	p, _ := newTestProvider(t)
 	caps := p.Capabilities()

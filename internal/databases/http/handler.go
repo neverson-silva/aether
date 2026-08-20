@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -10,14 +11,16 @@ import (
 	authhttp "aether/internal/auth/http"
 	"aether/internal/databases/application"
 	"aether/internal/databases/domain"
+	"aether/internal/hostinfo"
 )
 
 type Handler struct {
 	databases *application.Databases
+	studio    *application.Studio
 }
 
-func New(databases *application.Databases) *Handler {
-	return &Handler{databases: databases}
+func New(databases *application.Databases, studio *application.Studio) *Handler {
+	return &Handler{databases: databases, studio: studio}
 }
 
 type createDBReq struct {
@@ -25,6 +28,8 @@ type createDBReq struct {
 	Name      string `json:"name"`
 	Engine    string `json:"engine"`
 	Version   string `json:"version"`
+	User      string `json:"user"`
+	Password  string `json:"password"`
 	MemMB     *int   `json:"mem_mb"`
 	StorageMB *int   `json:"storage_mb"`
 }
@@ -47,7 +52,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if req.StorageMB != nil {
 		storageMB = *req.StorageMB
 	}
-	db, err := h.databases.Create(c.Request.Context(), orgID(c), projectID, req.Name, domain.Engine(req.Engine), req.Version, memMB, storageMB)
+	db, err := h.databases.Create(c.Request.Context(), orgID(c), projectID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, memMB, storageMB)
 	if err != nil {
 		abort(c, err)
 		return
@@ -80,7 +85,7 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 	dsn, _ := h.databases.ConnectionString(c.Request.Context(), id, orgID(c))
-	c.JSON(http.StatusOK, gin.H{"database": databaseDTO(db), "dsn": dsn})
+	c.JSON(http.StatusOK, gin.H{"database": databaseDTO(db), "dsn": dsn, "public_host": hostinfo.PublicIP()})
 }
 
 func (h *Handler) Delete(c *gin.Context) {
@@ -150,6 +155,67 @@ func (h *Handler) Stop(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, databaseDTO(db))
+}
+
+func (h *Handler) ListDeployments(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	limit := 25
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	deps, err := h.databases.ListDeployments(c.Request.Context(), id, orgID(c), limit)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(deps))
+	for i := range deps {
+		var started, finished any
+		if deps[i].StartedAt != nil {
+			started = deps[i].StartedAt
+		}
+		if deps[i].FinishedAt != nil {
+			finished = deps[i].FinishedAt
+		}
+		out = append(out, gin.H{
+			"id": deps[i].ID, "number": deps[i].Number, "status": deps[i].Status,
+			"trigger": deps[i].Trigger, "triggered_by": deps[i].TriggeredBy,
+			"container_id": deps[i].ContainerID, "error": deps[i].Error,
+			"created_at": deps[i].CreatedAt, "started_at": started, "finished_at": finished,
+		})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) DeploymentLog(c *gin.Context) {
+	dbID, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	depID, err := uuid.Parse(c.Param("depID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	limit := 200
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 1000 {
+			limit = n
+		}
+	}
+	content, err := h.databases.DeploymentLogs(c.Request.Context(), dbID, depID, orgID(c), limit)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"content": content})
 }
 
 func databaseDTO(db *domain.Database) gin.H {

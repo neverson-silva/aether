@@ -44,7 +44,8 @@ func (w *ProvisionWorker) process(ctx context.Context) {
 }
 
 func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
-	if err := w.Provisioner.WriteDomainConfig(d, d.AppID.String(), false); err != nil {
+	alias := w.Provisioner.Alias(d.AppID, d.ServiceType)
+	if err := w.Provisioner.WriteDomainConfig(d, alias, false); err != nil {
 		w.scheduleRetry(ctx, d, err)
 		return
 	}
@@ -53,7 +54,7 @@ func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 		return
 	}
 	if w.Provisioner.VerifyCertificate(d.Host) {
-		_ = w.Provisioner.WriteDomainConfig(d, d.AppID.String(), true)
+		_ = w.Provisioner.WriteDomainConfig(d, alias, true)
 		_ = w.Store.UpdateDomainProvision(ctx, d.ID, d.AppID, string(domain.DomainActive), "active", "", nil, 0)
 		return
 	}

@@ -7,6 +7,9 @@ export function useDatabaseDeploy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiPost<Database>(`/api/v1/databases/${id}/deploy`),
-    onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: ["database", id] }),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["database", id] });
+      qc.invalidateQueries({ queryKey: ["database-deployments", id] });
+    },
   });
 }
