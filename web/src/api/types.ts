@@ -164,10 +164,10 @@ export interface Deployment {
 }
 
 export interface ContainerStats {
-  CPUPercent: number;
-  MemBytes: number;
-  MemLimit: number;
-  Pids: number;
+  cpu_percent: number;
+  mem_bytes: number;
+  mem_limit: number;
+  mem_percent: number;
 }
 
 export interface Stats {

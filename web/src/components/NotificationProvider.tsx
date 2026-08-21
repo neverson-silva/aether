@@ -1,9 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "../api/client";
+import React, { useEffect, useRef } from "react";
 import type { EventEnvelope, NotificationItem } from "../hooks";
-import { useRealtime, useRealtimeEvent } from "./RealtimeProvider";
+import { useRealtimeEvent } from "./RealtimeProvider";
 import { useToast, type ToastLevel } from "./ui";
+import { useNotificationsStore } from "../stores/notifications";
 
 interface NotificationContextValue {
   unread: number;
@@ -14,17 +13,16 @@ interface NotificationContextValue {
   refresh: () => void;
 }
 
-const NotificationCtx = createContext<NotificationContextValue>({
-  unread: 0,
-  openBell: () => {},
-  list: [],
-  markRead: () => {},
-  markAllRead: () => {},
-  refresh: () => {},
-});
+
 
 export function useNotifications(): NotificationContextValue {
-  return useContext(NotificationCtx);
+  const unread = useNotificationsStore((st) => st.unread);
+  const list = useNotificationsStore((st) => st.list);
+  const openBell = () => useNotificationsStore.getState().toggleBell();
+  const markRead = (id: string) => void useNotificationsStore.getState().markRead(id);
+  const markAllRead = () => void useNotificationsStore.getState().markAllRead();
+  const refresh = () => void useNotificationsStore.getState().refresh();
+  return { unread, openBell, list, markRead, markAllRead, refresh };
 }
 
 function levelForType(type: string): ToastLevel {
@@ -62,94 +60,49 @@ function toItem(ev: EventEnvelope): NotificationItem {
 }
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const qc = useQueryClient();
   const { toast } = useToast();
-  const [unread, setUnread] = useState(0);
-  const [list, setList] = useState<NotificationItem[]>([]);
-  const [bellOpen, setBellOpen] = useState(false);
-  const { connected } = useRealtime();
-
-  const refresh = useCallback(async () => {
-    try {
-      const [notifs, count] = await Promise.all([
-        apiGet<NotificationItem[]>("/api/v1/notifications"),
-        apiGet<{ count: number }>("/api/v1/notifications/unread-count"),
-      ]);
-      setList(notifs ?? []);
-      setUnread(count.count);
-    } catch {
-      /* offline */
-    }
-  }, []);
-
-  const markRead = async (id: string) => {
-    setList((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    setUnread((u) => Math.max(0, u - 1));
-    try {
-      await apiPost(`/api/v1/notifications/${id}/read`);
-      qc.invalidateQueries({ queryKey: ["notifications"] });
-    } catch {
-    }
-  };
-
-  const markAllRead = async () => {
-    setList((prev) => prev.map((n) => ({ ...n, read: true })));
-    setUnread(0);
-    try {
-      await apiPost("/api/v1/notifications/read-all");
-      qc.invalidateQueries({ queryKey: ["notifications"] });
-    } catch {
-    }
-  };
 
   useRealtimeEvent((ev, replay) => {
     if (!isNotifiable(ev.type)) return;
     if (replay) {
-      setList((prev) => {
-        if (prev.some((n) => n.id === ev.id)) return prev;
-        return [toItem(ev), ...prev].slice(0, 100);
-      });
+      useNotificationsStore.getState().prependReplay(toItem(ev));
       return;
     }
-    setList((prev) => [toItem(ev), ...prev.filter((n) => n.id !== ev.id)].slice(0, 100));
-    setUnread((u) => u + 1);
+    useNotificationsStore.getState().prepend(toItem(ev));
     const level = levelForType(ev.type);
     const isError = level === "error";
     const target = (ev.payload?.service_id || ev.payload?.app_id) as string | undefined;
     if (ev.message) toast(ev.message, { level, onClick: isError ? () => window.location.assign(`/apps`) : undefined });
     if (target) {
-      setList((prev) => prev.map((n) => (n.id === ev.id ? { ...n, payload: JSON.stringify({ ...(ev.payload ?? {}), app_id: target }) } : n)));
+      useNotificationsStore.getState().patchPayload(ev.id, target);
     }
   });
 
   useEffect(() => {
-    refresh();
-    const onOrgChange = () => refresh();
+    void useNotificationsStore.getState().refresh();
+    const onOrgChange = () => void useNotificationsStore.getState().refresh();
     window.addEventListener("aether:org", onOrgChange);
-    const fallback = setInterval(() => {
-      if (!connected) refresh();
+    const reconcile = setInterval(() => {
+      void useNotificationsStore.getState().refresh();
     }, 30000);
     return () => {
-      clearInterval(fallback);
+      clearInterval(reconcile);
       window.removeEventListener("aether:org", onOrgChange);
     };
-  }, [connected, refresh]);
-
-  const value: NotificationContextValue = {
-    unread,
-    openBell: () => setBellOpen((v) => !v),
-    list,
-    markRead,
-    markAllRead,
-    refresh,
-  };
+  }, []);
 
   return (
-    <NotificationCtx.Provider value={value}>
+    <>
       {children}
-      {bellOpen && <BellDropdown />}
-    </NotificationCtx.Provider>
+      <BellHost />
+    </>
   );
+}
+
+function BellHost() {
+  const open = useNotificationsStore((st) => st.bellOpen);
+  if (!open) return null;
+  return <BellDropdown />;
 }
 
 function BellDropdown() {

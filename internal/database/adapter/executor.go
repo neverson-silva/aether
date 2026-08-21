@@ -76,20 +76,30 @@ func (e *Executor) exec(ctx context.Context, dialect Dialect, sql string) (ExecR
 }
 
 func mapError(stderr string) *QueryError {
-	msg := strings.TrimSpace(stderr)
-	lines := strings.Split(msg, "\n")
-	line := ""
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			line = strings.TrimSpace(lines[i])
-			break
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	msg := ""
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if t == "" || t == "^" {
+			continue
+		}
+		upper := strings.ToUpper(t)
+		if strings.HasPrefix(upper, "ERROR:") || strings.HasPrefix(upper, "FATAL:") ||
+			strings.HasPrefix(upper, "SQLSTATE") || strings.HasPrefix(upper, "DETAIL:") ||
+			strings.HasPrefix(upper, "HINT:") {
+			if msg == "" || strings.HasPrefix(upper, "ERROR:") || strings.HasPrefix(upper, "FATAL:") {
+				msg = strings.TrimPrefix(strings.TrimPrefix(t, "psql:"), " ")
+			}
+			continue
+		}
+		if msg == "" {
+			msg = t
 		}
 	}
-	qerr := &QueryError{Message: line}
-	if pos := extractPostgresPosition(stderr); pos > 0 {
-		qerr.Position = pos
+	if msg == "" {
+		msg = strings.TrimSpace(stderr)
 	}
-	return qerr
+	return &QueryError{Message: msg}
 }
 
 func extractPostgresPosition(stderr string) int {

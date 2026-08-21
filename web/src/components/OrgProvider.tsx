@@ -1,71 +1,38 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getOrgId, setOrgId } from "../api/client";
 import { useMe } from "../hooks";
-import type { OrgRoleView } from "../api/types";
-
-interface OrgContextValue {
-  orgs: OrgRoleView[];
-  currentOrg: OrgRoleView | null;
-  role: string;
-  isLoading: boolean;
-  switchOrg: (orgId: string) => void;
-  refetch: () => void;
-}
-
-const OrgContext = createContext<OrgContextValue>({
-  orgs: [],
-  currentOrg: null,
-  role: "",
-  isLoading: true,
-  switchOrg: () => {},
-  refetch: () => {},
-});
+import { useOrgStore } from "../stores/org";
 
 export function useOrg() {
-  return useContext(OrgContext);
+  const orgs = useOrgStore((s) => s.orgs);
+  const currentOrg = useOrgStore((s) => s.currentOrg);
+  const role = useOrgStore((s) => s.role);
+  const isLoading = useOrgStore((s) => s.isLoading);
+  const switchOrg = useOrgStore((s) => s.switchOrg);
+  const refetch = useOrgStore((s) => s.refetch);
+  return { orgs, currentOrg, role, isLoading, switchOrg, refetch };
 }
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { data, isLoading, refetch } = useMe();
-  const [forced, setForced] = useState<string | null>(null);
-
-  const orgs = data?.organizations ?? [];
-
-  const currentOrg = useMemo<OrgRoleView | null>(() => {
-    const stored = getOrgId();
-    const match = stored
-      ? orgs.find((o) => o.id === stored)
-      : null;
-    if (match) return match;
-    if (forced) {
-      const f = orgs.find((o) => o.id === forced);
-      if (f) return f;
-    }
-    return orgs.find((o) => o.id === data?.org?.id) ?? orgs[0] ?? null;
-  }, [orgs, forced, data]);
 
   useEffect(() => {
-    if (currentOrg && !getOrgId()) {
-      setOrgId(currentOrg.id);
-    }
-  }, [currentOrg]);
+    useOrgStore.getState().setRefetch(() => refetch());
+  }, [refetch]);
 
-  const switchOrg = (orgId: string) => {
-    setOrgId(orgId);
-    setForced(orgId);
-    queryClient.invalidateQueries();
-  };
+  useEffect(() => {
+    useOrgStore.getState().setMe(data, isLoading);
+  }, [data, isLoading]);
 
-  const value: OrgContextValue = {
-    orgs,
-    currentOrg,
-    role: currentOrg?.role ?? data?.org?.role ?? "",
-    isLoading,
-    switchOrg,
-    refetch,
-  };
+  useEffect(() => {
+    const unsub = useOrgStore.subscribe((state) => {
+      if (state.forcedOrg) {
+        queryClient.invalidateQueries();
+      }
+    });
+    return unsub;
+  }, [queryClient]);
 
-  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
+  return <>{children}</>;
 }

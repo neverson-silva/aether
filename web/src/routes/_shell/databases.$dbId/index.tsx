@@ -1,6 +1,8 @@
 import { createFileRoute, useParams, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";import {
+import { useEffect, useRef, useState } from "react";
+import {
   useDatabaseDetail,
+  useDatabaseStats,
   useDeleteDatabase,
   useDatabaseDeploy,
   useDatabaseRebuild,
@@ -69,8 +71,7 @@ function DatabaseDetail() {
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logFollow, setLogFollow] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
-  const [stats, setStats] = useState<{ state: string; stats: { CPUPercent: number; MemBytes: number; MemLimit: number; Pids: number } } | null>(null);
-  const [loadingStats, setLoadingStats] = useState(false);
+  const { data: stats, isLoading: loadingStats, refetch: reloadStats } = useDatabaseStats(dbId);
 
   const db = data?.database;
   const running = db?.status === "running" || db?.status === "ready";
@@ -88,17 +89,6 @@ function DatabaseDetail() {
   useEffect(() => {
     if (logFollow) logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [logLines, logFollow]);
-
-  const loadStats = async () => {
-    if (stats !== null || loadingStats) return;
-    setLoadingStats(true);
-    try {
-      const resp = await fetch(`${getServer()}/api/v1/databases/${dbId}/stats`, { credentials: "include" });
-      if (resp.ok) setStats(await resp.json());
-    } finally {
-      setLoadingStats(false);
-    }
-  };
 
   const copyDsn = async () => {
     if (!data?.dsn) return;
@@ -131,7 +121,7 @@ function DatabaseDetail() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
-            onClick={() => router.navigate({ to: "/databases/$dbId/studio", params: { dbId } })}
+            onClick={() => router.navigate({ to: "/studio/$dbId", params: { dbId } })}
           >
             <span className="material-symbols-outlined text-[18px]">table_view</span>
             Open Studio
@@ -235,18 +225,18 @@ function DatabaseDetail() {
               <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
                 <span className="font-label-caps text-label-caps text-on-surface-variant">CPU Usage</span>
                 <div className="mt-4">
-                  <span className="font-headline-sm text-headline-sm text-on-surface">{stats?.stats.CPUPercent.toFixed(0) ?? "—"}%</span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface">{stats?.stats?.cpu_percent?.toFixed(0) ?? "—"}%</span>
                   <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, stats?.stats.CPUPercent ?? 0)}%` }} />
+                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, stats?.stats?.cpu_percent ?? 0)}%` }} />
                   </div>
                 </div>
               </div>
               <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
                 <span className="font-label-caps text-label-caps text-on-surface-variant">Memory</span>
                 <div className="mt-4">
-                  <span className="font-headline-sm text-headline-sm text-on-surface">{stats ? fmtBytes(stats.stats.MemBytes) : "—"}</span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface">{stats?.stats?.mem_bytes != null ? fmtBytes(stats.stats.mem_bytes) : "—"}</span>
                   <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-secondary rounded-full" style={{ width: `${Math.min(100, stats && stats.stats.MemLimit ? (stats.stats.MemBytes / stats.stats.MemLimit) * 100 : 0)}%` }} />
+                    <div className="h-full bg-secondary rounded-full" style={{ width: `${Math.min(100, stats?.stats?.mem_limit ? ((stats.stats.mem_bytes ?? 0) / stats.stats.mem_limit) * 100 : 0)}%` }} />
                   </div>
                 </div>
               </div>
@@ -275,8 +265,8 @@ function DatabaseDetail() {
               <div className="flex items-center gap-md">
                 <StatusPill status={dbPill(db?.status ?? "").status} pulse={dbPill(db?.status ?? "").pulse} />
                 <span className="font-body-sm text-body-sm text-on-surface-variant capitalize">{db?.status ?? "—"}</span>
-                <Button variant="ghost" onClick={loadStats} disabled={loadingStats || !!stats}>
-                  {stats ? "Loaded" : "Load live stats"}
+                <Button variant="ghost" onClick={() => void reloadStats()} disabled={loadingStats}>
+                  {loadingStats ? "Loading..." : "Refresh"}
                 </Button>
               </div>
             </div>
@@ -382,27 +372,24 @@ function DatabaseDetail() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
               <div className="bg-surface-container-low rounded-lg p-md">
                 <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">CPU</p>
-                <p className="font-headline-sm text-headline-sm text-on-surface">{stats.stats.CPUPercent.toFixed(2)}%</p>
+                <p className="font-headline-sm text-headline-sm text-on-surface">{stats.stats?.cpu_percent?.toFixed(2) ?? "—"}%</p>
               </div>
               <div className="bg-surface-container-low rounded-lg p-md">
                 <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Memory</p>
-                <p className="font-headline-sm text-headline-sm text-on-surface">{fmtBytes(stats.stats.MemBytes)}</p>
+                <p className="font-headline-sm text-headline-sm text-on-surface">{stats.stats?.mem_bytes != null ? fmtBytes(stats.stats.mem_bytes) : "—"}</p>
               </div>
               <div className="bg-surface-container-low rounded-lg p-md">
                 <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Limit</p>
-                <p className="font-headline-sm text-headline-sm text-on-surface">{fmtBytes(stats.stats.MemLimit)}</p>
+                <p className="font-headline-sm text-headline-sm text-on-surface">{stats.stats?.mem_limit != null ? fmtBytes(stats.stats.mem_limit) : "—"}</p>
               </div>
               <div className="bg-surface-container-low rounded-lg p-md">
                 <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">PIDs</p>
-                <p className="font-headline-sm text-headline-sm text-on-surface">{stats.stats.Pids}</p>
+                <p className="font-headline-sm text-headline-sm text-on-surface">{stats.stats?.mem_percent != null ? `${stats.stats.mem_percent.toFixed(1)}%` : "—"}</p>
               </div>
             </div>
           ) : (
             <div className="text-center py-lg">
-              <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">Live metrics from the container.</p>
-              <Button onClick={loadStats} disabled={loadingStats}>
-                {loadingStats ? "Loading..." : "Load metrics"}
-              </Button>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">{loadingStats ? "Loading metrics..." : "No live metrics available (no active container)."}</p>
             </div>
           )}
         </Card>

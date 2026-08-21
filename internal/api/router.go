@@ -245,6 +245,7 @@ func (r *Router) routes() {
 		authed.GET("/ws/db-terminal/:dbID", r.databases.DbTerminal)
 
 		authed.GET("/databases/:dbID/studio/meta", r.databases.StudioMeta)
+		authed.GET("/databases/:dbID/studio/catalog", r.databases.StudioCatalog)
 		authed.GET("/databases/:dbID/studio/schemas", r.databases.StudioSchemas)
 		authed.GET("/databases/:dbID/studio/schemas/:schema/objects", r.databases.StudioObjects)
 
@@ -253,6 +254,10 @@ func (r *Router) routes() {
 		authed.GET("/databases/:dbID/studio/tables/:schema/:table/data", r.databases.StudioTableData)
 		authed.POST("/databases/:dbID/studio/query", r.databases.StudioQuery)
 		authed.POST("/databases/:dbID/studio/exec", r.databases.StudioExec)
+		authed.POST("/databases/:dbID/studio/tables", r.databases.StudioCreateTable)
+		authed.POST("/databases/:dbID/studio/tables/rename", r.databases.StudioRenameTable)
+		authed.POST("/databases/:dbID/studio/tables/drop", r.databases.StudioDropTable)
+		authed.POST("/databases/:dbID/studio/tables/alter", r.databases.StudioAlterTable)
 		authed.POST("/databases/:dbID/studio/refresh", r.databases.StudioRefresh)
 
 		authed.GET("/backups", r.backups.List)

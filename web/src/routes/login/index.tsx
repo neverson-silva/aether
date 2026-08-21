@@ -5,6 +5,9 @@ import { z } from "zod";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useLogin } from "../../hooks";
+import { useAuthStore } from "../../stores/auth";
+import { apiGet } from "../../api/client";
+import type { Me } from "../../api/types";
 import { getServer, setServer } from "../../api/client";
 import { useToast } from "../../components/ui";
 
@@ -46,11 +49,13 @@ function Login() {
 
   const submit = async (values: LoginForm) => {
     try {
-      await login.mutateAsync({
+      const res = await login.mutateAsync({
         email: values.email,
         password: values.password,
         server: getServer() || "",
       });
+      const me = await apiGet<Me>("/api/v1/me");
+      useAuthStore.getState().setUser(me);
       if (values.remember) setServer(getServer() || "");
       toast("Authenticated successfully");
       navigate({ to: "/" });

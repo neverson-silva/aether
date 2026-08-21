@@ -12,7 +12,7 @@ if ! command -v go >/dev/null 2>&1; then
     fi
   done
 fi
-export PATH="$PATH:$(go env GOPATH)/bin"
+export PATH="$(go env GOPATH)/bin:$PATH"
 
 # Credenciais do banco (geradas pelo install.sh)
 CRED_FILE="$HOME/.aether/.aether-db"
@@ -66,16 +66,59 @@ fi
 # Podman socket — pack/buildpacks (SmartBuild) precisa de um daemon docker-compatível
 # (DOCKER_HOST), senão o pack cai no /var/run/docker.sock e o build falha.
 PODMAN_SOCK=""
-for s in "/run/podman/podman.sock" "${XDG_RUNTIME_DIR:-}/podman/podman.sock" "/run/user/$(id -u)/podman/podman.sock"; do
-  if [[ -S "$s" ]]; then
-    PODMAN_SOCK="$s"
-    break
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  # podman machine: o socket vive DENTRO da VM, acessível via ssh. O pack não
+  # entende o transporte ssh:// do podman, então fazemos um forward do socket
+  # da VM para um socket unix local (reusado entre execuções).
+  URI="$(podman system connection list --format '{{.URI}}' 2>/dev/null | head -1)"
+  IDENTITY="$(podman system connection list --format '{{.Identity}}' 2>/dev/null | head -1)"
+  if [[ -n "$URI" && -n "$IDENTITY" ]]; then
+    SSH_USER="$(printf '%s' "$URI" | sed -E 's#^ssh://([^@]+)@.*#\1#')"
+    SSH_HOST="$(printf '%s' "$URI" | sed -E 's#^ssh://[^@]+@([^:/]+):[0-9]+/.*#\1#')"
+    SSH_PORT="$(printf '%s' "$URI" | sed -E 's#^ssh://[^@]+@[^:/]+:([0-9]+)/.*#\1#')"
+    REMOTE_PATH="/${URI#*ssh://*/}"
+    LOCAL_SOCK="$AETHER_STATE/podman.sock"
+    FWD_PIDFILE="$AETHER_STATE/podman-sock-forward.pid"
+    if [[ ! -S "$LOCAL_SOCK" ]]; then
+      if [[ -f "$FWD_PIDFILE" ]] && kill -0 "$(cat "$FWD_PIDFILE")" 2>/dev/null; then
+        kill "$(cat "$FWD_PIDFILE")" 2>/dev/null
+        sleep 0.3
+      fi
+      mkdir -p "$AETHER_STATE/logs"
+      nohup ssh -N -i "$IDENTITY" -p "$SSH_PORT" -l "$SSH_USER" "$SSH_HOST" \
+        -o StrictHostKeyChecking=no -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
+        -o StreamLocalBindUnlink=yes \
+        -L "$LOCAL_SOCK:$REMOTE_PATH" >>"$AETHER_STATE/logs/podman-sock.log" 2>&1 &
+      echo "$!" > "$FWD_PIDFILE"
+      for _ in $(seq 1 20); do
+        [[ -S "$LOCAL_SOCK" ]] && break
+        sleep 0.3
+      done
+    fi
+    if [[ -S "$LOCAL_SOCK" ]]; then
+      PODMAN_SOCK="$LOCAL_SOCK"
+      echo "podman socket (VM forward): $PODMAN_SOCK"
+    else
+      echo "warning: podman socket forward failed ($LOCAL_SOCK) — SmartBuild app deploys will fail." >&2
+    fi
+  else
+    echo "warning: no podman machine connection found — SmartBuild app deploys will fail." >&2
   fi
-done
+else
+  for s in "/run/podman/podman.sock" "${XDG_RUNTIME_DIR:-}/podman/podman.sock" "/run/user/$(id -u)/podman/podman.sock"; do
+    if [[ -S "$s" ]]; then
+      PODMAN_SOCK="$s"
+      break
+    fi
+  done
+  if [[ -n "$PODMAN_SOCK" ]]; then
+    echo "podman socket: $PODMAN_SOCK"
+  fi
+fi
 if [[ -n "$PODMAN_SOCK" ]]; then
   export DOCKER_HOST="unix://$PODMAN_SOCK"
   export CONTAINER_HOST="unix://$PODMAN_SOCK"
-  echo "podman socket: $PODMAN_SOCK (DOCKER_HOST set for SmartBuild)"
+  echo "DOCKER_HOST set for SmartBuild"
 else
   echo "warning: podman.socket not found — SmartBuild app deploys will fail." >&2
 fi

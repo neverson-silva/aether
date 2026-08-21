@@ -296,7 +296,7 @@ func (podmanRuntime) Exec(ctx context.Context, containerID string, env []string,
 }
 
 func (podmanRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
-	args := []string{"run", "-d", "--name", spec.Name}
+	args := []string{"run", "-d", "--quiet", "--name", spec.Name}
 	if spec.Network != "" {
 		args = append(args, "--network", spec.Network)
 	}

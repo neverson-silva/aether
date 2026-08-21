@@ -1,19 +1,15 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjects } from "../hooks";
 import { getServer } from "../api/client";
 import { CreateServiceLauncher } from "./CreateServiceLauncher";
 import { useOverlayGate } from "./OverlayManager";
-
-interface PaletteCtx {
-  open: boolean;
-  setOpen: (v: boolean) => void;
-}
-
-const Ctx = createContext<PaletteCtx>({ open: false, setOpen: () => {} });
+import { usePaletteStore } from "../stores/palette";
 
 export function usePalette() {
-  return useContext(Ctx);
+  const open = usePaletteStore((s) => s.open);
+  const setOpen = usePaletteStore((s) => s.setOpen);
+  return { open, setOpen };
 }
 
 interface NavEntry {
@@ -90,8 +86,7 @@ interface PaletteItem {
 }
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return <Ctx.Provider value={{ open, setOpen }}>{children}</Ctx.Provider>;
+  return <>{children}</>;
 }
 
 export function CommandPalette() {

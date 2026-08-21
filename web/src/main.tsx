@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createRouter({ routeTree, defaultPreload: false });
+const router = createRouter({ routeTree, defaultPreload: false, context: { queryClient } });
 
 declare module "@tanstack/react-router" {
   interface Register {

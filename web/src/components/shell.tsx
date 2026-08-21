@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAppDetail, useBranding, useMe, useProjects } from "../hooks";
 import { clearToken } from "../api/client";
+import { useAuthStore } from "../stores/auth";
 import { cn } from "./ui";
 import { CommandPalette, usePalette } from "./command-palette";
 import { BellButton } from "./NotificationProvider";
@@ -177,6 +178,7 @@ export function Shell() {
           <button
             onClick={() => {
               clearToken();
+              useAuthStore.getState().clear();
               window.location.href = "/login";
             }}
             className="w-full flex items-center gap-sm px-sm py-1.5 rounded text-on-surface-variant font-medium hover:bg-surface-container-high hover:text-on-surface transition-colors text-left"

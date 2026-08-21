@@ -241,6 +241,8 @@ func abort(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 	case errors.Is(err, domain.ErrForbidden):
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
+	case errors.Is(err, domain.ErrDatabaseUnavailable):
+		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 	}

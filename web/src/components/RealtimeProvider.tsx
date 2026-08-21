@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useRealtimeStore } from "../stores/realtime";
 import { ApiError, apiGet, clearToken, getServer, isPublicRoute } from "../api/client";
 import type { EventEnvelope, RealtimeInbound } from "../hooks/types";
 
@@ -15,12 +16,18 @@ const RealtimeCtx = createContext<RealtimeContextValue>({
   subscribe: () => () => {},
 });
 
-export function useRealtime(): RealtimeContextValue {
+function useRealtimeCtx(): RealtimeContextValue {
   return useContext(RealtimeCtx);
 }
 
+export function useRealtime(): RealtimeContextValue {
+  const connected = useRealtimeStore((st) => st.connected);
+  const lastSeq = useRealtimeStore((st) => st.lastSeq);
+  return { connected, lastSeq, subscribe: useRealtimeCtx().subscribe };
+}
+
 export function useRealtimeEvent(fn: (ev: EventEnvelope, replay: boolean) => void) {
-  const { subscribe } = useRealtime();
+  const subscribe = useRealtimeCtx().subscribe;
   const ref = useRef(fn);
   ref.current = fn;
   useEffect(() => subscribe((ev, replay) => ref.current(ev, replay)), [subscribe]);
@@ -71,8 +78,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const attemptRef = useRef(0);
   const seqRef = useRef(0);
   const sessionRef = useRef(0);
-  const [connected, setConnected] = useState(false);
-  const [lastSeq, setLastSeq] = useState(0);
+
 
   const seqKey = useCallback(() => {
     const org = localStorage.getItem("aether_org") || "";
@@ -82,7 +88,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const handle = useCallback(
     (ev: EventEnvelope, replay: boolean) => {
       if (ev.seq > seqRef.current) seqRef.current = ev.seq;
-      setLastSeq(seqRef.current);
+      useRealtimeStore.getState().setLastSeq(seqRef.current);
       applyInvalidation(qc, ev);
       listeners.current.forEach((fn) => {
         try {
@@ -102,12 +108,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const base = getServer() || "";
     const seq = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
     seqRef.current = seq;
-    setLastSeq(seq);
+    useRealtimeStore.getState().setLastSeq(seq);
     const ws = new WebSocket(`${proto}//${window.location.host}${base}/api/v1/ws/realtime`);
     const pingRef = { id: 0 as number | undefined };
     ws.onopen = () => {
       attemptRef.current = 0;
-      setConnected(true);
+      useRealtimeStore.getState().setConnected(true);
       ws.send(JSON.stringify({ op: "subscribe", subs: ["org"], seq }));
       pingRef.id = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: "ping" }));
@@ -125,7 +131,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     ws.onerror = () => ws.close();
     ws.onclose = () => {
       if (pingRef.id !== undefined) window.clearInterval(pingRef.id);
-      setConnected(false);
+      useRealtimeStore.getState().setConnected(false);
       const saved = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
       if (seqRef.current > 0 && saved < seqRef.current) {
         localStorage.setItem(seqKey(), String(seqRef.current));
@@ -168,7 +174,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const value: RealtimeContextValue = { connected, lastSeq, subscribe };
+  const value: RealtimeContextValue = { connected: useRealtimeStore.getState().connected, lastSeq: useRealtimeStore.getState().lastSeq, subscribe };
 
   return <RealtimeCtx.Provider value={value}>{children}</RealtimeCtx.Provider>;
 }

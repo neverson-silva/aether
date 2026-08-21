@@ -1,4 +1,4 @@
-import type { StudioQueryResult } from "../../../../../api/types";
+import type { StudioQueryResult } from "../../../api/types";
 
 function fmtCell(v: unknown): string {
   if (v === null || v === undefined) return "NULL";

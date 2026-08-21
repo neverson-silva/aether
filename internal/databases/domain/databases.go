@@ -10,9 +10,10 @@ import (
 
 var (
 	ErrNotFound   = errors.New("not found")
-	ErrConflict   = errors.New("conflict")
 	ErrValidation = errors.New("invalid input")
+	ErrConflict   = errors.New("conflict")
 	ErrForbidden  = errors.New("access denied")
+	ErrDatabaseUnavailable = errors.New("database unavailable")
 )
 
 type Engine string
@@ -33,6 +34,20 @@ func (e Engine) Valid() bool {
 		return true
 	}
 	return false
+}
+
+type TableColumn struct {
+	Name     string `json:"name"`
+	Type    string `json:"type"`
+	Nullable bool   `json:"nullable"`
+	Primary  bool   `json:"primary"`
+	Default  string `json:"default"`
+}
+
+type CreateTableInput struct {
+	Schema  string        `json:"schema"`
+	Table   string        `json:"table"`
+	Columns []TableColumn `json:"columns"`
 }
 
 type Database struct {

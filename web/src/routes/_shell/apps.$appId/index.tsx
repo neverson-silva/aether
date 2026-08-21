@@ -380,7 +380,7 @@ function AppDetail() {
                   </div>
                   <div>
                     <span className="block font-label-caps text-label-caps text-on-surface-variant mb-1">Memory</span>
-                    <span className="font-body-md text-body-md text-on-surface">{fmtBytes(stats?.stats?.MemBytes ?? 0)}</span>
+                    <span className="font-body-md text-body-md text-on-surface">{fmtBytes(stats?.stats?.mem_bytes ?? 0)}</span>
                   </div>
                 </div>
                 {(domains ?? []).length > 0 && (
@@ -408,20 +408,20 @@ function AppDetail() {
               <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
                 <span className="font-label-caps text-label-caps text-on-surface-variant">CPU Usage</span>
                 <div className="mt-4">
-                  <span className="font-headline-sm text-headline-sm text-on-surface">{stats?.stats?.CPUPercent?.toFixed(0) ?? "0"}%</span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface">{stats?.stats?.cpu_percent?.toFixed(0) ?? "0"}%</span>
                   <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, stats?.stats?.CPUPercent ?? 0)}%` }} />
+                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, stats?.stats?.cpu_percent ?? 0)}%` }} />
                   </div>
                 </div>
               </div>
               <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
                 <span className="font-label-caps text-label-caps text-on-surface-variant">Memory</span>
                 <div className="mt-4">
-                    <span className="font-headline-sm text-headline-sm text-on-surface">{fmtBytes(stats?.stats?.MemBytes ?? 0)}</span>
+                    <span className="font-headline-sm text-headline-sm text-on-surface">{fmtBytes(stats?.stats?.mem_bytes ?? 0)}</span>
                   <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-secondary rounded-full"
-                      style={{ width: `${Math.min(100, stats?.stats?.MemLimit ? (stats.stats.MemBytes / stats.stats.MemLimit) * 100 : 0)}%` }}
+                      style={{ width: `${Math.min(100, stats?.stats?.mem_limit ? ((stats.stats.mem_bytes ?? 0) / stats.stats.mem_limit) * 100 : 0)}%` }}
                     />
                   </div>
                 </div>
@@ -535,10 +535,10 @@ function AppDetail() {
           </div>
           {stats?.stats ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
-              <Metric label="CPU" value={`${stats.stats.CPUPercent?.toFixed(2) ?? 0}%`} icon="speed" />
-              <Metric label="Memory" value={fmtBytes(stats.stats.MemBytes ?? 0)} icon="memory" />
-              <Metric label="Limit" value={fmtBytes(stats.stats.MemLimit ?? 0)} icon="data_usage" />
-              <Metric label="PIDs" value={String(stats.stats.Pids ?? 0)} icon="track_changes" />
+              <Metric label="CPU" value={`${stats.stats?.cpu_percent?.toFixed(2) ?? 0}%`} icon="speed" />
+              <Metric label="Memory" value={fmtBytes(stats.stats?.mem_bytes ?? 0)} icon="memory" />
+              <Metric label="Limit" value={fmtBytes(stats.stats?.mem_limit ?? 0)} icon="data_usage" />
+              <Metric label="Mem %" value={`${stats.stats?.mem_percent?.toFixed(1) ?? 0}%`} icon="track_changes" />
             </div>
           ) : (
             <p className="font-body-sm text-body-sm text-on-surface-variant">No active container.</p>
