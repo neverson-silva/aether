@@ -21,6 +21,7 @@ type Querier interface {
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
 	CreateAutopilotEvent(ctx context.Context, arg CreateAutopilotEventParams) error
 	CreateBackup(ctx context.Context, arg CreateBackupParams) (Backup, error)
+	CreateBackupJob(ctx context.Context, arg CreateBackupJobParams) (BackupJob, error)
 	CreateChannel(ctx context.Context, arg CreateChannelParams) (NotificationChannel, error)
 	CreateCluster(ctx context.Context, arg CreateClusterParams) (Cluster, error)
 	CreateComposeApp(ctx context.Context, arg CreateComposeAppParams) (CreateComposeAppRow, error)
@@ -40,6 +41,7 @@ type Querier interface {
 	CreatePipelineRun(ctx context.Context, arg CreatePipelineRunParams) (PipelineRun, error)
 	CreatePreview(ctx context.Context, arg CreatePreviewParams) (Preview, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (CreateProjectRow, error)
+	CreateRestoreJob(ctx context.Context, arg CreateRestoreJobParams) (RestoreJob, error)
 	CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (CreateS3DestinationRow, error)
 	CreateServerToken(ctx context.Context, tokenHash string) error
 	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error)
@@ -52,6 +54,7 @@ type Querier interface {
 	DeleteAlertRule(ctx context.Context, arg DeleteAlertRuleParams) error
 	DeleteApp(ctx context.Context, arg DeleteAppParams) error
 	DeleteAppEnv(ctx context.Context, arg DeleteAppEnvParams) error
+	DeleteBackupConfiguration(ctx context.Context, databaseID uuid.UUID) error
 	DeleteChannel(ctx context.Context, arg DeleteChannelParams) error
 	DeleteCluster(ctx context.Context, arg DeleteClusterParams) error
 	DeleteComposeApp(ctx context.Context, arg DeleteComposeAppParams) error
@@ -84,6 +87,8 @@ type Querier interface {
 	GetAppByName(ctx context.Context, arg GetAppByNameParams) (App, error)
 	GetAppPolicy(ctx context.Context, appID uuid.UUID) (AppPolicy, error)
 	GetBackup(ctx context.Context, id uuid.UUID) (Backup, error)
+	GetBackupConfigurationByDatabase(ctx context.Context, databaseID uuid.UUID) (BackupConfiguration, error)
+	GetBackupJob(ctx context.Context, id uuid.UUID) (BackupJob, error)
 	GetBranding(ctx context.Context, orgID uuid.UUID) (Branding, error)
 	GetCluster(ctx context.Context, id uuid.UUID) (Cluster, error)
 	GetComposeApp(ctx context.Context, id uuid.UUID) (GetComposeAppRow, error)
@@ -108,6 +113,7 @@ type Querier interface {
 	GetPreviewByID(ctx context.Context, id uuid.UUID) (Preview, error)
 	GetProject(ctx context.Context, arg GetProjectParams) (GetProjectRow, error)
 	GetRegistrySettings(ctx context.Context) (RegistrySetting, error)
+	GetRestoreJob(ctx context.Context, id uuid.UUID) (RestoreJob, error)
 	GetS3Destination(ctx context.Context, arg GetS3DestinationParams) (GetS3DestinationRow, error)
 	GetServer(ctx context.Context, id uuid.UUID) (Server, error)
 	GetSnapshot(ctx context.Context, id uuid.UUID) (Snapshot, error)
@@ -124,6 +130,7 @@ type Querier interface {
 	InsertMonitoringSample(ctx context.Context, arg InsertMonitoringSampleParams) error
 	LastReadyDeployment(ctx context.Context, appID uuid.UUID) (Deployment, error)
 	ListAPIKeysByOrg(ctx context.Context, orgID uuid.UUID) ([]ListAPIKeysByOrgRow, error)
+	ListActiveBackupJobsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupJob, error)
 	ListAlertEventsByOrg(ctx context.Context, arg ListAlertEventsByOrgParams) ([]AlertEvent, error)
 	ListAlertRules(ctx context.Context, orgID uuid.UUID) ([]AlertRule, error)
 	ListAppEnv(ctx context.Context, appID uuid.UUID) ([]AppEnv, error)
@@ -131,6 +138,8 @@ type Querier interface {
 	ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]App, error)
 	ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrgParams) ([]AuditLog, error)
 	ListAutopilotEvents(ctx context.Context, arg ListAutopilotEventsParams) ([]AutopilotEvent, error)
+	ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJobsByDatabaseParams) ([]BackupJob, error)
+	ListBackupJobsDue(ctx context.Context, limit int32) ([]BackupJob, error)
 	ListBackupsByDatabase(ctx context.Context, arg ListBackupsByDatabaseParams) ([]Backup, error)
 	ListBackupsByOrg(ctx context.Context, arg ListBackupsByOrgParams) ([]Backup, error)
 	ListCertificatesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListCertificatesByOrgRow, error)
@@ -142,6 +151,7 @@ type Querier interface {
 	ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Database, error)
 	ListDeployments(ctx context.Context, arg ListDeploymentsParams) ([]Deployment, error)
 	ListDomains(ctx context.Context, appID uuid.UUID) ([]ListDomainsRow, error)
+	ListEnabledBackupConfigurations(ctx context.Context) ([]BackupConfiguration, error)
 	ListEnabledOIDCProviders(ctx context.Context) ([]OidcProvider, error)
 	ListEnabledWebhooksByEvent(ctx context.Context, dollar_1 string) ([]OutWebhook, error)
 	ListEnvVariables(ctx context.Context, arg ListEnvVariablesParams) ([]EnvVariable, error)
@@ -163,6 +173,8 @@ type Querier interface {
 	ListProjects(ctx context.Context, orgID uuid.UUID) ([]ListProjectsRow, error)
 	ListProvisioningDomains(ctx context.Context, arg ListProvisioningDomainsParams) ([]ListProvisioningDomainsRow, error)
 	ListQueuedDeployments(ctx context.Context) ([]Deployment, error)
+	ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJobsByTargetParams) ([]RestoreJob, error)
+	ListRestoreJobsDue(ctx context.Context, limit int32) ([]RestoreJob, error)
 	ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]ListS3DestinationsRow, error)
 	ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]SnapshotSchedule, error)
 	ListServers(ctx context.Context) ([]Server, error)
@@ -182,6 +194,7 @@ type Querier interface {
 	RemoveProjectAssignment(ctx context.Context, arg RemoveProjectAssignmentParams) error
 	ResolveAlertEvent(ctx context.Context, id uuid.UUID) error
 	SetAlertRuleEnabled(ctx context.Context, arg SetAlertRuleEnabledParams) error
+	SetBackupConfigurationNextRun(ctx context.Context, arg SetBackupConfigurationNextRunParams) error
 	SetComposeStatus(ctx context.Context, arg SetComposeStatusParams) error
 	SetDefaultEnvironment(ctx context.Context, arg SetDefaultEnvironmentParams) error
 	SetMirrorStatus(ctx context.Context, arg SetMirrorStatusParams) error
@@ -192,6 +205,7 @@ type Querier interface {
 	SetWorkerState(ctx context.Context, arg SetWorkerStateParams) error
 	TouchAPIKey(ctx context.Context, id uuid.UUID) error
 	UpdateApp(ctx context.Context, arg UpdateAppParams) (App, error)
+	UpdateBackupJob(ctx context.Context, arg UpdateBackupJobParams) (BackupJob, error)
 	UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (CronJob, error)
 	UpdateDatabasePort(ctx context.Context, arg UpdateDatabasePortParams) error
 	UpdateDatabaseStatus(ctx context.Context, arg UpdateDatabaseStatusParams) error
@@ -205,11 +219,13 @@ type Querier interface {
 	UpdateOrg(ctx context.Context, arg UpdateOrgParams) (UpdateOrgRow, error)
 	UpdatePreviewResult(ctx context.Context, arg UpdatePreviewResultParams) error
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (UpdateProjectRow, error)
+	UpdateRestoreJob(ctx context.Context, arg UpdateRestoreJobParams) (RestoreJob, error)
 	UpdateS3Destination(ctx context.Context, arg UpdateS3DestinationParams) (UpdateS3DestinationRow, error)
 	UpdateS3DestinationOAuth(ctx context.Context, arg UpdateS3DestinationOAuthParams) error
 	UpdateWorker(ctx context.Context, arg UpdateWorkerParams) (Worker, error)
 	UpsertAppEnv(ctx context.Context, arg UpsertAppEnvParams) error
 	UpsertAppPolicy(ctx context.Context, arg UpsertAppPolicyParams) (AppPolicy, error)
+	UpsertBackupConfiguration(ctx context.Context, arg UpsertBackupConfigurationParams) (BackupConfiguration, error)
 	UpsertBranding(ctx context.Context, arg UpsertBrandingParams) (Branding, error)
 	UpsertEnvVariable(ctx context.Context, arg UpsertEnvVariableParams) (EnvVariable, error)
 	UpsertProjectVariable(ctx context.Context, arg UpsertProjectVariableParams) (EnvVariable, error)

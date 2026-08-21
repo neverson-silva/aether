@@ -53,6 +53,7 @@ type Router struct {
 	jobs        *jobshttp.Handler
 	databases   *databaseshttp.Handler
 	backups     *backupshttp.Handler
+	dbBackups   *backupshttp.DBBackupHandler
 	templates   *templateshttp.Handler
 	gitops      *gitopshttp.Handler
 	alerts      *alertshttp.Handler
@@ -74,6 +75,11 @@ type Router struct {
 	authLimiter *RateLimiter
 }
 
+func (r *Router) WithDatabaseBackups(h *backupshttp.DBBackupHandler) *Router {
+	r.dbBackups = h
+	return r
+}
+
 func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler, monitoring *monitoringhttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
@@ -89,7 +95,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, dbBackups: nil, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -242,6 +248,18 @@ func (r *Router) routes() {
 		authed.POST("/databases/:dbID/stop", r.databases.Stop)
 		authed.POST("/databases/:dbID/backup", r.backups.CreateDatabaseBackup)
 		authed.POST("/databases/:dbID/restore", r.backups.RestoreDatabase)
+		if r.dbBackups != nil {
+			authed.GET("/databases/:dbID/backup/configuration", r.dbBackups.GetConfiguration)
+			authed.PUT("/databases/:dbID/backup/configuration", r.dbBackups.UpsertConfiguration)
+			authed.DELETE("/databases/:dbID/backup/configuration", r.dbBackups.DeleteConfiguration)
+			authed.POST("/databases/:dbID/backups", r.dbBackups.CreateBackup)
+			authed.GET("/databases/:dbID/backups", r.dbBackups.ListBackups)
+			authed.GET("/databases/:dbID/backups/:backupID", r.dbBackups.GetBackup)
+			authed.POST("/databases/:dbID/backups/:backupID/cancel", r.dbBackups.CancelBackup)
+			authed.POST("/databases/:dbID/backups/:backupID/restore", r.dbBackups.RequestRestore)
+			authed.GET("/databases/:dbID/backups/:backupID/preflight", r.dbBackups.PreflightRestore)
+			authed.GET("/databases/:dbID/backups/:backupID/restore-jobs", r.dbBackups.ListRestoreJobs)
+		}
 		authed.GET("/ws/db-terminal/:dbID", r.databases.DbTerminal)
 
 		authed.GET("/databases/:dbID/studio/meta", r.databases.StudioMeta)

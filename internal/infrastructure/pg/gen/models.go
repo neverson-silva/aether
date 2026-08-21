@@ -144,6 +144,45 @@ type Backup struct {
 	CreatedAt  time.Time     `json:"created_at"`
 }
 
+type BackupConfiguration struct {
+	ID             uuid.UUID    `json:"id"`
+	DatabaseID     uuid.UUID    `json:"database_id"`
+	Enabled        bool         `json:"enabled"`
+	DestinationID  uuid.UUID    `json:"destination_id"`
+	PathPrefix     string       `json:"path_prefix"`
+	ScheduleType   string       `json:"schedule_type"`
+	ScheduleMinute int32        `json:"schedule_minute"`
+	ScheduleAt     string       `json:"schedule_at"`
+	ScheduleDay    string       `json:"schedule_day"`
+	ScheduleStart  string       `json:"schedule_start"`
+	ScheduleCron   string       `json:"schedule_cron"`
+	Timezone       string       `json:"timezone"`
+	RetentionType  string       `json:"retention_type"`
+	NextRunAt      sql.NullTime `json:"next_run_at"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+}
+
+type BackupJob struct {
+	ID              uuid.UUID     `json:"id"`
+	DatabaseID      uuid.UUID     `json:"database_id"`
+	ConfigurationID uuid.NullUUID `json:"configuration_id"`
+	TriggerType     string        `json:"trigger_type"`
+	Status          string        `json:"status"`
+	Engine          string        `json:"engine"`
+	EngineVersion   string        `json:"engine_version"`
+	Format          string        `json:"format"`
+	DestinationID   uuid.NullUUID `json:"destination_id"`
+	StorageKey      string        `json:"storage_key"`
+	SizeBytes       int64         `json:"size_bytes"`
+	Checksum        string        `json:"checksum"`
+	ErrorCode       string        `json:"error_code"`
+	ErrorMessage    string        `json:"error_message"`
+	StartedAt       sql.NullTime  `json:"started_at"`
+	CompletedAt     sql.NullTime  `json:"completed_at"`
+	CreatedAt       time.Time     `json:"created_at"`
+}
+
 type Branding struct {
 	OrgID        uuid.UUID `json:"org_id"`
 	Name         string    `json:"name"`
@@ -444,6 +483,18 @@ type RegistrySetting struct {
 	Port        int32  `json:"port"`
 	ContainerID string `json:"container_id"`
 	Status      string `json:"status"`
+}
+
+type RestoreJob struct {
+	ID               uuid.UUID    `json:"id"`
+	BackupID         uuid.UUID    `json:"backup_id"`
+	TargetDatabaseID uuid.UUID    `json:"target_database_id"`
+	Status           string       `json:"status"`
+	ErrorCode        string       `json:"error_code"`
+	ErrorMessage     string       `json:"error_message"`
+	StartedAt        sql.NullTime `json:"started_at"`
+	CompletedAt      sql.NullTime `json:"completed_at"`
+	CreatedAt        time.Time    `json:"created_at"`
 }
 
 type S3Destination struct {

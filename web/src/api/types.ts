@@ -421,3 +421,68 @@ export interface StudioExecResult {
   command_tag: string;
   duration_ms: number;
 }
+
+export interface BackupSchedule {
+  type: "hourly" | "daily" | "weekly" | "biweekly" | "custom";
+  minute?: number;
+  at?: string;
+  day_of_week?: string;
+  start_date?: string;
+  cron?: string;
+  timezone: string;
+}
+
+export interface BackupRetention {
+  type: "all" | "latest";
+}
+
+export interface BackupConfig {
+  id: string;
+  database_id: string;
+  enabled: boolean;
+  destination_id: string;
+  path_prefix: string;
+  schedule: BackupSchedule;
+  retention: BackupRetention;
+  next_run_at?: string | null;
+}
+
+export interface BackupJob {
+  id: string;
+  database_id: string;
+  status: string;
+  trigger: string;
+  engine: string;
+  engine_version: string;
+  format: string;
+  size_bytes: number;
+  checksum: string;
+  storage_key: string;
+  error_code: string;
+  error_message: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface RestoreJob {
+  id: string;
+  backup_id: string;
+  target_database_id: string;
+  status: string;
+  error_code: string;
+  error_message: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface PreflightCheck {
+  name: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface PreflightResult {
+  compatible: boolean;
+  ready: boolean;
+  checks: PreflightCheck[];
+}

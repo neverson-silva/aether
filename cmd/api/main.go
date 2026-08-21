@@ -25,10 +25,13 @@ import (
 	appsInfra "aether/internal/apps/infra"
 	authApp "aether/internal/auth/application"
 	authhttp "aether/internal/auth/http"
+	authdomain "aether/internal/auth/domain"
 	"aether/internal/auth/infra"
 	backupsApp "aether/internal/backups/application"
 	backupshttp "aether/internal/backups/http"
 	backupsInfra "aether/internal/backups/infra"
+	container "aether/internal/backups/adapters/container"
+	_ "aether/internal/backups/adapters/engine"
 	clustersApp "aether/internal/clusters/application"
 	clustershttp "aether/internal/clusters/http"
 	clustersInfra "aether/internal/clusters/infra"
@@ -92,6 +95,7 @@ import (
 	webhooksApp "aether/internal/webhooks/application"
 	webhookshttp "aether/internal/webhooks/http"
 	webhooksInfra "aether/internal/webhooks/infra"
+	"aether/internal/storage"
 	"aether/internal/worker"
 )
 
@@ -351,6 +355,22 @@ func main() {
 	go deployWorker.Run(workerCtx, 3*time.Second)
 	deployWatcher := &worker.Watcher{Store: deployStore, Runtime: deployWorkerRuntime, Notifier: realtimeSvc, Logger: slog.Default()}
 	go deployWatcher.Run(workerCtx, 10*time.Second)
+
+	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)
+	dbBackupsSvc := &backupsApp.DatabaseBackups{
+		Store:        dbBackupsStore,
+		Databases:    databasesSvc,
+		Passwords:    dbCipher,
+		Destinations: settingsDestProvider{s: settingsSvc},
+		Exec:         container.NewPodman(),
+		Queue:        rtRuntime.Queue,
+		Locks:        rtRuntime.Locks,
+		Audit:        auditRecorder{store: svc.AuditLog},
+		Timeout:      45 * time.Minute,
+	}
+	dbBackupsHandler := backupshttp.NewDatabaseBackupHandler(dbBackupsSvc)
+	go (&backupsApp.BackupWorker{Service: dbBackupsSvc}).Run(workerCtx)
+	go (&backupsApp.BackupScheduler{Service: dbBackupsSvc}).Run(workerCtx, 15*time.Second)
 	realtimeHub := realtimeInfra.NewHub(realtimeInfra.HubOptions{
 		SubscribeOrg: func(ctx context.Context, orgID uuid.UUID, handler func(realtimeDomain.Event)) (func(), error) {
 			sub, err := realtimeSvc.SubscribeEvents(ctx, orgID, handler)
@@ -374,6 +394,7 @@ func main() {
 		RequestTimeout:  60 * time.Second,
 		AuthRateLimiter: apihttp.NewRateLimiter(2, 5),
 	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler)
+	router.WithDatabaseBackups(dbBackupsHandler)
 	router.SetReadiness(func(ctx context.Context) error {
 		return pool.Ping(ctx)
 	})
@@ -430,4 +451,26 @@ type webhookDeployer struct {
 
 func (d webhookDeployer) Deploy(ctx context.Context, appID, orgID uuid.UUID, trigger, commit string) (any, error) {
 	return d.svc.Deploy(ctx, appID, orgID, deployApp.DeployOpts{Trigger: trigger, CommitSHA: commit})
+}
+
+type settingsDestProvider struct {
+	s *settingsApp.Settings
+}
+
+func (d settingsDestProvider) GetProvider(ctx context.Context, destID, orgID uuid.UUID) (storage.Provider, error) {
+	dest, err := d.s.GetS3(ctx, destID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return d.s.S3Provider(dest)
+}
+
+type auditRecorder struct {
+	store authdomain.AuditStore
+}
+
+func (a auditRecorder) Record(ctx context.Context, orgID uuid.UUID, action, resourceType, resourceID, details string) {
+	_ = a.store.Record(ctx, authdomain.AuditEvent{
+		OrgID: orgID, Action: action, ResourceType: resourceType, ResourceID: resourceID, Details: details,
+	})
 }

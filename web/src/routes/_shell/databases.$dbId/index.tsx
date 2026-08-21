@@ -9,9 +9,6 @@ import {
   useDatabaseStart,
   useDatabaseStop,
   useDatabaseDeployments,
-  useBackups,
-  useBackupDatabase,
-  useRestoreDatabase,
 } from "../../../hooks";
 import type { DatabaseDeployment } from "../../../hooks/use-database-deployments";
 import { getServer } from "../../../api/client";
@@ -20,6 +17,7 @@ import { Button, Card, ConfirmDialog, StatusPill, DeploymentStatus, useToast } f
 import { DbTerminal } from "./-components/DbTerminal";
 import { DatabaseDeploymentLogModal } from "./-components/DatabaseDeploymentLogModal";
 import { DomainsPanel } from "../../../components/DomainsPanel";
+import { BackupTab } from "./-components/BackupTab";
 
 type Tab = "overview" | "deployments" | "domains" | "previews" | "terminal" | "metrics" | "logs" | "settings" | "backup";
 
@@ -59,9 +57,6 @@ function DatabaseDetail() {
   const rebuild = useDatabaseRebuild();
   const start = useDatabaseStart();
   const stop = useDatabaseStop();
-  const backupDb = useBackupDatabase();
-  const restoreDb = useRestoreDatabase();
-  const { data: backups } = useBackups();
   const { data: deployments } = useDatabaseDeployments(dbId);
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("overview");
@@ -75,7 +70,6 @@ function DatabaseDetail() {
 
   const db = data?.database;
   const running = db?.status === "running" || db?.status === "ready";
-  const dbBackups = (backups ?? []).filter((b) => b.app_id === dbId);
 
   useEffect(() => {
     if (!logFollow) return;
@@ -395,65 +389,7 @@ function DatabaseDetail() {
         </Card>
       )}
 
-      {tab === "backup" && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-lg">
-          <Card>
-            <div className="flex items-center justify-between mb-md">
-              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Create backup</h2>
-            </div>
-            <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
-              Create a point-in-time backup of this database to the configured storage destination.
-            </p>
-            <Button
-              leftIcon="backup"
-              onClick={() =>
-                backupDb.mutate(dbId, {
-                  onSuccess: () => toast("Backup created"),
-                  onError: (e) => toast(e.message, "error"),
-                })
-              }
-            >
-              Create backup
-            </Button>
-          </Card>
-          <div className="xl:col-span-2">
-            <Card>
-              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Database backups</h2>
-              {dbBackups.length === 0 ? (
-                <p className="font-body-sm text-body-sm text-on-surface-variant">No backups for this database yet.</p>
-              ) : (
-                <div className="space-y-sm">
-                  {dbBackups.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60">
-                      <div className="min-w-0">
-                        <p className="font-code-md text-code-md text-on-surface truncate">{b.path}</p>
-                        <p className="font-code-md text-code-md text-on-surface-variant/60">
-                          {fmtBytes(b.size)} · {new Date(b.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        leftIcon="restore"
-                        onClick={() =>
-                          restoreDb.mutate(
-                            { dbId, backupId: b.id },
-                            {
-                              onSuccess: () => toast("Restore started"),
-                              onError: (e) => toast(e.message, "error"),
-                            }
-                          )
-                        }
-                      >
-                        Restore
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
-        </div>
-      )}
+      {tab === "backup" && <BackupTab dbId={dbId} dbName={db?.name} />}
 
       {tab === "settings" && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-lg">
