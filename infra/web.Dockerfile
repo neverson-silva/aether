@@ -1,8 +1,8 @@
 FROM node:20-alpine AS build
 WORKDIR /web
-COPY web/package.json web/package-lock.json ./
+COPY frontend/web/package.json frontend/web/package-lock.json ./
 RUN npm ci
-COPY web/ ./
+COPY frontend/web/ ./
 RUN npm run build
 
 FROM nginx:alpine

@@ -1,15 +1,15 @@
-// split-hooks.js — divide web/src/api/hooks.ts em arquivos individuais em
-// web/src/hooks/ (kebab-case, um hook por arquivo) + tipos/qk/eventos
+// split-hooks.js — divide frontend/web/src/api/hooks.ts em arquivos individuais em
+// frontend/web/src/hooks/ (kebab-case, um hook por arquivo) + tipos/qk/eventos
 // compartilhados, e gera index.ts de re-export. Usa o parser do TypeScript.
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const ts = require(path.resolve("web/node_modules/typescript/lib/typescript.js"));
+const ts = require(path.resolve("frontend/web/node_modules/typescript/lib/typescript.js"));
 
-const SRC = "web/src/api/hooks.ts";
-const OUT = "web/src/hooks";
+const SRC = "frontend/web/src/api/hooks.ts";
+const OUT = "frontend/web/src/hooks";
 
 const src = fs.readFileSync(SRC, "utf8");
 const sf = ts.createSourceFile(SRC, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

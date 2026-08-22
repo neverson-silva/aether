@@ -140,7 +140,7 @@ func Load() (*Config, error) {
 		RedisAddr:                envOr("AETHER_REDIS_ADDR", ""),
 		RedisPassword:            envOr("AETHER_REDIS_PASSWORD", ""),
 		RedisUsername:            envOr("AETHER_REDIS_USERNAME", ""),
-		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "127.0.0.1:5000/builder:node-spa"),
+		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "aether/builder:node-spa"),
 		GitHubAppID:              int64(envInt("AETHER_GITHUB_APP_ID", 0)),
 		GitHubAppSlug:            os.Getenv("AETHER_GITHUB_APP_SLUG"),
 		GitHubPrivateKey:         os.Getenv("AETHER_GITHUB_PRIVATE_KEY"),

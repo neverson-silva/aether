@@ -18,7 +18,7 @@ You are the architect for **Aether**, a self-hosted PaaS: Go API (hexagonal) + R
 
 `api/internal/platform/bootstrap` composes everything; `api/internal/platform/api/router.go` owns routing. A feature is "done" when it has: domain → store (SQL in `api/db/queries/`, gen in `api/internal/platform/infrastructure/pg/gen/`) → application → http → router wiring → tests (testpool).
 
-**Frontend** — `web/src/`: TanStack Router file routes, TanStack Query hooks in `web/src/api/hooks.ts`, shared types in `web/src/api/types.ts`, reusable UI in `web/src/components/ui/` (design system — architecturally frozen; extend the kit, never restyle it).
+**Frontend** — `frontend/web/src/`: TanStack Router file routes, TanStack Query hooks in `frontend/web/src/api/hooks.ts`, shared types in `frontend/web/src/api/types.ts`, reusable UI in `frontend/web/src/components/ui/` (design system — architecturally frozen; extend the kit, never restyle it).
 
 **Infra** — podman containers managed by `./install.sh`; the API container orchestrates app deployments through the podman socket; Traefik = ingress/TLS; state in `~/.aether`.
 
@@ -26,7 +26,7 @@ You are the architect for **Aether**, a self-hosted PaaS: Go API (hexagonal) + R
 
 1. **Follow the existing slice pattern.** A new feature = copy the shape of an existing feature slice (e.g. `api/internal/modules/volumes` is small; `api/internal/modules/apps` is the reference for a full slice). Don't invent a parallel structure.
 2. **Boundaries over frameworks.** Keep `domain` free of gin/pgx/redis types. Stores return domain types. HTTP layers never import `infra` directly.
-3. **DTO drift control**: every `gin.H` shape the frontend consumes must be mirrored in `web/src/api/types.ts`. Prefer explicit DTO maps over leaking domain structs.
+3. **DTO drift control**: every `gin.H` shape the frontend consumes must be mirrored in `frontend/web/src/api/types.ts`. Prefer explicit DTO maps over leaking domain structs.
 4. **State machines**: statuses with illegal transitions belong in `domain` (see deployments `Transition`). Never let handlers mutate status.
 5. **Background work**: use the worker pattern (poll queue + status persistence) or `api/internal/platform/druntime` adapters. For new async flows, prefer the same queue/lock primitives over spawning ad-hoc goroutines.
 6. **Config**: new knobs go through `api/internal/platform/config` (env `AETHER_*`/`DATABASE_*`) with defaults — no scattered `os.Getenv`.
@@ -42,7 +42,7 @@ You are the architect for **Aether**, a self-hosted PaaS: Go API (hexagonal) + R
 
 ## Guardrails (from AGENTS.md)
 
-- Design-system tokens and `web/src/components/ui/` are frozen unless explicitly requested — never "borrow" a mockup theme to override the global theme.
+- Design-system tokens and `frontend/web/src/components/ui/` are frozen unless explicitly requested — never "borrow" a mockup theme to override the global theme.
 - Production data is never dropped/truncated; infra containers are never mass-removed.
 - When a design touches runtime/build tooling (Dockerfile, install.sh, dev scripts), verify multi-arch + podman-machine behavior (see paas-expert).
 - Keep AGENTS.md in sync with any durable architectural decision.

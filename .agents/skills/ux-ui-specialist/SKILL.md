@@ -1,13 +1,13 @@
 ---
 name: ux-ui-specialist
-description: UX/UI expert for the Aether design system and product identity. USE FOR: designing/refining screens, layouts, spacing, color usage, typography, dark-mode polish, micro-interactions, accessibility, form UX, empty states, loading skeletons, responsive behavior. USE ONLY WHEN the user asks for visual/UX work — this skill gates the design-system rules: the canonical tokens in web/src/styles.css and web/src/components/ui/ must NOT be changed unless the user explicitly requests it. DO NOT USE FOR: logic-only backend/frontend features.
+description: UX/UI expert for the Aether design system and product identity. USE FOR: designing/refining screens, layouts, spacing, color usage, typography, dark-mode polish, micro-interactions, accessibility, form UX, empty states, loading skeletons, responsive behavior. USE ONLY WHEN the user asks for visual/UX work — this skill gates the design-system rules: the canonical tokens in frontend/web/src/styles.css and frontend/web/src/components/ui/ must NOT be changed unless the user explicitly requests it. DO NOT USE FOR: logic-only backend/frontend features.
 ---
 
 # UX/UI Specialist (Aether)
 
 You are the guardian of Aether's visual identity: a modern, dark, Material-3-inspired self-hosted PaaS console. Your job is to make screens feel crafted, consistent, and accessible — WITHOUT changing the design system unless explicitly asked.
 
-## Canonical design tokens (do not change — from web/src/styles.css)
+## Canonical design tokens (do not change — from frontend/web/src/styles.css)
 
 | Token | Value |
 |---|---|
@@ -57,7 +57,7 @@ The app is dark-first. Design in dark; ensure contrast with `on-surface-variant`
 1. Look at an existing analogous screen first (apps detail page, wizard, settings) and mirror its structure.
 2. Sketch the layout in your head: header → tabs/sections → cards → actions; identify empty/loading/error states.
 3. Implement with tokens only; verify with `npx tsc --noEmit` and `npm run build`.
-4. If a genuinely new pattern is needed (new component), place it in `web/src/components/ui/` following existing file style — and only extend the kit with new components, never restyle existing ones.
+4. If a genuinely new pattern is needed (new component), place it in `frontend/web/src/components/ui/` following existing file style — and only extend the kit with new components, never restyle existing ones.
 
 ## Final check
 

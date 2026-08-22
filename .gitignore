@@ -4,9 +4,9 @@
 *.out
 
 # Node / Vite
-web/node_modules/
-web/dist/
-web/.vite/
+frontend/web/node_modules/
+frontend/web/dist/
+frontend/web/.vite/
 spikes/web/node_modules/
 spikes/web/dist/
 spikes/web/.vite/

@@ -150,6 +150,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	domainsStore := domainsInfra.NewStore(pool)
 	databasesStore := databasesInfra.NewStore(pool)
+	appsSvc.Databases = databasesStore
 	domainsSvc := &domainsApp.Domains{
 		Store: domainsStore, Apps: appsStore, DBs: databasesStore,
 		Provisioner: &domainsApp.Provisioner{
@@ -160,13 +161,6 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		},
 	}
 	domainsHandler := domainshttp.New(domainsSvc)
-	autoFreeDomain := func(ctx context.Context, id uuid.UUID, serviceType, name string, orgID uuid.UUID) {
-		if !domainsSvc.Provisioner.IsPublicBase() {
-			return
-		}
-		_, _ = domainsSvc.GenerateFreeDomain(ctx, id, orgID, serviceType, true)
-	}
-	appsSvc.OnCreated = autoFreeDomain
 	ensureIngress(workerCtx, cfg)
 	provisionWorker := &domainsApp.ProvisionWorker{Store: domainsStore, Provisioner: domainsSvc.Provisioner}
 	go provisionWorker.Run(workerCtx)
@@ -181,7 +175,6 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		os.Exit(1)
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
-	databasesSvc.OnCreated = autoFreeDomain
 	databasesStudio := &databasesApp.Studio{Databases: databasesSvc, Timeout: 30 * time.Second, MaxRows: 1000}
 	databasesHandler := databaseshttp.New(databasesSvc, databasesStudio)
 
@@ -372,7 +365,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	router.SetReadiness(func(ctx context.Context) error {
 		return pool.Ping(ctx)
 	})
-	router.ServeFrontend("web/dist")
+	router.ServeFrontend("frontend/web/dist")
 
 	srv := &http.Server{
 		Addr:              cfg.APIAddr,

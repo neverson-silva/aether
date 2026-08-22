@@ -379,7 +379,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	img := "aether/" + dep.AppID.String()[:8]
 	builder := w.CnbBuilder
 	if builder == "" {
-		builder = "127.0.0.1:5000/builder:node-spa"
+		builder = "aether/builder:node-spa"
 	}
 	spa := isStaticSPA(srcDir)
 
@@ -394,7 +394,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	}
 
 	w.appendLog(dep, "cnb (smartbuild): buildando "+img+" com builder "+builder)
-	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=if-not-present", "--platform", "linux/" + runtime.GOARCH}
+	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}
@@ -455,11 +455,15 @@ func isStaticSPA(srcDir string) bool {
 	}
 	_, hasBuild := pkg.Scripts["build"]
 	start, hasStart := pkg.Scripts["start"]
+	_, hasStartProd := pkg.Scripts["start:prod"]
 	if !hasBuild {
 		return false
 	}
-	if !hasStart {
+	if !hasStart && !hasStartProd {
 		return true
+	}
+	if !hasStart && hasStartProd {
+		return false
 	}
 	startCmd := strings.ToLower(start)
 	for _, re := range staticSPADevStarts {

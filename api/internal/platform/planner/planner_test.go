@@ -22,6 +22,7 @@ const nextApp = `{"scripts":{"build":"next build"},"dependencies":{"next":"^14",
 const astroApp = `{"scripts":{"build":"astro build"},"dependencies":{"astro":"^4"}}`
 const angularApp = `{"scripts":{"build":"ng build"},"dependencies":{"@angular/core":"^17"}}`
 const nuxtApp = `{"scripts":{"build":"nuxt build"},"dependencies":{"nuxt":"^3"}}`
+const nestApp = `{"scripts":{"build":"nest build","start:prod":"node dist/main.js"},"dependencies":{"@nestjs/common":"^10","@nestjs/core":"^10"}}`
 
 func TestDetectViteReact(t *testing.T) {
 	dir := write(t, map[string]string{"package.json": viteReact, "vite.config.ts": "export default { build: { outDir: 'custom-out' } }"})
@@ -87,6 +88,17 @@ func TestDetectNuxtSSR(t *testing.T) {
 	p, _ := Detect(dir)
 	if p.AppType != TypeSSR {
 		t.Fatalf("nuxt deveria ser SSR: %v", p.AppType)
+	}
+}
+
+func TestDetectNestSSR(t *testing.T) {
+	dir := write(t, map[string]string{"package.json": nestApp})
+	p, _ := Detect(dir)
+	if p.Framework != "NestJS" || p.AppType != TypeSSR || p.WebServer != "node" {
+		t.Fatalf("NestJS should be detected as Node SSR: %s %v %s", p.Framework, p.AppType, p.WebServer)
+	}
+	if p.BuildCommand != "npm run build" {
+		t.Fatalf("NestJS build command: %s", p.BuildCommand)
 	}
 }
 

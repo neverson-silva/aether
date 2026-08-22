@@ -10,7 +10,7 @@ backend-vet:
 	cd api && go vet ./internal/...
 
 frontend-build:
-	npm --prefix web run build
+	npm --prefix frontend/web run build
 
 frontend-typecheck:
-	cd web && npx tsc --noEmit
+	cd frontend/web && npx tsc --noEmit

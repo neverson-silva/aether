@@ -26,6 +26,11 @@ if [ "$is_static" = 0 ] && { [ -f deno.json ] || [ -f deno.jsonc ]; }; then
     is_static=1
   fi
 fi
+if [ "$is_static" = 1 ] && [ -f package.json ]; then
+  if grep -qE '"start:prod"[[:space:]]*:' package.json || grep -qE '"@nestjs/(core|common)"[[:space:]]*:' package.json; then
+    is_static=0
+  fi
+fi
 if [ "$is_static" = 1 ]; then
   echo "aether/node-server: SPA/SSG — ignorado (grupo spa-static)"
   exit 100

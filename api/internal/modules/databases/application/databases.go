@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -23,11 +24,11 @@ type Databases struct {
 	Network     string
 	LogsDir     string
 	Deployments deploydomain.Store
-	OnCreated   func(ctx context.Context, serviceID uuid.UUID, serviceType, name string, orgID uuid.UUID)
 }
 
 type AppStore interface {
 	GetProject(ctx context.Context, id, orgID uuid.UUID) (*appsdomain.Project, error)
+	GetAppByName(ctx context.Context, orgID uuid.UUID, name string) (*appsdomain.App, error)
 }
 
 var defaultVersions = map[domain.Engine]string{
@@ -56,6 +57,11 @@ func (d *Databases) Create(ctx context.Context, orgID, projectID uuid.UUID, name
 		return nil, domain.ErrValidation
 	}
 	if _, err := d.Apps.GetProject(ctx, projectID, orgID); err != nil {
+		return nil, err
+	}
+	if _, err := d.Apps.GetAppByName(ctx, orgID, name); err == nil {
+		return nil, domain.ErrConflict
+	} else if !errors.Is(err, appsdomain.ErrNotFound) {
 		return nil, err
 	}
 	list, err := d.Store.ListDatabasesByOrg(ctx, orgID)
@@ -91,9 +97,6 @@ func (d *Databases) Create(ctx context.Context, orgID, projectID uuid.UUID, name
 	})
 	if err != nil {
 		return nil, err
-	}
-	if d.OnCreated != nil {
-		d.OnCreated(ctx, db.ID, "db", db.Name, orgID)
 	}
 	return db, nil
 }

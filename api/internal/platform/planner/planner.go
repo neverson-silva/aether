@@ -127,6 +127,8 @@ func detectFromPackage(pkg string) (framework, library, buildScript string) {
 		return "Next.js", "React", buildScript
 	case has(`"nuxt"`):
 		return "Nuxt", "Vue", buildScript
+	case has(`"@nestjs/core"`) || has(`"@nestjs/common"`):
+		return "NestJS", "Node.js", buildScript
 	case has(`"@remix-run/react"`):
 		return "Remix", "React", buildScript
 	case has(`"@sveltejs/kit"`):
@@ -256,6 +258,8 @@ func detectBuildCommand(p *Plan, buildScript string) string {
 	case "Next.js":
 		return run("build")
 	case "Nuxt":
+		return run("build")
+	case "NestJS":
 		return run("build")
 	case "SvelteKit":
 		return run("build")

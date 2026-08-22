@@ -67,7 +67,7 @@ func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
 }
 
 func detectRouting(p *Plan) {
-	ssr := p.Framework == "Next.js" || p.Framework == "Nuxt" || p.Framework == "Remix" ||
+	ssr := p.Framework == "Next.js" || p.Framework == "Nuxt" || p.Framework == "NestJS" || p.Framework == "Remix" ||
 		p.Framework == "SvelteKit" || p.Framework == "TanStack Start" || p.Framework == "Fresh"
 	if ssr {
 		p.AppType = TypeSSR

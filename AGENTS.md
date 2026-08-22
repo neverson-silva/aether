@@ -116,11 +116,11 @@ components (sidebar, buttons, app-link, card-menu, org-switcher, modals,
 inputs, tables) are part of the product's visual identity.
 
 **FORBIDDEN**, unless explicitly requested by the user:
-- Changing `web/src/styles.css` (theme/`@theme`, colors, `--radius-*`, fonts).
+- Changing `frontend/web/src/styles.css` (theme/`@theme`, colors, `--radius-*`, fonts).
 - Changing the structure, labels or styling of the sidebar
-  (`web/src/components/shell.tsx`).
-- Changing colors/radius/variants of buttons (`web/src/components/ui/button.tsx`),
-  links (`app-link.tsx`) or any component in `web/src/components/ui/`.
+  (`frontend/web/src/components/shell.tsx`).
+- Changing colors/radius/variants of buttons (`frontend/web/src/components/ui/button.tsx`),
+  links (`app-link.tsx`) or any component in `frontend/web/src/components/ui/`.
 - Adding/removing fonts in `package.json` (e.g.: swapping Inter for another)
   without asking.
 - "Reusing" the theme of a reference mockup/HTML page to overwrite the app's

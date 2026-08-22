@@ -15,14 +15,18 @@ type Apps struct {
 	Store      domain.Store
 	Secrets    domain.SecretCipher
 	Containers ContainerRemover
+	Databases  DatabaseNameStore
 	// LatestDeployments returns the status of the most recent deployment per
 	// app. When nil, the apps list is served without deployment status.
 	LatestDeployments func(ctx context.Context, appIDs []uuid.UUID) (map[uuid.UUID]string, error)
-	OnCreated         func(ctx context.Context, serviceID uuid.UUID, serviceType, name string, orgID uuid.UUID)
 }
 
 type ContainerRemover interface {
 	Delete(ctx context.Context, appID, orgID uuid.UUID) error
+}
+
+type DatabaseNameStore interface {
+	HasName(ctx context.Context, orgID uuid.UUID, name string) (bool, error)
 }
 
 var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
@@ -101,13 +105,19 @@ func (a *Apps) CreateApp(ctx context.Context, orgID, projectID uuid.UUID, app *d
 	if err := validateApp(app); err != nil {
 		return nil, err
 	}
+	if a.Databases != nil {
+		exists, err := a.Databases.HasName(ctx, orgID, app.Name)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, domain.ErrConflict
+		}
+	}
 	applyAppDefaults(app)
 	created, err := a.Store.CreateApp(ctx, app)
 	if err != nil {
 		return nil, err
-	}
-	if a.OnCreated != nil {
-		a.OnCreated(ctx, created.ID, "app", created.Name, orgID)
 	}
 	return created, nil
 }

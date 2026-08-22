@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-BUILDER_NAME="${AETHER_CNB_BUILDER:-127.0.0.1:5000/builder:node-spa}"
+BUILDER_NAME="${AETHER_CNB_BUILDER:-aether/builder:node-spa}"
 LIFECYCLE_VER="${LIFECYCLE_VER:-0.19.6}"
 SPA_BP_VER="${SPA_BP_VER:-0.1.0}"
 NODE_BP_VER="${NODE_BP_VER:-0.1.0}"
@@ -115,5 +115,9 @@ podman build \
   --build-arg BUILDER_METADATA="$(cat "$ctx/builder-meta.json")" \
   --build-arg BUILDER_ORDER="$(cat "$ctx/order-label.json")" \
   -t "$BUILDER_NAME" "$ctx"
-podman push --remove-signatures --tls-verify=false "$BUILDER_NAME"
-info "builder publicado: $BUILDER_NAME"
+if [[ "$BUILDER_NAME" == */*.*:*/* || "$BUILDER_NAME" == *:*/* ]]; then
+  podman push --remove-signatures --tls-verify=false "$BUILDER_NAME"
+  info "builder publicado: $BUILDER_NAME"
+else
+  info "builder local disponível: $BUILDER_NAME"
+fi

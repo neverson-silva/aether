@@ -1,6 +1,6 @@
 .git
 node_modules
-web/node_modules
-web/dist
+frontend/web/node_modules
+frontend/web/dist
 *.log
 .tmp

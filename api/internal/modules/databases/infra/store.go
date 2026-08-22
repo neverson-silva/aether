@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -59,6 +60,19 @@ func (s *Store) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]doma
 		out = append(out, *databaseFromRow(r))
 	}
 	return out, nil
+}
+
+func (s *Store) HasName(ctx context.Context, orgID uuid.UUID, name string) (bool, error) {
+	databases, err := s.ListDatabasesByOrg(ctx, orgID)
+	if err != nil {
+		return false, err
+	}
+	for _, database := range databases {
+		if strings.EqualFold(database.Name, name) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Store) UpdateDatabaseStatus(ctx context.Context, id uuid.UUID, status, containerID string) error {

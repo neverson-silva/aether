@@ -66,5 +66,5 @@ AETHER_TEST_DATABASE_PORT=5433 AETHER_API_TEST_DATABASE_PORT=5433 go test ./api/
 1. `go build ./...` passes.
 2. `go vet ./internal/...` passes.
 3. Relevant tests pass with the suite command above.
-4. DTOs exposed via `gin.H` are mirrored in `web/src/api/types.ts` if the frontend consumes them.
+4. DTOs exposed via `gin.H` are mirrored in `frontend/web/src/api/types.ts` if the frontend consumes them.
 5. No comments left explaining the obvious; code is self-documenting.

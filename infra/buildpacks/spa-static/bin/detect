@@ -27,6 +27,10 @@ if [ "$is_spa" = 0 ]; then
   fi
 fi
 if [ "$is_spa" = 0 ] && [ -f package.json ]; then
+  if grep -qE '"start:prod"[[:space:]]*:' package.json || grep -qE '"@nestjs/(core|common)"[[:space:]]*:' package.json; then
+    echo "aether/spa-static: server application marker found"
+    exit 100
+  fi
   case "$(cat package.json)" in
     *'"@angular/core"'*|*'"react-scripts"'*|*'"vue-cli-service"'*|*'"@vue/cli-service"'*|*'"vite"'*|*'"@vitejs/plugin-react"'*|*'"astro"'*) is_spa=1 ;;
   esac

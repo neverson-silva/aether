@@ -21,7 +21,7 @@ case "$ARCH" in
   *) echo "arch não suportada: $ARCH"; exit 1 ;;
 esac
 
-REGISTRY="127.0.0.1:5000"
+REGISTRY="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}"
 BUILDER_TAG="$REGISTRY/builder:node-spa"
 LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
 RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
