@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Designer"
+  short_description: "Projete experiências claras, acessíveis e testáveis"
+  default_prompt: "Use $product-designer para transformar este problema em uma experiência de produto clara, acessível e validável."

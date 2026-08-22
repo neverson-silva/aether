@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Export Specialist"
+  short_description: "Transforme designs em interfaces frontend prontas"
+  default_prompt: "Use $export-frontend para transformar este design em uma implementação frontend responsiva e pronta para produção."

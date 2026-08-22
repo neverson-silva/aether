@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design System Specialist"
+  short_description: "Crie e governe sistemas de design escaláveis"
+  default_prompt: "Use $design-system-specialist para definir ou evoluir um design system consistente, acessível e sustentável."

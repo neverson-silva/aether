@@ -1,0 +1,93 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+*,
+*::before,
+*::after {
+  border-color: var(--semantic-border-default);
+}
+body {
+  margin: 0;
+  background: var(--semantic-canvas);
+  color: var(--semantic-content-primary);
+  font-family: var(--font-family-sans);
+}
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes aether-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes aether-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes aether-shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+
+.aether-enter {
+  animation: aether-fade-in var(--motion-normal) var(--motion-ease-standard)
+    both;
+}
+.aether-exit {
+  animation: aether-fade-out var(--motion-normal) ease-in both;
+}
+.aether-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    var(--aether-alpha-white-08) 50%,
+    transparent 75%
+  );
+  background-size: 800px 100%;
+  animation: aether-shimmer 1.4s linear infinite;
+}

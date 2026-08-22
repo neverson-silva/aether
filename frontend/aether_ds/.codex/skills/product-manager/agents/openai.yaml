@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Manager"
+  short_description: "Estruture decisões, roadmap e discovery de produto"
+  default_prompt: "Use $product-manager para estruturar esta oportunidade em problema, hipóteses, priorização e plano de execução."
