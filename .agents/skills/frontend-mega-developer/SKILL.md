@@ -37,8 +37,8 @@ You are a senior frontend engineer working on **Aether** — a self-hosted PaaS 
 
 ## Verification (ALWAYS)
 
-- `cd web && npx tsc --noEmit` — must pass with zero errors.
-- `cd web && npm run build` — vite build must succeed (chunk-size warning is fine).
+- `cd frontend && npx tsc --noEmit` — must pass with zero errors.
+- `cd frontend && npm run build` — vite build must succeed (chunk-size warning is fine).
 - If you changed backend DTOs, mirror the shape in `web/src/api/types.ts` so the frontend types stay in sync.
 
 ## Golden rules for this codebase

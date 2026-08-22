@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Field, Input, Modal } from "../../../components/ui";
+import { Button, Field, Input, Modal, Select } from "../../../components/ui";
 import { cn } from "../../../components/ui";
 
 interface ColumnDef {
@@ -178,15 +178,15 @@ export function CreateTableModal({
               </div>
               <div className="w-56">
                 <Field label="Schema">
-                  <select
+                  <Select
                     value={schema}
                     onChange={(e) => setSchema(e.target.value)}
-                    className="w-full bg-surface-container border border-outline-variant rounded-lg px-md py-[10px] font-body-md text-body-md text-on-surface"
+                    className="bg-surface-container font-body-md text-body-md text-on-surface"
                   >
                     {schemas.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
-                  </select>
+                  </Select>
                 </Field>
               </div>
             </div>
@@ -246,15 +246,15 @@ export function CreateTableModal({
                     />
                   </div>
                   <div className="col-span-3">
-                    <select
+                    <Select
                       value={c.type}
                       onChange={(e) => updateColumn(idx, { type: e.target.value })}
-                      className="w-full bg-surface-container rounded border border-outline-variant px-2 py-1 text-code-md text-code-md text-secondary"
+                      className="bg-surface-container font-code-md text-code-md text-secondary"
                     >
                       {TYPE_OPTIONS.map((t) => (
                         <option key={t} value={t}>{t}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div className="col-span-2 flex justify-center">
                     <button

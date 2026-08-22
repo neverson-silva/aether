@@ -38,7 +38,7 @@ aether install   (binário)
    ├── Fase detect & plan
    ├── Fase install deps (podman/crun/conmon/buildah/skopeo/fuse-overlayfs)
    ├── Fase provision (users/units/identity)
-   ├── Fase init (db/migrations/admin token)
+   ├── Fase init (api/db/migrations/admin token)
    └── Fase done (URL + token)
 ```
 

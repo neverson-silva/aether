@@ -141,10 +141,10 @@ function Marketplace() {
           placeholder="Search templates..."
           className="w-64 bg-surface-container-low border border-outline-variant rounded-lg px-sm py-1.5 font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:outline-none"
         />
-        <select
+        <Select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="bg-surface-container-low border border-outline-variant rounded-lg px-sm py-1.5 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none"
+          className="w-56 bg-surface-container-low font-body-md text-body-md"
         >
           <option value="">All categories</option>
           {(categories ?? []).map((c) => (
@@ -152,7 +152,7 @@ function Marketplace() {
               {c}
             </option>
           ))}
-        </select>
+        </Select>
         <label className="flex items-center gap-sm cursor-pointer select-none">
           <input type="checkbox" checked={featuredOnly} onChange={(e) => setFeaturedOnly(e.target.checked)} className="w-4 h-4 rounded-sm bg-surface border-outline-variant text-primary" />
           <span className="font-body-sm text-body-sm text-on-surface-variant">Featured only</span>

@@ -28,9 +28,12 @@ node_modules/
 *.key
 .env
 .env.*
+!.env.example
 master.key
 
 # Editor/OS
 .DS_Store
 .idea/
 .vscode/
+
+.idea/

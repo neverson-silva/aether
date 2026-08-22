@@ -184,4 +184,5 @@ export * from "./use-compose-stack";
 export * from "./use-compose-up";
 export * from "./use-compose-down";
 export * from "./use-delete-compose";
+export * from "./use-source-control";
 export { getServer, setServer } from "../api/client";

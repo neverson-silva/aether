@@ -47,6 +47,11 @@ function isNotifiable(type: string): boolean {
   );
 }
 
+function shouldToast(type: string): boolean {
+  if (!type.startsWith("backup.")) return true;
+  return ["backup.completed", "backup.failed", "backup.cancelled"].includes(type);
+}
+
 function toItem(ev: EventEnvelope): NotificationItem {
   return {
     id: ev.id,
@@ -72,7 +77,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const level = levelForType(ev.type);
     const isError = level === "error";
     const target = (ev.payload?.service_id || ev.payload?.app_id) as string | undefined;
-    if (ev.message) toast(ev.message, { level, onClick: isError ? () => window.location.assign(`/apps`) : undefined });
+    if (ev.message && shouldToast(ev.type)) toast(ev.message, { level, onClick: isError ? () => window.location.assign(`/apps`) : undefined });
     if (target) {
       useNotificationsStore.getState().patchPayload(ev.id, target);
     }

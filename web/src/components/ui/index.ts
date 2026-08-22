@@ -4,7 +4,7 @@
 export { cn, SpinnerMini } from "./cn";
 export { Button, BTN_BASE, BTN_VARIANTS, BTN_SIZES } from "./button";
 export type { ButtonVariant, ButtonSize } from "./button";
-export { Input, Select, Field } from "./form";
+export { Input, Select, TimePicker, Field } from "./form";
 export { Card, Skeleton, SkeletonList } from "./card";
 export { StatusPill } from "./status";
 export { DeploymentStatus, isDeploymentActive } from "./runtime-status";

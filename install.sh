@@ -5,6 +5,14 @@ info()  { echo -e "${GREEN}[aether]${NC} $*" >&2; }
 warn()  { echo -e "${YELLOW}[aether]${NC} $*" >&2; }
 fail()  { echo -e "${RED}[aether]${NC} $*" >&2; exit 1; }
 
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${AETHER_ENV_FILE:-$PROJECT_ROOT/.env}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
 # ---------------------------------------------------------------------------
 # Configuration — everything runs in containers; podman is the ONLY host dep.
 STATE_DIR="${AETHER_STATE:-$HOME/.aether}"
@@ -23,14 +31,38 @@ API_IMAGE="${AETHER_API_IMAGE:-aether.local/api:1}"
 API_PORT="${AETHER_API_PORT:-8080}"
 
 WEB_CONTAINER="aether-web"
-WEB_IMAGE="${AETHER_WEB_IMAGE:-docker.io/library/nginx:alpine}"
-WEB_PORT="${AETHER_WEB_PORT:-3000}"
+WEB_IMAGE="${AETHER_WEB_IMAGE:-aether.local/web:1}"
+WEB_PORT=4000
+DEV_MODE="${DEV_MODE:-false}"
 
-# AETHER_MODE=prod roda o gateway nginx na porta 3000; dev (padrão) serve o
 MODE="${AETHER_MODE:-dev}"
 CRED_FILE="$STATE_DIR/.aether-db"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST_LOG="$STATE_DIR/logs/host-setup.log"
+FORCE_API_RECREATE=0
+
+is_true() {
+  [[ "$1" == "1" || "$1" == "true" || "$1" == "TRUE" || "$1" == "yes" ]]
+}
+
+resolve_public_url() {
+  if is_true "$DEV_MODE"; then
+    printf 'http://localhost:%s' "$WEB_PORT"
+    return
+  fi
+  if [[ -n "${AETHER_PUBLIC_URL:-}" ]]; then
+    printf '%s' "${AETHER_PUBLIC_URL%/}"
+    return
+  fi
+  local host="${AETHER_PUBLIC_HOST:-}"
+  if [[ -z "$host" ]] && command_exists curl; then
+    for service in https://api.ipify.org https://icanhazip.com https://ifconfig.me/ip; do
+      host="$(curl -fsS --max-time 3 "$service" 2>/dev/null | tr -d '[:space:]' || true)"
+      [[ -n "$host" ]] && break
+    done
+  fi
+  [[ -n "$host" ]] || host="127.0.0.1"
+  printf 'http://%s:%s' "$host" "$WEB_PORT"
+}
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
@@ -453,19 +485,24 @@ ensure_master_key() {
 # ---------------------------------------------------------------------------
 # BUILD + RUN — API e frontend em containers
 build_api_image() {
-  [[ -f "$PROJECT_ROOT/Dockerfile" ]] || fail "Dockerfile not found. Run from inside the project directory."
-  [[ -f "$PROJECT_ROOT/cmd/api/main.go" ]] || fail "API source not found in ./cmd/api."
-  info "Building the API + frontend image ($API_IMAGE)..."
-  info "  (Go build + frontend build + runtime — all inside a container)"
-  $RUNTIME build -t "$API_IMAGE" -f "$PROJECT_ROOT/Dockerfile" "$PROJECT_ROOT" \
+  [[ -f "$PROJECT_ROOT/infra/Dockerfile" ]] || fail "Dockerfile not found. Run from inside the project directory."
+  [[ -f "$PROJECT_ROOT/api/cmd/api/main.go" ]] || fail "API source not found in ./api/cmd/api."
+  info "Building the API image ($API_IMAGE)..."
+  info "  (Go build + runtime — all inside a container)"
+  $RUNTIME build -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT" \
     || fail "Image build failed."
   info "  ✓ image built: $API_IMAGE"
 }
 
 ensure_web_image() {
-  # Gateway nginx apenas no modo prod. Nenhuma imagem extra é construída em
-  # dev — a API serve o SPA direto (web/dist embutido).
-  :
+  if $RUNTIME image exists "$WEB_IMAGE" >/dev/null 2>&1; then
+    return 0
+  fi
+  [[ -f "$PROJECT_ROOT/infra/web.Dockerfile" ]] || fail "Web Dockerfile not found."
+  info "Building the web image ($WEB_IMAGE)..."
+  $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" \
+    || fail "Web image build failed."
+  info "  ✓ image built: $WEB_IMAGE"
 }
 
 api_exists() {
@@ -477,7 +514,7 @@ api_running() {
 }
 
 start_api() {
-  if api_running; then
+  if api_running && [[ "$FORCE_API_RECREATE" -eq 0 ]]; then
     info "API container already running."
     return 0
   fi
@@ -501,8 +538,11 @@ start_api() {
   fi
 
   info "Starting API container ($API_CONTAINER) on 127.0.0.1:$API_PORT..."
-  local args=(
-    run -d
+  local args=(run -d)
+  if [[ -f "$ENV_FILE" ]]; then
+    args+=(--env-file "$ENV_FILE")
+  fi
+  args+=(
     --name "$API_CONTAINER"
     --network "$NET_NAME"
     --network-alias "$API_CONTAINER"
@@ -523,11 +563,10 @@ start_api() {
     -e "DATABASE_MIGRATE_ON_START=true"
     -e "AETHER_REDIS_ADDR=$REDIS_CONTAINER:6379"
     -e "AETHER_RUNTIME_BACKEND=${AETHER_RUNTIME_BACKEND:-redis}"
-    -e "AETHER_PUBLIC_URL=${AETHER_PUBLIC_URL:-}"
+    -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
     -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-false}"
     -e "AETHER_MODE=$MODE"
   )
-
   # Monta o socket do podman para a API orquestrar deploys de apps.
   # - Linux: socket unix do host (mountável diretamente).
   # - macOS (podman machine): o daemon roda na VM; o source do `-v` é resolvido
@@ -585,17 +624,17 @@ start_api() {
 }
 
 # ---------------------------------------------------------------------------
-# WEB GATEWAY (nginx container — modo prod)
+# WEB CONTAINER (nginx serves the frontend on port 4000)
 write_nginx_conf() {
   local conf="$STATE_DIR/nginx-aether.conf"
   cat > "$conf" <<EOF
 server {
-    listen 80;
+    listen 4000;
     server_name _;
 
     client_max_body_size 128m;
 
-    location / {
+    location /api/ {
         proxy_pass http://$API_CONTAINER:8080;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -606,6 +645,11 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 300s;
     }
+
+    location / {
+        root /usr/share/nginx/html;
+        try_files \$uri \$uri/ /index.html;
+    }
 }
 EOF
   info "nginx config generated: $conf"
@@ -613,11 +657,6 @@ EOF
 }
 
 start_web() {
-  if [[ "$MODE" != "prod" ]]; then
-    info "dev mode: the API serves the SPA directly at http://127.0.0.1:$API_PORT"
-    return 0
-  fi
-
   local conf
   conf="$(write_nginx_conf)"
 
@@ -629,7 +668,7 @@ start_web() {
   $RUNTIME run -d \
     --name "$WEB_CONTAINER" \
     --network "$NET_NAME" \
-    -p "127.0.0.1:$WEB_PORT:80" \
+    -p "127.0.0.1:$WEB_PORT:4000" \
     -v "$conf:/etc/nginx/conf.d/default.conf:ro" \
     --restart unless-stopped \
     "$WEB_IMAGE" >/dev/null || fail "Failed to start the web container."
@@ -698,7 +737,7 @@ ensure_builder() {
     return 0
   fi
   info "Building CNB builder ($CNB_BUILDER) — Paketo node + aether/spa-static..."
-  bash "$PROJECT_ROOT/builders/build-builder.sh" || warn "CNB builder build failed — CNB deploys will be limited."
+  bash "$PROJECT_ROOT/infra/builders/build-builder.sh" || warn "CNB builder build failed — CNB deploys will be limited."
   info "CNB builder ready."
 }
 
@@ -711,14 +750,14 @@ ensure_builder() {
 # terminated whenever the API goes down for any reason.
 
 start_agent() {
-  [[ -x "$PROJECT_ROOT/scripts/host-watchdog.sh" ]] || return 0
+  [[ -x "$PROJECT_ROOT/infra/scripts/host-watchdog.sh" ]] || return 0
   local pidfile="$STATE_DIR/host-agent.pid"
   if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
     info "Host watchdog already running (pid $(cat "$pidfile"))."
     return 0
   fi
   mkdir -p "$STATE_DIR/logs"
-  nohup bash "$PROJECT_ROOT/scripts/host-watchdog.sh" >> "$STATE_DIR/logs/host-agent.log" 2>&1 &
+  nohup bash "$PROJECT_ROOT/infra/scripts/host-watchdog.sh" >> "$STATE_DIR/logs/host-agent.log" 2>&1 &
   echo "$!" > "$pidfile"
   sleep 1
   if kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
@@ -779,6 +818,11 @@ status_cmd() {
   else
     warn "Redis: STOPPED"
   fi
+  if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$WEB_CONTAINER"; then
+    info "Web: RUNNING (nginx container $WEB_CONTAINER) → http://127.0.0.1:$WEB_PORT"
+  else
+    warn "Web: STOPPED"
+  fi
 }
 
 logs_cmd() {
@@ -800,6 +844,7 @@ EOF
 
 main() {
   banner
+  export AETHER_PUBLIC_URL="$(resolve_public_url)"
   info "Aether — self-hosted installer (web port: $WEB_PORT, API: $API_PORT)"
   echo
 
@@ -828,6 +873,7 @@ main() {
       ensure_redis
       ensure_registry
       ensure_builder
+      ensure_web_image
       start_api
       start_web
       info "Aether is running."
@@ -850,11 +896,13 @@ main() {
   ensure_registry
   ensure_builder
 
-  info "4/6 Building the API + frontend image..."
+  info "4/6 Building the API and frontend images..."
   build_api_image
+  ensure_web_image
 
   info "5/6 Starting the host agent + API container..."
   start_agent
+  FORCE_API_RECREATE=1
   start_api
   start_web
 
@@ -868,9 +916,7 @@ main() {
   echo -e "${GREEN}└──────────────────────────────────────────────────────────────┘${NC}"
   echo
   echo -e "  API:      ${CYAN}http://127.0.0.1:$API_PORT${NC}"
-  if [[ "$MODE" == "prod" ]]; then
-    echo -e "  Web:      ${CYAN}http://127.0.0.1:$WEB_PORT${NC} (via nginx container)"
-  fi
+  echo -e "  Web:      ${CYAN}$AETHER_PUBLIC_URL${NC} (nginx container)"
   echo -e "  State:    $STATE_DIR"
   echo -e "  Logs:     ${CYAN}./install.sh logs${NC}"
   echo -e "  Host log: $HOST_LOG (instalação/configuração do host)"

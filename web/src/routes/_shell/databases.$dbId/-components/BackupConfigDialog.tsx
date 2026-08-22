@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BackupConfig, BackupSchedule, S3Destination } from "../../../../api/types";
 import { useUpsertDatabaseBackupConfig } from "../../../../hooks";
-import { Button, Field, Input, Modal, Select } from "../../../../components/ui";
+import { Button, Field, Input, Modal, Select, TimePicker } from "../../../../components/ui";
 
 const TIMEZONES: string[] = (() => {
   try {
@@ -78,6 +78,7 @@ export function BackupConfigDialog({
     setSaving(true);
     try {
       await save.mutateAsync({
+        id: existing?.id,
         enabled: true,
         destination_id: destinationId,
         path_prefix: pathPrefix,
@@ -171,7 +172,7 @@ export function BackupConfigDialog({
                 </Field>
               )}
               <Field label="Time">
-                <Input type="time" value={at} onChange={(e) => setAt(e.target.value)} />
+                <TimePicker value={at} onChange={setAt} />
               </Field>
             </div>
           )}

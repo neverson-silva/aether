@@ -17,7 +17,11 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
     ],
     build: { outDir: "dist", emptyOutDir: true },
-    server: { port: 5173, proxy: { "/api": { target: apiTarget || "http://127.0.0.1:8080", ws: true } } },
+    server: {
+      port: 5173,
+      allowedHosts: true,
+      proxy: { "/api": { target: apiTarget || "http://127.0.0.1:8080", ws: true } },
+    },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

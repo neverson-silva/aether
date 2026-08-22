@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCreateApp, useProjects } from "../hooks";
-import { getServer } from "../api/client";
+import { useCreateApp, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { apiPut, getServer } from "../api/client";
 import { useOverlayGate } from "./OverlayManager";
 import { TechIcon } from "./TechIcon";
 import { AdvancedSettings } from "./AdvancedSettings";
@@ -29,12 +29,6 @@ interface DetectedPlan {
   detected: boolean;
 }
 
-const MOCK_REPOS = [
-  { name: "aether-labs/core-api", lang: "Go", color: "#00ADD8", updated: "2h ago", url: "https://github.com/aether-labs/core-api.git" },
-  { name: "aether-labs/auth-service-go", lang: "Go", color: "#00ADD8", updated: "5d ago", url: "https://github.com/aether-labs/auth-service-go.git" },
-  { name: "aether-labs/dashboard-web", lang: "TypeScript", color: "#3178C6", updated: "1d ago", url: "https://github.com/aether-labs/dashboard-web.git" },
-];
-
 export function ApplicationWizard({
   open,
   onClose,
@@ -50,12 +44,21 @@ export function ApplicationWizard({
 }) {
   const navigate = useNavigate();
   const { data: projects } = useProjects();
+  const { data: connections } = useSourceControlConnections();
+  const startGitHubManifest = useStartGitHubManifest();
+  const githubConnection = connections?.find((connection) => connection.provider === "github" && connection.status === "active" && !!connection.installation_id);
+  const { data: repositories, isLoading: repositoriesLoading, isError: repositoriesError, error: repositoriesQueryError, refetch: refetchRepositories } = useSourceControlRepositories(githubConnection?.installation_id);
   const createApp = useCreateApp();
   const { toast } = useToast();
 
   const [step, setStep] = useState(1);
+  const [sourceMode, setSourceMode] = useState<"git" | "upload">("git");
   const [repoQuery, setRepoQuery] = useState("");
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const repoPickerRef = useRef<HTMLDivElement>(null);
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [branch, setBranch] = useState("main");
+  const { data: branches, isLoading: branchesLoading } = useSourceControlBranches(selectedRepo ?? undefined, githubConnection?.installation_id);
   const [customUrl, setCustomUrl] = useState("");
   const [zipUpload, setZipUpload] = useState<{ upload_id: string; name: string; size: number } | null>(null);
   const [zipUploading, setZipUploading] = useState(false);
@@ -112,20 +115,31 @@ export function ApplicationWizard({
   useEffect(() => {
     if (open) {
       setStep(1);
+      setSourceMode("git");
       setSelectedRepo(null);
+      setBranch("main");
       setZipUpload(null);
       setRepoQuery("");
       setCustomUrl("");
     }
   }, [open]);
 
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!repoPickerRef.current?.contains(event.target as Node)) setRepoPickerOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
   if (!mounted) return null;
 
-  const filteredRepos = MOCK_REPOS.filter(
-    (r) => !repoQuery || r.name.toLowerCase().includes(repoQuery.toLowerCase()) || r.lang.toLowerCase().includes(repoQuery.toLowerCase())
+  const filteredRepos = (repositories ?? []).filter(
+    (r) => !repoQuery || r.full_name.toLowerCase().includes(repoQuery.toLowerCase()) || r.name.toLowerCase().includes(repoQuery.toLowerCase())
   );
+  const selectedRepository = repositories?.find((repository) => repository.id === selectedRepo);
 
-  const sourceReady = !!selectedRepo || !!customUrl.trim() || !!zipUpload;
+  const sourceReady = sourceMode === "git" ? !!selectedRepo || !!customUrl.trim() : !!zipUpload;
 
   const uploadZip = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".zip")) {
@@ -146,7 +160,7 @@ export function ApplicationWizard({
       setZipUpload(data);
       setSelectedRepo(null);
       setCustomUrl("");
-      if (kind === "web") runDetect({ upload_id: data.upload_id });
+      runDetect({ upload_id: data.upload_id });
     } catch (err) {
       toast(err instanceof Error ? err.message : "upload failed", "error");
     } finally {
@@ -178,13 +192,13 @@ export function ApplicationWizard({
   };
 
   const detectFramework = async () => {
-    const hasSource = !!(customUrl.trim() || selectedRepo || zipUpload);
+    const hasSource = sourceMode === "git" ? !!(customUrl.trim() || selectedRepo) : !!zipUpload;
     if (!hasSource) {
       toast("Select a repository, paste a URL or upload a ZIP first", "info");
       return;
     }
-    const url = customUrl.trim() || MOCK_REPOS.find((r) => r.name === selectedRepo)?.url || "";
-    await runDetect(zipUpload ? { upload_id: zipUpload.upload_id } : { git_url: url });
+    const url = customUrl.trim() || (selectedRepository ? `https://github.com/${selectedRepository.full_name}.git` : "");
+    await runDetect(sourceMode === "upload" ? { upload_id: zipUpload?.upload_id } : { git_url: url });
   };
 
   const create = async () => {
@@ -194,15 +208,15 @@ export function ApplicationWizard({
     }
     setCreating(true);
     try {
-      const gitUrl = customUrl.trim() || (selectedRepo ? MOCK_REPOS.find((r) => r.name === selectedRepo)?.url ?? "" : "");
+      const gitUrl = customUrl.trim() || (selectedRepository ? `https://github.com/${selectedRepository.full_name}.git` : "");
       const app = await createApp.mutateAsync({
         projectID: projectId,
         payload: {
           name,
           environment_id: fixedEnvironmentId ?? "",
-          source_type: zipUpload ? "upload" : "git",
+          source_type: sourceMode === "upload" ? "upload" : "git",
           git_url: zipUpload ? "" : gitUrl,
-          git_branch: "main",
+          git_branch: branch,
           build_type: buildType,
           dockerfile: dockerfilePath,
           upload_id: zipUpload?.upload_id ?? "",
@@ -240,6 +254,22 @@ export function ApplicationWizard({
             .map((r) => ({ name: r.key.trim(), value: r.value, secret: r.secret })),
         } as never,
       });
+      if (selectedRepository && githubConnection) {
+        await apiPut(`/api/v1/apps/${app.id}/source`, {
+          connection_id: githubConnection.id,
+          repository_id: selectedRepository.id,
+          repository_owner: selectedRepository.owner,
+          repository_name: selectedRepository.name,
+          repository_full_name: selectedRepository.full_name,
+          default_branch: selectedRepository.default_branch,
+          branch,
+          auto_deploy: true,
+          root_directory: rootFolder,
+          watch_paths: watchPaths.split(",").map((path) => path.trim()).filter(Boolean),
+          ignore_paths: [],
+          watch_root_files: true,
+        });
+      }
         toast("Deploy it manually from the service page", "info");
         onClose();
         navigate({ to: "/apps/$appId", params: { appId: app.id } } as never);
@@ -292,9 +322,43 @@ export function ApplicationWizard({
 
         <div className="p-lg overflow-y-auto flex-1 sidebar-scroll">
           {step === 1 && (
+            <div className="flex flex-col gap-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
+                {[
+                  { id: "git" as const, icon: "code", label: "Git Provider", description: "Connect a provider and deploy from a repository." },
+                  { id: "upload" as const, icon: "folder_zip", label: "Upload", description: "Upload a ZIP archive for this service." },
+                ].map((option) => {
+                  const active = sourceMode === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setSourceMode(option.id);
+                        if (option.id === "git") setZipUpload(null);
+                        else {
+                          setSelectedRepo(null);
+                          setCustomUrl("");
+                        }
+                      }}
+                      className={`flex items-start gap-sm p-md rounded-xl border text-left transition-colors ${active ? "border-primary bg-primary/10" : "border-outline-variant bg-surface-container-low hover:border-primary/50"}`}
+                    >
+                      <span className={`material-symbols-outlined ${active ? "text-primary" : "text-on-surface-variant"}`}>{option.icon}</span>
+                      <span className="flex-1">
+                        <span className="flex items-center gap-xs font-body-md text-body-md font-semibold text-on-surface">
+                          {option.label}
+                          <span className={`material-symbols-outlined ml-auto text-[16px] ${active ? "text-primary" : "text-outline-variant"}`}>{active ? "check_box" : "check_box_outline_blank"}</span>
+                        </span>
+                        <span className="block mt-xs font-body-sm text-body-sm text-on-surface-variant">{option.description}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg">
               <div className="lg:col-span-2 flex flex-col gap-md">
-                <div className="bg-surface-container rounded-xl p-md border border-outline-variant hover:border-primary glow-hover cursor-pointer transition-all duration-200">
+                {sourceMode === "git" && <div className="bg-surface-container rounded-xl p-md border border-outline-variant hover:border-primary glow-hover transition-all duration-200">
                   <div className="flex items-start gap-md">
                     <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center border border-outline-variant text-on-surface">
                       <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>code</span>
@@ -304,54 +368,92 @@ export function ApplicationWizard({
                       <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
                         Deploy directly from a connected GitHub account. Pushes will automatically trigger new builds.
                       </p>
-                      <div className="bg-surface-dim rounded-lg border border-outline-variant overflow-hidden">
+                      <div ref={repoPickerRef} onMouseDown={() => setRepoPickerOpen(true)} className="group relative bg-surface-dim rounded-lg border border-outline-variant overflow-visible">
                         <div className="flex items-center gap-sm p-sm border-b border-outline-variant bg-surface-container-low">
                           <span className="material-symbols-outlined text-outline" style={{ fontSize: 18 }}>search</span>
                           <input
                             value={repoQuery}
                             onChange={(e) => setRepoQuery(e.target.value)}
+                            onFocus={() => setRepoPickerOpen(true)}
+                            onClick={() => setRepoPickerOpen(true)}
                             placeholder="Search aether-labs repos..."
                             className="bg-transparent border-none outline-none focus:ring-0 text-on-surface font-body-sm text-body-sm w-full placeholder:text-outline-variant py-0"
                           />
                         </div>
-                        <div className="max-h-64 overflow-y-auto repo-scroll p-xs">
-                          {filteredRepos.length === 0 && (
+                        <div className="relative mt-xs hidden max-h-64 overflow-y-auto repo-scroll rounded-lg border border-outline-variant bg-surface-container-high p-xs shadow-xl group-focus-within:block">
+                          {!githubConnection && (
+                            <div className="p-sm space-y-sm">
+                              <p className="font-body-sm text-body-sm text-on-surface-variant">Connect a GitHub App installation to list repositories.</p>
+                              <button type="button" disabled={startGitHubManifest.isPending} onClick={async () => {
+                                try {
+                                  const manifest = await startGitHubManifest.mutateAsync({
+                                    return_url: `${window.location.pathname}${window.location.search}`,
+                                  });
+                                  const form = document.createElement("form");
+                                  form.method = "POST";
+                                  form.action = `${manifest.url}?state=${encodeURIComponent(manifest.state)}`;
+                                  const input = document.createElement("input");
+                                  input.type = "hidden";
+                                  input.name = "manifest";
+                                  input.value = manifest.manifest;
+                                  form.appendChild(input);
+                                  document.body.appendChild(form);
+                                  form.submit();
+                                } catch (error) {
+                                  toast(error instanceof Error ? error.message : "GitHub connection failed", "error");
+                                }
+                              }} className="text-primary font-body-sm text-body-sm disabled:opacity-50">{startGitHubManifest.isPending ? "Connecting..." : "Connect GitHub"}</button>
+                            </div>
+                          )}
+                          {githubConnection && repositoriesLoading && (
+                            <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">Loading repositories...</p>
+                          )}
+                          {githubConnection && repositoriesError && (
+                            <div className="p-sm flex items-center justify-between gap-sm">
+                              <p className="font-body-sm text-body-sm text-error">{repositoriesQueryError instanceof Error ? repositoriesQueryError.message : "Could not load repositories."}</p>
+                              <button type="button" onClick={() => refetchRepositories()} className="text-primary font-body-sm text-body-sm">Retry</button>
+                            </div>
+                          )}
+                          {githubConnection && !repositoriesLoading && !repositoriesError && filteredRepos.length === 0 && (
                             <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">No repositories match "{repoQuery}".</p>
                           )}
                           {filteredRepos.map((r) => (
                             <div
-                              key={r.name}
-                              onClick={() => {
-                                setSelectedRepo(r.name);
+                              key={r.id}
+                              onMouseDown={() => {
+                                setSelectedRepo(r.id);
+                                setBranch(r.default_branch || "main");
+                                setRepoQuery(r.full_name);
                                 setCustomUrl("");
                                 setZipUpload(null);
+                                setRepoPickerOpen(false);
                                 if (kind === "web") {
-                                  const url = MOCK_REPOS.find((x) => x.name === r.name)?.url || "";
-                                  runDetect({ git_url: url });
+                                  runDetect({ git_url: `https://github.com/${r.full_name}.git` });
                                 }
                               }}
                               className={`p-sm rounded-lg hover:bg-surface-variant flex items-center justify-between cursor-pointer border transition-colors group ${
-                                selectedRepo === r.name ? "border-primary bg-primary/5" : "border-transparent hover:border-outline-variant"
+                                selectedRepo === r.id ? "border-primary bg-primary/5" : "border-transparent hover:border-outline-variant"
                               }`}
                             >
                               <div className="flex flex-col gap-xs">
                                 <div className="flex items-center gap-xs font-code-md text-code-md text-on-surface group-hover:text-primary transition-colors">
-                                  <span className="material-symbols-outlined text-outline" style={{ fontSize: 16 }}>{r.name.startsWith("aether-labs/core") ? "lock" : "public"}</span>
-                                  {r.name}
-                                  {selectedRepo === r.name && <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>check_circle</span>}
+                                  <span className="material-symbols-outlined text-outline" style={{ fontSize: 16 }}>code</span>
+                                  {r.full_name}
+                                  {selectedRepo === r.id && <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>check_circle</span>}
                                 </div>
                                 <div className="flex items-center gap-md font-body-sm text-body-sm text-outline-variant">
-                                  <span className="flex items-center gap-xs"><span className="w-2 h-2 rounded-full" style={{ background: r.color }} /> {r.lang}</span>
-                                  <span>Updated {r.updated}</span>
+                                  <span className="flex items-center gap-xs"><span className="w-2 h-2 rounded-full bg-primary" /> GitHub</span>
+                                  <span>Default: {r.default_branch || "main"}</span>
                                 </div>
                               </div>
-                              <button className={`px-sm py-xs bg-surface border border-outline-variant rounded text-on-surface font-label-caps text-label-caps hover:bg-surface-variant transition-colors ${selectedRepo === r.name ? "text-primary border-primary/50" : "opacity-0 group-hover:opacity-100"}`}>
-                                {selectedRepo === r.name ? "Selected" : "Select"}
+                              <button type="button" className={`px-sm py-xs bg-surface border border-outline-variant rounded text-on-surface font-label-caps text-label-caps hover:bg-surface-variant transition-colors ${selectedRepo === r.id ? "text-primary border-primary/50" : "opacity-0 group-hover:opacity-100"}`}>
+                                {selectedRepo === r.id ? "Selected" : "Select"}
                               </button>
                             </div>
                           ))}
                         </div>
                       </div>
+                      {selectedRepository && <p className="mt-sm font-body-sm text-body-sm text-primary">Selected: {selectedRepository.full_name}</p>}
                       <div className="mt-sm">
                         <p className="font-body-sm text-body-sm text-on-surface-variant mb-xs">or paste a repository URL</p>
                         <Input icon="link" placeholder="git@github.com:org/repo.git" value={customUrl} onChange={(e) => { setCustomUrl(e.target.value); setSelectedRepo(null); }} />
@@ -374,11 +476,36 @@ export function ApplicationWizard({
                           </span>
                         )}
                       </div>
+                      {selectedRepository && (
+                        <div className="mt-md grid grid-cols-1 md:grid-cols-2 gap-md">
+                          <div className="flex flex-col gap-xs">
+                            <label className="font-label-caps text-label-caps text-on-surface-variant">Branch</label>
+                            <Select value={branch} onChange={(event) => setBranch(event.target.value)} disabled={branchesLoading}>
+                              {branches?.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                              {!branches?.length && <option value={branch}>{branchesLoading ? "Loading branches..." : branch}</option>}
+                            </Select>
+                          </div>
+                          <div className="flex flex-col gap-xs">
+                            <label className="font-label-caps text-label-caps text-on-surface-variant">Root directory</label>
+                            <Input value={rootFolder} onChange={(event) => setRootFolder(event.target.value)} placeholder="Repository root" />
+                            <p className="font-body-sm text-body-sm text-on-surface-variant">Build only from this directory in a monorepo.</p>
+                          </div>
+                        </div>
+                      )}
+                      {selectedRepository && (
+                        <details className="mt-md group">
+                          <summary className="flex items-center gap-xs text-primary font-body-sm text-body-sm cursor-pointer select-none">Change default root and watch paths</summary>
+                          <div className="mt-sm flex flex-col gap-sm">
+                            <Input value={watchPaths} onChange={(event) => setWatchPaths(event.target.value)} placeholder="apps/api/**, packages/shared/**" />
+                            <p className="font-body-sm text-body-sm text-on-surface-variant">Only matching paths will trigger automatic builds.</p>
+                          </div>
+                        </details>
+                      )}
                     </div>
                   </div>
-                </div>
+                </div>}
 
-                <div
+                {sourceMode === "upload" && <div
                   onClick={() => zipInputRef.current?.click()}
                   className="bg-surface-container rounded-xl p-md border border-outline-variant hover:border-primary glow-hover cursor-pointer transition-all duration-200"
                 >
@@ -411,35 +538,10 @@ export function ApplicationWizard({
                       e.target.value = "";
                     }}
                   />
-                </div>
+                </div>}
               </div>
 
-              <div className="lg:col-span-1 flex flex-col gap-md">
-                <div className="bg-surface-container rounded-xl p-md border border-outline-variant glow-hover">
-                  <div className="flex items-center gap-sm mb-md text-on-surface">
-                    <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
-                    <h4 className="font-label-caps text-label-caps">Deployment Details</h4>
-                  </div>
-                  <ul className="space-y-sm font-body-sm text-body-sm text-on-surface-variant mb-md">
-                    <li className="flex items-start gap-xs">
-                      <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>check_circle</span>
-                      Auto-scaling enabled by default.
-                    </li>
-                    <li className="flex items-start gap-xs">
-                      <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>check_circle</span>
-                      Global Edge network routing.
-                    </li>
-                  </ul>
-                  <div className="h-px w-full bg-outline-variant/50 mb-md" />
-                  <div className="flex flex-col gap-sm">
-                    <label className="font-label-caps text-label-caps text-on-surface">Project Region</label>
-                    <select className="bg-surface-dim border border-outline-variant rounded-lg p-sm text-on-surface font-body-sm text-body-sm focus:border-primary focus:ring-1 focus:ring-primary/50 outline-none w-full appearance-none">
-                      <option>us-east-1 (N. Virginia)</option>
-                      <option>eu-central-1 (Frankfurt)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+            </div>
             </div>
           )}
 
@@ -463,17 +565,17 @@ export function ApplicationWizard({
                   </div>
                   <div className="flex flex-col gap-xs">
                     <label className="font-label-caps text-label-caps text-on-surface-variant">Project / Environment</label>
-                    <select
+                    <Select
                       value={projectId}
                       onChange={(e) => setProjectId(e.target.value)}
                       disabled={!!fixedProjectId}
-                      className="bg-surface-dim border border-outline-variant text-on-surface font-body-md text-body-md px-sm py-xs rounded w-full appearance-none transition-all duration-200"
+                      className="bg-surface-dim text-on-surface font-body-md text-body-md"
                     >
                       <option value="">Select project...</option>
                       {(projects ?? []).map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </section>

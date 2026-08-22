@@ -23,7 +23,7 @@ function backupTone(status: string): { status: string; pulse?: boolean } {
 
 export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
   const { toast } = useToast();
-  const { data: config } = useDatabaseBackupConfig(dbId);
+  const { data: configs } = useDatabaseBackupConfig(dbId);
   const { data: backups } = useDatabaseBackups(dbId);
   const { data: destinations } = useS3Destinations();
   const backupNow = useDatabaseBackupNow(dbId);
@@ -31,29 +31,31 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
   const removeConfig = useDeleteDatabaseBackupConfig(dbId);
 
   const [configOpen, setConfigOpen] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<BackupConfig | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<BackupJob | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BackupConfig | null>(null);
 
   const destName = (id: string) => destinations?.find((d) => d.id === id)?.name ?? id;
 
-  const runNow = () =>
-    backupNow.mutate(undefined, {
+  const runNow = (configId: string) =>
+    backupNow.mutate(configId, {
       onSuccess: () => toast("Backup queued"),
       onError: (e) => toast(e instanceof Error ? e.message : "failed to queue backup", "error"),
     });
 
-  if (!config) {
+  if (!configs || configs.length === 0) {
     return (
       <div className="space-y-lg">
         <Card className="p-xl text-center">
           <span className="material-symbols-outlined text-[48px] text-on-surface-variant/40">cloud_upload</span>
           <h2 className="font-title-md text-title-md text-on-surface mt-md">Automated backups</h2>
-          <p className="font-body-md text-body-md text-on-surface-variant max-w-md mx-auto mt-sm">
+          <p className="mx-auto block w-full max-w-[28rem] font-body-md text-body-md text-on-surface-variant mt-sm">
             Schedule point-in-time backups of this database to an S3 destination. Backups are streamed, checksummed and
             verified after upload.
           </p>
           <div className="mt-lg">
-            <Button leftIcon="settings" onClick={() => setConfigOpen(true)} disabled={(destinations ?? []).length === 0}>
+          <Button leftIcon="settings" onClick={() => { setEditingConfig(null); setConfigOpen(true); }} disabled={(destinations ?? []).length === 0}>
               Configure backup
             </Button>
           </div>
@@ -64,57 +66,41 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
           )}
         </Card>
         {configOpen && destinations && (
-          <BackupConfigDialog dbId={dbId} existing={null} destinations={destinations} onClose={() => setConfigOpen(false)} />
+        <BackupConfigDialog dbId={dbId} existing={null} destinations={destinations} onClose={() => setConfigOpen(false)} />
         )}
       </div>
     );
   }
 
-  const cfg = config as BackupConfig;
-
   return (
     <div className="space-y-lg">
-      <Card className="p-lg">
-        <div className="flex flex-wrap items-start justify-between gap-md">
-          <div className="min-w-0">
-            <div className="flex items-center gap-sm mb-sm">
-              <h2 className="font-title-md text-title-md text-on-surface">Backup schedule</h2>
-              <StatusPill status={cfg.enabled ? "active" : "disabled"} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-md mt-md">
-              <div>
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Schedule</span>
-                <span className="font-body-md text-body-md text-on-surface">{describeScheduleExport(cfg.schedule)}</span>
+      <div className="flex items-center justify-between gap-md">
+        <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Backup schedules</h2>
+        <Button leftIcon="add" onClick={() => { setEditingConfig(null); setConfigOpen(true); }}>Add schedule</Button>
+      </div>
+      {configs.map((cfg) => (
+        <Card key={cfg.id} className="p-lg">
+          <div className="flex flex-wrap items-start justify-between gap-md">
+            <div className="min-w-0">
+              <div className="flex items-center gap-sm mb-sm">
+                <h2 className="font-title-md text-title-md text-on-surface">{describeScheduleExport(cfg.schedule)}</h2>
+                <StatusPill status={cfg.enabled ? "active" : "disabled"} />
               </div>
-              <div>
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Destination</span>
-                <span className="font-body-md text-body-md text-on-surface truncate">{destName(cfg.destination_id)}</span>
-              </div>
-              <div>
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Retention</span>
-                <span className="font-body-md text-body-md text-on-surface">{cfg.retention.type === "latest" ? "Latest only" : "Keep all"}</span>
-              </div>
-              <div>
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Next run</span>
-                <span className="font-body-md text-body-md text-on-surface">
-                  {cfg.next_run_at ? new Date(cfg.next_run_at).toLocaleString() : "—"}
-                </span>
+              <div className="grid min-w-0 grid-cols-1 gap-md mt-md sm:grid-cols-2 xl:grid-cols-4">
+                <div className="min-w-0"><span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Destination</span><span className="font-body-md text-body-md text-on-surface truncate">{destName(cfg.destination_id)}</span></div>
+                <div className="min-w-0"><span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Retention</span><span className="font-body-md text-body-md text-on-surface">{cfg.retention.type === "latest" ? "Latest only" : "Keep all"}</span></div>
+                <div className="min-w-0"><span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Next run</span><span className="font-body-md text-body-md text-on-surface">{cfg.next_run_at ? new Date(cfg.next_run_at).toLocaleString() : "—"}</span></div>
+                <div className="min-w-0"><span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Path</span><span className="font-code-md text-code-md text-on-surface truncate">{cfg.path_prefix}</span></div>
               </div>
             </div>
+            <div className="flex items-center gap-sm shrink-0">
+              <Button variant="outline" size="sm" leftIcon="tune" onClick={() => { setConfigOpen(true); setEditingConfig(cfg); }}>Edit</Button>
+              <Button variant="ghost" size="sm" leftIcon="delete" onClick={() => { setDeleteTarget(cfg); setDeleteOpen(true); }}>Remove</Button>
+              <Button leftIcon="backup" onClick={() => runNow(cfg.id)} loading={backupNow.isPending}>Backup now</Button>
+            </div>
           </div>
-          <div className="flex items-center gap-sm shrink-0">
-            <Button variant="outline" size="sm" leftIcon="tune" onClick={() => setConfigOpen(true)}>
-              Edit
-            </Button>
-            <Button variant="ghost" size="sm" leftIcon="delete" onClick={() => setDeleteOpen(true)}>
-              Remove
-            </Button>
-            <Button leftIcon="backup" onClick={runNow} loading={backupNow.isPending}>
-              Backup now
-            </Button>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      ))}
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/60">
@@ -171,7 +157,7 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
       </Card>
 
       {configOpen && destinations && (
-        <BackupConfigDialog dbId={dbId} existing={cfg} destinations={destinations} onClose={() => setConfigOpen(false)} />
+        <BackupConfigDialog dbId={dbId} existing={editingConfig} destinations={destinations} onClose={() => { setConfigOpen(false); setEditingConfig(null); }} />
       )}
       {restoreTarget && <RestoreDialog dbId={dbId} dbName={dbName} backup={restoreTarget} onClose={() => setRestoreTarget(null)} />}
       {deleteOpen && (
@@ -182,12 +168,12 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
           confirmLabel="Remove"
           danger
           onConfirm={() =>
-            removeConfig.mutate(undefined, {
+            deleteTarget && removeConfig.mutate(deleteTarget.id, {
               onSuccess: () => toast("Backup configuration removed"),
               onError: (e) => toast(e instanceof Error ? e.message : "remove failed", "error"),
             })
           }
-          onClose={() => setDeleteOpen(false)}
+          onClose={() => { setDeleteOpen(false); setDeleteTarget(null); }}
         />
       )}
     </div>

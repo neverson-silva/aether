@@ -4,7 +4,7 @@ import { useOrg } from "../components/OrgProvider";
 import { useOrgAudit, useOrgDetail, useOrgMembers, useProjects } from "../hooks";
 import { apiDelete, apiPost, apiPut } from "../api/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { useToast } from "../components/ui";
+import { Select, useToast } from "../components/ui";
 import type { OrgMember } from "../api/types";
 
 export const Route = createFileRoute("/organizations/$id")({
@@ -206,15 +206,15 @@ function OrganizationPage() {
                     </td>
                     <td className="px-md py-2.5">
                       {canManage ? (
-                        <select
+                        <Select
                           value={m.role === "developer" ? "member" : m.role}
                           onChange={(e) => setRole(m, e.target.value)}
-                          className="bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-code-md text-code-md text-on-surface focus:border-primary focus:outline-none"
+                          className="bg-surface-container-lowest font-code-md text-code-md text-on-surface"
                         >
                           <option value="admin">admin</option>
                           <option value="member">member</option>
                           <option value="viewer">viewer</option>
-                        </select>
+                        </Select>
                       ) : (
                         <span className={`px-2 py-0.5 rounded-full border font-label-caps text-[10px] uppercase ${ROLE_BADGE[m.role] ?? ROLE_BADGE.member}`}>{m.role}</span>
                       )}
@@ -309,15 +309,15 @@ function OrganizationPage() {
               </div>
               <div className="flex flex-col gap-xs">
                 <label className="font-label-caps text-label-caps text-on-surface-variant">Role</label>
-                <select
+                <Select
                   value={invRole}
                   onChange={(e) => setInvRole(e.target.value)}
-                  className="bg-surface-container-lowest border border-outline-variant rounded-lg px-sm py-2 font-body-md text-body-md text-on-surface focus:border-primary focus:outline-none"
+                  className="bg-surface-container-lowest font-body-md text-body-md text-on-surface"
                 >
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
                   <option value="viewer">Viewer</option>
-                </select>
+                </Select>
               </div>
               <div className="flex flex-col gap-xs">
                 <label className="font-label-caps text-label-caps text-on-surface-variant">Assign projects</label>

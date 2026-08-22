@@ -50,8 +50,14 @@ function resourceKeys(ev: EventEnvelope): unknown[][] {
       ["system-summary"],
     ];
   }
-  if (ev.type.startsWith("backup") || ev.resource_type === "database") {
-    return [["databases"], ["backups"]];
+  if (ev.type.startsWith("backup")) {
+    const databaseID = ev.payload?.database_id as string | undefined;
+    return databaseID
+      ? [["database-backups", databaseID], ["database-backup-configs", databaseID], ["databases"], ["backups"]]
+      : [["databases"], ["backups"]];
+  }
+  if (ev.resource_type === "database") {
+    return [["databases"]];
   }
   if (ev.type.startsWith("server")) {
     return [["servers"]];

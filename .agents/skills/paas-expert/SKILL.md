@@ -1,6 +1,6 @@
 ---
 name: paas-expert
-description: Platform/PaaS expert for the Aether self-hosted PaaS infrastructure. USE FOR: podman machine orchestration, install.sh lifecycle, the multi-arch API Dockerfile, pack (SmartBuild/CNB) builds, Traefik ingress + domains + TLS/ACME, deployment worker lifecycle, docker-compose services, redis/postgres infra, image registry/retention, storage, snapshots/backups, and troubleshooting the running platform. Covers the container topology and the strict operational safety rules. DO NOT USE FOR: pure frontend/backend feature code (see go-developer / frontend-mega-developer).
+description: Platform/PaaS expert for the Aether self-hosted PaaS infrastructure. USE FOR: podman machine orchestration, install.sh lifecycle, the multi-arch API Dockerfile, pack (SmartBuild/CNB) builds, Traefik ingress + domains + TLS/ACME, deployment worker lifecycle, docker-compose services, redis/postgres infra, image registry/retention, storage, snapshots/backups, and troubleshooting the running platform. Covers the container topology and the strict operational safety rules. DO NOT USE FOR: pure web/backend feature code (see go-developer / frontend-mega-developer).
 ---
 
 # PaaS Expert (Aether platform)
@@ -18,12 +18,12 @@ You are the platform engineer for **Aether**, a self-hosted PaaS (Dokploy/Heroku
 
 - Everything is managed by `./install.sh` (start/stop/status). After code changes: `./install.sh start` rebuilds the image and restarts the API.
 - Dev/hot reload (no container): `./dev.sh` (API on :8090 via air) + `./dev-web.sh` (Vite :5173).
-- Image: `podman build -t aether.local/api:1 -f Dockerfile .`
+- Image: `podman build -t aether.local/api:1 -f infra/Dockerfile .`
 - The Dockerfile is **multi-arch**: uses `ARG TARGETARCH` to download the right pack binary (`linux-arm64` on arm64, `linux` on amd64). Keep this pattern when touching it.
 
 ## Build types (app deployments, Dokploy-like)
 
-**CNB é a engine de build oficial** (`internal/worker/worker.go`) e o builder é **100% buildpacks próprios** — `localhost:5000/builder:node-spa`, construído com `builders/build-builder.sh` (podman build + push para o registry local `aether-registry:5000`; `pack builder create` NÃO funciona com podman — "duplicate paths" no unpack). `dev.sh`/`install.sh` garantem registry + builder.
+**CNB é a engine de build oficial** (`api/internal/platform/worker/worker.go`) e o builder é **100% buildpacks próprios** — `localhost:5000/builder:node-spa`, construído com `infra/builders/build-builder.sh` (podman build + push para o registry local `aether-registry:5000`; `pack builder create` NÃO funciona com podman — "duplicate paths" no unpack). `dev.sh`/`install.sh` garantem registry + builder.
 
 - default/`buildpacks`/legado → **CNB**: `pack build <img> -p <src> -B localhost:5000/builder:node-spa --docker-host=inherit`. Grupos:
   - `aether/spa-static` (grupo 1): SPAs/SSG (React/Vue/Angular/Vite/Gatsby/Docusaurus/Eleventy/Next export) — instala Node via engines.node, npm ci + build, serve com static-web-server + SPA fallback + $PORT.
@@ -42,7 +42,7 @@ You are the platform engineer for **Aether**, a self-hosted PaaS (Dokploy/Heroku
 
 ## Ingress / domains / TLS
 
-- Domains: `internal/domains/` (application + provision + worker). Free domains under `AETHER_FREE_DOMAIN_BASE` (`apps.aether.local`), custom domains with ACME (`AETHER_CERT_EMAIL`, `AETHER_ACME_DIR`), and the Traefik dynamic config is written into the shared volume.
+- Domains: `api/internal/modules/domains/` (application + provision + worker). Free domains under `AETHER_FREE_DOMAIN_BASE` (`apps.aether.local`), custom domains with ACME (`AETHER_CERT_EMAIL`, `AETHER_ACME_DIR`), and the Traefik dynamic config is written into the shared volume.
 - If a domain provision/TLS change behaves oddly, check the traefik logs and the shared volume contents before touching code.
 
 ## Operational safety (AGENTS.md — hard rules)

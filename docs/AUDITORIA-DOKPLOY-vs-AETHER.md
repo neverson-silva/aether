@@ -1,6 +1,6 @@
 # Auditoria Técnica Comparativa — Dokploy 0.29.14 × Aether PaaS
 
-> Engenharia reversa + auditoria de paridade. Fonte: código-fonte do Dokploy (`dokploy-0.29.14/`, 186k LOC TS) e código-fonte do Aether (`internal/`, `web/`, infra). Análise estática; nenhuma exploração destrutiva. Itens não comprovados marcados como `UNVERIFIED`.
+> Engenharia reversa + auditoria de paridade. Fonte: código-fonte do Dokploy (`dokploy-0.29.14/`, 186k LOC TS) e código-fonte do Aether (`api/internal/`, `web/`, `infra/`). Análise estática; nenhuma exploração destrutiva. Itens não comprovados marcados como `UNVERIFIED`.
 
 ---
 
@@ -288,10 +288,10 @@ Legenda: ✅ completo · 🟡 parcial · ❌ ausente · 🔴 falso positivo (par
 | **Build "custom" com servidor (SSR)** | `generateCommandDockerfile` sempre gera nginx estático e ignora `start_command`/`install_command` (`worker/worker.go:544-584`) — Next/Nuxt (detectados como SSR pelo planner) não são deployáveis com o build default; gerar Dockerfile servidor quando houver start command |
 | **Callback OIDC quebrado** | `redirect_uri` é GET (`settings/infra/discovery.go:126-131`) mas a rota é POST (`api/router.go:127`) → 404 com IdP real; `state` não validado no callback |
 | **Compose: secrets criptografados no `.env`** | `writeEnvFile` usa valores crus do store (ciphertext p/ secrets) → `.env` do stack corrompido (`templates/application/compose.go:253-278`) |
-| **DeleteProject soft-delete incompleto** | `UPDATE projects SET deleted_at` sem cascata; apps/containers seguem vivos e visíveis (`db/queries/projects.sql:23-26` + `apps.sql:57-65`) |
+| **DeleteProject soft-delete incompleto** | `UPDATE projects SET deleted_at` sem cascata; apps/containers seguem vivos e visíveis (`api/db/queries/projects.sql:23-26` + `apps.sql:57-65`) |
 | **Webhooks inbound aceitam request sem assinatura** | verificação HMAC só roda se o header existir (`webhooks/application/providers.go:54,78,125`) — rota pública = deploy anônimo; exigir assinatura |
 | **Org export/import corrompe secrets** | export grava ciphertext e import re-insere como não-secret (`orgs/application/export.go:92-97,170-177`) |
-| **Master key com fallback inseguro** | `"dev-secret-please-override"` hardcoded se `AETHER_API_SECRET`/keys/master.key ausentes (`cmd/api/main.go:332`); CORS `*` (`main.go:286`) |
+| **Master key com fallback inseguro** | `"dev-secret-please-override"` hardcoded se `AETHER_API_SECRET`/keys/master.key ausentes (`api/cmd/api/main.go:332`); CORS `*` (`main.go:286`) |
 
 ### P2 — Medium
 | Gap |
@@ -351,7 +351,7 @@ Legenda: ✅ completo · 🟡 parcial · ❌ ausente · 🔴 falso positivo (par
 | Podman socket no path da VM | ✅ (fix aplicado) | — |
 | S3 destination | ❌ | infra de rclone/destination não existe |
 | Servers remotos | ❌ | sem SSH |
-| Registry local | ❌ | imagens ficam só no podman local (**mas há endpoints funcionais de listagem/deleção** — `GET /registry/images`, `DELETE /registry/images/:repo/:tag`, `internal/clusters/application/clusters.go:110-144`) |
+| Registry local | ❌ | imagens ficam só no podman local (**mas há endpoints funcionais de listagem/deleção** — `GET /registry/images`, `DELETE /registry/images/:repo/:tag`, `api/internal/modules/clusters/application/clusters.go:110-144`) |
 | Volumes de dados de apps | 🟡 | mounts existem no modelo, criação sem endpoint |
 | Backup externo do estado | 🔴 | snapshot é row apenas |
 | Testes | ✅ | testpool real (postgres 5433 / redis 6380) — superior ao Dokploy (jest com mocks em parte) |
@@ -421,7 +421,7 @@ Legenda: ✅ completo · 🟡 parcial · ❌ ausente · 🔴 falso positivo (par
 
 **Criptografia at-rest — PARIDADE (correção da 2ª passada)**: o Dokploy **também cifra** todas as colunas `env`/`buildArgs`/`buildSecrets`/`preview*` via `encryptedText` (AES-256-GCM, chave derivada de `ENCRYPTION_KEY ?? BETTER_AUTH_SECRET` — `packages/server/src/db/schema/utils.ts:12`, `lib/encryption.ts:22,76`), inclusive em compose/environment/databases. O Aether cifra apenas vars marcadas como secret (`IsSecret`); vars comuns ficam em texto. Resultado: empate técnico com nuances diferentes (Dokploy cifra tudo; Aether cifra só secrets).
 
-**Aether falha em** (incl. achados da 2ª passada): API keys inúteis (superfície de segurança falsa), `InsecureSkipVerify` no terminal WS (`realtime/http/terminal.go:27`), debug prints em produção, logout sem revogação server-side, DTOs vazando stubs, rotas públicas globais de SSO sem org, mirrors sem org scoping, worker sem lock (colisão de porta), `TraefikBin` local em VerifyCertificate, **master key com fallback `"dev-secret-please-override"`** (`cmd/api/main.go:332`), **CORS `*`** (`main.go:286`), **webhooks inbound aceitam request sem assinatura** (`webhooks/application/providers.go:54,78,125`), **org export/import vaza ciphertext como secret** (`orgs/application/export.go:92-97`), **callback OIDC sem validação de state**.
+**Aether falha em** (incl. achados da 2ª passada): API keys inúteis (superfície de segurança falsa), `InsecureSkipVerify` no terminal WS (`api/internal/modules/realtime/http/terminal.go:27`), debug prints em produção, logout sem revogação server-side, DTOs vazando stubs, rotas públicas globais de SSO sem org, mirrors sem org scoping, worker sem lock (colisão de porta), `TraefikBin` local em VerifyCertificate, **master key com fallback `"dev-secret-please-override"`** (`api/cmd/api/main.go:332`), **CORS `*`** (`api/internal/platform/api/router.go`), **webhooks inbound aceitam request sem assinatura** (`api/internal/modules/webhooks/application/providers.go:54,78,125`), **org export/import vaza ciphertext como secret** (`api/internal/modules/orgs/application/export.go:92-97`), **callback OIDC sem validação de state**.
 
 **Dokploy**: melhor em RBAC granular, deploy keys, patches, validação anti-injeção em comandos (shell-quote), sanitizeCommand em compose, senhas de DB com regex anti-shell. **Nota (2ª passada)**: o `fullContext` de rollback grava **credenciais de registry em texto plano** no JSONB (`packages/server/src/services/rollbacks.ts:74-79`) — achado de segurança do lado do Dokploy.
 
@@ -577,7 +577,7 @@ Previews de PR               →  depende de Git + Domains(wildcard) + Deploy
 ### P0-1: Provisionamento de Databases
 - **Como o Dokploy resolve**: `services/postgres.ts` + `utils/databases/postgres.ts` — deploy cria Swarm service com env da engine, volume `{app}-data`, porta externa, healthcheck, limits; `changePassword` via docker exec.
 - **Como resolver no Aether**: worker/job que, ao criar database (status `creating`), executa `podman run -d --name aether-db-<id8> -e <ENGINE_ENV> -p 127.0.0.1:<port>:<containerPort> -v <volume> <image>`; persistir `container_id`, `status`, porta; endpoints `GET /databases/:id/connection-string`, `PATCH /databases/:id/password` (exec + update), stats/logs.
-- **Backend**: `internal/databases/application` + novo worker; **Frontend**: mostrar DSN + start/stop/restart; **Infra**: nada novo (podman).
+- **Backend**: `api/internal/modules/databases/application` + novo worker; **Frontend**: mostrar DSN + start/stop/restart; **Infra**: nada novo (podman).
 - **Complexidade**: M.
 
 ### P0-2: Backups reais + S3
@@ -637,21 +637,21 @@ Passada de verificação sobre o relatório original (método: seguir fluxo real
 | # | Claim original | Correção | Evidência |
 |---|---|---|---|
 | C1 | "Dokploy não cifra env at-rest; Aether é superior" | **ERRADO**: o Dokploy cifra TODAS as colunas env via `encryptedText` (AES-256-GCM, chave de `ENCRYPTION_KEY ?? BETTER_AUTH_SECRET`): `application.env/previewEnv/buildArgs/buildSecrets`, `compose.env`, `environment.env`, env de todos os databases. Paridade (nuance: Dokploy cifra tudo; Aether só `IsSecret`) | `packages/server/src/db/schema/application.ts:90-114`, `schema/utils.ts:12`, `lib/encryption.ts:22,76` |
-| C2 | "Domínio + HTTPS + ACME ✅ implementado" | **ERRADO**: o fluxo existe, mas **ACME nunca ativa** — `VerifyCertificate` sempre false (`TraefikBin` default `""` e `install.sh` não seta `AETHER_TRAEFIK_BIN`; além disso `wget -q` não imprime "200" em sucesso → `strings.Contains` sempre false). O worker escreve config HTTP-only, `cert_status` fica pending e os retries morrem em silêncio após 10 tentativas | `internal/config/config.go:95`, `internal/domains/application/provision.go:131-139`, `worker.go:11,60-67`, `install.sh:359-366` |
+| C2 | "Domínio + HTTPS + ACME ✅ implementado" | **ERRADO**: o fluxo existe, mas **ACME nunca ativa** — `VerifyCertificate` sempre false (`TraefikBin` default `""` e `install.sh` não seta `AETHER_TRAEFIK_BIN`; além disso `wget -q` não imprime "200" em sucesso → `strings.Contains` sempre false). O worker escreve config HTTP-only, `cert_status` fica pending e os retries morrem em silêncio após 10 tentativas | `api/internal/platform/config/config.go:95`, `api/internal/modules/domains/application/provision.go:131-139`, `worker.go:11,60-67`, `install.sh:359-366` |
 
 ### 20.2 Bugs novos no Aether (não estavam no relatório)
 
 | # | Bug | Impacto | Evidência |
 |---|---|---|---|
-| B1 | **Build "custom" ignora `start_command`/`install_command`** — `generateCommandDockerfile` sempre gera nginx estático | Apps SSR (Next/Nuxt — o planner detecta como `TypeSSR`) não são deployáveis com o build default | `internal/worker/worker.go:544-584` vs `internal/planner/planner.go:108-116` |
+| B1 | **Build "custom" ignora `start_command`/`install_command`** — `generateCommandDockerfile` sempre gera nginx estático | Apps SSR (Next/Nuxt — o planner detecta como `TypeSSR`) não são deployáveis com o build default | `api/internal/platform/worker/worker.go:544-584` vs `api/internal/platform/planner/planner.go:108-116` |
 | B2 | **VerifyDomain não faz verificação DNS** e **PATCH de domínio não re-provisiona** (config Traefik antiga permanece) | Domínios editados ficam com roteamento velho até reprovision manual | `domains/http/handler.go:112-128`, `domains/application/domains.go:128-135`, `domains/infra/store.go:69-74` |
-| B3 | **Callback OIDC quebrado**: `redirect_uri` GET vs rota POST + `state` não validado | Login via IdP real nunca completa | `settings/infra/discovery.go:126-131` vs `internal/api/router.go:127`; `settings/http/handler.go:207-233` |
+| B3 | **Callback OIDC quebrado**: `redirect_uri` GET vs rota POST + `state` não validado | Login via IdP real nunca completa | `settings/infra/discovery.go:126-131` vs `api/internal/platform/api/router.go:127`; `settings/http/handler.go:207-233` |
 | B4 | **Compose `.env` recebe secrets criptografados** (ciphertext) | Secrets quebrados em stacks compose | `templates/application/compose.go:253-278` + `variables/infra/store.go:61-77` |
-| B5 | **DeleteProject soft-delete sem cascata** — apps/containers vivos e ainda listados | Dados órfãos; `GET /apps` mostra apps de projetos "deletados" | `db/queries/projects.sql:23-26` + `db/queries/apps.sql:57-65` |
+| B5 | **DeleteProject soft-delete sem cascata** — apps/containers vivos e ainda listados | Dados órfãos; `GET /apps` mostra apps de projetos "deletados" | `api/db/queries/projects.sql:23-26` + `api/db/queries/apps.sql:57-65` |
 | B6 | **Webhooks inbound aceitam request sem assinatura** (verificação HMAC condicional) | Deploy anônimo via rota pública | `webhooks/application/providers.go:54,78,125` |
 | B7 | **Org export/import corrompe secrets** (ciphertext exportado, reimportado como não-secret) | Secrets inutilizáveis após migração | `orgs/application/export.go:92-97,170-177` |
-| B8 | **Master key com fallback hardcoded `"dev-secret-please-override"`** + **CORS `*`** | Risco de segurança em setup sem env | `cmd/api/main.go:332,286` |
-| B9 | **DeleteEnvironment do env default** → 404 silencioso; **UpdateApp aceita env de outro projeto** | Erros confusos / dados cruzados | `db/queries/environments.sql:30-33`, `internal/apps/application/apps.go:147-149` |
+| B8 | **Master key com fallback hardcoded `"dev-secret-please-override"`** + **CORS `*`** | Risco de segurança em setup sem env | `api/cmd/api/main.go:332,286` |
+| B9 | **DeleteEnvironment do env default** → 404 silencioso; **UpdateApp aceita env de outro projeto** | Erros confusos / dados cruzados | `api/db/queries/environments.sql:30-33`, `api/internal/modules/apps/application/apps.go:147-149` |
 | B10 | **Compose import é casca** (valida YAML, retorna ok, não cria nada); **mirror ignora `TagsFilter`**; **commit SHA do webhook não propagado**; `TouchAPIKey`/`SetWebhook` sem uso; configs `AETHER_PROXY_ENDPOINT`/`CHALLENGE`/`AGENT` órfãs; `AlertIntervalSeconds` nunca setado | Superfície morta | `templates/http/compose.go:135-147`, `mirrors/application/mirrors.go:53-67`, `webhooks/application/providers.go:66`, `config/config.go:19,92-94` |
 
 ### 20.3 Refinamentos nas claims do Dokploy
@@ -670,7 +670,7 @@ Passada de verificação sobre o relatório original (método: seguir fluxo real
 
 ### 20.4 Features funcionais do Aether que não estavam no relatório (agora em §13)
 
-`/health`+`/ready`, `/auth/status`, SSO público de login, `/apps/:id/variables/effective`, timeline de deploys, `/apps/states` + SSE, cron jobs globais, registry images (podman), variables audit/export/import, presence, network quality (probe HTTP p50/p95/uptime/HTTP3), runtime metrics, export de compose de app/deploy, mirror run manual, workers start/stop. Infra: auto-provisionamento do ingress Traefik (`cmd/api/ingress.go`), master key em `$STATE/keys`, modo prod com gateway nginx, seeds de templates (Affine), `docker-compose.yml` alternativo, `variable_audit` (tabela).
+`/health`+`/ready`, `/auth/status`, SSO público de login, `/apps/:id/variables/effective`, timeline de deploys, `/apps/states` + SSE, cron jobs globais, registry images (podman), variables audit/export/import, presence, network quality (probe HTTP p50/p95/uptime/HTTP3), runtime metrics, export de compose de app/deploy, mirror run manual, workers start/stop. Infra: auto-provisionamento do ingress Traefik (`api/internal/platform/bootstrap/ingress.go`), master key em `$STATE/keys`, modo prod com gateway nginx, seeds de templates (Affine), `infra/docker-compose.yml` alternativo, `variable_audit` (tabela).
 
 ### 20.5 Resumo
 

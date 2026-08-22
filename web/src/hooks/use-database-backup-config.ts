@@ -4,8 +4,8 @@ import type { BackupConfig } from "../api/types";
 
 export function useDatabaseBackupConfig(dbId: string) {
   return useQuery({
-    queryKey: ["database-backup-config", dbId],
-    queryFn: () => apiGet<BackupConfig | null>(`/api/v1/databases/${dbId}/backup/configuration`),
+    queryKey: ["database-backup-configs", dbId],
+    queryFn: () => apiGet<BackupConfig[]>(`/api/v1/databases/${dbId}/backup/configurations`),
     enabled: !!dbId,
   });
 }

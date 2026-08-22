@@ -194,7 +194,7 @@ state by polling.
 
 ## Tests
 
-- Suite: `AETHER_TEST_DATABASE_PORT=5433 AETHER_API_TEST_DATABASE_PORT=5433 go test ./internal/... -count=1 -p 1 -timeout 25m`
+- Suite: `AETHER_TEST_DATABASE_PORT=5433 AETHER_API_TEST_DATABASE_PORT=5433 go test ./api/internal/... -count=1 -p 1 -timeout 25m`
 - Test Postgres: container `aether-test-pg` on port 5433 (do not tear down).
 - Test Redis: container `aether-redis-test` on port 6380.
-- Run `go build ./...` + `go vet ./internal/...` before finishing.
+- Run `go build -o /tmp/aether-api ./api/cmd/api` + `go vet ./api/internal/...` before finishing.

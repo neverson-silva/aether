@@ -3,6 +3,13 @@ set -e
 
 cd "$(dirname "$0")"
 
+ENV_FILE="${AETHER_ENV_FILE:-$PWD/.env}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
 # Localiza o Go em locais comuns e expõe o GOBIN (air) no PATH
 if ! command -v go >/dev/null 2>&1; then
   for g in "$HOME/.local/go/bin/go" "/usr/local/go/bin/go" "$HOME/go/bin/go"; do
@@ -15,7 +22,7 @@ fi
 export PATH="$(go env GOPATH)/bin:$PATH"
 
 # Credenciais do banco (geradas pelo install.sh)
-CRED_FILE="$HOME/.aether/.aether-db"
+CRED_FILE="${AETHER_STATE:-$HOME/.aether}/.aether-db"
 if [[ -f "$CRED_FILE" ]]; then
   # shellcheck disable=SC1090
   . "$CRED_FILE"
@@ -24,15 +31,29 @@ export DATABASE_NAME="${DATABASE_NAME:-${DB_NAME:-aether_dev}}"
 export DATABASE_USER="${DATABASE_USER:-${DB_USER:-aether}}"
 export DATABASE_PASSWORD="${DATABASE_PASSWORD:-${DB_PASSWORD:-aether_dev_pass}}"
 
-export AETHER_STATE="$HOME/.aether"
-export AETHER_API_ADDR="127.0.0.1:8090"
-export DATABASE_HOST="127.0.0.1"
-export DATABASE_PORT="${PG_PORT:-15432}"
-export DATABASE_SSL_MODE="disable"
-export DATABASE_MIGRATE_ON_START="true"
-export AETHER_REDIS_ADDR="127.0.0.1:16379"
-export AETHER_MODE="dev"
-export AETHER_COOKIE_SECURE="false"
+export AETHER_STATE="${AETHER_STATE:-$HOME/.aether}"
+export DEV_MODE="${DEV_MODE:-true}"
+export AETHER_API_ADDR="${AETHER_API_ADDR:-127.0.0.1:8090}"
+if [[ "${DEV_MODE}" == "true" || "${DEV_MODE}" == "1" || "${DEV_MODE}" == "TRUE" || "${DEV_MODE}" == "yes" ]]; then
+  export AETHER_PUBLIC_URL="http://localhost:5173"
+else
+  if [[ -z "${AETHER_PUBLIC_URL:-}" ]]; then
+    PUBLIC_HOST=""
+    for service in https://api.ipify.org https://icanhazip.com https://ifconfig.me/ip; do
+      PUBLIC_HOST="$(curl -fsS --max-time 3 "$service" 2>/dev/null | tr -d '[:space:]' || true)"
+      [[ -n "$PUBLIC_HOST" ]] && break
+    done
+    export AETHER_PUBLIC_URL="${PUBLIC_HOST:+http://${PUBLIC_HOST}:5173}"
+    export AETHER_PUBLIC_URL="${AETHER_PUBLIC_URL:-http://localhost:5173}"
+  fi
+fi
+export DATABASE_HOST="${DATABASE_HOST:-127.0.0.1}"
+export DATABASE_PORT="${DATABASE_PORT:-${PG_PORT:-15432}}"
+export DATABASE_SSL_MODE="${DATABASE_SSL_MODE:-disable}"
+export DATABASE_MIGRATE_ON_START="${DATABASE_MIGRATE_ON_START:-true}"
+export AETHER_REDIS_ADDR="${AETHER_REDIS_ADDR:-127.0.0.1:16379}"
+export AETHER_MODE="${AETHER_MODE:-dev}"
+export AETHER_COOKIE_SECURE="${AETHER_COOKIE_SECURE:-false}"
 
 # Provider de free-domain: nip.io (default) | sslip.io | traefik.me | ngrok
 export AETHER_FREE_DOMAIN_PROVIDER="${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
@@ -124,6 +145,6 @@ else
 fi
 
 echo "Applying database migrations..."
-go run ./cmd/api -migrate || echo "warning: migrations failed, the API will retry on start"
+go run ./api/cmd/api -migrate || echo "warning: migrations failed, the API will retry on start"
 
 exec air

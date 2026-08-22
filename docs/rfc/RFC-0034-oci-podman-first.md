@@ -10,14 +10,14 @@ que fale o protocolo do CLI (`podman`/`docker`) funciona sem mudança de código
 ## Auditoria — acoplamentos encontrados (e corrigidos)
 | Arquivo | Acoplamento | Correção |
 |---------|-------------|----------|
-| `internal/core/deploycompose.go` | `exec "docker" compose/inspect` | `c.Driver.Name()` (podman/docker) |
-| `internal/core/compose.go` | `exec "docker" compose` up/down | `c.Driver.Name()` |
-| `internal/core/images.go` | `LookPath("docker")` (já tinha fallback podman) | mantido (fallback correto) |
-| `internal/agent/agent.go` | `autoDriver()` via `/usr/bin/podman` | `exec.LookPath` (podman first) |
+| `api/internal/platform/worker/runtime.go` | `exec "docker" compose/inspect` | `c.Driver.Name()` (podman/docker) |
+| `api/internal/platform/worker/runtime.go` | `exec "docker" compose` up/down | `c.Driver.Name()` |
+| `api/internal/platform/worker/runtime.go` | `LookPath("docker")` (já tinha fallback podman) | mantido (fallback correto) |
+| `api/internal/platform/worker/runtime.go` | `autoDriver()` via `/usr/bin/podman` | `exec.LookPath` (podman first) |
 | `install.sh` | macOS → Docker Desktop; Linux ambíguo | macOS → **podman machine**; Linux → podman por distro |
 | `cmd/aether` / `core.go` | `AETHER_RUNTIME` já preferia podman | mantido (podman first) |
 
-O driver `internal/runtime/cli.go` já era OCI-genérico (`d.name` = binário);
+O runtime em `api/internal/platform/worker/runtime.go` já era OCI-genérico (`d.name` = binário);
 `NewPodman()`/`NewDocker()` são os únicos pontos que escolhem o binário.
 
 ## Plano de migração (genérico, base = Podman)

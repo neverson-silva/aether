@@ -362,6 +362,73 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function ObjectRow({
+  dbId,
+  schema,
+  object,
+  selected,
+  onSelect,
+  onContextMenu,
+}: {
+  dbId: string;
+  schema: string;
+  object: { name: string; type: string };
+  selected: Sel | null;
+  onSelect: (sel: Sel) => void;
+  onContextMenu?: (e: React.MouseEvent, sel: Sel) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const detailQ = useStudioTable(dbId, schema, object.name, open);
+  const active = selected?.schema === schema && selected?.table === object.name;
+  const columns = detailQ.data?.columns ?? [];
+
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-xs py-1 px-sm rounded cursor-pointer w-full text-left group ${active ? "bg-surface-container-high" : "hover:bg-surface-container-high"}`}
+        onContextMenu={onContextMenu ? (e) => onContextMenu(e, { schema, table: object.name }) : undefined}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="flex items-center justify-center w-4 h-4 text-on-surface-variant hover:text-primary"
+          aria-label={`${open ? "Collapse" : "Expand"} ${object.type} ${object.name}`}
+        >
+          <span className="material-symbols-outlined text-[14px]">{open ? "expand_more" : "chevron_right"}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect({ schema, table: object.name })}
+          className="flex items-center gap-xs min-w-0 flex-1 text-left"
+        >
+          <span className={`material-symbols-outlined text-[14px] ${active ? "text-primary" : typeColor(object.type)}`}>
+            {TYPE_ICON[object.type] ?? "table"}
+          </span>
+          <span className={`truncate ${active ? "text-primary" : ""}`}>{object.name}</span>
+        </button>
+      </div>
+      {open && (
+        <div className="ml-8 border-l border-outline-variant pl-sm">
+          {detailQ.isLoading && <div className="py-1 font-body-sm text-body-sm text-on-surface-variant/50">Loading columns...</div>}
+          {detailQ.isError && <div className="py-1 font-body-sm text-body-sm text-error">Could not load columns.</div>}
+          {!detailQ.isLoading && !detailQ.isError && columns.length === 0 && (
+            <div className="py-1 font-body-sm text-body-sm text-on-surface-variant/50">No columns</div>
+          )}
+          {!detailQ.isLoading && !detailQ.isError && columns.map((column) => (
+            <div key={column.name} className="flex items-center gap-xs py-1 text-on-surface-variant" title={`${column.name}: ${column.type}`}>
+              <span className="material-symbols-outlined text-[13px] text-[#89ddff]">
+                {column.primary_key ? "key" : "data_object"}
+              </span>
+              <span className="truncate">{column.name}</span>
+              <span className="ml-auto truncate text-[10px] text-on-surface-variant/60">{column.type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SchemaGroup({
   schema,
   dbId,
@@ -417,34 +484,29 @@ function SchemaGroup({
         open={!!expanded[tableKey]}
         onToggle={() => onToggle(tableKey)}
       >
-        {tables.map((t) => {
-          const active = selected?.schema === schema && selected?.table === t.name;
-          return (
-            <button
-              key={t.name}
-              onClick={() => onSelect({ schema, table: t.name })}
-              onContextMenu={(e) => onTableContext(e, { schema, table: t.name })}
-              className={`flex items-center gap-xs py-1 px-sm rounded cursor-pointer w-full text-left group ${active ? "bg-surface-container-high" : "hover:bg-surface-container-high"}`}
-            >
-              <span className="material-symbols-outlined text-[14px] opacity-0">chevron_right</span>
-              <span className={`material-symbols-outlined text-[14px] ${active ? "text-primary" : "text-on-surface-variant group-hover:text-primary"}`}>table</span>
-              <span className={`truncate ${active ? "text-primary" : ""}`}>{t.name}</span>
-            </button>
-          );
-        })}
+        {tables.map((t) => (
+          <ObjectRow
+            key={t.name}
+            dbId={dbId}
+            schema={schema}
+            object={t}
+            selected={selected}
+            onSelect={onSelect}
+            onContextMenu={onTableContext}
+          />
+        ))}
       </GroupRow>
 
       <GroupRow label={`Views (${views.length})`} icon="visibility" color="text-[#ecc48d]" open={!!expanded[viewKey]} onToggle={() => onToggle(viewKey)}>
         {views.map((v) => (
-          <button
+          <ObjectRow
             key={v.name}
-            onClick={() => onSelect({ schema, table: v.name })}
-            className="flex items-center gap-xs py-1 px-sm hover:bg-surface-container-high rounded cursor-pointer w-full text-left group"
-          >
-            <span className="material-symbols-outlined text-[14px] opacity-0">chevron_right</span>
-            <span className="material-symbols-outlined text-[14px] text-[#ecc48d] group-hover:text-primary">visibility</span>
-            <span className="truncate">{v.name}</span>
-          </button>
+            dbId={dbId}
+            schema={schema}
+            object={v}
+            selected={selected}
+            onSelect={onSelect}
+          />
         ))}
       </GroupRow>
 

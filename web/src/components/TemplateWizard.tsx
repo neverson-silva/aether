@@ -221,17 +221,16 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
             />
           </div>
           <div className="relative">
-            <select
+            <Select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="appearance-none bg-surface-container-low border rounded-md font-body-sm text-body-sm text-on-surface pl-3 pr-8 py-1.5 focus:outline-none focus:border-primary cursor-pointer"
-              style={{ borderColor: "#353534" }}
+              className="w-56 bg-surface-container-low font-body-sm text-body-sm"
             >
               <option value="">All categories</option>
               {(categories ?? []).map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </select>
+            </Select>
             <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-sm">expand_more</span>
           </div>
         </div>

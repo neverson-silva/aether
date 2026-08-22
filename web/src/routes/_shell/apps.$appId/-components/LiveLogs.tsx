@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { usePresence } from "../../../../hooks";
 import { getServer } from "../../../../api/client";
+import { Select } from "../../../../components/ui";
 
 const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/;
@@ -190,17 +191,17 @@ export function LiveLogs({ appId }: { appId: string }) {
           <input type="checkbox" checked={regexMode} onChange={(e) => setRegexMode(e.target.checked)} className="w-3 h-3 rounded-sm bg-surface border-outline-variant text-primary" />
           <span className="font-code-md text-[11px] text-on-surface-variant">regex</span>
         </label>
-        <select
+        <Select
           value={levelFilter}
           onChange={(e) => setLevelFilter(e.target.value)}
-          className="bg-[#0f0f0f] border border-[#262626] rounded px-2 py-1 font-code-md text-[11px] text-on-surface focus:border-[#4a9eff] focus:outline-none"
+          className="w-auto bg-surface-container-low font-code-md text-[11px] text-on-surface"
         >
           <option value="">All levels</option>
           <option value="error">error</option>
           <option value="warn">warn</option>
           <option value="info">info</option>
           <option value="debug">debug</option>
-        </select>
+        </Select>
         <label className="flex items-center gap-1 cursor-pointer select-none">
           <input type="checkbox" checked={jsonOnly} onChange={(e) => setJsonOnly(e.target.checked)} className="w-3 h-3 rounded-sm bg-surface border-outline-variant text-primary" />
           <span className="font-code-md text-[11px] text-on-surface-variant">json</span>

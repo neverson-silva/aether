@@ -1,0 +1,326 @@
+package infra
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+
+	"aether/internal/modules/backups/domain"
+	gen "aether/internal/platform/infrastructure/pg/gen"
+)
+
+type DatabaseStore struct {
+	q  gen.Querier
+	db *sql.DB
+}
+
+func NewDatabaseStore(pool *pgxpool.Pool) *DatabaseStore {
+	db := stdlib.OpenDBFromPool(pool)
+	return &DatabaseStore{q: gen.New(db), db: db}
+}
+
+func (s *DatabaseStore) Close() error { return s.db.Close() }
+
+func (s *DatabaseStore) GetConfiguration(ctx context.Context, id uuid.UUID) (*domain.BackupConfiguration, error) {
+	row, err := s.q.GetBackupConfiguration(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return configFromRow(row), nil
+}
+
+func (s *DatabaseStore) ListConfigurationsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]domain.BackupConfiguration, error) {
+	rows, err := s.q.ListBackupConfigurationsByDatabase(ctx, databaseID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.BackupConfiguration, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *configFromRow(row))
+	}
+	return out, nil
+}
+
+func (s *DatabaseStore) CreateConfiguration(ctx context.Context, cfg *domain.BackupConfiguration) (*domain.BackupConfiguration, error) {
+	row, err := s.q.CreateBackupConfiguration(ctx, gen.CreateBackupConfigurationParams{
+		DatabaseID:     cfg.DatabaseID,
+		Enabled:        cfg.Enabled,
+		DestinationID:  cfg.DestinationID,
+		PathPrefix:     cfg.PathPrefix,
+		ScheduleType:   string(cfg.Schedule.Type),
+		ScheduleMinute: int32(cfg.Schedule.Minute),
+		ScheduleAt:     cfg.Schedule.At,
+		ScheduleDay:    cfg.Schedule.DayOfWeek,
+		ScheduleStart:  cfg.Schedule.StartDate,
+		ScheduleCron:   cfg.Schedule.Cron,
+		Timezone:       cfg.Schedule.Timezone,
+		RetentionType:  string(cfg.Retention.Type),
+		NextRunAt:      nullTime(cfg.NextRunAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return configFromRow(row), nil
+}
+
+func (s *DatabaseStore) UpdateConfiguration(ctx context.Context, cfg *domain.BackupConfiguration) (*domain.BackupConfiguration, error) {
+	row, err := s.q.UpdateBackupConfiguration(ctx, gen.UpdateBackupConfigurationParams{
+		ID: cfg.ID, Enabled: cfg.Enabled, DestinationID: cfg.DestinationID, PathPrefix: cfg.PathPrefix,
+		ScheduleType: string(cfg.Schedule.Type), ScheduleMinute: int32(cfg.Schedule.Minute), ScheduleAt: cfg.Schedule.At,
+		ScheduleDay: cfg.Schedule.DayOfWeek, ScheduleStart: cfg.Schedule.StartDate, ScheduleCron: cfg.Schedule.Cron,
+		Timezone: cfg.Schedule.Timezone, RetentionType: string(cfg.Retention.Type), NextRunAt: nullTime(cfg.NextRunAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return configFromRow(row), nil
+}
+
+func (s *DatabaseStore) DeleteConfiguration(ctx context.Context, id uuid.UUID) error {
+	return mapErr(s.q.DeleteBackupConfiguration(ctx, id))
+}
+
+func (s *DatabaseStore) ListEnabledConfigurations(ctx context.Context) ([]domain.BackupConfiguration, error) {
+	rows, err := s.q.ListEnabledBackupConfigurations(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.BackupConfiguration, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, configFromEnabledRow(r))
+	}
+	return out, nil
+}
+
+func (s *DatabaseStore) SetConfigurationNextRun(ctx context.Context, id uuid.UUID, next *time.Time) error {
+	return mapErr(s.q.SetBackupConfigurationNextRun(ctx, gen.SetBackupConfigurationNextRunParams{ID: id, NextRunAt: nullTime(next)}))
+}
+
+func (s *DatabaseStore) CreateJob(ctx context.Context, job *domain.BackupJob) (*domain.BackupJob, error) {
+	row, err := s.q.CreateBackupJob(ctx, gen.CreateBackupJobParams{
+		DatabaseID:      job.DatabaseID,
+		ConfigurationID: nullUUID(job.Configuration),
+		TriggerType:     string(job.Trigger),
+		Status:          string(job.Status),
+		Engine:          job.Engine,
+		EngineVersion:   job.EngineVersion,
+		Format:          job.Format,
+		DestinationID:   nullUUIDP(job.DestinationID),
+		StorageKey:      job.StorageKey,
+		SizeBytes:       job.SizeBytes,
+		Checksum:        job.Checksum,
+		ErrorCode:       job.ErrorCode,
+		ErrorMessage:    job.ErrorMessage,
+		StartedAt:       nullTime(job.StartedAt),
+		CompletedAt:     nullTime(job.CompletedAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return jobFromRow(row), nil
+}
+
+func (s *DatabaseStore) GetJob(ctx context.Context, id uuid.UUID) (*domain.BackupJob, error) {
+	row, err := s.q.GetBackupJob(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return jobFromRow(row), nil
+}
+
+func (s *DatabaseStore) UpdateJob(ctx context.Context, job *domain.BackupJob) (*domain.BackupJob, error) {
+	row, err := s.q.UpdateBackupJob(ctx, gen.UpdateBackupJobParams{
+		ID:            job.ID,
+		Status:        string(job.Status),
+		Engine:        job.Engine,
+		EngineVersion: job.EngineVersion,
+		Format:        job.Format,
+		StorageKey:    job.StorageKey,
+		SizeBytes:     job.SizeBytes,
+		Checksum:      job.Checksum,
+		ErrorCode:     job.ErrorCode,
+		ErrorMessage:  job.ErrorMessage,
+		StartedAt:     nullTime(job.StartedAt),
+		CompletedAt:   nullTime(job.CompletedAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return jobFromRow(row), nil
+}
+
+func (s *DatabaseStore) ListJobsByDatabase(ctx context.Context, databaseID uuid.UUID, limit int) ([]domain.BackupJob, error) {
+	rows, err := s.q.ListBackupJobsByDatabase(ctx, gen.ListBackupJobsByDatabaseParams{DatabaseID: databaseID, Limit: int32(limit)})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return jobsFromRows(rows), nil
+}
+
+func (s *DatabaseStore) ListActiveJobsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]domain.BackupJob, error) {
+	rows, err := s.q.ListActiveBackupJobsByDatabase(ctx, databaseID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return jobsFromRows(rows), nil
+}
+
+func (s *DatabaseStore) ListQueuedJobs(ctx context.Context, limit int) ([]domain.BackupJob, error) {
+	rows, err := s.q.ListBackupJobsDue(ctx, int32(limit))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return jobsFromRows(rows), nil
+}
+
+func (s *DatabaseStore) CreateRestoreJob(ctx context.Context, job *domain.RestoreJob) (*domain.RestoreJob, error) {
+	row, err := s.q.CreateRestoreJob(ctx, gen.CreateRestoreJobParams{
+		BackupID:         job.BackupID,
+		TargetDatabaseID: job.TargetDatabaseID,
+		Status:           string(job.Status),
+		ErrorCode:        job.ErrorCode,
+		ErrorMessage:     job.ErrorMessage,
+		StartedAt:        nullTime(job.StartedAt),
+		CompletedAt:      nullTime(job.CompletedAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return restoreFromRow(row), nil
+}
+
+func (s *DatabaseStore) GetRestoreJob(ctx context.Context, id uuid.UUID) (*domain.RestoreJob, error) {
+	row, err := s.q.GetRestoreJob(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return restoreFromRow(row), nil
+}
+
+func (s *DatabaseStore) UpdateRestoreJob(ctx context.Context, job *domain.RestoreJob) (*domain.RestoreJob, error) {
+	row, err := s.q.UpdateRestoreJob(ctx, gen.UpdateRestoreJobParams{
+		ID:           job.ID,
+		Status:       string(job.Status),
+		ErrorCode:    job.ErrorCode,
+		ErrorMessage: job.ErrorMessage,
+		StartedAt:    nullTime(job.StartedAt),
+		CompletedAt:  nullTime(job.CompletedAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return restoreFromRow(row), nil
+}
+
+func (s *DatabaseStore) ListRestoreJobsByTarget(ctx context.Context, targetID uuid.UUID, limit int) ([]domain.RestoreJob, error) {
+	rows, err := s.q.ListRestoreJobsByTarget(ctx, gen.ListRestoreJobsByTargetParams{TargetDatabaseID: targetID, Limit: int32(limit)})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.RestoreJob, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, *restoreFromRow(r))
+	}
+	return out, nil
+}
+
+func (s *DatabaseStore) ListQueuedRestoreJobs(ctx context.Context, limit int) ([]domain.RestoreJob, error) {
+	rows, err := s.q.ListRestoreJobsDue(ctx, int32(limit))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.RestoreJob, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, *restoreFromRow(r))
+	}
+	return out, nil
+}
+
+func configFromEnabledRow(r gen.ListEnabledBackupConfigurationsRow) domain.BackupConfiguration {
+	var next *time.Time
+	if r.NextRunAt.Valid {
+		t := r.NextRunAt.Time
+		next = &t
+	}
+	return domain.BackupConfiguration{
+		ID: r.ID, DatabaseID: r.DatabaseID, OrgID: r.OrgID, Enabled: r.Enabled, DestinationID: r.DestinationID,
+		PathPrefix: r.PathPrefix,
+		Schedule: domain.Schedule{
+			Type: domain.ScheduleType(r.ScheduleType), Minute: int(r.ScheduleMinute), At: r.ScheduleAt,
+			DayOfWeek: r.ScheduleDay, StartDate: r.ScheduleStart, Cron: r.ScheduleCron, Timezone: r.Timezone,
+		},
+		Retention: domain.Retention{Type: domain.RetentionType(r.RetentionType)},
+		NextRunAt: next, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	}
+}
+
+func configFromRow(r gen.BackupConfiguration) *domain.BackupConfiguration {
+	var next *time.Time
+	if r.NextRunAt.Valid {
+		t := r.NextRunAt.Time
+		next = &t
+	}
+	return &domain.BackupConfiguration{
+		ID: r.ID, DatabaseID: r.DatabaseID, Enabled: r.Enabled, DestinationID: r.DestinationID,
+		PathPrefix: r.PathPrefix,
+		Schedule: domain.Schedule{
+			Type: domain.ScheduleType(r.ScheduleType), Minute: int(r.ScheduleMinute), At: r.ScheduleAt,
+			DayOfWeek: r.ScheduleDay, StartDate: r.ScheduleStart, Cron: r.ScheduleCron, Timezone: r.Timezone,
+		},
+		Retention: domain.Retention{Type: domain.RetentionType(r.RetentionType)},
+		NextRunAt: next, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	}
+}
+
+func jobFromRow(r gen.BackupJob) *domain.BackupJob {
+	return &domain.BackupJob{
+		ID: r.ID, DatabaseID: r.DatabaseID, Configuration: uuidPtr(r.ConfigurationID),
+		Trigger: domain.TriggerType(r.TriggerType), Status: domain.BackupStatus(r.Status),
+		Engine: r.Engine, EngineVersion: r.EngineVersion, Format: r.Format,
+		DestinationID: r.DestinationID.UUID, StorageKey: r.StorageKey, SizeBytes: r.SizeBytes,
+		Checksum: r.Checksum, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
+		StartedAt: timePtr(r.StartedAt), CompletedAt: timePtr(r.CompletedAt), CreatedAt: r.CreatedAt,
+	}
+}
+
+func jobsFromRows(rows []gen.BackupJob) []domain.BackupJob {
+	out := make([]domain.BackupJob, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, *jobFromRow(r))
+	}
+	return out
+}
+
+func restoreFromRow(r gen.RestoreJob) *domain.RestoreJob {
+	return &domain.RestoreJob{
+		ID: r.ID, BackupID: r.BackupID, TargetDatabaseID: r.TargetDatabaseID,
+		Status: domain.RestoreStatus(r.Status), ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
+		StartedAt: timePtr(r.StartedAt), CompletedAt: timePtr(r.CompletedAt), CreatedAt: r.CreatedAt,
+	}
+}
+
+func nullTime(v *time.Time) sql.NullTime {
+	if v == nil {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: *v, Valid: true}
+}
+
+func timePtr(v sql.NullTime) *time.Time {
+	if !v.Valid {
+		return nil
+	}
+	t := v.Time
+	return &t
+}
+
+func nullUUIDP(v uuid.UUID) uuid.NullUUID {
+	if v == uuid.Nil {
+		return uuid.NullUUID{}
+	}
+	return uuid.NullUUID{UUID: v, Valid: true}
+}

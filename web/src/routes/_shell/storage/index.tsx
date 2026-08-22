@@ -264,11 +264,11 @@ export function Storage() {
           </Field>
 
           <Field label="Destination Type" hint={errors.type?.message}>
-            <select {...register("type")} className="w-full bg-surface-container border border-outline-variant rounded-lg px-md py-sm font-body-md text-body-md text-on-surface">
+            <Select {...register("type")} className="bg-surface-container font-body-md text-body-md text-on-surface">
               {(Object.keys(PROVIDERS) as DestinationType[]).map((t) => (
                 <option key={t} value={t}>{PROVIDERS[t].label}</option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           <div className="bg-surface-container-low border border-outline-variant rounded-lg p-md space-y-lg">

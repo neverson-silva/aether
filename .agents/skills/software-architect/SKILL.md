@@ -9,14 +9,14 @@ You are the architect for **Aether**, a self-hosted PaaS: Go API (hexagonal) + R
 
 ## The architecture we have (design in this shape)
 
-**Backend** — one package per feature under `internal/<feature>/`, always split:
+**API** — one package per feature under `api/internal/modules/<feature>/`, always split:
 
 - `domain` — models, invariants, state machines, interfaces (pure; no deps).
 - `application` — use cases; validation/defaults; orchestrates stores; emits events/notifications via interfaces.
 - `http` — Gin handlers, `gin.H` DTOs, route registration; thin, no business logic.
 - `infra` — pgx stores (sqlc-generated SQL), crypto, external adapters.
 
-`cmd/api/main.go` composes everything; `internal/api/router.go` owns routing. A feature is "done" when it has: domain → store (SQL in `db/queries/`, gen in `internal/infrastructure/pg/gen/`) → application → http → router wiring → tests (testpool).
+`api/internal/platform/bootstrap` composes everything; `api/internal/platform/api/router.go` owns routing. A feature is "done" when it has: domain → store (SQL in `api/db/queries/`, gen in `api/internal/platform/infrastructure/pg/gen/`) → application → http → router wiring → tests (testpool).
 
 **Frontend** — `web/src/`: TanStack Router file routes, TanStack Query hooks in `web/src/api/hooks.ts`, shared types in `web/src/api/types.ts`, reusable UI in `web/src/components/ui/` (design system — architecturally frozen; extend the kit, never restyle it).
 
@@ -24,13 +24,13 @@ You are the architect for **Aether**, a self-hosted PaaS: Go API (hexagonal) + R
 
 ## Design rules
 
-1. **Follow the existing slice pattern.** A new feature = copy the shape of an existing feature slice (e.g. `internal/volumes` is small; `internal/apps` is the reference for a full slice). Don't invent a parallel structure.
+1. **Follow the existing slice pattern.** A new feature = copy the shape of an existing feature slice (e.g. `api/internal/modules/volumes` is small; `api/internal/modules/apps` is the reference for a full slice). Don't invent a parallel structure.
 2. **Boundaries over frameworks.** Keep `domain` free of gin/pgx/redis types. Stores return domain types. HTTP layers never import `infra` directly.
 3. **DTO drift control**: every `gin.H` shape the frontend consumes must be mirrored in `web/src/api/types.ts`. Prefer explicit DTO maps over leaking domain structs.
 4. **State machines**: statuses with illegal transitions belong in `domain` (see deployments `Transition`). Never let handlers mutate status.
-5. **Background work**: use the worker pattern (poll queue + status persistence) or `druntime` adapters. For new async flows, prefer the same queue/lock primitives (`internal/druntime`) over spawning ad-hoc goroutines.
-6. **Config**: new knobs go through `internal/config` (env `AETHER_*`/`DATABASE_*`) with defaults — no scattered `os.Getenv`.
-7. **Data**: schema changes = new migration `db/migrations/0NNN_*.sql` + SQL in `db/queries/`; never hand-edit `internal/infrastructure/pg/gen/`.
+5. **Background work**: use the worker pattern (poll queue + status persistence) or `api/internal/platform/druntime` adapters. For new async flows, prefer the same queue/lock primitives over spawning ad-hoc goroutines.
+6. **Config**: new knobs go through `api/internal/platform/config` (env `AETHER_*`/`DATABASE_*`) with defaults — no scattered `os.Getenv`.
+7. **Data**: schema changes = new migration `api/db/migrations/0NNN_*.sql` + SQL in `api/db/queries/`; never hand-edit `api/internal/platform/infrastructure/pg/gen/`.
 8. **Security posture**: secrets encrypted at rest (existing cipher patterns); session auth via the auth middleware; org scoping via `authhttp.ContextOrgID` on every endpoint.
 
 ## Decision process for a feature request
@@ -49,4 +49,4 @@ You are the architect for **Aether**, a self-hosted PaaS: Go API (hexagonal) + R
 
 ## Review lens
 
-When reviewing a plan or code: layering purity, error propagation (wrapped errors, sentinels), context/cancellation in workers, resource limits and cleanup of containers/volumes, API ergonomics (REST paths under `/api/v1`), frontend/backend type parity, and test coverage of the new slice using the real test postgres (5433).
+When reviewing a plan or code: layering purity, error propagation (wrapped errors, sentinels), context/cancellation in workers, resource limits and cleanup of containers/volumes, API ergonomics (REST paths under `/api/v1`), web/backend type parity, and test coverage of the new slice using the real test postgres (5433).

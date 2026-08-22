@@ -183,7 +183,7 @@ function Monitoring() {
             title={
               stats?.source && stats.source !== "runtime"
                 ? "Metrics collected by the host agent running natively on the host machine"
-                : "No host agent detected — metrics come from the container runtime (VM). Install scripts/host-agent.sh on the host."
+                : "No host agent detected — metrics come from the container runtime (VM). Install infra/scripts/host-agent.sh on the host."
             }
           >
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>monitor_heart</span>

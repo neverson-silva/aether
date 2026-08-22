@@ -31,6 +31,8 @@ import {
   useRollback,
   useSetEnv,
   useSetWebhook,
+  useSaveServiceSource,
+  useServiceSource,
   useStats,
   useTimeline,
 } from "@/hooks";
@@ -72,6 +74,7 @@ function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const { data: detail } = useAppDetail(appId);
+  const { data: source } = useServiceSource(appId);
   const { data: detailSecrets } = useAppDetailSecrets(appId, envEditorOpen);
   const envEditorVars = useMemo(
     () => (detailSecrets?.env ?? detail?.env ?? []).map((e) => ({ key: e.name, value: e.value, is_secret: e.secret })),
@@ -94,6 +97,7 @@ function AppDetail() {
   const setEnv = useSetEnv(appId);
   const deleteEnv = useDeleteEnv(appId);
   const setWebhook = useSetWebhook(appId);
+  const saveSource = useSaveServiceSource(appId);
   const updateApp = useUpdateApp(appId);
 
   const { toast } = useToast();
@@ -117,6 +121,10 @@ function AppDetail() {
       setEditPort(app.port);
     }
   }, [editOpen, app]);
+
+  useEffect(() => {
+    if (source) setAutodeploy(source.auto_deploy);
+  }, [source]);
   const latest = deployments?.[0];
   const state = states?.[appId] ?? "unknown";
   const running = state === "running";
@@ -248,8 +256,35 @@ function AppDetail() {
               <div className="ml-auto flex items-center gap-3">
                 <span className="text-body-sm text-on-surface-variant">Autodeploy</span>
                 <button
-                  onClick={() => setAutodeploy((v) => !v)}
-                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${autodeploy ? "bg-primary" : "bg-surface-container-high border border-outline-variant"}`}
+                  type="button"
+                  disabled={!source || saveSource.isPending}
+                  onClick={() => {
+                    if (!source) return;
+                    const next = !source.auto_deploy;
+                    setAutodeploy(next);
+                    saveSource.mutate({
+                      connection_id: source.connection_id,
+                      repository_id: source.repository_id,
+                      repository_owner: source.repository_owner,
+                      repository_name: source.repository_name,
+                      repository_full_name: source.repository_full_name,
+                      default_branch: source.default_branch,
+                      branch: source.branch,
+                      auto_deploy: next,
+                      root_directory: source.root_directory,
+                      watch_paths: source.watch_paths,
+                      ignore_paths: source.ignore_paths,
+                      watch_root_files: source.watch_root_files,
+                    }, {
+                      onSuccess: () => toast(next ? "Autodeploy enabled" : "Autodeploy disabled"),
+                      onError: (error) => {
+                        setAutodeploy(source.auto_deploy);
+                        toast(error.message, "error");
+                      },
+                    });
+                  }}
+                  aria-label={autodeploy ? "Disable autodeploy" : "Enable autodeploy"}
+                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors disabled:opacity-50 ${autodeploy ? "bg-primary" : "bg-surface-container-high border border-outline-variant"}`}
                 >
                   <div className={`absolute top-1 w-3 h-3 bg-on-primary rounded-full transition-all ${autodeploy ? "right-1 bg-on-primary" : "left-1 bg-on-surface-variant/60"}`} />
                 </button>
@@ -286,7 +321,7 @@ function AppDetail() {
                   {app.source_type === "git" ? "Repository" : "Image"}
                 </label>
                 <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                  <span className="font-code-md text-code-md text-on-surface truncate">{app.source_type === "git" ? app.git_url || "—" : app.image}</span>
+                  <span className="font-code-md text-code-md text-on-surface truncate">{app.source_type === "git" ? source?.repository_full_name || app.git_url || "—" : app.image}</span>
                   <span className="material-symbols-outlined text-on-surface-variant">expand_more</span>
                 </div>
               </div>
@@ -294,7 +329,7 @@ function AppDetail() {
                 <div className="space-y-2">
                   <label className="block font-label-caps text-label-caps text-on-surface-variant">Branch</label>
                   <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                    <span className="font-code-md text-code-md text-on-surface">{app.git_branch || "main"}</span>
+                    <span className="font-code-md text-code-md text-on-surface">{source?.branch || app.git_branch || "main"}</span>
                     <span className="material-symbols-outlined text-on-surface-variant">unfold_more</span>
                   </div>
                 </div>
@@ -307,6 +342,22 @@ function AppDetail() {
                 </div>
               </div>
             </div>
+            {source && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-outline-variant">
+                <div>
+                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Root directory</span>
+                  <span className="font-code-md text-code-md text-on-surface">{source.root_directory || "/"}</span>
+                </div>
+                <div>
+                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Watch paths</span>
+                  <span className="font-code-md text-code-md text-on-surface">{source.watch_paths.length || "All service files"}</span>
+                </div>
+                <div>
+                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Root files</span>
+                  <span className="font-code-md text-code-md text-on-surface">{source.watch_root_files ? "Included" : "Ignored"}</span>
+                </div>
+              </div>
+            )}
             <div className="flex justify-end pt-4">
               <Button onClick={() => setTab("settings")}>Configure</Button>
             </div>

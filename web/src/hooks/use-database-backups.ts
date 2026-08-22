@@ -7,10 +7,5 @@ export function useDatabaseBackups(dbId: string, limit = 50) {
     queryKey: ["database-backups", dbId, limit],
     queryFn: () => apiGet<BackupJob[]>(`/api/v1/databases/${dbId}/backups?limit=${limit}`),
     enabled: !!dbId,
-    refetchInterval: (query) => {
-      const jobs = query.state.data as BackupJob[] | undefined;
-      const active = jobs?.some((j) => !["completed", "failed", "cancelled"].includes(j.status));
-      return active ? 4000 : false;
-    },
   });
 }
