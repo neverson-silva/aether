@@ -48,6 +48,7 @@ type ServiceSource struct {
 	Branch             string    `json:"branch"`
 	AutoDeploy         bool      `json:"auto_deploy"`
 	RootDirectory      string    `json:"root_directory"`
+	EnvironmentTemplatePath string `json:"environment_template_path"`
 	WatchPaths         []string  `json:"watch_paths"`
 	IgnorePaths        []string  `json:"ignore_paths"`
 	WatchRootFiles     bool      `json:"watch_root_files"`

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AppDetail } from "../../../../api/types";
 import type { Deployment } from "../../../../api/types";
-import { useDeployCompare } from "../../../../hooks";
-import { ArrowsClockwise, ArrowUUpLeft, Check, GitBranch, WarningCircle } from "@phosphor-icons/react";
+import { useCancelDeployment, useDeployCompare } from "../../../../hooks";
+import { ArrowsClockwise, ArrowUUpLeft, X } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
 import { Badge, Button, Card, Checkbox, Dialog, Skeleton, useToast } from "@aether/design-system";
 import { DeploymentLogModal } from "./DeploymentLogModal";
@@ -10,6 +10,7 @@ import { DeploymentLogModal } from "./DeploymentLogModal";
 function cn(...classes: Array<string | false | undefined>) { return classes.filter(Boolean).join(" "); }
 function isDeploymentActive(status: string) { return ["queued", "building", "starting", "health_checking"].includes(status); }
 function deploymentTone(status: string) { return status === "failed" ? "danger" as const : status === "ready" || status === "running" ? "success" as const : isDeploymentActive(status) ? "warning" as const : "neutral" as const; }
+function deploymentLabel(status: string) { return status === "ready" ? "success" : status; }
 
 export interface DeploymentRow extends Deployment {
   created_at: string;
@@ -43,8 +44,10 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [comparePair, setComparePair] = useState<{ a: string; b: string } | null>(null);
   const [logDep, setLogDep] = useState<string | null>(null);
+  const [cancellingDep, setCancellingDep] = useState<string | null>(null);
   const { add } = useToast();
   const compare = useDeployCompare(appId, comparePair?.a ?? null, comparePair?.b ?? null);
+  const cancelDeployment = useCancelDeployment(appId);
 
   const toggle = (id: string) => {
     setSel((prev) => {
@@ -89,6 +92,7 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
                 <th className="px-sm py-2">Duration</th>
                 <th className="px-sm py-2">Started</th>
                 <th className="px-sm py-2">Error</th>
+                <th className="px-sm py-2" />
               </tr>
             </thead>
             <tbody>
@@ -117,7 +121,7 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
                     </td>
                     <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant">#{d.number}</td>
                     <td className="px-sm py-2">
-                      <Badge tone={deploymentTone(d.status)}>{d.status}</Badge>
+                      <Badge tone={deploymentTone(d.status)}>{deploymentLabel(d.status)}</Badge>
                     </td>
                     <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant max-w-[220px] truncate">{d.image_ref || "—"}</td>
                     <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant/60">{(d.commit || "—").slice(0, 8)}</td>
@@ -135,6 +139,28 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
                         <span className={`ml-xs px-1.5 py-0.5 rounded font-code-md text-code-md ${fix.level === "error" ? "bg-error/10 text-error" : "bg-[#fbbf24]/10 text-[#fbbf24]"}`} title={fix.detail}>
                           {fix.level === "error" ? "blocked" : "suggested"}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-sm py-2 text-right">
+                      {isDeploymentActive(d.status) && (
+                        <Button
+                          variant="quiet"
+                          size="sm"
+                          icon={X as unknown as DesignIcon}
+                          aria-label={`Cancel deployment #${d.number}`}
+                          loading={cancelDeployment.isPending && cancellingDep === d.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCancellingDep(d.id);
+                            cancelDeployment.mutate(d.id, {
+                              onSuccess: () => add({ title: "Deployment cancelled", tone: "success" }),
+                              onError: (error) => add({ title: "Could not cancel deployment", description: error.message, tone: "error" }),
+                              onSettled: () => setCancellingDep(null),
+                            });
+                          }}
+                        >
+                          Cancel
+                        </Button>
                       )}
                     </td>
                   </tr>

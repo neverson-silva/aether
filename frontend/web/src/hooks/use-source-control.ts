@@ -37,6 +37,7 @@ export interface ServiceSource {
   branch: string;
   auto_deploy: boolean;
   root_directory: string;
+  environment_template_path: string;
   watch_paths: string[];
   ignore_paths: string[];
   watch_root_files: boolean;
@@ -54,6 +55,7 @@ export interface ServiceSourceInput {
   branch: string;
   auto_deploy: boolean;
   root_directory: string;
+  environment_template_path: string;
   watch_paths: string[];
   ignore_paths: string[];
   watch_root_files: boolean;
@@ -93,6 +95,7 @@ function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSource {
     branch: raw.branch ?? raw.Branch ?? "",
     auto_deploy: raw.auto_deploy ?? raw.AutoDeploy ?? false,
     root_directory: raw.root_directory ?? raw.RootDirectory ?? "",
+    environment_template_path: raw.environment_template_path ?? raw.EnvironmentTemplatePath ?? ".env.example",
     watch_paths: raw.watch_paths ?? raw.WatchPaths ?? [],
     ignore_paths: raw.ignore_paths ?? raw.IgnorePaths ?? [],
     watch_root_files: raw.watch_root_files ?? raw.WatchRootFiles ?? false,
@@ -161,6 +164,18 @@ export function useSaveServiceSource(appID: string) {
     mutationFn: (body: ServiceSourceInput) => apiPut<ServiceSource>(`/api/v1/apps/${appID}/source`, body),
     onSuccess: (source) => {
       queryClient.setQueryData(["service-source", appID], source);
+    },
+  });
+}
+
+
+export function useImportServiceTemplate(appID: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<{ imported: number; found: boolean }>(`/api/v1/apps/${appID}/source/import-template`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["app", appID] });
+      queryClient.invalidateQueries({ queryKey: ["service-source", appID] });
     },
   });
 }

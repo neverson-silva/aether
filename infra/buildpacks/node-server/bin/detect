@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+is_next=0
+if [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ] || grep -qE '"next"[[:space:]]*:' package.json 2>/dev/null; then
+  is_next=1
+fi
+if [ "$is_next" = 1 ]; then
+  echo "aether/node-server: Next.js server detected"
+  exit 0
+fi
+
 is_static=0
 if [ -f angular.json ] || [ -f vite.config.js ] || [ -f vite.config.ts ] || [ -f vite.config.mjs ] \
   || [ -f svelte.config.js ] || [ -f svelte.config.ts ] \

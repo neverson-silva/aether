@@ -41,22 +41,26 @@ type AppStore interface {
 }
 
 type Worker struct {
-	Store          DeploymentStore
-	Apps           AppStore
-	Runtime        Runtime
-	Logger         *slog.Logger
-	LogsDir        string
-	BuildsDir      string
-	UploadsDir     string
-	IngressNetwork string
-	Notifier       DeployNotifier
-	LogNotifier    LogNotifier
-	CnbBuilder     string
-	Queue          queue.Queue
+	Store             DeploymentStore
+	Apps              AppStore
+	Runtime           Runtime
+	Logger            *slog.Logger
+	LogsDir           string
+	BuildsDir         string
+	UploadsDir        string
+	IngressNetwork    string
+	Notifier          DeployNotifier
+	LogNotifier       LogNotifier
+	CnbBuilder        string
+	Queue             queue.Queue
+	deploymentTimeout time.Duration
 
-	mu       sync.Mutex
-	inFlight map[uuid.UUID]bool
+	mu         sync.Mutex
+	inFlight   map[uuid.UUID]bool
+	cancellers map[uuid.UUID]context.CancelFunc
 }
+
+const maxDeploymentTimeout = 20 * time.Minute
 
 type DeployNotifier interface {
 	NotifyDeploy(ctx context.Context, event deploydomain.DeployEvent)
@@ -81,6 +85,17 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 			w.processQueued(ctx)
 		}
 	}
+}
+
+func (w *Worker) CancelDeployment(id uuid.UUID) bool {
+	w.mu.Lock()
+	cancel, ok := w.cancellers[id]
+	w.mu.Unlock()
+	if !ok {
+		return false
+	}
+	cancel()
+	return true
 }
 
 func (w *Worker) runQueue(ctx context.Context) {
@@ -170,6 +185,27 @@ func (w *Worker) processQueued(ctx context.Context) {
 }
 
 func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
+	timeout := w.deploymentTimeout
+	if timeout <= 0 || timeout > maxDeploymentTimeout {
+		timeout = maxDeploymentTimeout
+	}
+	deploymentCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	w.mu.Lock()
+	if w.cancellers == nil {
+		w.cancellers = make(map[uuid.UUID]context.CancelFunc)
+	}
+	w.cancellers[dep.ID] = cancel
+	w.mu.Unlock()
+	defer func() {
+		w.mu.Lock()
+		delete(w.cancellers, dep.ID)
+		w.mu.Unlock()
+	}()
+	ctx = deploymentCtx
+	if current, err := w.Store.GetDeployment(ctx, dep.ID); err == nil && current != nil && current.Status != deploydomain.StatusQueued {
+		return
+	}
 	spec, hc, err := buildSpec(dep)
 	if err != nil {
 		w.fail(ctx, dep, "", err)
@@ -628,12 +664,27 @@ func (w *Worker) notify(ctx context.Context, dep *deploydomain.Deployment, statu
 }
 
 func (w *Worker) fail(ctx context.Context, dep *deploydomain.Deployment, containerID string, cause error) {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		if containerID != "" {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = w.Runtime.Remove(cleanupCtx, containerID)
+			cancel()
+		}
+		return
+	}
+	statusCtx := ctx
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		cause = errors.New("deployment timed out after 20 minutes")
+		var cancel context.CancelFunc
+		statusCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+	}
 	dep.Error = cause.Error()
 	w.appendLog(dep, "fail: "+cause.Error())
 	if containerID != "" {
-		_ = w.Runtime.Remove(ctx, containerID)
+		_ = w.Runtime.Remove(statusCtx, containerID)
 	}
-	w.setStatus(ctx, dep, deploydomain.StatusFailed, dep.ImageRef, "")
+	w.setStatus(statusCtx, dep, deploydomain.StatusFailed, dep.ImageRef, "")
 }
 
 func (w *Worker) appendLog(dep *deploydomain.Deployment, line string) {

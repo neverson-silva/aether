@@ -66,6 +66,25 @@ func (h *Handler) Rollback(c *gin.Context) {
 	c.JSON(http.StatusAccepted, deploymentDTO(dep))
 }
 
+func (h *Handler) Cancel(c *gin.Context) {
+	appID, err := uuid.Parse(c.Param("appID"))
+	if err != nil {
+		abort(c, deploydomain.ErrValidation)
+		return
+	}
+	depID, err := uuid.Parse(c.Param("depID"))
+	if err != nil {
+		abort(c, deploydomain.ErrValidation)
+		return
+	}
+	dep, err := h.deployments.Cancel(c.Request.Context(), appID, orgID(c), depID)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, deploymentDTO(dep))
+}
+
 func (h *Handler) List(c *gin.Context) {
 	appID, err := uuid.Parse(c.Param("appID"))
 	if err != nil {

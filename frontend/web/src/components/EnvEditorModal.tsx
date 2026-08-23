@@ -77,7 +77,12 @@ export function EnvEditorModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }} title={title} description={description} trigger={<button type="button" className="hidden" aria-hidden="true" tabIndex={-1} />}>
+    <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }} title={title} description={description} trigger={<button type="button" className="hidden" aria-hidden="true" tabIndex={-1} />} footer={(
+      <div className="flex w-full justify-end gap-md pr-2">
+        <Button type="button" variant="ghost" onClick={onClose}>Close</Button>
+        <Button type="button" onClick={save} loading={isLoading} loadingLabel="Saving variables">Save variables</Button>
+      </div>
+    )}>
       {isLoading ? (
         <Skeleton variant="card" className="min-h-24" />
       ) : (
@@ -87,12 +92,9 @@ export function EnvEditorModal({
           onChange={setVariables}
           onImport={parseEnv}
           onExport={exportVariables}
+          className="max-h-[min(34rem,calc(100dvh-14rem))]"
         />
       )}
-      <div className="mt-lg flex justify-end gap-md">
-        <Button type="button" variant="ghost" onClick={onClose}>Close</Button>
-        <Button type="button" onClick={save} disabled={isLoading}>Save variables</Button>
-      </div>
     </Dialog>
   );
 }

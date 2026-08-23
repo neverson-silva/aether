@@ -6,16 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestReadyToFailedTransition(t *testing.T) {
+func TestReadyIsTerminal(t *testing.T) {
 	dep := &Deployment{ID: uuid.New(), Status: StatusReady}
-	if err := dep.Transition(StatusFailed); err != nil {
-		t.Fatalf("ready->failed deveria ser permitido: %v", err)
+	if !dep.Status.Terminal() {
+		t.Fatalf("ready should be terminal")
 	}
-	if dep.Status != StatusFailed {
-		t.Fatalf("status: %v", dep.Status)
-	}
-	if dep.FinishedAt == nil {
-		t.Fatalf("failed deveria marcar FinishedAt")
+	if err := dep.Transition(StatusFailed); err == nil {
+		t.Fatalf("ready->failed should be rejected")
 	}
 }
 
@@ -27,14 +24,8 @@ func TestReadyTransitions(t *testing.T) {
 	if dep.Transition(StatusCancelled) == nil {
 		t.Fatalf("ready->cancelled deveria falhar")
 	}
-	if dep.Status.Terminal() {
-		t.Fatalf("ready agora admite transição a failed, não é terminal")
-	}
-	if err := dep.Transition(StatusFailed); err != nil {
-		t.Fatalf("ready->failed: %v", err)
-	}
 	if !dep.Status.Terminal() {
-		t.Fatalf("failed deveria ser terminal")
+		t.Fatalf("ready should be terminal")
 	}
 }
 
@@ -44,9 +35,9 @@ func TestReadySetsFinishedAt(t *testing.T) {
 		t.Fatalf("health_checking->ready: %v", err)
 	}
 	if dep.FinishedAt == nil {
-		t.Fatalf("ready deveria marcar FinishedAt")
+		t.Fatalf("ready should set FinishedAt")
 	}
 	if dep.StartedAt != nil {
-		t.Fatalf("ready não deveria marcar StartedAt")
+		t.Fatalf("ready should not set StartedAt")
 	}
 }

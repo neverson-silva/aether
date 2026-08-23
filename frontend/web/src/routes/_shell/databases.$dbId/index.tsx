@@ -1,5 +1,5 @@
 import { createFileRoute, useParams, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import {
   useDatabaseDetail,
   useDatabaseStats,
@@ -13,13 +13,14 @@ import {
 import type { DatabaseDeployment } from "../../../hooks/use-database-deployments";
 import { getServer } from "../../../api/client";
 import { TechIcon } from "../../../components/TechIcon";
-import { AlertDialog, Badge, Button, Card, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
-import { ArrowSquareOut, Check, Copy, Database as DatabaseIcon, Gear, Globe, Pause, Play, RocketLaunch, Stop, Table, TerminalWindow, Trash, X } from "@phosphor-icons/react";
+import { AlertDialog, Badge, Button, Card, LogViewer, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
+import { ArrowSquareOut, Check, Copy, Database as DatabaseIcon, Gear, Globe, Play, RocketLaunch, Stop, Table, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { DbTerminal } from "./-components/DbTerminal";
 import { DatabaseDeploymentLogModal } from "./-components/DatabaseDeploymentLogModal";
 import { DomainsPanel } from "../../../components/DomainsPanel";
 import { BackupTab } from "./-components/BackupTab";
 import { isRuntimeLive, mapRuntimeStatus } from "../../../lib/runtime-status";
+import { toDeploymentLogLines } from "../../../lib/deployment-log-lines";
 
 type Tab = "overview" | "deployments" | "domains" | "previews" | "terminal" | "metrics" | "logs" | "settings" | "backup";
 type DesignIcon = NonNullable<ComponentProps<typeof Button>["icon"]>;
@@ -61,7 +62,6 @@ function DatabaseDetail() {
   const [logDep, setLogDep] = useState<DatabaseDeployment | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logFollow, setLogFollow] = useState(true);
-  const logRef = useRef<HTMLDivElement>(null);
   const { data: stats, isLoading: loadingStats, refetch: reloadStats } = useDatabaseStats(dbId);
 
   const db = data?.database;
@@ -77,9 +77,10 @@ function DatabaseDetail() {
     return () => es.close();
   }, [dbId, logFollow]);
 
-  useEffect(() => {
-    if (logFollow) logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [logLines, logFollow]);
+  const formattedLogLines = useMemo(
+    () => toDeploymentLogLines(logLines.join("\n")),
+    [logLines],
+  );
 
   const copyDsn = async () => {
     if (!data?.dsn) return;
@@ -327,29 +328,11 @@ function DatabaseDetail() {
       {tab === "domains" && <DomainsPanel kind="databases" id={dbId} />}
 
       {tab === "logs" && (
-        <Card>
-          <div className="flex items-center justify-between mb-md">
-            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Container logs</h2>
-            <div className="flex items-center gap-sm">
-              <span className={`font-code-md text-code-md ${logFollow ? "text-[#4ade80]" : "text-on-surface-variant/60"}`}>
-                {logFollow ? "● Live" : "○ Paused"}
-              </span>
-              <Button variant="ghost" onClick={() => setLogFollow((f) => !f)}>
-                {logFollow ? <Pause size={16} /> : <Play size={16} />}
-                {logFollow ? "Pause" : "Resume"}
-              </Button>
-            </div>
-          </div>
-          <div
-            ref={logRef}
-            className="bg-surface-container-lowest border border-outline-variant rounded-lg p-md font-code-md text-code-md text-on-surface overflow-auto h-[480px] whitespace-pre-wrap sidebar-scroll"
-          >
-            {logLines.length === 0 && <span className="text-on-surface-variant/60">Waiting for logs...</span>}
-            {logLines.map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
-          </div>
-        </Card>
+        <LogViewer
+          lines={formattedLogLines}
+          followTail={logFollow}
+          onFollowTailChange={setLogFollow}
+        />
       )}
 
       {tab === "metrics" && (
@@ -392,7 +375,7 @@ function DatabaseDetail() {
               <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Danger zone</h2>
             </div>
             <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
-              Delete this database, its container and credentials. The data volume is kept on disk.
+              Delete this database, its container, credentials and data volume. This permanently removes its stored data.
             </p>
             <Button variant="danger" onClick={() => setConfirmDelete(true)}>
               <Trash size={16} />
@@ -416,7 +399,7 @@ function DatabaseDetail() {
           })
         }
         title="Delete database"
-        description={`Remove ${db?.name} and its container? The volume is kept.`}
+        description={`Remove ${db?.name}, its container and data volume? This permanently deletes all stored data.`}
         confirmLabel="Delete"
       />
     </div>

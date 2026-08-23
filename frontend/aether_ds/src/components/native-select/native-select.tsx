@@ -30,7 +30,7 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(fun
         {...props}
         required={required}
         aria-invalid={Boolean(error) || undefined}
-        className={`h-10 w-full appearance-none rounded-md border bg-surface-card px-3 pr-9 text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/20 ${error ? 'border-status-danger' : 'border-border'} ${className}`}
+        className={`h-10 w-full appearance-none rounded-md border bg-surface-control px-3 pr-9 text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-ring/20 ${error ? 'border-status-danger' : 'border-border'} ${className}`}
       >
         {options.map((option) => (
           <option

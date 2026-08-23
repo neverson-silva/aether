@@ -1,4 +1,5 @@
 import { AlertDialog as BaseAlertDialog } from '@base-ui/react/alert-dialog'
+import { Button } from '../button/button'
 import { cloneElement, type MouseEvent, type ReactElement, type ReactNode, useState } from 'react'
 
 export interface AlertDialogProps {
@@ -61,7 +62,7 @@ export function AlertDialog({
                 {cancelLabel}
               </BaseAlertDialog.Close>
               <BaseAlertDialog.Close
-                className="rounded-md bg-button-danger px-3 py-2 text-body-sm text-button-danger-foreground transition-colors hover:bg-button-danger-hover active:bg-button-danger-active"
+                render={<Button variant="danger" size="sm" />}
                 onClick={onConfirm}
                 disabled={confirmDisabled}
               >

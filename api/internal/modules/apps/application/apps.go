@@ -192,6 +192,26 @@ func (a *Apps) SetEnv(ctx context.Context, appID, orgID uuid.UUID, name, value s
 	return a.Store.UpsertEnvVar(ctx, appID, name, value, secret)
 }
 
+func (a *Apps) ImportMissingEnvVars(ctx context.Context, appID, orgID uuid.UUID, names []string) (int, error) {
+	if _, err := a.Store.GetApp(ctx, appID, orgID); err != nil {
+		return 0, err
+	}
+	unique := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.Contains(name, "=") {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		unique = append(unique, name)
+	}
+	return a.Store.InsertMissingEnvVars(ctx, appID, unique)
+}
+
 func (a *Apps) ListEnv(ctx context.Context, appID, orgID uuid.UUID) ([]domain.EnvVar, error) {
 	if _, err := a.Store.GetApp(ctx, appID, orgID); err != nil {
 		return nil, err

@@ -1,4 +1,7 @@
-import { Eye, EyeSlash, Plus, Trash } from '@phosphor-icons/react'
+import { DownloadSimple, Eye, EyeSlash, Plus, Trash, UploadSimple } from '@phosphor-icons/react'
+import { Button } from '../button/button'
+import { IconButton } from '../icon-button/icon-button'
+import { Tooltip } from '../tooltip/tooltip'
 import { useState } from 'react'
 export interface VariableRow {
   id: string
@@ -13,12 +16,14 @@ export interface VariableEditorProps {
   onImport?: () => VariableRow[] | void
   onExport?: () => void
   onBulkEdit?: (variables: VariableRow[]) => void
+  className?: string
 }
 export function VariableEditor({
   onChange,
   onExport,
   onImport,
   onBulkEdit,
+  className = '',
   variables: initial,
 }: VariableEditorProps) {
   const [variables, setVariables] = useState(initial)
@@ -38,20 +43,22 @@ export function VariableEditor({
       .map((item) => item.id),
   )
   return (
-    <section className="overflow-hidden rounded-lg border border-border">
+    <section className={`flex min-h-0 flex-col overflow-hidden rounded-lg border border-border ${className}`}>
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
         <span className="text-body-sm font-semibold">Variables</span>
-        <div className="flex gap-2">
-          <button
+        <div className="flex items-center gap-1">
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            icon={UploadSimple}
             onClick={() => {
               const imported = onImport?.()
               if (imported) update(imported)
             }}
-            className="text-body-sm text-muted-foreground hover:text-foreground"
           >
             Import
-          </button>
+          </Button>
           {onBulkEdit ? (
             <button
               type="button"
@@ -61,93 +68,68 @@ export function VariableEditor({
               Bulk edit
             </button>
           ) : null}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            icon={DownloadSimple}
             onClick={onExport}
-            className="text-body-sm text-muted-foreground hover:text-foreground"
+            disabled={!onExport}
           >
             Export
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              update([
-                ...variables,
-                { id: crypto.randomUUID(), key: '', value: '' },
-              ])
-            }
-            className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-body-sm text-primary-foreground"
-          >
-            <Plus size={14} />
-            Add
-          </button>
+          </Button>
         </div>
       </header>
-      <div className="divide-y divide-border">
+      <div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
         {variables.map((variable, index) => (
           <div
             key={variable.id}
-            className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)_auto] gap-2 p-3"
+            className="grid min-w-0 items-start gap-2 p-3"
+            style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr) auto' }}
           >
-            <input
-              aria-label="Variable key"
-              value={variable.key}
-              onChange={(event) =>
-                update(
-                  variables.map((item, itemIndex) =>
-                    itemIndex === index
-                      ? { ...item, key: event.target.value }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="KEY"
-              className="h-9 rounded-md border border-border bg-surface-background px-2 font-mono text-code-md outline-none focus:border-primary"
-            />
-            {duplicates.has(variable.id) ? (
-              <span className="text-label-caps text-status-danger md:col-span-3">
-                Duplicate key
-              </span>
-            ) : null}
-            <input
-              aria-label="Variable value"
-              type={
-                variable.secret && !revealed.includes(variable.id)
-                  ? 'password'
-                  : 'text'
-              }
-              value={variable.value}
-              onChange={(event) =>
-                update(
-                  variables.map((item, itemIndex) =>
-                    itemIndex === index
-                      ? { ...item, value: event.target.value }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="Value"
-              className="h-9 rounded-md border border-border bg-surface-background px-2 font-mono text-code-md outline-none focus:border-primary"
-            />
-            <input
-              aria-label="Variable scope"
-              value={variable.scope ?? ''}
-              onChange={(event) =>
-                update(
-                  variables.map((item, itemIndex) =>
-                    itemIndex === index
-                      ? { ...item, scope: event.target.value }
-                      : item,
-                  ),
-                )
-              }
-              placeholder="Scope"
-              className="h-9 rounded-md border border-border bg-surface-background px-2 text-body-sm outline-none focus:border-primary"
-            />
-            {variable.secret ? (
-              <button
+            <div className="min-w-0 space-y-1" style={{ gridColumn: 1 }}>
+              <input
+                aria-label="Variable key"
+                value={variable.key}
+                onChange={(event) =>
+                  update(
+                    variables.map((item, itemIndex) =>
+                      itemIndex === index
+                        ? { ...item, key: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+                placeholder="KEY"
+                className="h-9 w-full rounded-md border border-border bg-surface-control px-2 hover:bg-surface-container-highest/40 font-mono text-code-md outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              {duplicates.has(variable.id) ? (
+                <span className="text-label-caps text-status-danger">Duplicate key</span>
+              ) : null}
+            </div>
+            <div className="relative min-w-0" style={{ gridColumn: 2 }}>
+              <input
+                aria-label="Variable value"
+                type={revealed.includes(variable.id) ? 'text' : 'password'}
+                value={variable.value}
+                onChange={(event) =>
+                  update(
+                    variables.map((item, itemIndex) =>
+                      itemIndex === index
+                        ? { ...item, value: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+                placeholder="Value"
+                className="h-9 w-full rounded-md border border-border bg-surface-control px-2 hover:bg-surface-container-highest/40 pr-10 font-mono text-code-md outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <IconButton
                 type="button"
-                aria-label="Toggle secret visibility"
+                label={revealed.includes(variable.id) ? "Hide value" : "Show value"}
+                title={revealed.includes(variable.id) ? "Hide value" : "Show value"}
+                size="sm"
+                icon={revealed.includes(variable.id) ? EyeSlash : Eye}
                 onClick={() =>
                   setRevealed(
                     revealed.includes(variable.id)
@@ -155,28 +137,39 @@ export function VariableEditor({
                       : [...revealed, variable.id],
                   )
                 }
-                className="text-muted-foreground"
-              >
-                {revealed.includes(variable.id) ? (
-                  <EyeSlash size={18} />
-                ) : (
-                  <Eye size={18} />
-                )}
-              </button>
-            ) : (
-              <button
+                className="absolute inset-y-0 right-2 my-auto"
+              />
+            </div>
+            <Tooltip content="Remove variable">
+              <IconButton
                 type="button"
-                aria-label="Remove variable"
+                label="Remove variable"
+                size="sm"
+                icon={Trash}
                 onClick={() =>
                   update(variables.filter((item) => item.id !== variable.id))
                 }
-                className="text-muted-foreground hover:text-status-danger"
-              >
-                <Trash size={18} />
-              </button>
-            )}
+                className="self-center hover:bg-action-danger/10 hover:text-status-danger"
+                style={{ gridColumn: 3, width: '2.25rem', height: '2.25rem', alignSelf: 'center' }}
+              />
+            </Tooltip>
           </div>
         ))}
+      </div>
+      <div className="border-t border-border p-3">
+        <button
+          type="button"
+          onClick={() =>
+            update([
+              ...variables,
+              { id: crypto.randomUUID(), key: '', value: '' },
+            ])
+          }
+          className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md border border-border text-body-sm text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface-container-high"
+        >
+          <Plus size={16} />
+          Add variable
+        </button>
       </div>
     </section>
   )

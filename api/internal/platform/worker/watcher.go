@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -42,8 +43,15 @@ func (w *Watcher) check(ctx context.Context, last map[uuid.UUID]string) {
 		w.log(ctx, "list ready", err)
 		return
 	}
+	latest := make(map[uuid.UUID]*deploydomain.Deployment, len(ready))
 	for i := range ready {
 		dep := &ready[i]
+		current := latest[dep.AppID]
+		if current == nil || dep.Number > current.Number {
+			latest[dep.AppID] = dep
+		}
+	}
+	for _, dep := range latest {
 		if dep.ContainerID == "" {
 			continue
 		}
@@ -57,23 +65,12 @@ func (w *Watcher) check(ctx context.Context, last map[uuid.UUID]string) {
 			w.emitState(ctx, dep.AppID, "running", last)
 		case "paused":
 			w.emitState(ctx, dep.AppID, "paused", last)
-		default:
-			if err := w.Store.UpdateStatus(ctx, dep.ID, deploydomain.StatusFailed, "container "+state, dep.ImageRef, dep.ContainerID, dep.StartedAt, timePtr(time.Now().UTC())); err != nil {
-				w.log(ctx, "mark deployment failed", err)
-				continue
-			}
-			if w.Notifier != nil {
-				w.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{
-					AppID: dep.AppID, DepID: dep.ID, Status: string(deploydomain.StatusFailed), Detail: "container " + state,
-				})
-			}
+		case "exited", "stopped", "dead":
 			w.emitState(ctx, dep.AppID, "error", last)
+		default:
+			w.log(ctx, "unknown container state", fmt.Errorf("container %s returned state %q", dep.ContainerID, state))
 		}
 	}
-}
-
-func timePtr(value time.Time) *time.Time {
-	return &value
 }
 
 func (w *Watcher) emitState(ctx context.Context, appID uuid.UUID, state string, last map[uuid.UUID]string) {

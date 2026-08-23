@@ -52,7 +52,7 @@ function DatabasesPage() {
       <div className="flex justify-end gap-2">
         <Button variant="ghost" size="sm" icon={designIcon(Archive)} loading={backupDatabase.isPending} onClick={() => backupDatabase.mutate(database.id, { onError: (error) => add({ title: "Backup failed", description: error.message, tone: "error" }), onSuccess: () => add({ title: "Backup started", tone: "success" }) })}>Backup</Button>
         <AlertDialog
-          trigger={<Button variant="ghost" size="sm" icon={designIcon(Trash)} aria-label={`Delete ${database.name}`} />}
+          trigger={<Button variant="danger" size="sm" icon={designIcon(Trash)} aria-label={`Delete ${database.name}`} />}
           title="Delete database"
           description={`The container and volume for ${database.name} will be removed. This action cannot be undone.`}
           confirmLabel="Delete database"

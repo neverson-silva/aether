@@ -19,7 +19,7 @@ export function NumberField({
 }: NumberFieldProps) {
   const control = (
     <BaseNumberField.Root {...props}>
-      <BaseNumberField.Group className="flex h-10 overflow-hidden rounded-md border border-border bg-surface-card">
+      <BaseNumberField.Group className="flex h-10 overflow-hidden rounded-md border border-border bg-surface-control">
         <BaseNumberField.Decrement className="w-10 text-muted-foreground hover:bg-surface-container">
           −
         </BaseNumberField.Decrement>

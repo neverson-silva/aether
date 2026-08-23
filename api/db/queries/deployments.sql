@@ -61,7 +61,8 @@ SET status = $2,
     container_id = $5,
     started_at = COALESCE($6, started_at),
     finished_at = COALESCE($7, finished_at)
-WHERE id = $1;
+WHERE id = $1
+  AND status NOT IN ('ready', 'failed', 'rolled_back', 'cancelled');
 
 -- name: ListQueuedDeployments :many
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,

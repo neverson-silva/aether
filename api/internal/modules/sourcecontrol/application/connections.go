@@ -88,6 +88,14 @@ func (s *Connections) ListBranches(ctx context.Context, installationID, reposito
 	return provider.GetBranches(ctx, repositoryID)
 }
 
+func (s *Connections) GetServiceFile(ctx context.Context, connectionID uuid.UUID, repositoryID, filePath, ref string) (string, error) {
+	connection, err := s.Store.GetConnection(ctx, connectionID)
+	if err != nil {
+		return "", err
+	}
+	return s.GetFile(ctx, connection.InstallationID, repositoryID, filePath, ref)
+}
+
 func (s *Connections) GetFile(ctx context.Context, installationID, repositoryID, path, ref string) (string, error) {
 	provider, err := s.ProviderForInstallation(ctx, installationID)
 	if err != nil {

@@ -111,6 +111,7 @@ export function ApplicationWizard({
   const [startCmd, setStartCmd] = useState(kind === "api" ? "./server" : "");
   const [dockerfilePath, setDockerfilePath] = useState("Dockerfile");
   const [rootFolder, setRootFolder] = useState("");
+  const [environmentTemplatePath, setEnvironmentTemplatePath] = useState(".env.example");
   const [distFolder, setDistFolder] = useState("");
   const [watchPaths, setWatchPaths] = useState("");
   const [envRows, setEnvRows] = useState<VariableRow[]>([]);
@@ -289,6 +290,7 @@ export function ApplicationWizard({
           branch,
           auto_deploy: true,
           root_directory: rootFolder,
+          environment_template_path: environmentTemplatePath.trim() || ".env.example",
           watch_paths: watchPaths.split(",").map((path) => path.trim()).filter(Boolean),
           ignore_paths: [],
           watch_root_files: true,
@@ -459,6 +461,10 @@ export function ApplicationWizard({
                                   <div className="space-y-xs">
                                     <Input label="Watch paths" value={watchPaths} onChange={(event) => setWatchPaths(event.target.value)} placeholder="apps/api/**, packages/shared/**" />
                                     <p className="text-body-sm text-muted-foreground">Only matching paths will trigger automatic builds.</p>
+                                  </div>
+                                  <div className="space-y-xs md:col-span-2">
+                                    <Input label="Environment template file" value={environmentTemplatePath} onChange={(event) => setEnvironmentTemplatePath(event.target.value)} placeholder=".env.example" />
+                                    <p className="text-body-sm text-muted-foreground">Variables found in this file will be added automatically with empty values.</p>
                                   </div>
                                 </div>
                               ),

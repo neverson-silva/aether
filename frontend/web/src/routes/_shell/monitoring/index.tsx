@@ -50,16 +50,16 @@ function SymbolIcon({ name, className = "" }: { name: keyof typeof SYMBOLS; clas
   return <Icon size={18} className={className} aria-hidden="true" />;
 }
 
-function Card({ label, icon, value, sub, gauge }: { label: string; icon: keyof typeof SYMBOLS; value: string; sub?: string; bar?: number; barClass?: string; gauge?: number }) {
+function Card({ label, icon, value, sub, gauge, network }: { label: string; icon: keyof typeof SYMBOLS; value: string; sub?: string; bar?: number; barClass?: string; gauge?: number; network?: { rx: string; tx: string } }) {
   const gaugeStatus = gauge === undefined ? "default" : gauge >= 90 ? "danger" : gauge >= 75 ? "warning" : "success";
   return (
-    <div className="bg-surface-container border border-outline-variant rounded-lg p-md">
-      <div className="flex justify-between items-start mb-sm">
+    <div className="flex min-h-[10.5rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
+      <div className="mb-sm flex min-h-5 items-center justify-between">
         <span className="font-label-caps text-label-caps text-on-surface-variant">{label}</span>
         <SymbolIcon name={icon} className="text-muted-foreground" />
       </div>
       {gauge !== undefined ? (
-        <div className="flex justify-center py-xs">
+        <div className="flex min-h-[8.5rem] items-center justify-center">
           <Gauge
             value={gauge}
             size={136}
@@ -68,16 +68,17 @@ function Card({ label, icon, value, sub, gauge }: { label: string; icon: keyof t
             aria-label={`${label}: ${gauge.toFixed(1)} percent`}
           />
         </div>
-      ) : (
-        <div className="font-headline-sm text-headline-sm text-on-surface mb-xs truncate">{value}</div>
-      )}
-      {/* <div className="font-headline-sm text-headline-sm text-on-surface mb-xs truncate">{value}</div>
-      {bar !== undefined && (
-        <div className="w-full bg-surface-bright h-1 rounded-full overflow-hidden">
-          <div className={cn("h-full rounded-full", barClass ?? "bg-primary")} style={{ width: `${Math.min(100, bar)}%` }} />
+      ) : network ? (
+        <div className="flex min-h-[8.5rem] items-center justify-center">
+          <div className="flex flex-wrap items-center justify-center gap-x-md gap-y-xs whitespace-nowrap font-body-md text-body-md text-on-surface">
+            <span className="inline-flex items-center gap-xs text-[#4ade80]">↓ {network.rx}</span>
+            <span className="inline-flex items-center gap-xs text-on-surface-variant">↑ {network.tx}</span>
+          </div>
         </div>
-      )} */}
-      {sub && <div className="font-label-caps text-label-caps text-on-surface-variant/70 truncate">{sub}</div>}
+      ) : (
+        <div className="flex min-h-[8.5rem] items-center justify-center font-headline-sm text-headline-sm text-on-surface mb-xs truncate">{value}</div>
+      )}
+      {sub && <div className="mt-auto truncate font-label-caps text-label-caps text-on-surface-variant/70">{sub}</div>}
     </div>
   );
 }
@@ -105,8 +106,8 @@ function DistributionCard({
 }) {
   if (!agg || !agg.available) {
     return (
-      <div className="bg-surface-container border border-outline-variant rounded-lg p-md">
-        <div className="flex items-center gap-2 mb-sm">
+      <div className="flex min-h-[14rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
+        <div className="mb-md flex min-h-5 items-center gap-2">
           <span className="w-2 h-2 rounded-full" style={{ background: color }} />
           <span className="font-label-caps text-label-caps text-on-surface">{title}</span>
         </div>
@@ -115,50 +116,50 @@ function DistributionCard({
     );
   }
   return (
-    <div className="bg-surface-container border border-outline-variant rounded-lg p-md">
-      <div className="flex items-center gap-2 mb-md">
+    <div className="flex min-h-[14rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
+      <div className="mb-md flex min-h-5 items-center gap-2">
         <span className="w-2 h-2 rounded-full" style={{ background: color }} />
         <span className="font-label-caps text-label-caps text-on-surface">{title}</span>
       </div>
-      <div className="grid grid-cols-2 gap-md">
-        <div>
+      <div className="grid flex-1 grid-cols-2 content-start gap-x-md gap-y-md">
+        <div className="flex min-h-[4.5rem] flex-col">
           <div className="font-label-caps text-label-caps text-on-surface-variant/60">CPU</div>
           <div className="font-headline-sm text-headline-sm text-on-surface">{agg.cpu_of_host.toFixed(1)}%</div>
           <div className="h-1 w-full bg-surface-bright rounded-full overflow-hidden mt-xs">
             <div className="h-full rounded-full" style={{ width: `${Math.min(100, agg.cpu_of_host)}%`, background: color }} />
           </div>
         </div>
-        <div>
+        <div className="flex min-h-[4.5rem] flex-col">
           <div className="font-label-caps text-label-caps text-on-surface-variant/60">Memory</div>
-          <div className="font-headline-sm text-headline-sm text-on-surface">{fmtBytes(agg.mem_usage)}</div>
+          <div className="flex min-h-[2.25rem] items-center font-headline-sm text-headline-sm text-on-surface">{fmtBytes(agg.mem_usage)}</div>
         </div>
-        <div>
+        <div className="flex min-h-[4.5rem] flex-col">
           <div className="font-label-caps text-label-caps text-on-surface-variant/60">Storage</div>
-          <div className="font-headline-sm text-headline-sm text-on-surface">{fmtBytes(agg.storage_usage)}</div>
+          <div className="flex min-h-[2.25rem] items-center font-headline-sm text-headline-sm text-on-surface">{fmtBytes(agg.storage_usage)}</div>
           <p className="font-label-caps text-label-caps text-on-surface-variant/40 mt-0.5">incl. stopped containers</p>
         </div>
-        <div>
+        <div className="flex min-h-[4.5rem] flex-col">
           <div className="font-label-caps text-label-caps text-on-surface-variant/60">Network</div>
-          <div className="font-headline-sm text-headline-sm text-on-surface">
-            <span className="text-[#4ade80]">↓{fmtRate(agg.net_rx_rate)}</span>{" "}
-            <span className="text-on-surface-variant">↑{fmtRate(agg.net_tx_rate)}</span>
+          <div className="flex min-h-[2.25rem] flex-wrap items-center gap-x-sm gap-y-0.5 font-body-md text-body-md whitespace-nowrap">
+            <span className="inline-flex items-center gap-xs text-[#4ade80]">↓ {fmtRate(agg.net_rx_rate)}</span>
+            <span className="inline-flex items-center gap-xs text-on-surface-variant">↑ {fmtRate(agg.net_tx_rate)}</span>
           </div>
         </div>
       </div>
-      <p className="font-label-caps text-label-caps text-on-surface-variant/50 mt-sm">{detail}</p>
+      <p className="mt-auto pt-sm font-label-caps text-label-caps text-on-surface-variant/50">{detail}</p>
     </div>
   );
 }
 
 function ChartPanel({ title, subtitle, legend, children }: { title: string; subtitle: string; legend: { label: string; color: string }[]; children: React.ReactNode }) {
   return (
-    <div className="bg-surface-container border border-outline-variant rounded-lg p-md flex flex-col">
-      <div className="flex flex-wrap justify-between items-center gap-sm mb-md border-b border-outline-variant pb-sm">
+    <div className="flex min-h-[14rem] flex-col rounded-lg bg-surface/40 p-md">
+      <div className="mb-md flex min-h-12 flex-wrap items-center justify-between gap-sm border-b border-outline-variant pb-sm">
         <div>
           <h2 className="font-label-caps text-label-caps text-on-surface">{title}</h2>
           <p className="font-body-sm text-body-sm text-on-surface-variant/60 mt-0.5">{subtitle}</p>
         </div>
-        <div className="flex gap-sm">
+        <div className="flex flex-wrap items-center gap-sm">
           {legend.map((l) => (
             <span key={l.label} className="flex items-center gap-xs font-label-caps text-label-caps text-on-surface-variant">
               <span className="w-2 h-2 rounded-full inline-block" style={{ background: l.color }} />
@@ -167,7 +168,7 @@ function ChartPanel({ title, subtitle, legend, children }: { title: string; subt
           ))}
         </div>
       </div>
-      <div className="flex-1 min-h-[140px]">{children}</div>
+      <div className="min-h-[9rem] flex-1">{children}</div>
     </div>
   );
 }
@@ -203,14 +204,14 @@ function Monitoring() {
 
   return (
     <div className="space-y-lg">
-      <div className="flex flex-wrap justify-between items-end gap-md">
+      <div className="flex flex-wrap items-center justify-between gap-lg">
         <div className="min-w-0">
-          <h1 className="font-display-lg text-[clamp(1.5rem,4vw,3rem)] leading-[1.1] text-on-surface mb-xs">Monitoring</h1>
+          <h1 className="mb-xs font-display-lg text-[clamp(1.5rem,4vw,3rem)] leading-[1.1] text-on-surface">Monitoring</h1>
           <p className="font-body-md text-body-md text-on-surface-variant">
             Host telemetry for <span className="font-code-md text-primary bg-primary/10 px-1 rounded">{stats?.hostname || "this host"}</span>
           </p>
         </div>
-        <div className="flex gap-sm flex-wrap items-center">
+        <div className="flex flex-wrap items-center justify-end gap-sm">
           <span className="px-md py-sm border border-outline-variant rounded bg-surface text-on-surface font-body-sm flex items-center gap-2">
             <span className={cn("w-2 h-2 rounded-full", connected ? "bg-[#4ade80]" : "bg-error")} />
             {connected ? "Live" : "Reconnecting…"}
@@ -287,6 +288,7 @@ function Monitoring() {
               icon="swap_vert"
               value={`↓${fmtRate(stats!.net_rx_rate)} ↑${fmtRate(stats!.net_tx_rate)}`}
               sub={`uptime ${fmtUptime(stats!.uptime)}`}
+              network={{ rx: fmtRate(stats!.net_rx_rate), tx: fmtRate(stats!.net_tx_rate) }}
             />
           </>
         )}
@@ -317,22 +319,22 @@ function Monitoring() {
         buckets may not sum exactly to the host.
       </p>
 
-      <div className="bg-surface-container border border-outline-variant rounded-lg p-md">
-        <div className="flex flex-wrap justify-between items-center gap-sm mb-md border-b border-outline-variant pb-sm">
+      <div className="rounded-lg border border-outline-variant bg-surface-container p-md">
+        <div className="mb-md flex flex-wrap items-center justify-between gap-md border-b border-outline-variant pb-md">
           <div>
             <h2 className="font-label-caps text-label-caps text-on-surface">Trends</h2>
             <p className="font-body-sm text-body-sm text-on-surface-variant/60 mt-0.5">
               History is persisted in the platform database; windows 5m through 7d.
             </p>
           </div>
-          <div className="flex gap-xs">
+          <div className="flex flex-wrap items-center gap-xs rounded-md border border-outline-variant/50 p-0.5">
             {WINDOWS.map((w) => (
               <button
                 key={w.id}
                 onClick={() => setWindow(w.id)}
                 className={cn(
-                  "px-md py-sm rounded font-label-caps text-label-caps transition-colors border",
-                  window === w.id ? "bg-primary/10 text-primary border-primary/30" : "border-outline-variant/50 text-on-surface-variant hover:text-on-surface"
+                  "min-w-10 rounded px-sm py-xs text-center font-label-caps text-label-caps transition-colors",
+                  window === w.id ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:text-on-surface"
                 )}
               >
                 {w.label}
@@ -451,7 +453,7 @@ function Monitoring() {
         </div>
       )}
 
-      <div className="bg-surface-container border border-outline-variant rounded-lg flex flex-col h-[400px]">
+      <div className="flex max-h-[400px] min-h-[11rem] flex-col rounded-lg border border-outline-variant bg-surface-container">
         <div className="flex flex-wrap items-center justify-between gap-sm p-sm border-b border-outline-variant bg-surface-container-high rounded-t-lg">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-primary pulse-live inline-block" />
@@ -468,7 +470,10 @@ function Monitoring() {
           onScroll={() => {
             if (logRef.current && logRef.current.scrollTop + logRef.current.clientHeight > logRef.current.scrollHeight - 60) scrollToBottom();
           }}
-          className="flex-1 bg-[#0A0A0A] p-sm overflow-y-auto font-code-md text-code-md leading-relaxed rounded-b-lg"
+          className={cn(
+            "bg-[#0A0A0A] p-sm font-code-md text-code-md leading-relaxed rounded-b-lg",
+            filteredLogs.length ? "min-h-[11rem] flex-1 overflow-y-auto" : "flex min-h-[7rem] items-center justify-center",
+          )}
         >
           {filteredLogs.map((l, i) => (
             <div key={i} className="whitespace-pre-wrap break-all text-on-surface/85">{l.line}</div>
@@ -477,17 +482,20 @@ function Monitoring() {
         </div>
       </div>
 
-      <div className="bg-surface-container border border-outline-variant rounded-lg p-md">
-        <div className="flex justify-between items-center mb-md border-b border-outline-variant pb-sm">
+      <div className="rounded-lg border border-outline-variant bg-surface-container p-md">
+        <div className="mb-md flex items-center justify-between border-b border-outline-variant pb-sm">
           <h2 className="font-label-caps text-label-caps text-on-surface">Activity Feed</h2>
         </div>
         <div className="max-h-[320px] overflow-y-auto sidebar-scroll">
-          <ActivityFeed
-            items={activityItems}
-            loading={events.isLoading}
-            realtime={connected}
-            empty={events.isError ? "Unable to load activity." : "No activity yet."}
-          />
+          {events.isLoading ? (
+            <ActivityFeed items={activityItems} loading realtime={connected} empty="Loading activity…" />
+          ) : activityItems.length ? (
+            <ActivityFeed items={activityItems} realtime={connected} empty="No activity yet." />
+          ) : (
+            <p className="py-lg text-center font-body-sm text-body-sm text-on-surface-variant/60">
+              {events.isError ? "Unable to load activity." : "No activity yet."}
+            </p>
+          )}
         </div>
       </div>
     </div>

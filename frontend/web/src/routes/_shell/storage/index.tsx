@@ -425,7 +425,7 @@ export function SnapshotSchedulesSection() {
             <Archive size={16} className={sc.enabled ? "text-status-success" : "text-muted-foreground"} />
             <span className="font-body-md text-body-md text-on-surface flex-1">{sc.volume}</span>
             <span className="font-code-md text-code-md text-on-surface-variant/60">{sc.cron}</span>
-            <Button variant="quiet" size="sm" aria-label={`Delete ${sc.volume}`} onClick={() => remove.mutate(sc.id)}><Trash size={16} /></Button>
+            <Button variant="danger" size="sm" aria-label={`Delete ${sc.volume}`} onClick={() => remove.mutate(sc.id)}><Trash size={16} /></Button>
           </div>
         ))}
         {(schedules ?? []).length === 0 && (

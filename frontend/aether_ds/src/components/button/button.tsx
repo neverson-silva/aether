@@ -1,10 +1,10 @@
 import { Button as BaseButton } from '@base-ui/react/button'
-import type { Icon } from '@phosphor-icons/react'
+import { CircleNotch, type Icon } from '@phosphor-icons/react'
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { tv } from 'tailwind-variants'
 
 const button = tv({
-  base: 'inline-flex items-center justify-center gap-2 font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50',
+  base: 'aether-button inline-flex items-center justify-center gap-2 font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50',
   variants: {
     variant: {
       primary:
@@ -13,7 +13,7 @@ const button = tv({
         'border border-primary bg-button-secondary text-primary hover:bg-button-secondary-hover',
       ghost: 'text-button-quiet-foreground hover:bg-button-quiet-hover',
       danger:
-        '!bg-[var(--semantic-action-danger)] !text-[var(--semantic-status-danger-content-on-action)] shadow-sm hover:!bg-[var(--semantic-action-danger-hover)] active:!bg-[var(--semantic-action-danger-active)]',
+        'bg-action-danger text-status-danger-foreground shadow-sm hover:bg-action-danger-hover active:bg-action-danger-active',
       success:
         'bg-button-success text-button-success-foreground shadow-sm hover:bg-button-success-hover active:bg-button-success-active',
       quiet: 'text-button-quiet-foreground hover:bg-button-quiet-hover',
@@ -64,24 +64,30 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   size = 'md',
   type = 'button',
   variant = 'primary',
+  style,
   ...props
 }, ref) {
   return (
     <BaseButton
+      data-variant={variant}
+      data-loading={loading || undefined}
       className={button({
         variant,
         size,
-        className: `${fullWidth ? 'w-full' : ''} ${loading ? 'disabled:!opacity-100' : ''} ${className}`,
+        className: `${fullWidth ? 'w-full' : ''} ${loading ? 'cursor-wait disabled:opacity-100' : ''} ${className}`,
       })}
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       ref={ref}
+      style={style}
       {...props}
     >
       {loading ? (
-        <span
-          className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        <CircleNotch
+          size={size === 'sm' ? 16 : 18}
+          weight="bold"
+          className="shrink-0 animate-spin"
           aria-hidden="true"
         />
       ) : IconComponent && iconPosition === 'start' ? (

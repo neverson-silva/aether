@@ -50,7 +50,7 @@ func (s *Store) GetByService(ctx context.Context, serviceID, organizationID uuid
 		ID: row.ID, ServiceID: row.ServiceID, ConnectionID: row.ConnectionID, OrganizationID: row.OrganizationID,
 		RepositoryID: row.RepositoryID, RepositoryOwner: row.RepositoryOwner, RepositoryName: row.RepositoryName,
 		RepositoryFullName: row.RepositoryFullName, DefaultBranch: row.DefaultBranch, Branch: row.Branch,
-		AutoDeploy: row.AutoDeploy, RootDirectory: row.RootDirectory, WatchPaths: row.WatchPaths,
+		AutoDeploy: row.AutoDeploy, RootDirectory: row.RootDirectory, EnvironmentTemplatePath: s.templatePath(ctx, row.ServiceID), WatchPaths: row.WatchPaths,
 		IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}, nil
 }
@@ -66,13 +66,24 @@ func (s *Store) Upsert(ctx context.Context, source *domain.ServiceSource) (*doma
 	if err != nil {
 		return nil, err
 	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE service_sources SET environment_template_path = $1 WHERE service_id = $2", source.EnvironmentTemplatePath, source.ServiceID); err != nil {
+		return nil, err
+	}
 	return &domain.ServiceSource{
 		ID: row.ID, ServiceID: row.ServiceID, ConnectionID: row.ConnectionID, OrganizationID: source.OrganizationID,
 		RepositoryID: row.RepositoryID, RepositoryOwner: row.RepositoryOwner, RepositoryName: row.RepositoryName,
 		RepositoryFullName: row.RepositoryFullName, DefaultBranch: row.DefaultBranch, Branch: row.Branch,
-		AutoDeploy: row.AutoDeploy, RootDirectory: row.RootDirectory, WatchPaths: row.WatchPaths,
+		AutoDeploy: row.AutoDeploy, RootDirectory: row.RootDirectory, EnvironmentTemplatePath: s.templatePath(ctx, row.ServiceID), WatchPaths: row.WatchPaths,
 		IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}, nil
+}
+
+func (s *Store) templatePath(ctx context.Context, serviceID uuid.UUID) string {
+	var value string
+	if err := s.db.QueryRowContext(ctx, "SELECT environment_template_path FROM service_sources WHERE service_id = $1", serviceID).Scan(&value); err != nil || value == "" {
+		return ".env.example"
+	}
+	return value
 }
 
 func (s *Store) DeleteByService(ctx context.Context, serviceID, organizationID uuid.UUID) error {
@@ -105,7 +116,7 @@ func sourceFromListRow(row gen.ListServiceSourcesByRepositoryRow) domain.Service
 		RepositoryID: row.RepositoryID, RepositoryOwner: row.RepositoryOwner,
 		RepositoryName: row.RepositoryName, RepositoryFullName: row.RepositoryFullName,
 		DefaultBranch: row.DefaultBranch, Branch: row.Branch, AutoDeploy: row.AutoDeploy,
-		RootDirectory: row.RootDirectory, WatchPaths: row.WatchPaths,
+		RootDirectory: row.RootDirectory, EnvironmentTemplatePath: ".env.example", WatchPaths: row.WatchPaths,
 		IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}

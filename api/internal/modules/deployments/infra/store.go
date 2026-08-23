@@ -138,12 +138,12 @@ func (s *Store) ListQueued(ctx context.Context) ([]domain.Deployment, error) {
 }
 
 func (s *Store) ListReady(ctx context.Context) ([]domain.Deployment, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT ON (app_id) id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
     created_at, started_at, finished_at
 FROM deployments
 WHERE status = 'ready'
-ORDER BY number DESC
+ORDER BY app_id, number DESC
 LIMIT 500`)
 	if err != nil {
 		return nil, mapErr(err)

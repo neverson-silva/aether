@@ -124,7 +124,7 @@ export { DateTimePicker } from './components/date-time-picker/date-time-picker'
 export type { DeploymentComposerProps } from './components/deployment-composer/deployment-composer'
 export { DeploymentComposer } from './components/deployment-composer/deployment-composer'
 export type { DialogProps } from './components/dialog/dialog'
-export { Dialog } from './components/dialog/dialog'
+export { Dialog, DialogFooter } from './components/dialog/dialog'
 export type {
   DiffLine,
   DiffViewerProps,
@@ -148,6 +148,11 @@ export type {
   EnvironmentSwitcherProps,
 } from './components/environment-switcher/environment-switcher'
 export { EnvironmentSwitcher } from './components/environment-switcher/environment-switcher'
+export type {
+  OrganizationOption,
+  OrganizationSwitcherProps,
+} from './components/organization-switcher/organization-switcher'
+export { OrganizationSwitcher } from './components/organization-switcher/organization-switcher'
 export type { ErrorBoundaryUIProps } from './components/error-boundary-ui/error-boundary-ui'
 export { ErrorBoundaryUI } from './components/error-boundary-ui/error-boundary-ui'
 export type { FieldProps } from './components/field/field'

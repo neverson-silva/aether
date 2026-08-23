@@ -49,3 +49,7 @@ type DeploymentTrigger interface {
 type ChangedFilesResolver interface {
 	GetChangedFiles(ctx context.Context, repositoryID, before, after string) ([]string, error)
 }
+
+type TemplateFileReader interface {
+	GetServiceFile(ctx context.Context, connectionID uuid.UUID, repositoryID, path, ref string) (string, error)
+}

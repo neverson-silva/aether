@@ -113,6 +113,7 @@ type Store interface {
 	SetWebhookSecret(ctx context.Context, id, orgID uuid.UUID, secret string) error
 
 	UpsertEnvVar(ctx context.Context, appID uuid.UUID, name, value string, secret bool) error
+	InsertMissingEnvVars(ctx context.Context, appID uuid.UUID, names []string) (int, error)
 	ListEnvVars(ctx context.Context, appID uuid.UUID) ([]EnvVar, error)
 	DeleteEnvVar(ctx context.Context, appID uuid.UUID, name string) error
 }

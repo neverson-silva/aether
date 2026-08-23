@@ -148,6 +148,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		CnbBuilder:     cfg.CnbBuilder,
 		Logger:         slog.Default(),
 	}
+	deploySvc.Canceller = deployWorker
 	domainsStore := domainsInfra.NewStore(pool)
 	databasesStore := databasesInfra.NewStore(pool)
 	appsSvc.Databases = databasesStore
@@ -352,6 +353,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	sourceService := &sourcecontrolApp.Service{
 		Sources: sourceStore, Deliveries: sourceStore, Deploy: webhookDeployer{svc: deploySvc},
+		Templates: sourceConnections, Apps: appsSvc,
 	}
 	sourceHandler := sourcecontrolhttp.New(sourceService, sourceConnections, githubProvider, cfg.GitHubAppSlug)
 

@@ -97,7 +97,7 @@ export function AsyncSearchInput({
         <BaseCombobox.Input
           disabled={disabled}
           placeholder={placeholder}
-          className={`h-10 w-full rounded-md border bg-surface-card pl-9 pr-10 text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 ${error || requestError ? 'border-status-danger' : 'border-border'}`}
+          className={`h-10 w-full rounded-md border bg-surface-control pl-9 pr-10 text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 ${error || requestError ? 'border-status-danger' : 'border-border'}`}
           aria-invalid={Boolean(error || requestError) || undefined}
         />
         {loading ? (

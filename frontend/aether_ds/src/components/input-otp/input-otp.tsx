@@ -29,7 +29,7 @@ export function InputOTP({
       <OTPField.Input
         render={<input />}
         maxLength={length}
-        className="h-12 w-full rounded-md border border-border bg-surface-card text-center text-lg tracking-[0.5em] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        className="h-12 w-full rounded-md border border-border bg-surface-control text-center text-lg tracking-[0.5em] outline-none focus:border-primary focus:ring-2 focus:ring-ring/20"
       />
     </OTPField.Root>
   )

@@ -348,6 +348,7 @@ SET status = $2,
     started_at = COALESCE($6, started_at),
     finished_at = COALESCE($7, finished_at)
 WHERE id = $1
+  AND status NOT IN ('ready', 'failed', 'rolled_back', 'cancelled')
 `
 
 type UpdateDeploymentStatusParams struct {

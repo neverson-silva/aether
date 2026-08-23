@@ -21,6 +21,7 @@ import (
 
 type fakeRuntime struct {
 	pulled         []string
+	pullWait       bool
 	ran            []RunSpec
 	removed        []string
 	runErr         error
@@ -35,6 +36,10 @@ type fakeRuntime struct {
 
 func (f *fakeRuntime) Pull(ctx context.Context, image string) (string, error) {
 	f.pulled = append(f.pulled, image)
+	if f.pullWait {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
 	return "pulled " + image, nil
 }
 
@@ -87,6 +92,7 @@ func (f *fakeRuntime) LogTail(ctx context.Context, containerID string, lines int
 type fakeStore struct {
 	updates []deploydomain.Deployment
 	dep     *deploydomain.Deployment
+	ready   []deploydomain.Deployment
 }
 
 func (f *fakeStore) ListQueued(ctx context.Context) ([]deploydomain.Deployment, error) {
@@ -94,6 +100,9 @@ func (f *fakeStore) ListQueued(ctx context.Context) ([]deploydomain.Deployment, 
 }
 
 func (f *fakeStore) ListReady(ctx context.Context) ([]deploydomain.Deployment, error) {
+	if f.ready != nil {
+		return f.ready, nil
+	}
 	if f.dep != nil && f.dep.Status == deploydomain.StatusReady {
 		return []deploydomain.Deployment{*f.dep}, nil
 	}
@@ -204,6 +213,23 @@ func TestWorkerDeployRunFailure(t *testing.T) {
 	last := store.updates[len(store.updates)-1]
 	if last.Status != deploydomain.StatusFailed || last.Error == "" {
 		t.Fatalf("falha de run deveria levar a failed: %+v", last)
+	}
+}
+
+func TestWorkerDeployTimeoutMarksDeploymentFailed(t *testing.T) {
+	rt := &fakeRuntime{pullWait: true}
+	store := &fakeStore{}
+	w := &Worker{Store: store, Runtime: rt, deploymentTimeout: 10 * time.Millisecond}
+
+	dep := newDeployment(t, false)
+	w.deploy(context.Background(), dep)
+
+	last := store.updates[len(store.updates)-1]
+	if last.Status != deploydomain.StatusFailed {
+		t.Fatalf("timed out deployment should be failed: %+v", last)
+	}
+	if last.Error != "deployment timed out after 20 minutes" {
+		t.Fatalf("unexpected timeout error: %q", last.Error)
 	}
 }
 
@@ -376,7 +402,7 @@ func (f *fakeWatcherNotifier) NotifyAppState(_ context.Context, appID uuid.UUID,
 	f.states[appID] = state
 }
 
-func TestWatcherMarksStoppedContainerFailed(t *testing.T) {
+func TestWatcherKeepsReadyDeploymentWhenContainerStops(t *testing.T) {
 	rt := &fakeRuntime{containerState: "exited"}
 	dep := newDeployment(t, false)
 	dep.Status = deploydomain.StatusReady
@@ -387,14 +413,14 @@ func TestWatcherMarksStoppedContainerFailed(t *testing.T) {
 
 	w.check(context.Background(), map[uuid.UUID]string{})
 
-	if len(store.updates) != 1 || store.updates[0].Status != deploydomain.StatusFailed {
-		t.Fatalf("deploy ready deveria ir a failed: %+v", store.updates)
+	if len(store.updates) != 0 {
+		t.Fatalf("watcher should not mutate a completed deployment: %+v", store.updates)
 	}
-	if len(n.deploys) != 1 || n.deploys[0].Status != "failed" {
-		t.Fatalf("evento deploy.failed não emitido: %+v", n.deploys)
+	if len(n.deploys) != 0 {
+		t.Fatalf("watcher should not emit a deployment failure: %+v", n.deploys)
 	}
 	if n.states[dep.AppID] != "error" {
-		t.Fatalf("app.state deveria ser error: %+v", n.states)
+		t.Fatalf("app.state should be error: %+v", n.states)
 	}
 }
 
@@ -419,6 +445,46 @@ func TestWatcherEmitsStateOnce(t *testing.T) {
 	}
 	if len(store.updates) != 0 {
 		t.Fatalf("container running não deveria marcar failed")
+	}
+}
+
+func TestWatcherChecksOnlyLatestReadyDeploymentPerApp(t *testing.T) {
+	appID := uuid.New()
+	old := newDeployment(t, false)
+	old.AppID = appID
+	old.Number = 1
+	old.Status = deploydomain.StatusReady
+	old.ContainerID = "old-container"
+	current := newDeployment(t, false)
+	current.AppID = appID
+	current.Number = 2
+	current.Status = deploydomain.StatusReady
+	current.ContainerID = "current-container"
+	rt := &fakeRuntime{containerState: "running"}
+	store := &fakeStore{ready: []deploydomain.Deployment{*old, *current}}
+	n := &fakeWatcherNotifier{}
+	w := &Watcher{Store: store, Runtime: rt, Notifier: n}
+
+	w.check(context.Background(), map[uuid.UUID]string{})
+
+	if n.states[appID] != "running" {
+		t.Fatalf("watcher should publish the current container state: %+v", n.states)
+	}
+}
+
+func TestWatcherIgnoresUnknownContainerState(t *testing.T) {
+	rt := &fakeRuntime{containerState: "unknown"}
+	dep := newDeployment(t, false)
+	dep.Status = deploydomain.StatusReady
+	dep.ContainerID = "container-1"
+	store := &fakeStore{dep: dep}
+	n := &fakeWatcherNotifier{}
+	w := &Watcher{Store: store, Runtime: rt, Notifier: n}
+
+	w.check(context.Background(), map[uuid.UUID]string{})
+
+	if len(n.states) != 0 {
+		t.Fatalf("unknown container state should not change app state: %+v", n.states)
 	}
 }
 

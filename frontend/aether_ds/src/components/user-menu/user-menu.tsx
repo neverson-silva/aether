@@ -26,11 +26,11 @@ export function UserMenu({
 }: UserMenuProps) {
   return (
     <Menu.Root>
-      <Menu.Trigger className="flex items-center gap-2 rounded-md px-2 py-1.5 text-start outline-none transition-colors hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-primary">
-        <span className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-primary">
+      <Menu.Trigger className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-primary">
+        <span className="flex size-13 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-body-sm font-semibold text-primary">
           {user.avatar ?? <UserCircle size={20} aria-hidden="true" />}
         </span>
-        <span className="hidden min-w-0 text-body-sm md:block">
+        <span className="hidden min-w-0 text-left text-body-sm md:block">
           <span className="block truncate font-semibold text-foreground">
             {user.name}
           </span>

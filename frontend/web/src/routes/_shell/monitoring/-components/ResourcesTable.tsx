@@ -38,14 +38,14 @@ export function ResourcesTable({
     <div className="bg-surface-container border border-outline-variant rounded-lg overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-sm p-sm border-b border-outline-variant bg-surface-container-high">
         <h2 className="font-label-caps text-label-caps text-on-surface">Resource Usage</h2>
-        <div className="flex gap-xs">
+        <div className="flex items-center gap-0.5 rounded-md border border-outline-variant/50 p-0.5">
           {(["all", "user", "aether", "unknown"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={cn(
-                "px-2 py-1 rounded font-label-caps text-label-caps transition-colors border",
-                filter === f ? "bg-primary/10 text-primary border-primary/30" : "border-outline-variant/50 text-on-surface-variant hover:text-on-surface",
+                "rounded px-sm py-xs font-label-caps text-label-caps transition-colors",
+                filter === f ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:text-on-surface",
               )}
             >
               {f === "all" ? "All" : OWNER_LABEL[f]}

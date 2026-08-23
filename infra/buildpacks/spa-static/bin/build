@@ -88,7 +88,7 @@ case "$RUNTIME" in
     tar -xJf /tmp/node.tar.xz -C "$node_layer" --strip-components=1
     rm -f /tmp/node.tar.xz
     node --version
-    npm install --global npm@11 --no-audit --no-fund
+    npm install --global npm@11 --force --no-audit --no-fund
     npm --version
     ;;
 esac
@@ -102,9 +102,9 @@ PM="npm"
 case "$RUNTIME" in
   bun)
     if [ -f bun.lock ]; then
-      bun install --frozen-lockfile --no-progress
+      bun install --force --frozen-lockfile --no-progress
     else
-      bun install --no-progress
+      bun install --force --no-progress
     fi
     PM="bun"
     ;;
@@ -116,24 +116,24 @@ case "$RUNTIME" in
   *)
     if [ -f pnpm-lock.yaml ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@' package.json; then
       PM="pnpm"
-      npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
+      npm install -g pnpm@latest --force --no-audit --no-fund >/dev/null 2>&1
     elif [ -f yarn.lock ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"yarn@' package.json; then
       PM="yarn"
-      npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
+      npm install -g yarn@latest --force --no-audit --no-fund >/dev/null 2>&1
     fi
 
     case "$PM" in
       pnpm)
-        pnpm install --frozen-lockfile --prod=false
+        pnpm install --force --frozen-lockfile --prod=false
         ;;
       yarn)
-        yarn install --frozen-lockfile --non-interactive --production=false
+        yarn install --force --frozen-lockfile --non-interactive --production=false
         ;;
       *)
         if [ -f package-lock.json ]; then
-          npm ci --include=dev --no-audit --no-fund
+          npm ci --force --include=dev --no-audit --no-fund
         else
-          npm install --include=dev --no-audit --no-fund
+          npm install --force --include=dev --no-audit --no-fund
         fi
         ;;
     esac

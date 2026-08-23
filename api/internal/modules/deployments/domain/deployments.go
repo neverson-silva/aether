@@ -39,6 +39,7 @@ func (s Status) Valid() bool {
 }
 
 var terminal = map[Status]bool{
+	StatusReady:      true,
 	StatusFailed:     true,
 	StatusRolledBack: true,
 	StatusCancelled:  true,
@@ -48,7 +49,6 @@ var transitions = map[Status][]Status{
 	StatusBuilding:       {StatusStarting, StatusFailed, StatusCancelled},
 	StatusStarting:       {StatusHealthChecking, StatusFailed},
 	StatusHealthChecking: {StatusReady, StatusFailed},
-	StatusReady:          {StatusFailed},
 }
 
 func (s Status) CanTransition(to Status) bool {

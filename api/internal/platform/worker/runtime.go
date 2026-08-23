@@ -361,6 +361,11 @@ func (podmanRuntime) Remove(ctx context.Context, containerID string) error {
 	return err
 }
 
+func (podmanRuntime) RemoveWithVolumes(ctx context.Context, containerID string) error {
+	_, err := exec.CommandContext(ctx, "podman", "rm", "-f", "--volumes", containerID).CombinedOutput()
+	return err
+}
+
 func (podmanRuntime) RemoveByLabel(ctx context.Context, label string) error {
 	out, err := exec.CommandContext(ctx, "podman", "ps", "-aq", "--filter", "label="+label).CombinedOutput()
 	if err != nil {

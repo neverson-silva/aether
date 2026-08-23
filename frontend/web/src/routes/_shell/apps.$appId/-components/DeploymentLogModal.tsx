@@ -8,11 +8,7 @@ export function DeploymentLogModal({ appId, deploymentId, onClose }: { appId: st
 
   return (
     <Dialog open={!!deploymentId} onOpenChange={(open) => { if (!open) onClose(); }} title={`Deployment #${log.data?.number ?? ""} log`} size="lg" overflow="hidden" trigger={<button type="button" className="hidden" aria-hidden="true" tabIndex={-1} />}>
-      <div className="min-h-0 overflow-hidden pt-1">
-        <div className="mt-1">
-          <LogViewer lines={lines} loading={log.isLoading} />
-        </div>
-      </div>
+      <LogViewer lines={lines} loading={log.isLoading} fullHeight />
     </Dialog>
   );
 }

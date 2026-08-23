@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -13,15 +14,21 @@ import (
 )
 
 type Deployments struct {
-	Store    deploydomain.Store
-	Apps     AppStore
-	Resolver *variablesApp.Resolver
-	Queue    queue.Queue
-	Notifier DeployNotifier
+	Store     deploydomain.Store
+	Apps      AppStore
+	Resolver  *variablesApp.Resolver
+	Queue     queue.Queue
+	Notifier  DeployNotifier
+	Canceller DeploymentCanceller
+	mu        sync.Mutex
 }
 
 type DeployNotifier interface {
 	NotifyDeploy(ctx context.Context, event deploydomain.DeployEvent)
+}
+
+type DeploymentCanceller interface {
+	CancelDeployment(id uuid.UUID) bool
 }
 
 type AppStore interface {
@@ -45,10 +52,6 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 	if opts.Trigger == "" {
 		opts.Trigger = "api"
 	}
-	number, err := d.Store.NextNumber(ctx, appID)
-	if err != nil {
-		return nil, err
-	}
 	snapshot, err := d.envSnapshot(ctx, appID, orgID)
 	if err != nil {
 		return nil, err
@@ -65,11 +68,17 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 			"retries": app.HealthCheck.Retries,
 		},
 	})
-	dep, err := d.Store.CreateDeployment(ctx, &deploydomain.Deployment{
-		AppID: appID, Number: number, Status: deploydomain.StatusQueued,
-		Trigger: opts.Trigger, TriggeredBy: opts.TriggeredBy, CommitSHA: opts.CommitSHA,
-		ImageRef: opts.ImageRef, EnvSnapshot: snapshot, DeploySpec: spec,
-	})
+	d.mu.Lock()
+	number, err := d.Store.NextNumber(ctx, appID)
+	var dep *deploydomain.Deployment
+	if err == nil {
+		dep, err = d.Store.CreateDeployment(ctx, &deploydomain.Deployment{
+			AppID: appID, Number: number, Status: deploydomain.StatusQueued,
+			Trigger: opts.Trigger, TriggeredBy: opts.TriggeredBy, CommitSHA: opts.CommitSHA,
+			ImageRef: opts.ImageRef, EnvSnapshot: snapshot, DeploySpec: spec,
+		})
+	}
+	d.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -101,21 +110,49 @@ func (d *Deployments) Rollback(ctx context.Context, appID, orgID uuid.UUID, by s
 	if last.ImageRef == "" {
 		return nil, deploydomain.ErrValidation
 	}
+	d.mu.Lock()
 	number, err := d.Store.NextNumber(ctx, appID)
-	if err != nil {
-		return nil, err
+	var next *deploydomain.Deployment
+	if err == nil {
+		next, err = d.Store.CreateRollback(ctx, &deploydomain.Deployment{
+			AppID: appID, Number: number, Status: deploydomain.StatusQueued,
+			Trigger: "rollback", TriggeredBy: by, CommitSHA: last.CommitSHA, ImageRef: last.ImageRef,
+			EnvSnapshot: last.EnvSnapshot, DeploySpec: last.DeploySpec, ComposeYAML: last.ComposeYAML,
+			ComposeHash: last.ComposeHash,
+		}, last.ID)
 	}
-	next, err := d.Store.CreateRollback(ctx, &deploydomain.Deployment{
-		AppID: appID, Number: number, Status: deploydomain.StatusQueued,
-		Trigger: "rollback", TriggeredBy: by, CommitSHA: last.CommitSHA, ImageRef: last.ImageRef,
-		EnvSnapshot: last.EnvSnapshot, DeploySpec: last.DeploySpec, ComposeYAML: last.ComposeYAML,
-		ComposeHash: last.ComposeHash,
-	}, last.ID)
+	d.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	d.enqueue(ctx, next, orgID)
 	return next, nil
+}
+
+func (d *Deployments) Cancel(ctx context.Context, appID, orgID, depID uuid.UUID) (*deploydomain.Deployment, error) {
+	dep, err := d.Get(ctx, depID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if dep.AppID != appID {
+		return nil, deploydomain.ErrForbidden
+	}
+	if err := dep.Transition(deploydomain.StatusCancelled); err != nil {
+		return nil, err
+	}
+	dep.Error = "deployment cancelled by user"
+	if err := d.Store.UpdateStatus(ctx, dep.ID, dep.Status, dep.Error, dep.ImageRef, dep.ContainerID, dep.StartedAt, dep.FinishedAt); err != nil {
+		return nil, err
+	}
+	if d.Canceller != nil {
+		d.Canceller.CancelDeployment(dep.ID)
+	}
+	if d.Notifier != nil {
+		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{
+			AppID: dep.AppID, DepID: dep.ID, Status: string(dep.Status), Detail: dep.Error,
+		})
+	}
+	return dep, nil
 }
 
 func (d *Deployments) Transition(ctx context.Context, appID, orgID, depID uuid.UUID, to deploydomain.Status) (*deploydomain.Deployment, error) {

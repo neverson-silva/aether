@@ -20,6 +20,7 @@ export * from "./use-app-detail";
 export * from "./use-create-app";
 export * from "./use-delete-app";
 export * from "./use-deploy";
+export * from "./use-cancel-deployment";
 export * from "./use-rollback";
 export * from "./use-deployments";
 export * from "./use-stats";

@@ -26,7 +26,7 @@ NET_NAME="${AETHER_NET:-aether-net}"
 
 PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
-PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-5432}}"
+PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
 
 REDIS_CONTAINER="aether-redis"
 REDIS_IMAGE="${AETHER_REDIS_IMAGE:-docker.io/library/redis:7-alpine}"
@@ -404,12 +404,32 @@ ensure_postgres() {
     if [[ -n "$published_port" ]]; then
       PG_PORT="$published_port"
     else
-      fail "PostgreSQL container '$PG_CONTAINER' has no host port published for 5432/tcp. Set AETHER_PG_PORT and recreate the container with the existing aether-pg-data volume."
+      local volume_name
+      volume_name="$($runtime inspect "$PG_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)"
+      if [[ "$volume_name" != "aether-pg-data" ]]; then
+        fail "PostgreSQL container '$PG_CONTAINER' has no host port and does not use the expected aether-pg-data volume. Refusing to recreate it automatically."
+      fi
+      info "PostgreSQL container '$PG_CONTAINER' has no host port — recreating it with the existing aether-pg-data volume."
+      $runtime rm -f "$PG_CONTAINER" >/dev/null
+      $runtime run -d \
+        --name "$PG_CONTAINER" \
+        --network "$NET_NAME" \
+        --network-alias "$PG_CONTAINER" \
+        -e "POSTGRES_USER=$DB_USER" \
+        -e "POSTGRES_PASSWORD=$password" \
+        -e "POSTGRES_DB=$DB_NAME" \
+        -p "$PG_PORT:5432" \
+        -v aether-pg-data:/var/lib/postgresql/data \
+        --restart unless-stopped \
+        "$PG_IMAGE" >/dev/null || fail "Failed to recreate the PostgreSQL container."
+      info "PostgreSQL recreated on 127.0.0.1:$PG_PORT using the existing database volume."
     fi
-    info "PostgreSQL already exists ($PG_CONTAINER) — using the existing one."
-    local running
-    running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$PG_CONTAINER" || true)"
-    [[ "$running" -eq 0 ]] && $runtime start "$PG_CONTAINER"
+    if [[ -n "$published_port" ]]; then
+      info "PostgreSQL already exists ($PG_CONTAINER) — using the existing one."
+      local running
+      running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$PG_CONTAINER" || true)"
+      [[ "$running" -eq 0 ]] && $runtime start "$PG_CONTAINER"
+    fi
     $runtime exec "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER ROLE \"$DB_USER\" PASSWORD '$password';" >/dev/null 2>&1 \
       && info "Password synced in PostgreSQL." \
       || warn "Could not sync the password — check the container."

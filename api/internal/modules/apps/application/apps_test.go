@@ -203,6 +203,23 @@ func TestEnvVars(t *testing.T) {
 	if len(vars) != 2 {
 		t.Fatalf("esperava 2 vars, got %d", len(vars))
 	}
+	imported, err := e.svc.ImportMissingEnvVars(e.ctx, app.ID, e.orgID, []string{"DATABASE_URL", "REDIS_URL", "REDIS_URL"})
+	if err != nil || imported != 1 {
+		t.Fatalf("import missing vars: imported=%d err=%v", imported, err)
+	}
+	imported, err = e.svc.ImportMissingEnvVars(e.ctx, app.ID, e.orgID, []string{"DATABASE_URL", "REDIS_URL"})
+	if err != nil || imported != 0 {
+		t.Fatalf("repeated import should be idempotent: imported=%d err=%v", imported, err)
+	}
+	vars, err = e.svc.ListEnv(e.ctx, app.ID, e.orgID)
+	if err != nil || len(vars) != 3 {
+		t.Fatalf("list after import: vars=%d err=%v", len(vars), err)
+	}
+	for _, v := range vars {
+		if v.Name == "DATABASE_URL" && v.Value != "postgres://y" {
+			t.Fatalf("existing value was changed: %q", v.Value)
+		}
+	}
 	for _, v := range vars {
 		if v.Name == "API_KEY" && v.Value == "supersecret" {
 			t.Fatalf("secret vazado no list")
@@ -217,8 +234,8 @@ func TestEnvVars(t *testing.T) {
 		t.Fatalf("delete env: %v", err)
 	}
 	vars, _ = e.svc.ListEnv(e.ctx, app.ID, e.orgID)
-	if len(vars) != 1 {
-		t.Fatalf("esperava 1 var após delete, got %d", len(vars))
+	if len(vars) != 2 {
+		t.Fatalf("esperava 2 vars após delete, got %d", len(vars))
 	}
 }
 

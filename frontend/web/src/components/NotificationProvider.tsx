@@ -179,7 +179,7 @@ export function BellButton() {
     >
       <Bell size={18} aria-hidden="true" />
       {unread > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-error text-on-error font-label-caps text-[10px] flex items-center justify-center">
+        <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-action-danger text-primary-foreground font-label-caps text-[10px] flex items-center justify-center">
           {unread > 99 ? "99+" : unread}
         </span>
       )}

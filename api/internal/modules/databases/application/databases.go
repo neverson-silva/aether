@@ -122,11 +122,22 @@ func (d *Databases) Delete(ctx context.Context, id, orgID uuid.UUID) error {
 		return err
 	}
 	if d.Runtime != nil {
-		_ = d.Runtime.RemoveByLabel(ctx, "aether.database-id="+id.String())
+		runtime, hasVolumeRemoval := d.Runtime.(interface {
+			RemoveWithVolumes(context.Context, string) error
+		})
 		if db.ContainerID != "" {
-			_ = d.Runtime.Remove(ctx, db.ContainerID)
+			if hasVolumeRemoval {
+				_ = runtime.RemoveWithVolumes(ctx, db.ContainerID)
+			} else {
+				_ = d.Runtime.Remove(ctx, db.ContainerID)
+			}
 		}
-		_ = d.Runtime.Remove(ctx, "db-"+db.Name)
+		if hasVolumeRemoval {
+			_ = runtime.RemoveWithVolumes(ctx, "db-"+db.Name)
+		} else {
+			_ = d.Runtime.Remove(ctx, "db-"+db.Name)
+		}
+		_ = d.Runtime.RemoveByLabel(ctx, "aether.database-id="+id.String())
 	}
 	return d.Store.DeleteDatabase(ctx, id, orgID)
 }

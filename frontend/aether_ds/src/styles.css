@@ -14,10 +14,49 @@ body {
   color: var(--semantic-content-primary);
   font-family: var(--font-family-sans);
 }
+.aether-variable-row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
+}
+.aether-variable-row > button {
+  align-self: center;
+}
+.aether-variable-key {
+  grid-column: 1;
+  grid-row: 1;
+}
+.aether-variable-value {
+  grid-column: 2;
+  grid-row: 1;
+}
+.aether-variable-remove {
+  grid-column: 3;
+  grid-row: 1;
+  width: 1.125rem;
+}
 button:not(:disabled),
 [role="button"]:not(:disabled) {
   cursor: pointer;
 }
+
+.aether-button[data-variant="primary"] { background-color: var(--semantic-action-primary); color: var(--semantic-content-on-primary); }
+.aether-button[data-variant="primary"]:not(:disabled):hover { background-color: var(--semantic-action-primary-hover); }
+.aether-button[data-variant="primary"]:not(:disabled):active { background-color: var(--semantic-action-primary-active); }
+.aether-button[data-variant="secondary"] { background-color: var(--semantic-action-secondary); border-color: var(--semantic-action-secondary-border); color: var(--semantic-action-secondary-content); }
+.aether-button[data-variant="secondary"]:not(:disabled):hover,
+.aether-button[data-variant="secondary"]:not(:disabled):active,
+.aether-button[data-variant="outline"]:not(:disabled):hover,
+.aether-button[data-variant="outline"]:not(:disabled):active { background-color: var(--semantic-action-secondary-hover); }
+.aether-button[data-variant="danger"] { background-color: var(--semantic-action-danger); color: var(--semantic-status-danger-content-on-action); }
+.aether-button[data-variant="danger"]:not(:disabled):hover { background-color: var(--semantic-action-danger-hover); }
+.aether-button[data-variant="danger"]:not(:disabled):active { background-color: var(--semantic-action-danger-active); }
+.aether-button[data-variant="success"] { background-color: var(--semantic-action-success); color: var(--semantic-content-on-success); }
+.aether-button[data-variant="success"]:not(:disabled):hover { background-color: var(--semantic-action-success-hover); }
+.aether-button[data-variant="success"]:not(:disabled):active { background-color: var(--semantic-action-success-active); }
+.aether-button[data-variant="ghost"], .aether-button[data-variant="quiet"] { color: var(--semantic-action-quiet-content); }
+.aether-button[data-variant="ghost"]:not(:disabled):hover, .aether-button[data-variant="ghost"]:not(:disabled):active,
+.aether-button[data-variant="quiet"]:not(:disabled):hover, .aether-button[data-variant="quiet"]:not(:disabled):active { background-color: var(--semantic-action-quiet-hover); }
+.aether-button[data-variant="outline"] { background-color: transparent; border-color: var(--semantic-action-secondary-border); color: var(--semantic-action-secondary-content); }
+.aether-button[data-loading="true"] { opacity: 1; cursor: wait; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

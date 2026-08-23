@@ -38,7 +38,7 @@ export function Select({
     >
       <BaseSelect.Trigger
         disabled={disabled}
-        className="flex h-10 w-full items-center justify-between rounded-md border border-border bg-surface-card px-3 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="flex h-10 w-full items-center justify-between rounded-md border border-border bg-surface-control px-3 hover:bg-surface-container-highest/40 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         <BaseSelect.Value placeholder={placeholder} />
         <BaseSelect.Icon>

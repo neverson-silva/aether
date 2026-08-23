@@ -235,6 +235,7 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 		Branch             string    `json:"branch"`
 		AutoDeploy         bool      `json:"auto_deploy"`
 		RootDirectory      string    `json:"root_directory"`
+		EnvironmentTemplatePath string `json:"environment_template_path"`
 		WatchPaths         []string  `json:"watch_paths"`
 		IgnorePaths        []string  `json:"ignore_paths"`
 		WatchRootFiles     bool      `json:"watch_root_files"`
@@ -247,7 +248,7 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 		ServiceID: serviceID, ConnectionID: request.ConnectionID, OrganizationID: orgID(c),
 		RepositoryID: request.RepositoryID, RepositoryOwner: request.RepositoryOwner, RepositoryName: request.RepositoryName,
 		RepositoryFullName: request.RepositoryFullName, DefaultBranch: request.DefaultBranch, Branch: request.Branch,
-		AutoDeploy: request.AutoDeploy, RootDirectory: request.RootDirectory, WatchPaths: request.WatchPaths,
+		AutoDeploy: request.AutoDeploy, RootDirectory: request.RootDirectory, EnvironmentTemplatePath: request.EnvironmentTemplatePath, WatchPaths: request.WatchPaths,
 		IgnorePaths: request.IgnorePaths, WatchRootFiles: request.WatchRootFiles,
 	})
 	if err != nil {
@@ -255,10 +256,37 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "service or source connection not found"})
 			return
 		}
+		if strings.Contains(err.Error(), "repository path escapes checkout") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, source)
+}
+
+func (h *Handler) ImportServiceTemplate(c *gin.Context) {
+	serviceID, err := uuid.Parse(c.Param("appID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app id"})
+		return
+	}
+	source, err := h.Service.GetSource(c.Request.Context(), serviceID, orgID(c))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "service source not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	imported, found, err := h.Service.ImportTemplate(c.Request.Context(), source)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"imported": imported, "found": found})
 }
 
 func (h *Handler) DeleteServiceSource(c *gin.Context) {

@@ -30,7 +30,7 @@ import {
 } from "../../../hooks";
 import { AlertDialog, Badge, BulkActionBar, Button, Card, Dialog, EnvironmentSwitcher, Field, Input, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
 import type { BadgeProps, Icon as DesignIcon } from "@aether/design-system";
-import { CaretDown, CaretUp, CheckCircle, Database, Gear, Info, PencilSimple, Plus, RocketLaunch, Star, Trash, Warning, XCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, CheckCircle, Database, Gear, Info, PencilSimple, Plus, RocketLaunch, Star, Trash, Warning } from "@phosphor-icons/react";
 import { CreateServiceLauncher } from "../../../components/CreateServiceLauncher";
 import { DatabaseWizard } from "../../../components/DatabaseWizard";
 import { TechIcon } from "../../../components/TechIcon";
@@ -48,7 +48,7 @@ const designIcon = (icon: typeof CheckCircle) => icon as unknown as DesignIcon;
 function projectStatus(statuses: string[]): { label: string; tone: NonNullable<BadgeProps["tone"]>; icon: DesignIcon } {
   const normalized = statuses.map((status) => status.trim().toLowerCase()).filter(Boolean);
   if (normalized.some((status) => ["failed", "cancelled", "rolled_back", "error", "dead"].includes(status))) {
-    return { label: "Failed", tone: "danger", icon: designIcon(XCircle) };
+    return { label: "Degraded", tone: "warning", icon: designIcon(Warning) };
   }
   if (normalized.some((status) => ["degraded", "warning"].includes(status))) {
     return { label: "Degraded", tone: "warning", icon: designIcon(Warning) };

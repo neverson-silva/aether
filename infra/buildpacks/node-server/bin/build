@@ -92,7 +92,7 @@ case "$RUNTIME" in
     tar -xJf /tmp/node.tar.xz -C "$runtime_layer" --strip-components=1
     rm -f /tmp/node.tar.xz
     node --version
-    npm install --global npm@11 --no-audit --no-fund
+    npm install --global npm@11 --force --no-audit --no-fund
     npm --version
     ;;
 esac
@@ -107,9 +107,9 @@ PM="npm"
 case "$RUNTIME" in
   bun)
     if [ -f bun.lock ]; then
-      bun install --frozen-lockfile --no-progress
+      bun install --force --frozen-lockfile --no-progress
     else
-      bun install --no-progress
+      bun install --force --no-progress
     fi
     PM="bun"
     ;;
@@ -120,24 +120,24 @@ case "$RUNTIME" in
   *)
     if [ -f pnpm-lock.yaml ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@' package.json; then
       PM="pnpm"
-      npm install -g pnpm@latest --no-audit --no-fund >/dev/null 2>&1
+      npm install -g pnpm@latest --force --no-audit --no-fund >/dev/null 2>&1
     elif [ -f yarn.lock ] || grep -qE '"packageManager"[[:space:]]*:[[:space:]]*"yarn@' package.json; then
       PM="yarn"
-      npm install -g yarn@latest --no-audit --no-fund >/dev/null 2>&1
+      npm install -g yarn@latest --force --no-audit --no-fund >/dev/null 2>&1
     fi
 
     case "$PM" in
       pnpm)
-        pnpm install --frozen-lockfile --prod=false
+        pnpm install --force --frozen-lockfile --prod=false
         ;;
       yarn)
-        yarn install --frozen-lockfile --non-interactive --production=false
+        yarn install --force --frozen-lockfile --non-interactive --production=false
         ;;
       *)
         if [ -f package-lock.json ]; then
-          npm ci --include=dev --no-audit --no-fund
+          npm ci --force --include=dev --no-audit --no-fund
         else
-          npm install --include=dev --no-audit --no-fund
+          npm install --force --include=dev --no-audit --no-fund
         fi
         ;;
     esac
@@ -194,7 +194,7 @@ case "$RUNTIME" in
     # ---- framework profiles (Node) ----
     if grep -qE '"@analogjs/[^" ]+"[[:space:]]*:' package.json; then
       PROFILE="analog"
-    elif [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ]; then
+    elif [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ] || grep -qE '"next"[[:space:]]*:' package.json; then
       PROFILE="next"
     elif [ -f nuxt.config.js ] || [ -f nuxt.config.ts ] || [ -f nuxt.config.mjs ]; then
       PROFILE="nuxt"
@@ -240,13 +240,16 @@ case "$RUNTIME" in
       next)
         if grep -qE "output[[:space:]]*:[[:space:]]*['\"]standalone['\"]" next.config.* 2>/dev/null \
           && [ -d .next/standalone ]; then
-          if [ -d .next/static ] && [ -d .next/standalone/.next ]; then
+          if [ -d .next/static ]; then
+            mkdir -p .next/standalone/.next
             cp -a .next/static .next/standalone/.next/ 2>/dev/null || true
           fi
           [ -d public ] && cp -a public .next/standalone/ 2>/dev/null || true
-          EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec node .next/standalone/server.js'
+          echo "aether/node-server: Next.js standalone production server"
+          EXEC_LINE='export NODE_ENV=production; export HOSTNAME="${HOSTNAME:-0.0.0.0}"; export PORT="${PORT:-8080}"; exec node .next/standalone/server.js'
         else
-          EXEC_LINE='export NODE_ENV=production; export PORT="${PORT:-8080}"; exec npx next start -p ${PORT:-8080}'
+          echo "aether/node-server: Next.js production server"
+          EXEC_LINE='export NODE_ENV=production; export HOSTNAME="${HOSTNAME:-0.0.0.0}"; export PORT="${PORT:-8080}"; exec node_modules/.bin/next start -p "${PORT:-8080}"'
         fi
         ;;
       nuxt)

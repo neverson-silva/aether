@@ -226,6 +226,25 @@ func (s *Store) UpsertEnvVar(ctx context.Context, appID uuid.UUID, name, value s
 	return mapErr(s.q.UpsertAppEnv(ctx, gen.UpsertAppEnvParams{AppID: appID, Name: name, Value: stored, Secret: secret}))
 }
 
+func (s *Store) InsertMissingEnvVars(ctx context.Context, appID uuid.UUID, names []string) (int, error) {
+	if len(names) == 0 {
+		return 0, nil
+	}
+	inserted := 0
+	for _, name := range names {
+		result, err := s.db.ExecContext(ctx, "INSERT INTO app_env (app_id, name, value, secret) VALUES ($1, $2, '', false) ON CONFLICT (app_id, name) DO NOTHING", appID, name)
+		if err != nil {
+			return inserted, mapErr(err)
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return inserted, err
+		}
+		inserted += int(count)
+	}
+	return inserted, nil
+}
+
 func (s *Store) ListEnvVars(ctx context.Context, appID uuid.UUID) ([]domain.EnvVar, error) {
 	rows, err := s.q.ListAppEnv(ctx, appID)
 	if err != nil {

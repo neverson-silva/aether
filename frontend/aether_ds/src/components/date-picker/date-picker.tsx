@@ -76,7 +76,7 @@ export function DatePicker({
           aria-invalid={Boolean(error) || undefined}
           aria-required={required || undefined}
           title={title}
-          className={`flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-surface-card px-3 text-start text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 ${error ? 'border-status-danger' : 'border-border'} ${className}`}
+          className={`flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-surface-control px-3 text-start text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 ${error ? 'border-status-danger' : 'border-border'} ${className}`}
         >
           <span
             className={

@@ -57,7 +57,7 @@ export function CommandPalette({
     >
       {trigger ? <Dialog.Trigger nativeButton={trigger.type === 'button'} render={trigger} /> : null}
       <Dialog.Portal>
-        <Dialog.Backdrop style={{ position: 'fixed', inset: 0, zIndex: 2147483000, opacity: 1 }} className="fixed inset-0 z-[100] bg-black/60 transition-opacity duration-200 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Backdrop style={{ position: 'fixed', inset: 0, zIndex: 2147483000, opacity: 1 }} className="fixed inset-0 z-[100] bg-overlay-backdrop transition-opacity duration-200 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <Dialog.Viewport style={{ position: 'fixed', inset: 0, zIndex: 2147483001, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', width: '100%', padding: '10vh 1rem 1rem', pointerEvents: 'auto' }} className="fixed inset-0 z-[100] flex w-full items-start justify-center p-4 pt-[10vh]">
           <Dialog.Popup style={{ width: 'min(92vw, 48rem)', maxWidth: '48rem', maxHeight: 'calc(42.336vh + 5rem)', opacity: 1, visibility: 'visible', pointerEvents: 'auto' }} className="!box-border !w-[min(92vw,48rem)] !max-w-[48rem] !min-w-0 max-h-[calc(42.336vh+5rem)] overflow-hidden rounded-xl border border-border bg-surface-popover shadow-lg outline-none data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
             <div className="flex items-center gap-3 border-b border-border px-4">

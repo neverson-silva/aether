@@ -100,8 +100,10 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
       }
 
       const server = getServer();
-      const wsServer = server.replace("http", "ws");
-      const ws = new WebSocket(wsServer + wsUrl + "?shell=" + encodeURIComponent(shellCmd));
+      const wsURL = new URL(wsUrl, server || window.location.origin);
+      wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
+      wsURL.searchParams.set("shell", shellCmd);
+      const ws = new WebSocket(wsURL);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
