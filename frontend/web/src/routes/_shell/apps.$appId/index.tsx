@@ -37,6 +37,7 @@ import {
   useTimeline,
 } from "@/hooks";
 import { EnvEditorModal } from "../../../components/EnvEditorModal";
+import { useRealtimeEvent } from "../../../components/RealtimeProvider";
 import { DeploymentsTab } from "./-components/DeploymentsTab";
 import { ArrowSquareOut, ArrowsClockwise, ArrowUUpLeft, ChartLine, Check, Code, Copy, Database, Gear, Gauge, GitBranch, Globe, HardDrives, Link, ListChecks, MagnifyingGlass, PencilSimple, Play, Plus, RocketLaunch, Stop, Target, TerminalWindow, Trash, Users, X } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
@@ -109,7 +110,6 @@ function AppDetail() {
 
   const { add } = useToast();
   const [tab, setTab] = useState<Tab>("overview");
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRollback, setConfirmRollback] = useState(false);
   const [webhookModal, setWebhookModal] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -119,6 +119,7 @@ function AppDetail() {
   const [copiedInt, setCopiedInt] = useState(false);
   const [autodeploy, setAutodeploy] = useState(false);
   const [viewLogsDep, setViewLogsDep] = useState<string | null>(null);
+  const [realtimeDeploymentActive, setRealtimeDeploymentActive] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (editOpen && app) {
@@ -130,7 +131,22 @@ function AppDetail() {
   useEffect(() => {
     if (source) setAutodeploy(source.auto_deploy);
   }, [source]);
-  const latest = deployments?.[0];
+  useEffect(() => {
+    setRealtimeDeploymentActive(null);
+  }, [appId]);
+  useRealtimeEvent((event, replay) => {
+    if (replay || !event.type.startsWith("deploy.")) return;
+    const eventAppId = event.app_id || String(event.payload?.app_id || event.payload?.service_id || "");
+    if (eventAppId !== appId) return;
+    const status = event.type.slice("deploy.".length);
+    if (isDeploymentActive(status)) {
+      setRealtimeDeploymentActive(true);
+    } else if (["ready", "failed", "rolled_back", "cancelled"].includes(status)) {
+      setRealtimeDeploymentActive(false);
+    }
+  });
+  const latest = deployments?.slice().sort((a, b) => b.number - a.number)[0];
+  const deploymentInProgress = deploy.isPending || (realtimeDeploymentActive ?? Boolean(latest && isDeploymentActive(latest.status)));
   const state = states?.[appId] ?? "unknown";
   const runtimeStatus = mapRuntimeStatus(state, latest?.status);
   const running = state === "running";
@@ -173,6 +189,12 @@ function AppDetail() {
     );
   };
 
+  const startDeployment = () => {
+    deploy.mutateAsync(undefined).catch((e) => {
+      add({ title: "Operation failed", description: e instanceof Error ? e.message : "Try again later.", tone: "error" });
+    });
+  };
+
   return (
     <div className="space-y-lg">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
@@ -194,9 +216,6 @@ function AppDetail() {
           <div className="flex gap-2">
             <button className="text-on-surface-variant hover:text-primary transition-colors" onClick={() => setEditOpen(true)} title="Edit">
               <PencilSimple size={18} />
-            </button>
-            <button className="text-on-surface-variant hover:text-error transition-colors" onClick={() => setConfirmDelete(true)} title="Delete">
-              <Trash size={18} />
             </button>
           </div>
         </div>
@@ -230,8 +249,12 @@ function AppDetail() {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button icon={designIcon(RocketLaunch)} onClick={() => run(() => deploy.mutateAsync(undefined), "Deploy started")}>
-                Deploy
+              <Button
+                icon={designIcon(RocketLaunch)}
+                loading={deploymentInProgress}
+                onClick={startDeployment}
+              >
+                {deploymentInProgress ? "Deploying" : "Deploy"}
               </Button>
               <Button variant="secondary" icon={designIcon(ArrowsClockwise)} onClick={() => run(() => rebuild.mutateAsync(app.id), "Rebuild started")}>
                 Rebuild
@@ -261,6 +284,10 @@ function AppDetail() {
                   disabled={!source || saveSource.isPending}
                   onClick={() => {
                     if (!source) return;
+                    if (!source.connection_id || !source.repository_id) {
+                      add({ title: "Source control configuration is incomplete", description: "Reconnect the repository before enabling autodeploy.", tone: "error" });
+                      return;
+                    }
                     const next = !source.auto_deploy;
                     setAutodeploy(next);
                     saveSource.mutate({
@@ -747,9 +774,7 @@ function AppDetail() {
       </Dialog>
 
       <AlertDialog
-        trigger={<button type="button" className="hidden" aria-hidden="true" tabIndex={-1} />}
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
+        trigger={<button type="button" className="text-on-surface-variant hover:text-error transition-colors" title="Delete"><Trash size={18} /></button>}
         onConfirm={() =>
           deleteApp.mutate(app.id, {
             onSuccess: () => {
@@ -760,7 +785,7 @@ function AppDetail() {
           })
         }
         title="Delete application"
-        description={`Remove ${app.name} and all deployments? Active containers will be stopped. Type the service name to confirm.`}
+        description={`Remove ${app.name} and all deployments? Active containers will be stopped.`}
         confirmLabel="Delete"
       />
       <AlertDialog

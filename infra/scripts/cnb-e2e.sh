@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../.."
 
 export PATH="$PATH:$HOME/.local/bin"
 export DOCKER_HOST="${DOCKER_HOST:-unix://${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock}"
-BUILDER="${AETHER_CNB_BUILDER:-aether/builder:node-spa}"
+BUILDER="${AETHER_CNB_BUILDER:-${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa}"
 
 command -v pack >/dev/null 2>&1 || { echo "pack não encontrado"; exit 1; }
 command -v podman >/dev/null 2>&1 || { echo "podman não encontrado"; exit 1; }

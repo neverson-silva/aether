@@ -36,7 +36,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({
   }
   const control = (
     <div
-      className={`flex items-center gap-1 rounded-md border border-border bg-surface-card transition-colors focus-within:!border-primary focus-within:ring-2 focus-within:ring-primary/20 ${error ? 'border-status-danger' : ''}`}
+      className={`flex items-center gap-1 rounded-md border border-border bg-surface-card transition-colors focus-within:!border-primary focus-within:ring-2 focus-within:ring-primary/20 group-data-[invalid]:border-status-danger group-data-[invalid]:focus-within:!border-status-danger group-data-[invalid]:focus-within:ring-status-danger/20 ${error ? 'border-status-danger focus-within:!border-status-danger focus-within:ring-status-danger/20' : ''}`}
     >
       {LeadingIcon ? (
         <LeadingIcon

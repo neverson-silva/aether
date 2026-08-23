@@ -57,6 +57,8 @@ func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
 		return "_site"
 	case "SvelteKit":
 		return "build"
+	case "Analog.js":
+		return "dist/client"
 	}
 	for _, d := range []string{"dist", "build", "out", "public", ".output/public"} {
 		if fi, err := os.Stat(filepath.Join(srcDir, d)); err == nil && fi.IsDir() {
@@ -67,7 +69,7 @@ func detectOutputDir(srcDir string, p *Plan, read func(string) string) string {
 }
 
 func detectRouting(p *Plan) {
-	ssr := p.Framework == "Next.js" || p.Framework == "Nuxt" || p.Framework == "NestJS" || p.Framework == "Remix" ||
+	ssr := p.Framework == "Next.js" || p.Framework == "Nuxt" || p.Framework == "NestJS" || p.Framework == "Analog.js" || p.Framework == "Remix" ||
 		p.Framework == "SvelteKit" || p.Framework == "TanStack Start" || p.Framework == "Fresh"
 	if ssr {
 		p.AppType = TypeSSR

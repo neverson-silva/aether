@@ -46,8 +46,8 @@ export function AlertDialog({
         <BaseAlertDialog.Backdrop style={{ position: 'fixed', inset: 0, zIndex: 2147483000, opacity: 1 }} className="fixed inset-0 z-50 bg-black/60 transition-opacity duration-200 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <BaseAlertDialog.Viewport style={{ position: 'fixed', inset: 0, zIndex: 2147483001, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '1rem', pointerEvents: 'auto' }} className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <BaseAlertDialog.Popup
-            className="box-border flex w-full max-w-md min-w-0 flex-none max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-status-danger/40 bg-surface-modal p-6 shadow-lg outline-none data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200"
-            style={{ width: 'min(32rem, calc(100vw - 2rem))', opacity: 1, visibility: 'visible', pointerEvents: 'auto' }}
+            className="box-border flex !w-[min(36rem,calc(100vw-2rem))] !max-w-[36rem] min-w-0 flex-none flex-col max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-status-danger/40 bg-surface-modal p-6 shadow-lg outline-none data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200"
+            style={{ opacity: 1, visibility: 'visible', pointerEvents: 'auto' }}
           >
             <BaseAlertDialog.Title className="text-headline-sm text-foreground">
               {title}

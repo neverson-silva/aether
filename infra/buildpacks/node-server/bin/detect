@@ -27,6 +27,9 @@ if [ "$is_static" = 0 ] && { [ -f deno.json ] || [ -f deno.jsonc ]; }; then
   fi
 fi
 if [ "$is_static" = 1 ] && [ -f package.json ]; then
+  if grep -qE '"@analogjs/[^" ]+"[[:space:]]*:' package.json; then
+    is_static=0
+  fi
   if grep -qE '"start:prod"[[:space:]]*:' package.json || grep -qE '"@nestjs/(core|common)"[[:space:]]*:' package.json; then
     is_static=0
   fi

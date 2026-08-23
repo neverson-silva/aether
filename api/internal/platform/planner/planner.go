@@ -123,6 +123,8 @@ func detectFromPackage(pkg string) (framework, library, buildScript string) {
 
 	// SSR first — must never be deployed as static
 	switch {
+	case has(`"@analogjs/platform"`) || has(`"@analogjs/vite-plugin-angular"`) || has(`"@analogjs/content"`):
+		return "Analog.js", "Angular", buildScript
 	case has(`"next"`):
 		return "Next.js", "React", buildScript
 	case has(`"nuxt"`):

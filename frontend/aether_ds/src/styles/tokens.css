@@ -339,3 +339,21 @@
   --shadow-md: var(--elevation-card);
   --shadow-lg: var(--elevation-overlay);
 }
+
+@theme {
+  --container-md: 28rem;
+  --container-lg: 32rem;
+  --container-xl: 36rem;
+}
+
+@utility max-w-md {
+  max-width: 28rem !important;
+}
+
+@utility max-w-lg {
+  max-width: 32rem !important;
+}
+
+@utility max-w-xl {
+  max-width: 36rem !important;
+}

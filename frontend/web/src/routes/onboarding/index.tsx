@@ -5,7 +5,7 @@ import { z } from "zod";
 import { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle, Code, Database, Eye, EyeSlash, GithubLogo, Lightning, LockKey, RocketLaunch, UserCircle } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
-import { Badge, Button, Card, Checkbox, EmptyState, Field, Input, Progress, Typography, useToast } from "@aether/design-system";
+import { Badge, Button, Checkbox, Field, Input, Progress, Typography, useToast } from "@aether/design-system";
 import { api, apiGet, getServer, setToken } from "../../api/client";
 
 const signupSchema = z.object({
@@ -74,32 +74,56 @@ function Onboarding() {
   };
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:flex lg:items-center lg:justify-center">
-      <div className="grid w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-surface-card shadow-xl lg:grid-cols-[0.82fr_1.18fr]">
-        <aside className="hidden bg-surface-container p-10 lg:flex lg:flex-col lg:justify-between">
-          <div className="space-y-10">
-            <div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground"><RocketLaunch size={22} weight="fill" /></span><Typography as="span" level="heading">Aether</Typography></div>
-            <div className="space-y-3"><Typography as="p" level="label" tone="primary">Get started</Typography><Typography as="h1" level="display">Build without limits.</Typography><Typography as="p" level="body" tone="muted">A focused control plane for teams that want ownership without sacrificing developer experience.</Typography></div>
-            <div className="space-y-5">{benefits.map((benefit) => <div key={benefit.title} className="flex gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-card text-primary"><benefit.icon size={18} weight="duotone" /></span><div><Typography as="h2" level="small" weight="semibold">{benefit.title}</Typography><Typography as="p" level="small" tone="muted">{benefit.description}</Typography></div></div>)}</div>
+    <main className="min-h-[100dvh] bg-background px-4 py-6 text-foreground sm:px-6 lg:flex lg:items-center lg:justify-center lg:py-10">
+      <div className="grid w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-surface-card shadow-xl lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <section className="order-1 flex min-w-0 flex-col justify-center bg-surface-card p-6 sm:p-10 lg:order-2 lg:p-12">
+          <div className="mx-auto flex w-full max-w-xl min-w-0 flex-col justify-center gap-8">
+            {status.registered ? (
+              <div className="mx-auto flex w-full max-w-md flex-col items-center gap-6 text-center">
+                <span className="flex size-14 items-center justify-center rounded-full border border-status-success/30 bg-status-success-container/20 text-status-success">
+                  <CheckCircle size={30} weight="duotone" />
+                </span>
+                <div className="space-y-2">
+                  <Typography as="p" level="label" tone="primary">Already configured</Typography>
+                  <Typography as="h1" level="heading">This instance is ready</Typography>
+                  <Typography as="p" level="body" tone="muted">Aether already has an administrator account. Sign in with the existing credentials to continue.</Typography>
+                </div>
+                <Button fullWidth className="whitespace-nowrap" icon={designIcon(ArrowRight)} onClick={() => navigate({ to: "/login" })}>Sign in</Button>
+              </div>
+            ) : (
+              <>
+                {apiDown ? <div className="rounded-lg border border-status-danger/30 bg-status-danger-container/10 p-3"><Typography as="p" level="small" tone="danger">API unreachable at {getServer() || "same origin"}. Start the backend before creating an account.</Typography></div> : null}
+                <header className="space-y-2">
+                  <Typography as="p" level="label" tone="primary">Create your workspace identity</Typography>
+                  <Typography as="h1" level="display">Create account</Typography>
+                  <Typography as="p" level="body" tone="muted">Already have an account? <Link to="/login" className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Sign in</Link></Typography>
+                </header>
+                <form onSubmit={form.handleSubmit(submit)} className="space-y-5" noValidate>
+                  <Field label="Full name" error={form.formState.errors.name?.message}><Input placeholder="Jane Doe" leadingIcon={designIcon(UserCircle)} autoComplete="name" {...form.register("name")} /></Field>
+                  <Field label="Email" error={form.formState.errors.email?.message}><Input type="email" placeholder="jane@company.com" leadingIcon={designIcon(UserCircle)} autoComplete="email" {...form.register("email")} /></Field>
+                  <Field label="Password" error={form.formState.errors.password?.message} description="Use at least 8 characters, one uppercase letter and one number.">
+                    <div className="relative">
+                      <Input type={showPassword ? "text" : "password"} placeholder="Create a secure password" leadingIcon={designIcon(LockKey)} autoComplete="new-password" {...form.register("password")} />
+                      <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 z-10 flex w-11 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}</button>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3"><Progress value={strength.score} max={4} status={strength.score >= 3 ? "success" : strength.score === 2 ? "warning" : "danger"} size="sm" label="Password strength" /><Typography as="span" level="small" tone={strength.score >= 3 ? "success" : strength.score > 0 ? "danger" : "muted"}>{strength.label}</Typography></div>
+                  </Field>
+                  <Controller name="tos" control={form.control} render={({ field }) => <Checkbox checked={field.value} onCheckedChange={(value) => field.onChange(value === true)} error={form.formState.errors.tos?.message} label="I agree to the Terms of Service and Privacy Policy." />} />
+                  <Button type="submit" fullWidth className="whitespace-nowrap" icon={designIcon(ArrowRight)} loading={form.formState.isSubmitting}>Create account</Button>
+                </form>
+                {status.sso && providers.length ? <div className="space-y-4 border-t border-border pt-5"><Typography as="p" level="label" tone="muted" align="center">Or continue with</Typography><div className="grid grid-cols-2 gap-3"><Button variant="outline" icon={designIcon(UserCircle)} onClick={() => ssoLogin("google")}>Google</Button><Button variant="outline" icon={designIcon(GithubLogo)} onClick={() => ssoLogin("github")}>GitHub</Button></div></div> : null}
+              </>
+            )}
           </div>
-          <Badge tone="info" icon={designIcon(CheckCircle)}>One workspace, full control</Badge>
+        </section>
+        <aside className="order-2 flex min-w-0 flex-col justify-between gap-10 bg-surface-container p-6 sm:p-10 lg:order-1 lg:p-12">
+          <div className="space-y-8 lg:space-y-10">
+            <div className="flex items-center gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"><RocketLaunch size={22} weight="fill" /></span><Typography as="span" level="heading">Aether</Typography></div>
+            <div className="max-w-lg space-y-3"><Typography as="p" level="label" tone="primary">Get started</Typography><Typography as="h2" level="display">Build without limits.</Typography><Typography as="p" level="body" tone="muted">A focused control plane for teams that want ownership without sacrificing developer experience.</Typography></div>
+            <div className="grid gap-5 sm:grid-cols-3 lg:grid-cols-1">{benefits.map((benefit) => <div key={benefit.title} className="flex min-w-0 gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-card text-primary"><benefit.icon size={18} weight="duotone" /></span><div className="min-w-0"><Typography as="h3" level="small" weight="semibold">{benefit.title}</Typography><Typography as="p" level="small" tone="muted">{benefit.description}</Typography></div></div>)}</div>
+          </div>
+          <Badge className="self-start" tone="info" icon={designIcon(CheckCircle)}>One workspace, full control</Badge>
         </aside>
-        <Card as="section" variant="default" padding="lg" className="rounded-none border-0 sm:p-12">
-          <div className="mx-auto w-full max-w-xl space-y-8">
-            {status.registered ? <EmptyState icon={designIcon(CheckCircle)} title="Already set up" description="This platform already has an administrator account. Use the existing credentials to sign in." action={<Button icon={designIcon(ArrowRight)} onClick={() => navigate({ to: "/login" })}>Sign in</Button>} /> : <>
-              {apiDown ? <Card variant="danger" padding="sm"><Typography as="p" level="small" tone="danger">API unreachable at {getServer() || "same origin"}. Start the backend before creating an account.</Typography></Card> : null}
-              <header className="space-y-2"><Typography as="p" level="label" tone="primary">Create your workspace identity</Typography><Typography as="h2" level="display">Create account</Typography><Typography as="p" level="body" tone="muted">Already have an account? <Link to="/login" className="font-semibold text-primary hover:underline">Sign in</Link></Typography></header>
-              <form onSubmit={form.handleSubmit(submit)} className="space-y-5" noValidate>
-                <Field label="Full name" error={form.formState.errors.name?.message}><Input placeholder="Jane Doe" leadingIcon={designIcon(UserCircle)} autoComplete="name" {...form.register("name")} /></Field>
-                <Field label="Email" error={form.formState.errors.email?.message}><Input type="email" placeholder="jane@company.com" leadingIcon={designIcon(UserCircle)} autoComplete="email" {...form.register("email")} /></Field>
-                <Field label="Password" error={form.formState.errors.password?.message} description="Use at least 8 characters, one uppercase letter and one number."><div className="relative"><Input type={showPassword ? "text" : "password"} placeholder="Create a secure password" leadingIcon={designIcon(LockKey)} autoComplete="new-password" {...form.register("password")} /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 z-10 w-11 text-muted-foreground">{showPassword ? <EyeSlash size={18} className="mx-auto" /> : <Eye size={18} className="mx-auto" />}</button></div><div className="mt-3 flex items-center gap-3"><Progress value={strength.score} max={4} status={strength.score >= 3 ? "success" : strength.score === 2 ? "warning" : "danger"} size="sm" label="Password strength" /><Typography as="span" level="small" tone={strength.score >= 3 ? "success" : strength.score > 0 ? "danger" : "muted"}>{strength.label}</Typography></div></Field>
-                <Controller name="tos" control={form.control} render={({ field }) => <Checkbox checked={field.value} onCheckedChange={(value) => field.onChange(value === true)} error={form.formState.errors.tos?.message} label="I agree to the Terms of Service and Privacy Policy." />} />
-                <Button type="submit" fullWidth icon={designIcon(ArrowRight)} loading={form.formState.isSubmitting}>Create account</Button>
-              </form>
-              {status.sso && providers.length ? <div className="space-y-4 border-t border-border pt-5"><Typography as="p" level="label" tone="muted" align="center">Or continue with</Typography><div className="grid grid-cols-2 gap-3"><Button variant="outline" icon={designIcon(UserCircle)} onClick={() => ssoLogin("google")}>Google</Button><Button variant="outline" icon={designIcon(GithubLogo)} onClick={() => ssoLogin("github")}>GitHub</Button></div></div> : null}
-            </>}
-          </div>
-        </Card>
       </div>
     </main>
   );

@@ -8,12 +8,16 @@ interface RealtimeContextValue {
   connected: boolean;
   lastSeq: number;
   subscribe: (fn: (ev: EventEnvelope, replay: boolean) => void) => () => void;
+  subscribePresence: (fn: (scope: string, count: number) => void) => () => void;
+  send: (message: { op: string; scope?: string }) => void;
 }
 
 const RealtimeCtx = createContext<RealtimeContextValue>({
   connected: false,
   lastSeq: 0,
   subscribe: () => () => {},
+  subscribePresence: () => () => {},
+  send: () => {},
 });
 
 function useRealtimeCtx(): RealtimeContextValue {
@@ -21,9 +25,10 @@ function useRealtimeCtx(): RealtimeContextValue {
 }
 
 export function useRealtime(): RealtimeContextValue {
+  const context = useRealtimeCtx();
   const connected = useRealtimeStore((st) => st.connected);
   const lastSeq = useRealtimeStore((st) => st.lastSeq);
-  return { connected, lastSeq, subscribe: useRealtimeCtx().subscribe };
+  return { connected, lastSeq, subscribe: context.subscribe, subscribePresence: context.subscribePresence, send: context.send };
 }
 
 export function useRealtimeEvent(fn: (ev: EventEnvelope, replay: boolean) => void) {
@@ -81,6 +86,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const listeners = useRef(new Set<(ev: EventEnvelope, replay: boolean) => void>());
+  const presenceListeners = useRef(new Set<(scope: string, count: number) => void>());
   const attemptRef = useRef(0);
   const seqRef = useRef(0);
   const sessionRef = useRef(0);
@@ -133,6 +139,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (msg.op === "event" && msg.ev) handle(msg.ev, !!msg.replay);
+      if (msg.op === "presence" && msg.scope) {
+        presenceListeners.current.forEach((fn) => fn(msg.scope!, msg.n ?? 0));
+      }
     };
     ws.onerror = () => ws.close();
     ws.onclose = () => {
@@ -180,7 +189,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const value: RealtimeContextValue = { connected: useRealtimeStore.getState().connected, lastSeq: useRealtimeStore.getState().lastSeq, subscribe };
+  const subscribePresence = useCallback((fn: (scope: string, count: number) => void) => {
+    presenceListeners.current.add(fn);
+    return () => {
+      presenceListeners.current.delete(fn);
+    };
+  }, []);
+
+  const send = useCallback((message: { op: string; scope?: string }) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+    }
+  }, []);
+
+  const value: RealtimeContextValue = { connected: useRealtimeStore.getState().connected, lastSeq: useRealtimeStore.getState().lastSeq, subscribe, subscribePresence, send };
 
   return <RealtimeCtx.Provider value={value}>{children}</RealtimeCtx.Provider>;
 }

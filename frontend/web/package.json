@@ -8,7 +8,8 @@
     "dev": "vite",
     "test": "vitest run",
     "prebuild": "npm --prefix ../aether_ds run build",
-    "build": "vite build && tsc -b",
+    "build": "vite build && tsgo -b",
+    "typecheck": "tsgo --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -48,7 +49,7 @@
     "jsdom": "^29.1.1",
     "playwright-core": "^1.62.1",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "vite": "^5.4.0",
     "vitest": "^4.1.11"
   }

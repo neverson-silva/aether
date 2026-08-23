@@ -87,7 +87,9 @@ case "$RUNTIME" in
     curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-$NODE_ARCH.tar.xz"
     tar -xJf /tmp/node.tar.xz -C "$node_layer" --strip-components=1
     rm -f /tmp/node.tar.xz
-    node --version && npm --version
+    node --version
+    npm install --global npm@11 --no-audit --no-fund
+    npm --version
     ;;
 esac
 
@@ -122,16 +124,16 @@ case "$RUNTIME" in
 
     case "$PM" in
       pnpm)
-        pnpm install --frozen-lockfile
+        pnpm install --frozen-lockfile --prod=false
         ;;
       yarn)
-        yarn install --frozen-lockfile --non-interactive
+        yarn install --frozen-lockfile --non-interactive --production=false
         ;;
       *)
         if [ -f package-lock.json ]; then
-          npm ci --no-audit --no-fund
+          npm ci --include=dev --no-audit --no-fund
         else
-          npm install --no-audit --no-fund
+          npm install --include=dev --no-audit --no-fund
         fi
         ;;
     esac

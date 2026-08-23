@@ -329,6 +329,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		},
 		Replay:    realtimeSvc.ReplayEvents,
 		Authorize: realtimeSvc.Authorize,
+		Presence:  rtRuntime.Presence,
 	})
 	realtimeHandler := realtimehttp.New(realtimeSvc, realtimeHub)
 

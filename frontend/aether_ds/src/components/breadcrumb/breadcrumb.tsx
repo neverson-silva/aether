@@ -8,11 +8,13 @@ export interface BreadcrumbProps {
   items: BreadcrumbItem[]
   maxItems?: number
   separator?: ReactNode
+  onNavigate?: (href: string) => void
 }
 export function Breadcrumb({
   items,
   maxItems = 4,
   separator = '/',
+  onNavigate,
 }: BreadcrumbProps) {
   const visible =
     items.length > maxItems
@@ -30,6 +32,12 @@ export function Breadcrumb({
             {item.href && !item.current ? (
               <a
                 href={item.href}
+                onClick={(event) => {
+                  if (onNavigate && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                    event.preventDefault()
+                    onNavigate(item.href as string)
+                  }
+                }}
                 className="truncate hover:text-foreground hover:underline"
               >
                 {item.label}

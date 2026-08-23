@@ -9,8 +9,10 @@ export function DatabaseDeploymentLogModal({ dbId, deployment, onClose }: { dbId
 
   return (
     <Dialog open={!!deployment} trigger={<span />} onOpenChange={(open) => { if (!open) onClose(); }} title={`Deployment #${deployment?.number ?? ""} log`} size="lg" overflow="hidden">
-      <div className="min-h-0 overflow-hidden p-6 pt-0">
-        <LogViewer lines={lines} loading={log.isLoading} />
+      <div className="min-h-0 overflow-hidden pt-1">
+        <div className="mt-1">
+          <LogViewer lines={lines} loading={log.isLoading} />
+        </div>
       </div>
     </Dialog>
   );

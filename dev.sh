@@ -48,7 +48,7 @@ else
   fi
 fi
 export DATABASE_HOST="${DATABASE_HOST:-127.0.0.1}"
-export DATABASE_PORT="${DATABASE_PORT:-${PG_PORT:-15432}}"
+export DATABASE_PORT="${DATABASE_PORT:-${PG_PORT:-5432}}"
 export DATABASE_SSL_MODE="${DATABASE_SSL_MODE:-disable}"
 export DATABASE_MIGRATE_ON_START="${DATABASE_MIGRATE_ON_START:-true}"
 export AETHER_REDIS_ADDR="${AETHER_REDIS_ADDR:-127.0.0.1:16379}"
@@ -126,12 +126,32 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "warning: no podman machine connection found — SmartBuild app deploys will fail." >&2
   fi
 else
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user start podman.socket >/dev/null 2>&1 || true
+  fi
   for s in "/run/podman/podman.sock" "${XDG_RUNTIME_DIR:-}/podman/podman.sock" "/run/user/$(id -u)/podman/podman.sock"; do
     if [[ -S "$s" ]]; then
       PODMAN_SOCK="$s"
       break
     fi
   done
+  if [[ -z "$PODMAN_SOCK" ]] && command -v podman >/dev/null 2>&1; then
+    PODMAN_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+    mkdir -p "$(dirname "$PODMAN_SOCK")" "$AETHER_STATE/logs"
+    SERVICE_PIDFILE="$AETHER_STATE/podman-service.pid"
+    if [[ -f "$SERVICE_PIDFILE" ]] && ! kill -0 "$(cat "$SERVICE_PIDFILE")" 2>/dev/null; then
+      rm -f "$SERVICE_PIDFILE"
+    fi
+    if [[ ! -f "$SERVICE_PIDFILE" ]]; then
+      nohup podman system service --time=0 "unix://$PODMAN_SOCK" >"$AETHER_STATE/logs/podman-service.log" 2>&1 &
+      echo "$!" > "$SERVICE_PIDFILE"
+    fi
+    for _ in $(seq 1 20); do
+      [[ -S "$PODMAN_SOCK" ]] && break
+      sleep 0.25
+    done
+    [[ -S "$PODMAN_SOCK" ]] || PODMAN_SOCK=""
+  fi
   if [[ -n "$PODMAN_SOCK" ]]; then
     echo "podman socket: $PODMAN_SOCK"
   fi
@@ -142,6 +162,13 @@ if [[ -n "$PODMAN_SOCK" ]]; then
   echo "DOCKER_HOST set for SmartBuild"
 else
   echo "warning: podman.socket not found — SmartBuild app deploys will fail." >&2
+fi
+
+if command -v podman >/dev/null 2>&1; then
+  LIFECYCLE_IMAGE="docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}"
+  if ! podman image exists "$LIFECYCLE_IMAGE" >/dev/null 2>&1; then
+    podman pull "$LIFECYCLE_IMAGE"
+  fi
 fi
 
 echo "Applying database migrations..."

@@ -22,8 +22,20 @@ var echoServices = []string{
 }
 
 func PublicIP() string {
+	if isDevMode() {
+		return "127.0.0.1"
+	}
 	once.Do(func() { cached = detect() })
 	return cached
+}
+
+func isDevMode() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_MODE")))
+	if value == "true" || value == "1" || value == "yes" {
+		return true
+	}
+	value = strings.ToLower(strings.TrimSpace(os.Getenv("AETHER_DEV_MODE")))
+	return value == "true" || value == "1" || value == "yes"
 }
 
 func PublicIPDashed() string {

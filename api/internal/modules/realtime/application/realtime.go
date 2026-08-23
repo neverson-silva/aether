@@ -266,7 +266,12 @@ func (r *Realtime) Authorize(ctx context.Context, scope string, orgID uuid.UUID)
 	case scope == "org":
 		return nil
 	case strings.HasPrefix(scope, "app:"):
-		id, err := uuid.Parse(strings.TrimPrefix(scope, "app:"))
+		appScope := strings.TrimPrefix(scope, "app:")
+		idPart := appScope
+		if separator := strings.IndexByte(appScope, ':'); separator >= 0 {
+			idPart = appScope[:separator]
+		}
+		id, err := uuid.Parse(idPart)
 		if err != nil {
 			return domain.ErrForbidden
 		}

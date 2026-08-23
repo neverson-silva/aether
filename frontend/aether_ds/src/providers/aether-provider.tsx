@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { ToastProvider, type ToastProviderProps } from '../components/toast/toast'
 import { ThemeProvider, type ThemeProviderProps } from '../theme/theme-provider'
 import { CommandPaletteProvider } from './command-palette-provider'
@@ -11,6 +11,9 @@ export interface AetherProviderProps
 }
 
 export function AetherProvider({ children, ...props }: AetherProviderProps) {
+  useEffect(() => {
+    void import('../styles/fonts.css')
+  }, [])
   const { defaultTheme, persist, storageKey, config, manager, limit, duration, position } = props
   return (
     <ThemeProvider

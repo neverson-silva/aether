@@ -71,7 +71,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={button({
         variant,
         size,
-        className: `${fullWidth ? 'w-full' : ''} ${className}`,
+        className: `${fullWidth ? 'w-full' : ''} ${loading ? 'disabled:!opacity-100' : ''} ${className}`,
       })}
       type={type}
       disabled={disabled || loading}

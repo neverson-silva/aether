@@ -9,6 +9,7 @@ export interface AppHeaderProps {
   notifications?: ReactNode
   theme?: ReactNode
   user?: ReactNode
+  onNavigate?: (href: string) => void
 }
 export function AppHeader({
   breadcrumb,
@@ -19,12 +20,13 @@ export function AppHeader({
   theme,
   user,
   workspace,
+  onNavigate,
 }: AppHeaderProps) {
   return (
     <header className="flex min-h-16 items-center gap-4 border-b border-border bg-surface-background px-4 md:px-6">
       <div className="min-w-0 flex-1 space-y-1">
         {workspace ? <div className="font-semibold">{workspace}</div> : null}
-        {breadcrumb ? <Breadcrumb items={breadcrumb} /> : null}
+        {breadcrumb ? <Breadcrumb items={breadcrumb} onNavigate={onNavigate} /> : null}
       </div>
       {environment}
       {search}

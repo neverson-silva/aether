@@ -21,6 +21,7 @@ const viteReact = `{"scripts":{"build":"vite build"},"dependencies":{"react":"^1
 const nextApp = `{"scripts":{"build":"next build"},"dependencies":{"next":"^14","react":"^18"}}`
 const astroApp = `{"scripts":{"build":"astro build"},"dependencies":{"astro":"^4"}}`
 const angularApp = `{"scripts":{"build":"ng build"},"dependencies":{"@angular/core":"^17"}}`
+const analogApp = `{"scripts":{"build":"analog build","start":"node dist/server/index.mjs"},"dependencies":{"@analogjs/platform":"^1","@angular/core":"^19"}}`
 const nuxtApp = `{"scripts":{"build":"nuxt build"},"dependencies":{"nuxt":"^3"}}`
 const nestApp = `{"scripts":{"build":"nest build","start:prod":"node dist/main.js"},"dependencies":{"@nestjs/common":"^10","@nestjs/core":"^10"}}`
 
@@ -80,6 +81,17 @@ func TestDetectAngular(t *testing.T) {
 	}
 	if p.OutputDir != "dist/myapp" {
 		t.Fatalf("output: %s", p.OutputDir)
+	}
+}
+
+func TestDetectAnalogSSR(t *testing.T) {
+	dir := write(t, map[string]string{"package.json": analogApp})
+	p, _ := Detect(dir)
+	if p.Framework != "Analog.js" || p.AppType != TypeSSR || p.WebServer != "node" {
+		t.Fatalf("Analog.js should be detected as Node SSR: %s %v %s", p.Framework, p.AppType, p.WebServer)
+	}
+	if !stringsContains(p.Dockerfile, "node dist/server/index.mjs") {
+		t.Fatalf("Analog.js Dockerfile should use the server entrypoint:\n%s", p.Dockerfile)
 	}
 }
 

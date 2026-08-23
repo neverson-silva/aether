@@ -46,6 +46,7 @@ export function Shell() {
     <Sidebar
       items={items}
       collapsed={collapsed}
+      onNavigate={(href) => navigate({ to: href } as never)}
       onCollapsedChange={(next) => { setCollapsed(next); localStorage.setItem("aether_sidebar_collapsed", next ? "1" : "0"); }}
       header={<div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><CloudArrowUp size={20} weight="fill" /></span><span><strong className="block text-body-md">Aether</strong><span className="block text-label-caps text-muted-foreground">PaaS platform</span></span></div>}
       footer={<div className="space-y-2"><Button variant="ghost" fullWidth onClick={() => setPaletteOpen(true)}>Command palette</Button><Button variant="ghost" fullWidth onClick={() => { clearToken(); useAuthStore.getState().clear(); window.location.href = "/login"; }}>Sign out</Button></div>}
@@ -54,6 +55,7 @@ export function Shell() {
       <AppHeader
         workspace={me?.org?.name ?? "Organization"}
         breadcrumb={[{ label: "Aether", href: "/" }, ...(currentProject ? [{ label: currentProject, current: true }] : [])]}
+        onNavigate={(href) => navigate({ to: href } as never)}
         search={<IconButton label="Search" icon={MagnifyingGlass as unknown as DesignIcon} onClick={() => setPaletteOpen(true)} />}
         notifications={<BellButton />}
         user={<UserMenu user={{ name: me?.name ?? "User", email: me?.email, avatar: <span className="text-label-caps text-primary">{(me?.name ?? "?").slice(0, 2).toUpperCase()}</span> }} currentWorkspace={currentOrg?.id} workspaces={orgs.map((org) => ({ id: org.id, label: org.name, description: org.role }))} onWorkspaceChange={switchOrg} onProfile={() => navigate({ to: "/organizations/$id", params: { id: currentOrg?.id ?? "" } } as never)} onSignOut={() => { clearToken(); useAuthStore.getState().clear(); window.location.href = "/login"; }} />}

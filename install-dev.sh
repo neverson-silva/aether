@@ -26,7 +26,7 @@ NET_NAME="${AETHER_NET:-aether-net}"
 
 PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
-PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
+PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-5432}}"
 
 REDIS_CONTAINER="aether-redis"
 REDIS_IMAGE="${AETHER_REDIS_IMAGE:-docker.io/library/redis:7-alpine}"
@@ -399,6 +399,13 @@ ensure_postgres() {
   local exists
   exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$PG_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
+    local published_port
+    published_port="$($runtime port "$PG_CONTAINER" 5432/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
+    if [[ -n "$published_port" ]]; then
+      PG_PORT="$published_port"
+    else
+      fail "PostgreSQL container '$PG_CONTAINER' has no host port published for 5432/tcp. Set AETHER_PG_PORT and recreate the container with the existing aether-pg-data volume."
+    fi
     info "PostgreSQL already exists ($PG_CONTAINER) — using the existing one."
     local running
     running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$PG_CONTAINER" || true)"
@@ -573,6 +580,8 @@ start_api() {
     -e "AETHER_RUNTIME_BACKEND=${AETHER_RUNTIME_BACKEND:-redis}"
     -e "AETHER_CNB_BUILDER=$CNB_BUILDER"
     -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
+    -e "DEV_MODE=$DEV_MODE"
+    -e "AETHER_FREE_DOMAIN_PROVIDER=${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
     -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-false}"
     -e "AETHER_MODE=$MODE"
   )
@@ -698,7 +707,10 @@ start_web() {
 REGISTRY_IMAGE="${AETHER_REGISTRY_IMAGE:-docker.io/library/registry:2}"
 REGISTRY_ADDR="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}"
 REGISTRY_CONTAINER="aether-registry"
-CNB_BUILDER="${AETHER_CNB_BUILDER:-aether/builder:node-spa}"
+CNB_BUILDER="${AETHER_CNB_BUILDER:-${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa}"
+if [[ "$CNB_BUILDER" == "aether/builder:node-spa" || "$CNB_BUILDER" == "localhost/aether/builder:node-spa" ]]; then
+  CNB_BUILDER="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa"
+fi
 
 ensure_insecure_registry() {
   local conf="$HOME/.config/containers/registries.conf"
@@ -740,13 +752,19 @@ ensure_registry() {
 }
 
 ensure_builder() {
-  $RUNTIME pull "docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.19.6}" >/dev/null 2>&1 || true
-  if $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1; then
+  $RUNTIME pull "docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}" >/dev/null 2>&1 || true
+  local source_stamp builder_stamp
+  source_stamp="$(sha256sum "$PROJECT_ROOT/infra/buildpacks/node-server/bin/build" "$PROJECT_ROOT/infra/buildpacks/node-server/bin/detect" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/build" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/detect" "$PROJECT_ROOT/infra/builders/build-builder.sh" | sha256sum | awk '{print $1}')"
+  builder_stamp="$STATE_DIR/cnb-builder.stamp"
+  if $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 && [[ -f "$builder_stamp" ]] && grep -qx "$source_stamp" "$builder_stamp"; then
     info "CNB builder already present ($CNB_BUILDER)."
     return 0
   fi
   info "Building CNB builder ($CNB_BUILDER) — Paketo node + aether/spa-static..."
-  bash "$PROJECT_ROOT/infra/builders/build-builder.sh" || warn "CNB builder build failed — CNB deploys will be limited."
+  bash "$PROJECT_ROOT/infra/builders/build-builder.sh" || fail "CNB builder build failed."
+  $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$source_stamp" > "$builder_stamp"
   info "CNB builder ready."
 }
 
@@ -883,6 +901,7 @@ main() {
       ensure_registry
       ensure_builder
       ensure_web_image
+      FORCE_API_RECREATE=1
       start_api
       start_web
       info "Aether is running."

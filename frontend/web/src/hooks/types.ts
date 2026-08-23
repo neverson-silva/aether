@@ -390,7 +390,8 @@ export interface EventEnvelope {
 }
 
 export interface RealtimeInbound {
-  op: "event" | "subscribed" | "unsubscribed" | "dropped" | "pong" | "error";
+  op: "event" | "presence" | "subscribed" | "unsubscribed" | "dropped" | "pong" | "error";
+  scope?: string;
   ev?: EventEnvelope;
   replay?: boolean;
   n?: number;

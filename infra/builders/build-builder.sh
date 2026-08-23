@@ -3,10 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-BUILDER_NAME="${AETHER_CNB_BUILDER:-aether/builder:node-spa}"
-LIFECYCLE_VER="${LIFECYCLE_VER:-0.19.6}"
-SPA_BP_VER="${SPA_BP_VER:-0.1.0}"
-NODE_BP_VER="${NODE_BP_VER:-0.1.0}"
+BUILDER_NAME="${AETHER_CNB_BUILDER:-${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa}"
+LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
+SPA_BP_VER="${SPA_BP_VER:-0.2.0}"
+NODE_BP_VER="${NODE_BP_VER:-0.2.0}"
 WORK="${WORK:-$HOME/.aether/builds/builder-cache}"
 mkdir -p "$WORK"
 
@@ -52,31 +52,31 @@ cat > "$ctx/order.toml" <<'EOF'
 [[order]]
   [[order.group]]
     id = "aether/spa-static"
-    version = "0.1.0"
+    version = "0.2.0"
 
 [[order]]
   [[order.group]]
     id = "aether/node-server"
-    version = "0.1.0"
+    version = "0.2.0"
 EOF
 
 python3 - "$ctx" <<'PYEOF'
 import json, sys
 ctx = sys.argv[1]
 bp_list = [
-    {"id":"aether/spa-static","name":"Aether Static SPA Server","version":"0.1.0","homepage":"","licenses":[{"Type":"MIT","URI":"https://opensource.org/license/mit"}]},
-    {"id":"aether/node-server","name":"Aether Node Server","version":"0.1.0","homepage":"","licenses":[{"Type":"MIT","URI":"https://opensource.org/license/mit"}]},
+    {"id":"aether/spa-static","name":"Aether Static SPA Server","version":"0.2.0","homepage":"","licenses":[{"Type":"MIT","URI":"https://opensource.org/license/mit"}]},
+    {"id":"aether/node-server","name":"Aether Node Server","version":"0.2.0","homepage":"","licenses":[{"Type":"MIT","URI":"https://opensource.org/license/mit"}]},
 ]
 meta = {
     "description":"","buildpacks":bp_list,"extensions":[],
     "stack":{"runImage":{"image":"paketobuildpacks/run-jammy-base","mirrors":None}},
-    "lifecycle":{"version":"0.19.6","api":{"buildpack":"0.7","platform":"0.7"}},
+    "lifecycle":{"version":"0.21.17","api":{"buildpack":"0.7","platform":"0.7"}},
     "createdBy":{"name":"Aether","version":"1.0"},
     "images":[{"image":"paketobuildpacks/run-jammy-base","mirrors":None}],
 }
 order = [
-    {"group":[{"id":"aether/spa-static","version":"0.1.0"}]},
-    {"group":[{"id":"aether/node-server","version":"0.1.0"}]},
+    {"group":[{"id":"aether/spa-static","version":"0.2.0"}]},
+    {"group":[{"id":"aether/node-server","version":"0.2.0"}]},
 ]
 open(f"{ctx}/builder-meta.json","w").write(json.dumps(meta, separators=(",",":")))
 open(f"{ctx}/order-label.json","w").write(json.dumps(order, separators=(",",":")))
@@ -98,6 +98,8 @@ COPY spa-static /cnb/buildpacks/aether_spa-static/$SPA_BP_VER
 COPY node-server /cnb/buildpacks/aether_node-server/$NODE_BP_VER
 COPY buildpack.toml /cnb/buildpack.toml
 COPY order.toml /cnb/order.toml
+RUN chown -R 1001:1000 /cnb/buildpacks /cnb/buildpack.toml /cnb/order.toml \
+  && chmod 0644 /cnb/buildpack.toml /cnb/order.toml
 
 ARG BUILDER_METADATA
 ARG BUILDER_ORDER

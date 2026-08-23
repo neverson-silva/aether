@@ -20,7 +20,7 @@ export function Field({
 }: FieldProps) {
   return (
     <BaseField.Root
-      className="space-y-2"
+      className="group space-y-2"
       name={name}
       disabled={disabled}
       invalid={Boolean(error)}
@@ -40,9 +40,9 @@ export function Field({
         </BaseField.Description>
       ) : null}
       {error ? (
-        <BaseField.Error className="text-body-sm text-status-danger">
+        <p role="alert" className="text-body-sm text-status-danger">
           {error}
-        </BaseField.Error>
+        </p>
       ) : null}
     </BaseField.Root>
   )

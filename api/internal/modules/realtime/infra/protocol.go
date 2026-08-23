@@ -13,6 +13,7 @@ import (
 type wsOutbound struct {
 	Op      string        `json:"op"`
 	Subs    []string      `json:"subs,omitempty"`
+	Scope   string        `json:"scope,omitempty"`
 	Code    string        `json:"code,omitempty"`
 	Message string        `json:"message,omitempty"`
 	Ev      *domain.Event `json:"ev,omitempty"`
@@ -35,6 +36,10 @@ func marshalReply(op string, message string, ev *domain.Event, n int64) ([]byte,
 
 func marshalSubs(op string, subs []string) ([]byte, error) {
 	return json.Marshal(wsOutbound{Op: op, Subs: subs})
+}
+
+func marshalPresence(scope string, count int64) ([]byte, error) {
+	return json.Marshal(wsOutbound{Op: "presence", Scope: scope, N: count})
 }
 
 func marshalError(code, message string) ([]byte, error) {

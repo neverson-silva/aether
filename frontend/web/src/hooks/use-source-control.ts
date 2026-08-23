@@ -59,6 +59,48 @@ export interface ServiceSourceInput {
   watch_root_files: boolean;
 }
 
+type ServiceSourceResponse = Partial<ServiceSource> & {
+  ID?: string;
+  ServiceID?: string;
+  ConnectionID?: string;
+  OrganizationID?: string;
+  RepositoryID?: string;
+  RepositoryOwner?: string;
+  RepositoryName?: string;
+  RepositoryFullName?: string;
+  DefaultBranch?: string;
+  Branch?: string;
+  AutoDeploy?: boolean;
+  RootDirectory?: string;
+  WatchPaths?: string[];
+  IgnorePaths?: string[];
+  WatchRootFiles?: boolean;
+  CreatedAt?: string;
+  UpdatedAt?: string;
+};
+
+function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSource {
+  return {
+    id: raw.id ?? raw.ID ?? "",
+    service_id: raw.service_id ?? raw.ServiceID ?? "",
+    connection_id: raw.connection_id ?? raw.ConnectionID ?? "",
+    organization_id: raw.organization_id ?? raw.OrganizationID ?? "",
+    repository_id: raw.repository_id ?? raw.RepositoryID ?? "",
+    repository_owner: raw.repository_owner ?? raw.RepositoryOwner ?? "",
+    repository_name: raw.repository_name ?? raw.RepositoryName ?? "",
+    repository_full_name: raw.repository_full_name ?? raw.RepositoryFullName ?? "",
+    default_branch: raw.default_branch ?? raw.DefaultBranch ?? "",
+    branch: raw.branch ?? raw.Branch ?? "",
+    auto_deploy: raw.auto_deploy ?? raw.AutoDeploy ?? false,
+    root_directory: raw.root_directory ?? raw.RootDirectory ?? "",
+    watch_paths: raw.watch_paths ?? raw.WatchPaths ?? [],
+    ignore_paths: raw.ignore_paths ?? raw.IgnorePaths ?? [],
+    watch_root_files: raw.watch_root_files ?? raw.WatchRootFiles ?? false,
+    created_at: raw.created_at ?? raw.CreatedAt ?? "",
+    updated_at: raw.updated_at ?? raw.UpdatedAt ?? "",
+  };
+}
+
 export function useSourceControlConnections() {
   return useQuery({
     queryKey: ["source-control", "connections"],
@@ -101,7 +143,7 @@ export function useServiceSource(appID: string) {
   return useQuery({
     queryKey: ["service-source", appID],
     queryFn: async () => {
-      const source = await apiGet<ServiceSource>(`/api/v1/apps/${appID}/source`);
+      const source = normalizeServiceSource(await apiGet<ServiceSourceResponse>(`/api/v1/apps/${appID}/source`));
       return {
         ...source,
         watch_paths: source.watch_paths ?? [],

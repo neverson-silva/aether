@@ -30,6 +30,7 @@ type fakeRuntime struct {
 	buildErr       error
 	exposedPort    int
 	containerState string
+	containerErr   error
 }
 
 func (f *fakeRuntime) Pull(ctx context.Context, image string) (string, error) {
@@ -207,10 +208,28 @@ func TestWorkerDeployRunFailure(t *testing.T) {
 }
 
 func (f *fakeRuntime) ContainerState(ctx context.Context, containerID string) (string, error) {
+	if f.containerErr != nil {
+		return "", f.containerErr
+	}
 	if f.containerState != "" {
 		return f.containerState, nil
 	}
 	return "running", nil
+}
+
+func TestWatcherIgnoresTransientContainerStateError(t *testing.T) {
+	rt := &fakeRuntime{containerErr: errors.New("podman socket unavailable")}
+	dep := newDeployment(t, false)
+	dep.Status = deploydomain.StatusReady
+	dep.ContainerID = "container-1"
+	store := &fakeStore{dep: dep}
+	w := &Watcher{Store: store, Runtime: rt}
+
+	w.check(context.Background(), map[uuid.UUID]string{})
+
+	if len(store.updates) != 0 {
+		t.Fatalf("transient container state error should not fail deployment: %+v", store.updates)
+	}
 }
 
 func (f *fakeRuntime) Start(ctx context.Context, containerID string) error {

@@ -1,5 +1,5 @@
-import { MagnifyingGlass, Pause, Play } from '@phosphor-icons/react'
-import { useMemo, useState } from 'react'
+import { Check, Copy, MagnifyingGlass, Pause, Play } from '@phosphor-icons/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 export interface LogLine {
   id: string
   timestamp?: string
@@ -23,6 +23,8 @@ export function LogViewer({
   onFollowTailChange,
 }: LogViewerProps) {
   const [query, setQuery] = useState('')
+  const [copied, setCopied] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const visible = useMemo(
     () =>
       lines.filter((line) =>
@@ -30,11 +32,24 @@ export function LogViewer({
       ),
     [lines, query],
   )
+  useEffect(() => {
+    if (!followTail || !scrollRef.current) return
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [followTail, lines.length])
   const tone = {
     info: 'text-muted-foreground',
     success: 'text-status-success',
     warning: 'text-status-warning',
     error: 'text-status-danger',
+  }
+  const copyVisibleLogs = async () => {
+    try {
+      await navigator.clipboard.writeText(visible.map((line) => line.message).join('\n'))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1400)
+    } catch {
+      setCopied(false)
+    }
   }
   return (
     <section
@@ -60,13 +75,23 @@ export function LogViewer({
           {followTail ? <Pause size={16} /> : <Play size={16} />}{' '}
           {followTail ? 'Following' : 'Paused'}
         </button>
+        <button
+          type="button"
+          onClick={copyVisibleLogs}
+          disabled={!visible.length}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm text-muted-foreground hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}{' '}
+          {copied ? 'Copied' : 'Copy logs'}
+        </button>
         {disconnected ? (
           <span className="text-body-sm text-status-danger">Disconnected</span>
         ) : null}
       </header>
       <div
-        className="max-h-80 overflow-auto bg-surface-lowest p-3 font-mono text-code-md"
-        style={{ backgroundColor: 'var(--aether-black)' }}
+        ref={scrollRef}
+        className="h-[28rem] max-h-[calc(100vh-14rem)] min-h-0 overflow-x-hidden overflow-y-auto bg-surface-lowest p-3 font-mono text-[11px] leading-5"
+        style={{ backgroundColor: 'var(--aether-black)', height: '28rem', maxHeight: 'calc(100vh - 14rem)', overflowY: 'auto', overflowX: 'hidden' }}
         aria-live="polite"
       >
         {loading ? (

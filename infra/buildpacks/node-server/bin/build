@@ -91,7 +91,9 @@ case "$RUNTIME" in
     curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-$NODE_ARCH.tar.xz"
     tar -xJf /tmp/node.tar.xz -C "$runtime_layer" --strip-components=1
     rm -f /tmp/node.tar.xz
-    node --version && npm --version
+    node --version
+    npm install --global npm@11 --no-audit --no-fund
+    npm --version
     ;;
 esac
 
@@ -126,16 +128,16 @@ case "$RUNTIME" in
 
     case "$PM" in
       pnpm)
-        pnpm install --frozen-lockfile
+        pnpm install --frozen-lockfile --prod=false
         ;;
       yarn)
-        yarn install --frozen-lockfile --non-interactive
+        yarn install --frozen-lockfile --non-interactive --production=false
         ;;
       *)
         if [ -f package-lock.json ]; then
-          npm ci --no-audit --no-fund
+          npm ci --include=dev --no-audit --no-fund
         else
-          npm install --no-audit --no-fund
+          npm install --include=dev --no-audit --no-fund
         fi
         ;;
     esac
@@ -148,6 +150,10 @@ esac
 PROFILE="generic"
 EXEC_LINE=""
 BUILD_RUN=0
+
+is_dev_command() {
+  printf '%s' "$1" | grep -qE '(^|[^[:alnum:]_])dev([^[:alnum:]_]|$)|--watch'
+}
 
 case "$RUNTIME" in
   bun)
@@ -186,7 +192,9 @@ case "$RUNTIME" in
     ;;
   *)
     # ---- framework profiles (Node) ----
-    if [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ]; then
+    if grep -qE '"@analogjs/[^" ]+"[[:space:]]*:' package.json; then
+      PROFILE="analog"
+    elif [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ]; then
       PROFILE="next"
     elif [ -f nuxt.config.js ] || [ -f nuxt.config.ts ] || [ -f nuxt.config.mjs ]; then
       PROFILE="nuxt"
@@ -215,6 +223,20 @@ case "$RUNTIME" in
 
     # start (framework-specific, produção)
     case "$PROFILE" in
+      analog)
+        analog_entry=""
+        for candidate in dist/analog/server/index.mjs dist/server/index.mjs; do
+          if [ -f "$candidate" ]; then
+            analog_entry="$candidate"
+            break
+          fi
+        done
+        [ -n "$analog_entry" ] || {
+          echo "aether/node-server: Analog.js server output not found in dist/analog/server/index.mjs or dist/server/index.mjs"
+          exit 1
+        }
+        EXEC_LINE="export NODE_ENV=production; export PORT=\"\${PORT:-8080}\"; exec node $analog_entry"
+        ;;
       next)
         if grep -qE "output[[:space:]]*:[[:space:]]*['\"]standalone['\"]" next.config.* 2>/dev/null \
           && [ -d .next/standalone ]; then
@@ -254,7 +276,15 @@ if [ "$BUILD_RUN" = 1 ]; then
   value=""
   for cand in start:prod start; do
     v="$(grep -oE "\"$cand\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" package.json | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//' || true)"
-    if [ -n "$v" ]; then script="$cand"; value="$v"; break; fi
+    if [ -n "$v" ]; then
+      if is_dev_command "$v"; then
+        echo "aether/node-server: ignoring development start script $cand -> $v"
+      else
+        script="$cand"
+        value="$v"
+        break
+      fi
+    fi
   done
   case "$RUNTIME" in
     bun)
@@ -278,7 +308,10 @@ if [ "$BUILD_RUN" = 1 ]; then
       fi
       ;;
     *)
-      [ -n "$script" ] || { echo "aether/node-server: sem start script"; exit 1; }
+      [ -n "$script" ] || {
+        echo "aether/node-server: no production start script; development start commands are not allowed"
+        exit 1
+      }
       echo "aether/node-server: start script $script -> $value"
       if [ "${value#node }" != "$value" ]; then
         EXEC_LINE="export NODE_ENV=production; exec node ${value#node }"

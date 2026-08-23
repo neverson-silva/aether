@@ -1,26 +1,20 @@
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "../api/client";
+import { useRealtime } from "../components/RealtimeProvider";
 
 export function usePresence(scope: string) {
   const [count, setCount] = useState(0);
+  const { connected, subscribePresence, send } = useRealtime();
   useEffect(() => {
-    if (!scope) return;
-    let active = true;
-    apiPost("/api/v1/presence/join", { scope }).catch(() => {});
-    const beat = setInterval(() => {
-      apiPost("/api/v1/presence/heartbeat", { scope }).catch(() => {});
-    }, 30000);
-    const tick = setInterval(() => {
-      apiGet<{ count: number }>("/api/v1/presence/count?scope=" + encodeURIComponent(scope))
-        .then((r) => { if (active) setCount(r.count); })
-        .catch(() => {});
-    }, 10000);
+    if (!scope || !connected) return;
+    const unsubscribe = subscribePresence((eventScope, nextCount) => {
+      if (eventScope === scope) setCount(nextCount);
+    });
+    send({ op: "presence.join", scope });
     return () => {
-      active = false;
-      clearInterval(beat);
-      clearInterval(tick);
-      apiPost("/api/v1/presence/leave", { scope }).catch(() => {});
+      unsubscribe();
+      send({ op: "presence.leave", scope });
+      setCount(0);
     };
-  }, [scope]);
+  }, [connected, scope, send, subscribePresence]);
   return count;
 }

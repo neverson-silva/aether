@@ -77,7 +77,7 @@ export function Dialog({
                 </BaseDialog.Close>
               </div>
             ) : null}
-            <div className={`${size === 'wizard' ? 'flex h-full min-h-0 flex-col' : ''} ${showHeader && (title || description) ? 'mt-5' : ''}`}>{children}</div>
+            <div className={`${size === 'wizard' ? 'flex h-full min-h-0 flex-col' : 'px-6 pb-6'} ${showHeader && (title || description) ? 'mt-5' : ''}`}>{children}</div>
           </BaseDialog.Popup>
         </BaseDialog.Viewport>
       </BaseDialog.Portal>

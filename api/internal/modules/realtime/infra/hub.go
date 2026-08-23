@@ -9,6 +9,7 @@ import (
 	"nhooyr.io/websocket"
 
 	"aether/internal/modules/realtime/domain"
+	"aether/internal/platform/druntime/presence"
 )
 
 const (
@@ -24,6 +25,7 @@ type HubOptions struct {
 	SubscribeOrg func(ctx context.Context, orgID uuid.UUID, handler func(domain.Event)) (func(), error)
 	Replay       func(ctx context.Context, orgID uuid.UUID, afterSeq int64, limit int) ([]domain.Event, error)
 	Authorize    func(ctx context.Context, scope string, orgID uuid.UUID) error
+	Presence     presence.Presence
 }
 
 type Hub struct {
@@ -44,12 +46,13 @@ func NewHub(opts HubOptions) *Hub {
 
 func (h *Hub) Add(conn *websocket.Conn, orgID, userID uuid.UUID) *Client {
 	c := &Client{
-		hub:    h,
-		conn:   conn,
-		orgID:  orgID,
-		userID: userID,
-		send:   make(chan []byte, defaultMaxSend),
-		scopes: map[string]bool{},
+		hub:            h,
+		conn:           conn,
+		orgID:          orgID,
+		userID:         userID,
+		send:           make(chan []byte, defaultMaxSend),
+		scopes:         map[string]bool{},
+		presenceScopes: map[string]bool{},
 	}
 	h.mu.Lock()
 	if len(h.clients) >= defaultMaxConnPerOrg {
@@ -149,13 +152,15 @@ func (c *Client) enqueue(ev domain.Event, replay bool) {
 }
 
 type wsInbound struct {
-	Op   string   `json:"op"`
-	Subs []string `json:"subs"`
-	Seq  int64    `json:"seq"`
+	Op    string   `json:"op"`
+	Subs  []string `json:"subs"`
+	Scope string   `json:"scope"`
+	Seq   int64    `json:"seq"`
 }
 
 func (h *Hub) Run(c *Client, ctx context.Context) {
 	defer func() {
+		h.leaveAllPresence(ctx, c)
 		h.remove(c)
 		_ = c.conn.Close(websocket.StatusNormalClosure, "closed")
 	}()
@@ -174,7 +179,12 @@ func (h *Hub) Run(c *Client, ctx context.Context) {
 		case "unsubscribe":
 			h.handleUnsubscribe(c, msg)
 		case "ping":
+			h.heartbeatPresence(ctx, c)
 			c.writeNow("pong", nil)
+		case "presence.join":
+			h.handlePresenceJoin(ctx, c, msg.Scope)
+		case "presence.leave":
+			h.handlePresenceLeave(ctx, c, msg.Scope)
 		}
 	}
 }
@@ -229,14 +239,114 @@ func (h *Hub) handleUnsubscribe(c *Client, msg wsInbound) {
 }
 
 type Client struct {
-	hub     *Hub
-	conn    *websocket.Conn
-	orgID   uuid.UUID
-	userID  uuid.UUID
-	send    chan []byte
-	dropped int
-	mu      sync.Mutex
-	scopes  map[string]bool
+	hub            *Hub
+	conn           *websocket.Conn
+	orgID          uuid.UUID
+	userID         uuid.UUID
+	send           chan []byte
+	dropped        int
+	mu             sync.Mutex
+	scopes         map[string]bool
+	presenceScopes map[string]bool
+}
+
+func (h *Hub) handlePresenceJoin(ctx context.Context, c *Client, scope string) {
+	if h.opts.Presence == nil || scope == "" {
+		c.writeError("bad_request", "invalid presence scope")
+		return
+	}
+	if err := h.opts.Authorize(ctx, scope, c.orgID); err != nil {
+		c.writeError("forbidden", "presence scope is not allowed")
+		return
+	}
+	if err := h.opts.Presence.Join(ctx, scope, c.userID.String(), 60*time.Second); err != nil {
+		c.writeError("presence_error", "could not join presence scope")
+		return
+	}
+	c.mu.Lock()
+	c.presenceScopes[scope] = true
+	c.mu.Unlock()
+	h.broadcastPresence(ctx, c.orgID, scope)
+}
+
+func (h *Hub) handlePresenceLeave(ctx context.Context, c *Client, scope string) {
+	if h.opts.Presence == nil || scope == "" {
+		return
+	}
+	if err := h.opts.Presence.Leave(ctx, scope, c.userID.String()); err != nil {
+		return
+	}
+	c.mu.Lock()
+	delete(c.presenceScopes, scope)
+	c.mu.Unlock()
+	h.broadcastPresence(ctx, c.orgID, scope)
+}
+
+func (h *Hub) heartbeatPresence(ctx context.Context, c *Client) {
+	if h.opts.Presence == nil {
+		return
+	}
+	c.mu.Lock()
+	scopes := make([]string, 0, len(c.presenceScopes))
+	for scope := range c.presenceScopes {
+		scopes = append(scopes, scope)
+	}
+	c.mu.Unlock()
+	for _, scope := range scopes {
+		_ = h.opts.Presence.Heartbeat(ctx, scope, c.userID.String(), 60*time.Second)
+	}
+}
+
+func (h *Hub) leaveAllPresence(ctx context.Context, c *Client) {
+	if h.opts.Presence == nil {
+		return
+	}
+	leaveCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c.mu.Lock()
+	scopes := make([]string, 0, len(c.presenceScopes))
+	for scope := range c.presenceScopes {
+		scopes = append(scopes, scope)
+	}
+	c.mu.Unlock()
+	for _, scope := range scopes {
+		_ = h.opts.Presence.Leave(leaveCtx, scope, c.userID.String())
+		h.broadcastPresence(leaveCtx, c.orgID, scope)
+	}
+}
+
+func (h *Hub) broadcastPresence(ctx context.Context, orgID uuid.UUID, scope string) {
+	if h.opts.Presence == nil {
+		return
+	}
+	count, err := h.opts.Presence.Count(ctx, scope)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	clients := make([]*Client, 0, len(h.clients))
+	for client := range h.clients {
+		if client.orgID != orgID {
+			continue
+		}
+		client.mu.Lock()
+		interested := client.presenceScopes[scope]
+		client.mu.Unlock()
+		if interested {
+			clients = append(clients, client)
+		}
+	}
+	h.mu.Unlock()
+	data, err := marshalPresence(scope, count)
+	if err != nil {
+		return
+	}
+	for _, client := range clients {
+		select {
+		case client.send <- data:
+		default:
+		}
+	}
 }
 
 func (c *Client) writer(ctx context.Context) {

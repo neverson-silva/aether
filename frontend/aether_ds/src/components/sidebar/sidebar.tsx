@@ -23,6 +23,7 @@ export interface SidebarProps {
   mobileOpen?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
   onMobileOpenChange?: (open: boolean) => void
+  onNavigate?: (href: string) => void
 }
 export function Sidebar({
   collapsed = false,
@@ -31,12 +32,19 @@ export function Sidebar({
   items,
   mobileOpen = true,
   onCollapsedChange,
+  onNavigate,
 }: SidebarProps) {
   const renderItems = (entries: SidebarItem[]) =>
     entries.map((item) => (
       <li key={String(item.label)}>
         <a
           href={item.disabled ? undefined : item.href}
+          onClick={(event) => {
+            if (!item.disabled && item.href && onNavigate && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+              event.preventDefault()
+              onNavigate(item.href)
+            }
+          }}
           aria-current={item.active ? 'page' : undefined}
           aria-disabled={item.disabled || undefined}
           title={collapsed ? String(item.label) : undefined}

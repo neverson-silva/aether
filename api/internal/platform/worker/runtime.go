@@ -120,7 +120,11 @@ func (podmanRuntime) LogTail(ctx context.Context, containerID string, lines int)
 func (podmanRuntime) ContainerState(ctx context.Context, containerID string) (string, error) {
 	out, err := exec.CommandContext(ctx, "podman", "inspect", "--format", "{{.State.Status}}", containerID).CombinedOutput()
 	if err != nil {
-		return "unknown", nil
+		message := strings.TrimSpace(string(out))
+		if message == "" {
+			message = err.Error()
+		}
+		return "", fmt.Errorf("inspect container %s: %s", containerID, message)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

@@ -379,32 +379,34 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	img := "aether/" + dep.AppID.String()[:8]
 	builder := w.CnbBuilder
 	if builder == "" {
-		builder = "aether/builder:node-spa"
+		builder = "127.0.0.1:5000/builder:node-spa"
 	}
+	dockerHost := cnbDockerHost()
 	spa := isStaticSPA(srcDir)
 
 	if plan, err := planner.Detect(srcDir); err == nil {
-		w.appendLog(dep, fmt.Sprintf("cnb: detectado framework=%q tipo=%q build=%q output=%q",
+		w.appendLog(dep, fmt.Sprintf("cnb: detected framework=%q type=%q build=%q output=%q",
 			plan.Framework, plan.AppType, plan.BuildCommand, plan.OutputDir))
 		if spa {
-			w.appendLog(dep, "cnb: SPA detectada — grupo aether/spa-static (static server + SPA fallback)")
+			w.appendLog(dep, "cnb: detected SPA — group aether/spa-static (static server + SPA fallback)")
 		} else {
-			w.appendLog(dep, "cnb: app servidor — grupo aether/node-server (start:prod > start)")
+			w.appendLog(dep, "cnb: server application — group aether/node-server (start:prod > start)")
 		}
 	}
 
-	w.appendLog(dep, "cnb (smartbuild): buildando "+img+" com builder "+builder)
-	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
+	w.appendLog(dep, "cnb (smartbuild): building "+img+" with builder "+builder)
+	w.appendLog(dep, "cnb: docker host "+dockerHost)
+	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host", dockerHost, "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}
 	cmd := exec.CommandContext(ctx, "pack", args...)
-	cmd.Env = append(os.Environ(), "PACK_VOLUME_KEY=aether-"+dep.AppID.String()[:8])
+	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "CONTAINER_HOST="+dockerHost, "PACK_VOLUME_KEY=aether-"+dep.AppID.String()[:8])
 	out, err := w.streamCmd(ctx, dep, cmd)
 	if err != nil {
 		if strings.Contains(out, "No buildpack groups passed detection") {
-			w.appendLog(dep, "cnb: nenhum buildpack detectou a aplicação. Configuração manual necessária: forneça um Dockerfile na fonte ou use build_type custom (install/build/start).")
-			return "", fmt.Errorf("nenhum buildpack CNB detectou a aplicação: forneça um Dockerfile na fonte ou use build_type custom")
+			w.appendLog(dep, "cnb: no buildpack detected the application. Manual configuration required: provide a Dockerfile in the source or use build_type custom (install/build/start).")
+			return "", fmt.Errorf("no CNB buildpack detected the application: provide a Dockerfile in the source or use build_type custom")
 		}
 		w.appendLog(dep, "fail: "+strings.TrimSpace(out)+": "+err.Error())
 		return "", fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
@@ -413,6 +415,50 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 		return "", err
 	}
 	return tag, nil
+}
+
+func cnbDockerHost() string {
+	for _, name := range []string{"DOCKER_HOST", "CONTAINER_HOST"} {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			if strings.HasPrefix(value, "unix://") {
+				path := strings.TrimPrefix(value, "unix://")
+				if info, err := os.Stat(path); err != nil || info.Mode()&os.ModeSocket == 0 {
+					continue
+				}
+			}
+			return value
+		}
+	}
+	for _, path := range []string{"/run/podman/podman.sock", "/run/user/" + strconv.Itoa(os.Getuid()) + "/podman/podman.sock"} {
+		if info, err := os.Stat(path); err == nil && info.Mode()&os.ModeSocket != 0 {
+			return "unix://" + path
+		}
+	}
+	if isDevMode() {
+		path := os.Getenv("XDG_RUNTIME_DIR")
+		if path == "" {
+			path = "/run/user/" + strconv.Itoa(os.Getuid())
+		}
+		path += "/podman/podman.sock"
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
+			service := exec.Command("podman", "system", "service", "--time=0", "unix://"+path)
+			if err := service.Start(); err == nil {
+				_ = service.Process.Release()
+				for range 20 {
+					if info, statErr := os.Stat(path); statErr == nil && info.Mode()&os.ModeSocket != 0 {
+						return "unix://" + path
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+			}
+		}
+	}
+	return "unix:///var/run/docker.sock"
+}
+
+func isDevMode() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_MODE")))
+	return value == "1" || value == "true" || value == "yes"
 }
 
 func cnbBuildEnv(srcDir string, spec runSpec) []string {
@@ -448,9 +494,35 @@ func isStaticSPA(srcDir string) bool {
 		return false
 	}
 	var pkg struct {
-		Scripts map[string]string `json:"scripts"`
+		Scripts         map[string]string `json:"scripts"`
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
 	}
 	if json.Unmarshal(b, &pkg) != nil {
+		return false
+	}
+	if _, ok := pkg.Dependencies["@analogjs/platform"]; ok {
+		return false
+	}
+	if _, ok := pkg.DevDependencies["@analogjs/platform"]; ok {
+		return false
+	}
+	if _, ok := pkg.Dependencies["@analogjs/vite-plugin-angular"]; ok {
+		return false
+	}
+	if _, ok := pkg.DevDependencies["@analogjs/vite-plugin-angular"]; ok {
+		return false
+	}
+	if _, ok := pkg.Dependencies["@nestjs/core"]; ok {
+		return false
+	}
+	if _, ok := pkg.Dependencies["@nestjs/common"]; ok {
+		return false
+	}
+	if _, ok := pkg.DevDependencies["@nestjs/core"]; ok {
+		return false
+	}
+	if _, ok := pkg.DevDependencies["@nestjs/common"]; ok {
 		return false
 	}
 	_, hasBuild := pkg.Scripts["build"]

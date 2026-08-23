@@ -177,7 +177,6 @@ export function useAppDetail(id: string) {
     queryKey: qk.app(id),
     queryFn: () => apiGet<AppDetail>(`/api/v1/apps/${id}`),
     enabled: !!id,
-    refetchInterval: 8000,
   });
 }
 
@@ -225,7 +224,6 @@ export function useDeployments(appID: string) {
     queryKey: qk.deployments(appID),
     queryFn: () => apiGet<Deployment[]>(`/api/v1/apps/${appID}/deployments`),
     enabled: !!appID,
-    refetchInterval: 8000,
   });
 }
 
@@ -757,7 +755,7 @@ export function useDeleteMirror() {
 }
 
 export function useNetQ() {
-  return useQuery({ queryKey: ["netq"], queryFn: () => apiGet<NetQStat[]>("/api/v1/network/quality"), refetchInterval: 15000 });
+  return useQuery({ queryKey: ["netq"], queryFn: () => apiGet<NetQStat[]>("/api/v1/network/quality") });
 }
 
 export interface HostStats {
@@ -1098,30 +1096,6 @@ export function useAppStates() {
   return { data: states };
 }
 
-export function usePresence(scope: string) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    if (!scope) return;
-    let active = true;
-    apiPost("/api/v1/presence/join", { scope }).catch(() => {});
-    const beat = setInterval(() => {
-      apiPost("/api/v1/presence/heartbeat", { scope }).catch(() => {});
-    }, 30000);
-    const tick = setInterval(() => {
-      apiGet<{ count: number }>("/api/v1/presence/count?scope=" + encodeURIComponent(scope))
-        .then((r) => { if (active) setCount(r.count); })
-        .catch(() => {});
-    }, 10000);
-    return () => {
-      active = false;
-      clearInterval(beat);
-      clearInterval(tick);
-      apiPost("/api/v1/presence/leave", { scope }).catch(() => {});
-    };
-  }, [scope]);
-  return count;
-}
-
 export function useAppStart() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (id: string) => apiPost(`/api/v1/apps/${id}/start`), onSuccess: () => qc.invalidateQueries({ queryKey: ["app-states"] }) });
@@ -1409,7 +1383,6 @@ export function useDeploymentLog(appID: string, depID: string | null) {
   return useQuery({
     queryKey: ["deploy-log", appID, depID],
     enabled: !!depID,
-    refetchInterval: depID ? 2500 : false,
     queryFn: () => apiGet<DeploymentLog>(`/api/v1/apps/${appID}/deployments/${depID}/log`),
   });
 }

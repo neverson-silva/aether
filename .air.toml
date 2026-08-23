@@ -1,7 +1,7 @@
 root = "."
 [build]
   cmd = "go build -o /tmp/aether-dev ./api/cmd/api"
-  bin = "/tmp/aether-dev"
+  entrypoint = "/tmp/aether-dev"
   include_ext = ["go"]
   include_dir = ["api/cmd", "api/internal"]
   delay = 500

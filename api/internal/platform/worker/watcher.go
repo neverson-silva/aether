@@ -49,6 +49,7 @@ func (w *Watcher) check(ctx context.Context, last map[uuid.UUID]string) {
 		}
 		state, err := w.Runtime.ContainerState(ctx, dep.ContainerID)
 		if err != nil {
+			w.log(ctx, "inspect container state", err)
 			continue
 		}
 		switch state {

@@ -68,7 +68,7 @@ function ToastViewport({
         : { bottom: '1rem', right: '1rem', top: 'auto', left: 'auto' }
   return (
     <BaseToast.Viewport
-      className={`fixed ${positionClass} z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 outline-none`}
+      className={`fixed ${positionClass} z-[100] flex w-[30rem] max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none`}
       style={positionStyle}
     >
       <div className="flex flex-col gap-2">
@@ -80,28 +80,28 @@ function ToastViewport({
               key={toast.id}
               toast={toast}
               swipeDirection={['right', 'down']}
-              style={{ backgroundColor: toneColors[tone], borderLeftColor: toneBorders[tone] }}
-              className={`relative overflow-hidden rounded-lg border p-4 text-foreground shadow-lg outline-none data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200 ${toneStyles[tone]}`}
+              style={{ backgroundColor: toneColors[tone], borderLeftColor: toneBorders[tone], width: '30rem', maxWidth: 'calc(100vw - 2rem)', minWidth: 0, boxSizing: 'border-box' }}
+              className={`relative w-full min-w-0 max-w-full overflow-hidden rounded-lg border p-4 text-foreground shadow-lg outline-none transition-[transform,opacity] duration-200 ease-[var(--motion-ease-standard)] data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 data-[ending-style]:duration-150 ${toneStyles[tone]}`}
             >
-              <div className="flex gap-3">
+              <div className="flex min-w-0 gap-3">
                 <Icon
                   size={20}
                   className="mt-0.5 shrink-0"
                   aria-hidden="true"
                 />
-                <BaseToast.Content className="min-w-0 flex-1">
-                  <BaseToast.Title className="font-semibold">
+                <BaseToast.Content className="min-w-0 flex-1 overflow-hidden">
+                  <BaseToast.Title className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">
                     {toast.title}
                   </BaseToast.Title>
                   {toast.description ? (
-                    <BaseToast.Description className="mt-1 text-body-sm text-muted-foreground">
+                    <BaseToast.Description className="mt-1 block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-body-sm text-muted-foreground">
                       {toast.description}
                     </BaseToast.Description>
                   ) : null}
                   {toast.actionProps ? (
                     <BaseToast.Action
                       {...toast.actionProps}
-                      className="mt-3 rounded-md border border-border px-2 py-1 text-body-sm hover:bg-surface-container"
+                      className="mt-3 max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-border px-2 py-1 text-body-sm hover:bg-surface-container"
                     />
                   ) : null}
                 </BaseToast.Content>
@@ -122,7 +122,7 @@ function ToastViewport({
 
 export function ToastProvider({
   children,
-  duration = 3000,
+  duration = 2400,
   limit = 3,
   manager,
   position = 'bottom-right',

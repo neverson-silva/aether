@@ -1,9 +1,11 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -26,6 +28,7 @@ type Config struct {
 	GoogleOAuthClientSecret string
 	GoogleOAuthRedirectURI  string
 	PublicURL               string
+	DevMode                 bool
 	CertEmail               string
 	ACMEDirectory           string
 	FreeDomainProvider      string
@@ -90,6 +93,17 @@ func DefaultStateDir() string {
 
 func Load() (*Config, error) {
 	state := DefaultStateDir()
+	devMode := envBool("DEV_MODE", false) || envBool("AETHER_DEV_MODE", false)
+	publicURL := envOr("AETHER_PUBLIC_URL", "")
+	freeDomainBase := envOr("AETHER_FREE_DOMAIN_BASE", "")
+	if devMode {
+		if publicURL == "" || !isLocalURL(publicURL) {
+			publicURL = "http://localhost:8080"
+		}
+		if freeDomainBase == "" {
+			freeDomainBase = "localhost"
+		}
+	}
 	cfg := &Config{
 		StateDir:                state,
 		DataDir:                 filepath.Join(state, "data"),
@@ -104,7 +118,8 @@ func Load() (*Config, error) {
 		ChallengeAddr:           envOr("AETHER_CHALLENGE_ADDR", "127.0.0.1:15001"),
 		AgentAddr:               envOr("AETHER_AGENT_ADDR", "127.0.0.1:9443"),
 		TraefikBin:              envOr("AETHER_TRAEFIK_BIN", ""),
-		PublicURL:               envOr("AETHER_PUBLIC_URL", ""),
+		PublicURL:               publicURL,
+		DevMode:                 devMode,
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 		GoogleOAuthRedirectURI:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URI"),
@@ -133,14 +148,14 @@ func Load() (*Config, error) {
 		CertEmail:                envOr("AETHER_CERT_EMAIL", ""),
 		ACMEDirectory:            envOr("AETHER_ACME_DIR", ""),
 		FreeDomainProvider:       envOr("AETHER_FREE_DOMAIN_PROVIDER", "nip.io"),
-		FreeDomainBase:           envOr("AETHER_FREE_DOMAIN_BASE", ""),
+		FreeDomainBase:           freeDomainBase,
 		IngressNetwork:           envOr("AETHER_INGRESS_NETWORK", "aether-ingress"),
 		TraefikImage:             envOr("AETHER_TRAEFIK_IMAGE", "docker.io/library/traefik:v3.2"),
 		RuntimeBackend:           envOr("AETHER_RUNTIME_BACKEND", ""),
 		RedisAddr:                envOr("AETHER_REDIS_ADDR", ""),
 		RedisPassword:            envOr("AETHER_REDIS_PASSWORD", ""),
 		RedisUsername:            envOr("AETHER_REDIS_USERNAME", ""),
-		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "aether/builder:node-spa"),
+		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "127.0.0.1:5000/builder:node-spa"),
 		GitHubAppID:              int64(envInt("AETHER_GITHUB_APP_ID", 0)),
 		GitHubAppSlug:            os.Getenv("AETHER_GITHUB_APP_SLUG"),
 		GitHubPrivateKey:         os.Getenv("AETHER_GITHUB_PRIVATE_KEY"),
@@ -154,6 +169,15 @@ func Load() (*Config, error) {
 		cfg.ACMEDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 	}
 	return cfg, nil
+}
+
+func isLocalURL(value string) bool {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func envOr(k, def string) string {

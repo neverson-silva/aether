@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { Bell } from "@phosphor-icons/react";
 import { useToast } from "@aether/design-system";
+import { useNavigate } from "@tanstack/react-router";
 import type { EventEnvelope, NotificationItem } from "../hooks";
 import { useRealtimeEvent } from "./RealtimeProvider";
 import { useNotificationsStore } from "../stores/notifications";
@@ -29,7 +30,8 @@ export function useNotifications(): NotificationContextValue {
 function toneForType(type: string): "error" | "success" | "warning" | "info" {
   if (type.includes("failed") || type.includes("error")) return "error";
   if (type.includes("ready") || type.includes("finished") || type.includes("recovered")) return "success";
-  if (type.includes("queued") || type.includes("building") || type.includes("starting") || type.includes("healthcheck")) return "warning";
+  if (type.includes("queued")) return "info";
+  if (type.includes("building") || type.includes("starting") || type.includes("healthcheck")) return "warning";
   return "info";
 }
 
@@ -67,6 +69,7 @@ function toItem(ev: EventEnvelope): NotificationItem {
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { add } = useToast();
+  const navigate = useNavigate();
 
   useRealtimeEvent((ev, replay) => {
     if (!isNotifiable(ev.type)) return;
@@ -78,7 +81,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const tone = toneForType(ev.type);
     const isError = tone === "error";
     const target = (ev.payload?.service_id || ev.payload?.app_id) as string | undefined;
-    if (ev.message && shouldToast(ev.type)) add({ title: ev.message, tone, action: isError ? { label: "View services", onClick: () => window.location.assign(`/apps`) } : undefined });
+    if (ev.message && shouldToast(ev.type)) add({ title: ev.message, tone, action: isError ? { label: "View services", onClick: () => navigate({ to: "/apps" }) } : undefined });
     if (target) {
       useNotificationsStore.getState().patchPayload(ev.id, target);
     }
@@ -88,11 +91,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     void useNotificationsStore.getState().refresh();
     const onOrgChange = () => void useNotificationsStore.getState().refresh();
     window.addEventListener("aether:org", onOrgChange);
-    const reconcile = setInterval(() => {
-      void useNotificationsStore.getState().refresh();
-    }, 30000);
     return () => {
-      clearInterval(reconcile);
       window.removeEventListener("aether:org", onOrgChange);
     };
   }, []);
@@ -113,6 +112,7 @@ function BellHost() {
 
 function BellDropdown() {
   const { list, markRead, markAllRead, openBell } = useNotifications();
+  const navigate = useNavigate();
   const ref = React.useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -145,7 +145,7 @@ function BellDropdown() {
               key={n.id}
               onClick={() => {
                 markRead(n.id);
-                if (target) window.location.assign(`/apps/${target}`);
+                if (target) navigate({ to: "/apps/$appId", params: { appId: target } } as never);
               }}
               className={`w-full flex items-start gap-2 px-3 py-2.5 hover:bg-surface-container-high transition-colors text-left ${!n.read ? "bg-surface-container-high/40" : ""}`}
             >
@@ -160,7 +160,7 @@ function BellDropdown() {
         })}
       </div>
       <button
-        onClick={() => window.location.assign(`/notifications`)}
+        onClick={() => navigate({ to: "/notifications" })}
         className="w-full px-3 py-2 border-t border-border-subtle font-label-caps text-label-caps text-primary uppercase hover:bg-surface-container-high transition-colors"
       >
         View all history

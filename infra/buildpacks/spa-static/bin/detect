@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f package.json ] && grep -qE '"@analogjs/[^" ]+"[[:space:]]*:' package.json; then
+  echo "aether/spa-static: Analog.js server application marker found"
+  exit 100
+fi
+
 is_spa=0
 if [ -f angular.json ] || [ -f vite.config.js ] || [ -f vite.config.ts ] || [ -f vite.config.mjs ] || [ -f svelte.config.js ] || [ -f svelte.config.ts ]; then
   is_spa=1

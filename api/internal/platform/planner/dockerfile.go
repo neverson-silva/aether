@@ -96,6 +96,8 @@ func startCommand(p *Plan) string {
 		return "next start"
 	case "Nuxt":
 		return "node .output/server/index.mjs"
+	case "Analog.js":
+		return "node dist/server/index.mjs"
 	case "NestJS":
 		return "npm run start:prod"
 	case "Remix":
