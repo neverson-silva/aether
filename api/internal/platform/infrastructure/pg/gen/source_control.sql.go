@@ -590,7 +590,26 @@ type UpsertServiceSourceParams struct {
 	OrgID              uuid.UUID `json:"org_id"`
 }
 
-func (q *Queries) UpsertServiceSource(ctx context.Context, arg UpsertServiceSourceParams) (ServiceSource, error) {
+type UpsertServiceSourceRow struct {
+	ID                 uuid.UUID `json:"id"`
+	ServiceID          uuid.UUID `json:"service_id"`
+	ConnectionID       uuid.UUID `json:"connection_id"`
+	RepositoryID       string    `json:"repository_id"`
+	RepositoryOwner    string    `json:"repository_owner"`
+	RepositoryName     string    `json:"repository_name"`
+	RepositoryFullName string    `json:"repository_full_name"`
+	DefaultBranch      string    `json:"default_branch"`
+	Branch             string    `json:"branch"`
+	AutoDeploy         bool      `json:"auto_deploy"`
+	RootDirectory      string    `json:"root_directory"`
+	WatchPaths         []string  `json:"watch_paths"`
+	IgnorePaths        []string  `json:"ignore_paths"`
+	WatchRootFiles     bool      `json:"watch_root_files"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpsertServiceSource(ctx context.Context, arg UpsertServiceSourceParams) (UpsertServiceSourceRow, error) {
 	row := q.db.QueryRowContext(ctx, upsertServiceSource,
 		arg.ServiceID,
 		arg.ConnectionID,
@@ -607,7 +626,7 @@ func (q *Queries) UpsertServiceSource(ctx context.Context, arg UpsertServiceSour
 		arg.WatchRootFiles,
 		arg.OrgID,
 	)
-	var i ServiceSource
+	var i UpsertServiceSourceRow
 	err := row.Scan(
 		&i.ID,
 		&i.ServiceID,

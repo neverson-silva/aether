@@ -28,13 +28,20 @@ PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
 PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
 
-REDIS_CONTAINER="aether-redis"
-REDIS_IMAGE="${AETHER_REDIS_IMAGE:-docker.io/library/redis:7-alpine}"
-REDIS_PORT="${AETHER_REDIS_PORT:-6379}"
+NATS_CONTAINER="aether-nats"
+NATS_IMAGE="${AETHER_NATS_IMAGE:-docker.io/library/nats:2.14.2-alpine}"
+NATS_PORT="${AETHER_NATS_PORT:-4222}"
+NATS_MONITOR_PORT="${AETHER_NATS_MONITOR_PORT:-8222}"
+NATS_URL_EFFECTIVE="${AETHER_NATS_URL:-}"
+NATS_USER="${AETHER_NATS_USER:-aether}"
+NATS_PASSWORD="${AETHER_NATS_PASSWORD:-}"
+NATS_AUTH_FILE="$STATE_DIR/keys/nats.auth"
 
 API_CONTAINER="aether-api"
 API_IMAGE="${AETHER_API_IMAGE:-aether.local/api:1}"
 API_PORT="${AETHER_API_PORT:-8080}"
+WORKER_CONTAINER="aether-worker"
+MONITORING_CONTAINER="aether-monitoring"
 
 WEB_CONTAINER="aether-web"
 WEB_IMAGE="${AETHER_WEB_IMAGE:-aether.local/web:1}"
@@ -326,7 +333,7 @@ podman_machine_socket() {
 }
 
 # ---------------------------------------------------------------------------
-# DATABASE + REDIS containers
+# DATABASE + NATS containers
 strong_password() {
   if command_exists openssl; then
     openssl rand -base64 24 | tr -d '/+=' | head -c 24
@@ -376,7 +383,7 @@ DB_USER='$DB_USER'
 DB_NAME='$DB_NAME'
 DB_PASSWORD='$DB_PASSWORD'
 PG_PORT='$PG_PORT'
-REDIS_PORT='$REDIS_PORT'
+NATS_PORT='$NATS_PORT'
 EOF
   chmod 600 "$CRED_FILE"
   info "Database credentials generated automatically (saved to $CRED_FILE, 0600)."
@@ -459,39 +466,79 @@ ensure_postgres() {
   info "PostgreSQL ready."
 }
 
-ensure_redis() {
-  if [[ -n "${AETHER_REDIS_ADDR:-}" ]]; then
-    info "Redis already configured at $AETHER_REDIS_ADDR — reusing."
+ensure_nats() {
+	ensure_nats_auth
+	if [[ -n "${AETHER_NATS_URL:-}" ]]; then
+    info "NATS already configured at $AETHER_NATS_URL — reusing."
+    NATS_URL_EFFECTIVE="$AETHER_NATS_URL"
     return 0
   fi
   local runtime="$RUNTIME"
   local exists
-  exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$REDIS_CONTAINER" || true)"
+  exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$NATS_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
-    info "Redis already exists ($REDIS_CONTAINER) — using the existing one."
+    local configured_image
+    configured_image="$($runtime inspect "$NATS_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)"
+    if [[ "$configured_image" != "$NATS_IMAGE" ]]; then
+      info "Upgrading NATS container from ${configured_image:-unknown} to $NATS_IMAGE..."
+      $runtime rm -f "$NATS_CONTAINER" >/dev/null
+      exists=""
+    fi
+    if [[ -n "$exists" ]]; then
+      local configured_cmd
+      configured_cmd="$($runtime inspect "$NATS_CONTAINER" --format '{{json .Config.Cmd}}' 2>/dev/null || true)"
+      if [[ "$configured_cmd" != *"--user"* ]]; then
+        info "Recreating NATS with authentication enabled..."
+        $runtime rm -f "$NATS_CONTAINER" >/dev/null
+        exists=""
+      fi
+    fi
+  fi
+  if [[ -n "$exists" ]]; then
+    info "NATS already exists ($NATS_CONTAINER) — using the existing one."
     local running
-    running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$REDIS_CONTAINER" || true)"
-    [[ "$running" -eq 0 ]] && $runtime start "$REDIS_CONTAINER"
+    running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$NATS_CONTAINER" || true)"
+    [[ "$running" -eq 0 ]] && $runtime start "$NATS_CONTAINER"
   else
-    info "Creating Redis ($REDIS_IMAGE)..."
+    info "Creating NATS with JetStream ($NATS_IMAGE)..."
     $runtime run -d \
-      --name "$REDIS_CONTAINER" \
+      --name "$NATS_CONTAINER" \
       --network "$NET_NAME" \
-      --network-alias "$REDIS_CONTAINER" \
-      -p "$REDIS_PORT:6379" \
-      -v aether-redis-data:/data \
+      --network-alias "$NATS_CONTAINER" \
+      -p "$NATS_PORT:4222" \
+      -p "$NATS_MONITOR_PORT:8222" \
+      -v aether-nats-data:/data \
       --restart unless-stopped \
-      "$REDIS_IMAGE" >/dev/null
-    info "Redis started on 127.0.0.1:$REDIS_PORT."
+      "$NATS_IMAGE" -js -sd /data -m 8222 --user "$NATS_USER" --pass "$NATS_PASSWORD" >/dev/null
+    info "NATS started on 127.0.0.1:$NATS_PORT."
   fi
   local tries=0
-  until $runtime exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; do
+  until $runtime exec "$NATS_CONTAINER" nc -z 127.0.0.1 4222 >/dev/null 2>&1; do
     tries=$((tries + 1))
-    [[ $tries -gt 30 ]] && fail "Redis did not become ready in 30s."
+    [[ $tries -gt 30 ]] && fail "NATS did not become ready in 30s."
     sleep 2
   done
-  export AETHER_REDIS_ADDR="$REDIS_CONTAINER:6379"
-  info "Redis ready (container $REDIS_CONTAINER)."
+  export AETHER_NATS_URL="nats://$NATS_CONTAINER:4222"
+  NATS_URL_EFFECTIVE="$AETHER_NATS_URL"
+  info "NATS ready (container $NATS_CONTAINER)."
+}
+
+ensure_nats_auth() {
+  if [[ -z "$NATS_PASSWORD" && -f "$NATS_AUTH_FILE" ]]; then
+    NATS_PASSWORD="$(sed -n '2p' "$NATS_AUTH_FILE")"
+  fi
+  if [[ -z "$NATS_PASSWORD" ]]; then
+    mkdir -p "$(dirname "$NATS_AUTH_FILE")"
+    umask 077
+    if command_exists openssl; then
+      NATS_PASSWORD="$(openssl rand -hex 24)"
+    else
+      NATS_PASSWORD="$(date +%s)-$(head -c 16 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
+    fi
+    printf '%s\n%s\n' "$NATS_USER" "$NATS_PASSWORD" > "$NATS_AUTH_FILE"
+  fi
+  export AETHER_NATS_USER="$NATS_USER"
+  export AETHER_NATS_PASSWORD="$NATS_PASSWORD"
 }
 
 # ---------------------------------------------------------------------------
@@ -561,7 +608,7 @@ start_api() {
 
   mkdir -p "$STATE_DIR" "$STATE_DIR/data" "$STATE_DIR/certs" "$STATE_DIR/logs" \
     "$STATE_DIR/builds" "$STATE_DIR/cache" "$STATE_DIR/keys" "$STATE_DIR/logs/apps" \
-    "$STATE_DIR/builds/sources"
+    "$STATE_DIR/builds/sources" "$STATE_DIR/snapshots"
 
   # volume compartilhado para o ingress (config Traefik + acme), montado na API
   # e no container Traefik, evitando dependência de path do host.
@@ -588,6 +635,7 @@ start_api() {
     -v "aether-pack-cache:/root/.cache/pack"
     --restart unless-stopped
     -e "AETHER_STATE=/var/lib/aether"
+    -e "AETHER_SNAPSHOT_HOST_DIR=$STATE_DIR/snapshots"
     -e "AETHER_API_ADDR=0.0.0.0:8080"
     -e "DATABASE_HOST=$PG_CONTAINER"
     -e "DATABASE_PORT=5432"
@@ -596,8 +644,10 @@ start_api() {
     -e "DATABASE_PASSWORD=$DB_PASSWORD"
     -e "DATABASE_SSL_MODE=disable"
     -e "DATABASE_MIGRATE_ON_START=true"
-    -e "AETHER_REDIS_ADDR=$REDIS_CONTAINER:6379"
-    -e "AETHER_RUNTIME_BACKEND=${AETHER_RUNTIME_BACKEND:-redis}"
+    -e "AETHER_NATS_URL=$NATS_URL_EFFECTIVE"
+    -e "AETHER_NATS_USER=$NATS_USER"
+    -e "AETHER_NATS_PASSWORD=$NATS_PASSWORD"
+    -e "AETHER_RUNTIME_BACKEND=nats"
     -e "AETHER_CNB_BUILDER=$CNB_BUILDER"
     -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
     -e "DEV_MODE=$DEV_MODE"
@@ -661,6 +711,53 @@ start_api() {
   info "  ✓ API healthy on http://127.0.0.1:$API_PORT"
 }
 
+start_auxiliary() {
+  local container="$1"
+  local binary="$2"
+  $RUNTIME rm -f "$container" >/dev/null 2>&1 || true
+  local socket
+  socket="$(podman_socket || true)"
+  local sock_src=""
+  if [[ -n "$socket" && -S "$socket" && ( "$socket" == "$HOME"/* || "$(uname -s)" == "Linux" ) ]]; then
+    sock_src="$socket"
+  elif [[ "$(uname -s)" == "Darwin" ]]; then
+    sock_src="$(podman_machine_socket)"
+  fi
+  local args=(run -d --name "$container" --entrypoint "/usr/local/bin/$binary" --network "$NET_NAME" --security-opt label=disable)
+  args+=(
+    -v "$STATE_DIR:/var/lib/aether"
+    -v "aether-traefik:/var/lib/aether/traefik"
+    -e "AETHER_STATE=/var/lib/aether"
+    -e "AETHER_SNAPSHOT_HOST_DIR=$STATE_DIR/snapshots"
+    -e "DATABASE_HOST=$PG_CONTAINER"
+    -e "DATABASE_PORT=5432"
+    -e "DATABASE_NAME=$DB_NAME"
+    -e "DATABASE_USER=$DB_USER"
+    -e "DATABASE_PASSWORD=$DB_PASSWORD"
+    -e "DATABASE_SSL_MODE=disable"
+    -e "AETHER_NATS_URL=$NATS_URL_EFFECTIVE"
+    -e "AETHER_NATS_USER=$NATS_USER"
+    -e "AETHER_NATS_PASSWORD=$NATS_PASSWORD"
+    -e "AETHER_RUNTIME_BACKEND=nats"
+    -e "AETHER_CNB_BUILDER=$CNB_BUILDER"
+    -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
+    -e "DEV_MODE=$DEV_MODE"
+    -e "AETHER_FREE_DOMAIN_PROVIDER=${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
+    -e "AETHER_MODE=$MODE"
+    --restart unless-stopped
+  )
+  if [[ -n "$sock_src" ]]; then
+    args+=( -v "$sock_src:$sock_src:ro" -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
+  fi
+  info "Starting $container..."
+  $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start $container."
+}
+
+start_workers() {
+  start_auxiliary "$WORKER_CONTAINER" aether-worker
+  start_auxiliary "$MONITORING_CONTAINER" aether-monitoring
+}
+
 # ---------------------------------------------------------------------------
 # WEB CONTAINER (nginx serves the frontend on port 4000)
 write_nginx_conf() {
@@ -698,9 +795,7 @@ start_web() {
   local conf
   conf="$(write_nginx_conf)"
 
-  if $RUNTIME ps -a --format '{{.Names}}' | grep -qx "$WEB_CONTAINER"; then
-    $RUNTIME rm -f "$WEB_CONTAINER" >/dev/null 2>&1
-  fi
+  $RUNTIME rm -f "$WEB_CONTAINER" >/dev/null 2>&1 || true
 
   info "Starting web gateway ($WEB_CONTAINER) on 127.0.0.1:$WEB_PORT..."
   $RUNTIME run -d \
@@ -833,6 +928,7 @@ stop_api() {
   if $RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$WEB_CONTAINER"; then
     $RUNTIME stop "$WEB_CONTAINER" >/dev/null 2>&1
   fi
+  $RUNTIME stop "$WORKER_CONTAINER" "$MONITORING_CONTAINER" >/dev/null 2>&1 || true
   if [[ "$changed" -eq 1 ]]; then
     info "API stopped."
   else
@@ -860,10 +956,20 @@ status_cmd() {
   else
     warn "PostgreSQL: STOPPED"
   fi
-  if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$REDIS_CONTAINER"; then
-    info "Redis: RUNNING (container $REDIS_CONTAINER)"
+  if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$NATS_CONTAINER"; then
+    info "NATS: RUNNING (container $NATS_CONTAINER)"
   else
-    warn "Redis: STOPPED"
+    warn "NATS: STOPPED"
+  fi
+  if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$WORKER_CONTAINER"; then
+    info "Worker: RUNNING (container $WORKER_CONTAINER)"
+  else
+    warn "Worker: STOPPED"
+  fi
+  if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$MONITORING_CONTAINER"; then
+    info "Monitoring: RUNNING (container $MONITORING_CONTAINER)"
+  else
+    warn "Monitoring: STOPPED"
   fi
   if $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$WEB_CONTAINER"; then
     info "Web: RUNNING (nginx container $WEB_CONTAINER) → http://127.0.0.1:$WEB_PORT"
@@ -917,12 +1023,13 @@ main() {
       start_agent
       ensure_network
       ensure_postgres
-      ensure_redis
+      ensure_nats
       ensure_registry
       ensure_builder
       ensure_web_image
       FORCE_API_RECREATE=1
       start_api
+      start_workers
       start_web
       info "Aether is running."
       return 0
@@ -937,10 +1044,10 @@ main() {
   info "2/6 Preparing directories and keys..."
   ensure_master_key
 
-  info "3/6 Setting up containers (network, postgres, redis)..."
+  info "3/6 Setting up containers (network, postgres, NATS)..."
   ensure_network
   ensure_postgres
-  ensure_redis
+  ensure_nats
 
   info "3.5/6 Setting up registry + CNB builder..."
   ensure_registry
@@ -954,6 +1061,7 @@ main() {
   start_agent
   FORCE_API_RECREATE=1
   start_api
+  start_workers
   start_web
 
   info "6/6 Verifying the installation..."
@@ -977,7 +1085,7 @@ main() {
   echo -e "    ${CYAN}./install-dev.sh status${NC}  — check the status"
   echo -e "    ${CYAN}./install-dev.sh logs${NC}    — follow the API logs"
   echo
-  echo -e "  Everything (API, frontend, postgres, redis) runs in podman containers."
+  echo -e "  Everything (API, frontend, postgres, NATS) runs in podman containers."
   echo -e "  podman is the only tool required on this host."
 }
 

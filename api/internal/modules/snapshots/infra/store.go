@@ -102,6 +102,28 @@ func (s *Store) DeleteSchedule(ctx context.Context, id, orgID uuid.UUID) error {
 	return mapErr(s.q.DeleteSnapshotSchedule(ctx, gen.DeleteSnapshotScheduleParams{ID: id, OrgID: orgID}))
 }
 
+func (s *Store) ListEnabledSchedules(ctx context.Context) ([]domain.Schedule, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at FROM snapshot_schedules WHERE enabled ORDER BY next_run NULLS FIRST, created_at`)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	out := make([]domain.Schedule, 0)
+	for rows.Next() {
+		var schedule domain.Schedule
+		if err := rows.Scan(&schedule.ID, &schedule.OrgID, &schedule.AppID, &schedule.Volume, &schedule.NamePrefix, &schedule.Cron, &schedule.Retention, &schedule.Enabled, &schedule.LastRun, &schedule.NextRun, &schedule.CreatedAt); err != nil {
+			return nil, mapErr(err)
+		}
+		out = append(out, schedule)
+	}
+	return out, mapErr(rows.Err())
+}
+
+func (s *Store) SetScheduleRun(ctx context.Context, id uuid.UUID, last, next time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE snapshot_schedules SET last_run = $2, next_run = $3 WHERE id = $1`, id, last, next)
+	return mapErr(err)
+}
+
 func snapshotFromRow(row gen.Snapshot) *domain.Snapshot {
 	return &domain.Snapshot{
 		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), Volume: row.Volume,

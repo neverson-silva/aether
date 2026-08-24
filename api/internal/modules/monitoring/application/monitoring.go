@@ -10,6 +10,7 @@ import (
 	hostdomain "aether/internal/modules/host/domain"
 	"aether/internal/modules/monitoring/domain"
 
+	"aether/internal/platform/observability"
 	"aether/internal/platform/worker"
 )
 
@@ -30,6 +31,13 @@ type HistoryStore interface {
 	ListSamples(ctx context.Context, from, to time.Time) ([]domain.HistoryPoint, error)
 	ListResourceSamples(ctx context.Context, id string, from, to time.Time) ([]domain.ResourcePoint, error)
 	Purge(ctx context.Context, before time.Time) error
+}
+
+type Reader interface {
+	Latest() *domain.Snapshot
+	History(window string) []domain.HistoryPoint
+	ResourceHistory(id, window string) []domain.ResourcePoint
+	CollectorStats() domain.CollectorStats
 }
 
 type prevCounters struct {
@@ -56,6 +64,8 @@ type Monitoring struct {
 	history *History
 	store   HistoryStore
 	logger  *slog.Logger
+	Publish func(*domain.Snapshot)
+	Metrics *observability.Metrics
 
 	mu       sync.RWMutex
 	latest   *domain.Snapshot
@@ -110,10 +120,17 @@ func (m *Monitoring) Run(ctx context.Context, interval time.Duration) {
 // Collect performs one sampling cycle (host + all containers in batch).
 func (m *Monitoring) Collect(ctx context.Context) {
 	start := time.Now()
+	failed := false
+	defer func() {
+		if m.Metrics != nil {
+			m.Metrics.ObserveCollection(time.Since(start), failed)
+		}
+	}()
 	hs := m.host.Stats(ctx)
 
 	raw, err := m.runtime.ListContainers(ctx)
 	if err != nil {
+		failed = true
 		m.mu.Lock()
 		m.errN++
 		m.lastErr = "list containers: " + err.Error()
@@ -246,6 +263,9 @@ func (m *Monitoring) Collect(ctx context.Context) {
 		},
 	}
 	m.mu.Unlock()
+	if m.Publish != nil {
+		m.Publish(m.Latest())
+	}
 
 	m.history.push(now.Unix(), []domain.HistoryPoint{{
 		TS: now.Unix(), HostCPU: host.CPUPercent, HostMem: host.MemPercent,

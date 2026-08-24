@@ -6,6 +6,7 @@ package pg
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -204,6 +205,9 @@ type Querier interface {
 	PurgeMonitoringResourceSamples(ctx context.Context, ts time.Time) error
 	PurgeMonitoringSamples(ctx context.Context, ts time.Time) error
 	RecordVariableAudit(ctx context.Context, arg RecordVariableAuditParams) error
+	RecoverInterruptedBackupJobs(ctx context.Context, startedAt sql.NullTime) error
+	RecoverInterruptedDeployments(ctx context.Context, startedAt sql.NullTime) error
+	RecoverInterruptedRestoreJobs(ctx context.Context, startedAt sql.NullTime) error
 	RemoveProjectAssignment(ctx context.Context, arg RemoveProjectAssignmentParams) error
 	ResolveAlertEvent(ctx context.Context, id uuid.UUID) error
 	SetAlertRuleEnabled(ctx context.Context, arg SetAlertRuleEnabledParams) error
@@ -244,7 +248,7 @@ type Querier interface {
 	UpsertProjectVariable(ctx context.Context, arg UpsertProjectVariableParams) (EnvVariable, error)
 	UpsertRegistrySettings(ctx context.Context, enabled bool) (RegistrySetting, error)
 	UpsertSCMConnection(ctx context.Context, arg UpsertSCMConnectionParams) (UpsertSCMConnectionRow, error)
-	UpsertServiceSource(ctx context.Context, arg UpsertServiceSourceParams) (ServiceSource, error)
+	UpsertServiceSource(ctx context.Context, arg UpsertServiceSourceParams) (UpsertServiceSourceRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

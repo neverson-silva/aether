@@ -660,6 +660,34 @@ func (q *Queries) ListRestoreJobsDue(ctx context.Context, limit int32) ([]Restor
 	return items, nil
 }
 
+const recoverInterruptedBackupJobs = `-- name: RecoverInterruptedBackupJobs :exec
+UPDATE backup_jobs
+SET status = 'queued', started_at = NULL, completed_at = NULL,
+    error_code = NULL, error_message = NULL
+WHERE status IN ('preparing', 'running', 'uploading', 'verifying', 'cancelling')
+  AND started_at IS NOT NULL
+  AND started_at < $1
+`
+
+func (q *Queries) RecoverInterruptedBackupJobs(ctx context.Context, startedAt sql.NullTime) error {
+	_, err := q.db.ExecContext(ctx, recoverInterruptedBackupJobs, startedAt)
+	return err
+}
+
+const recoverInterruptedRestoreJobs = `-- name: RecoverInterruptedRestoreJobs :exec
+UPDATE restore_jobs
+SET status = 'queued', started_at = NULL, completed_at = NULL,
+    error_code = NULL, error_message = NULL
+WHERE status IN ('preparing', 'downloading', 'restoring', 'verifying', 'cancelling')
+  AND started_at IS NOT NULL
+  AND started_at < $1
+`
+
+func (q *Queries) RecoverInterruptedRestoreJobs(ctx context.Context, startedAt sql.NullTime) error {
+	_, err := q.db.ExecContext(ctx, recoverInterruptedRestoreJobs, startedAt)
+	return err
+}
+
 const setBackupConfigurationNextRun = `-- name: SetBackupConfigurationNextRun :exec
 UPDATE backup_configurations
 SET next_run_at = $2, updated_at = now()

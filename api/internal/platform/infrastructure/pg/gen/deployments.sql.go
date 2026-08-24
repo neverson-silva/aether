@@ -339,6 +339,19 @@ func (q *Queries) NextDeploymentNumber(ctx context.Context, appID uuid.UUID) (in
 	return column_1, err
 }
 
+const recoverInterruptedDeployments = `-- name: RecoverInterruptedDeployments :exec
+UPDATE deployments
+SET status = 'failed', error = 'deployment interrupted by worker shutdown', finished_at = now()
+WHERE status IN ('building', 'starting', 'health_checking')
+  AND started_at IS NOT NULL
+  AND started_at < $1
+`
+
+func (q *Queries) RecoverInterruptedDeployments(ctx context.Context, startedAt sql.NullTime) error {
+	_, err := q.db.ExecContext(ctx, recoverInterruptedDeployments, startedAt)
+	return err
+}
+
 const updateDeploymentStatus = `-- name: UpdateDeploymentStatus :exec
 UPDATE deployments
 SET status = $2,

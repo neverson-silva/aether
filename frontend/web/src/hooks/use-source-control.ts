@@ -77,11 +77,12 @@ type ServiceSourceResponse = Partial<ServiceSource> & {
   WatchPaths?: string[];
   IgnorePaths?: string[];
   WatchRootFiles?: boolean;
+  EnvironmentTemplatePath?: string;
   CreatedAt?: string;
   UpdatedAt?: string;
 };
 
-function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSource {
+export function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSource {
   return {
     id: raw.id ?? raw.ID ?? "",
     service_id: raw.service_id ?? raw.ServiceID ?? "",

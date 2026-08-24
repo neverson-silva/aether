@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"aether/internal/platform/druntime/queue"
 )
 
 var (
@@ -44,6 +46,7 @@ type Metrics struct {
 	CacheErrors   int64          `json:"cache_errors"`
 	Subscribers   map[string]int `json:"subscribers"`
 	TotalChannels int            `json:"total_channels"`
+	Queues        map[string]queue.Metrics `json:"queues,omitempty"`
 }
 
 type NetSample struct {

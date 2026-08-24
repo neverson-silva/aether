@@ -17,6 +17,7 @@ var (
 
 type CronJob struct {
 	ID        uuid.UUID
+	OrgID     uuid.UUID
 	AppID     uuid.UUID
 	Name      string
 	Schedule  string

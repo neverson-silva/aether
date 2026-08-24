@@ -229,8 +229,8 @@ Nenhuma camada superior chamou Podman diretamente. O Agent é a única fronteira
 Detalhes: [`12-event-bus.md`](12-event-bus.md). Resumo dos princípios:
 
 1. **Postgres é fonte de verdade** dos estados; eventos são o canal de entrega realtime + trilha recente.
-2. **Barramento Redis (produção)**: pub/sub `notify:org:<org>` para fanout realtime + Streams para
-   event log (`ev:org:<org>`, seq por org, MAXLEN) e fila de deploys (`q:deployments:*`, consumer groups).
+2. **Barramento NATS (produção)**: Core NATS (`aether.live.*`) para sinais efêmeros realtime + JetStream para
+   event log (`aether.events.*`, seq por org) e fila durável de jobs (`aether.jobs.*`, durable consumers, retry e DLQ).
    Em dev/teste, `AETHER_RUNTIME_BACKEND=memory` usa pub/sub e log em processo.
 3. **Zero polling no frontend**: dados via REST bootstrap + WebSocket único (`/api/v1/ws/realtime`);
    hub server-side com subscriptions por escopo autorizadas (org/app/deployment), `seq` para replay

@@ -20,6 +20,8 @@ type Config struct {
 	AlertIntervalSeconds    int
 	ImageRetention          int
 	APIAddr                 string
+	WorkerHealthAddr        string
+	MonitoringHealthAddr    string
 	ProxyEndpoint           string
 	ChallengeAddr           string
 	AgentAddr               string
@@ -59,10 +61,10 @@ type Config struct {
 	DatabaseRetryDelay       int
 
 	RuntimeBackend string
-	RedisAddr      string
-	RedisPassword  string
-	RedisUsername  string
-	RedisDB        int
+	NATSURL        string
+	NATSName       string
+	NATSUser       string
+	NATSPassword   string
 
 	StudioCacheTTLSeconds int
 
@@ -114,6 +116,8 @@ func Load() (*Config, error) {
 		CacheDir:                filepath.Join(state, "cache"),
 		KeysDir:                 filepath.Join(state, "keys"),
 		APIAddr:                 envOr("AETHER_API_ADDR", "127.0.0.1:8080"),
+		WorkerHealthAddr:        envOr("AETHER_WORKER_HEALTH_ADDR", "127.0.0.1:8081"),
+		MonitoringHealthAddr:    envOr("AETHER_MONITORING_HEALTH_ADDR", "127.0.0.1:8082"),
 		ProxyEndpoint:           envOr("AETHER_PROXY_ENDPOINT", "127.0.0.1:15090"),
 		ChallengeAddr:           envOr("AETHER_CHALLENGE_ADDR", "127.0.0.1:15001"),
 		AgentAddr:               envOr("AETHER_AGENT_ADDR", "127.0.0.1:9443"),
@@ -151,17 +155,17 @@ func Load() (*Config, error) {
 		FreeDomainBase:           freeDomainBase,
 		IngressNetwork:           envOr("AETHER_INGRESS_NETWORK", "aether-ingress"),
 		TraefikImage:             envOr("AETHER_TRAEFIK_IMAGE", "docker.io/library/traefik:v3.2"),
-		RuntimeBackend:           envOr("AETHER_RUNTIME_BACKEND", ""),
-		RedisAddr:                envOr("AETHER_REDIS_ADDR", ""),
-		RedisPassword:            envOr("AETHER_REDIS_PASSWORD", ""),
-		RedisUsername:            envOr("AETHER_REDIS_USERNAME", ""),
+		RuntimeBackend:           envOr("AETHER_RUNTIME_BACKEND", "nats"),
+		NATSURL:                  envOr("AETHER_NATS_URL", "nats://127.0.0.1:4222"),
+		NATSName:                 envOr("AETHER_NATS_NAME", "aether-api"),
+		NATSUser:                 os.Getenv("AETHER_NATS_USER"),
+		NATSPassword:             os.Getenv("AETHER_NATS_PASSWORD"),
 		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "127.0.0.1:5000/builder:node-spa"),
 		GitHubAppID:              int64(envInt("AETHER_GITHUB_APP_ID", 0)),
 		GitHubAppSlug:            os.Getenv("AETHER_GITHUB_APP_SLUG"),
 		GitHubPrivateKey:         os.Getenv("AETHER_GITHUB_PRIVATE_KEY"),
 		GitHubWebhookSecret:      os.Getenv("AETHER_GITHUB_WEBHOOK_SECRET"),
 		GitHubAPIURL:             envOr("AETHER_GITHUB_API_URL", "https://api.github.com"),
-		RedisDB:                  envInt("AETHER_REDIS_DB", 0),
 		StudioCacheTTLSeconds:    envInt("AETHER_STUDIO_CACHE_TTL", 300),
 		CookieSecure:             envBool("AETHER_COOKIE_SECURE", false),
 	}

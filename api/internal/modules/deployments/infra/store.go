@@ -16,6 +16,8 @@ import (
 	"github.com/sqlc-dev/pqtype"
 
 	"aether/internal/modules/deployments/domain"
+	"aether/internal/platform/druntime/events"
+	"aether/internal/platform/druntime/queue"
 	gen "aether/internal/platform/infrastructure/pg/gen"
 )
 
@@ -51,6 +53,46 @@ func (s *Store) CreateDeployment(ctx context.Context, dep *domain.Deployment) (*
 	})
 	if err != nil {
 		return nil, mapErr(err)
+	}
+	return deploymentFromRow(row), nil
+}
+
+func (s *Store) CreateDeploymentAndOutbox(ctx context.Context, dep *domain.Deployment, orgID uuid.UUID) (*domain.Deployment, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	q := gen.New(tx)
+	snapshot := dep.EnvSnapshot
+	if len(snapshot) == 0 {
+		snapshot = []byte("{}")
+	}
+	var spec pqtype.NullRawMessage
+	if len(dep.DeploySpec) > 0 {
+		spec = pqtype.NullRawMessage{RawMessage: dep.DeploySpec, Valid: true}
+	}
+	row, err := q.CreateDeployment(ctx, gen.CreateDeploymentParams{
+		AppID: dep.AppID, Number: int32(dep.Number), Status: string(dep.Status), Trigger: dep.Trigger,
+		TriggeredBy: dep.TriggeredBy, CommitSha: dep.CommitSHA, ImageRef: dep.ImageRef, ServerID: dep.ServerID,
+		Error: dep.Error, EnvSnapshot: snapshot, ComposeYaml: dep.ComposeYAML, DeploySpec: spec, ComposeHash: dep.ComposeHash,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	job, err := json.Marshal(queue.Job{ID: row.ID.String(), DeploymentID: row.ID.String(), AppID: row.AppID.String(), OrgID: orgID.String()})
+	if err != nil {
+		return nil, err
+	}
+	event, err := json.Marshal(events.Event{ID: uuid.New().String(), Type: "deployment.queued", AggregateType: "deployment", AggregateID: row.ID.String(), Payload: job, TS: time.Now()})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO outbox_events (id, topic, event_type, aggregate_type, aggregate_id, payload) VALUES ($1, $2, $3, $4, $5, $6)`, uuid.New(), "deployments", "deployment.queued", "deployment", row.ID.String(), event); err != nil {
+		return nil, mapErr(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return deploymentFromRow(row), nil
 }
@@ -135,6 +177,10 @@ func (s *Store) ListQueued(ctx context.Context) ([]domain.Deployment, error) {
 		out = append(out, *deploymentFromRow(r))
 	}
 	return out, nil
+}
+
+func (s *Store) RecoverInterrupted(ctx context.Context, startedAt time.Time) error {
+	return mapErr(s.q.RecoverInterruptedDeployments(ctx, sql.NullTime{Time: startedAt, Valid: true}))
 }
 
 func (s *Store) ListReady(ctx context.Context) ([]domain.Deployment, error) {

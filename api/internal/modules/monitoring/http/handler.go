@@ -12,10 +12,10 @@ import (
 )
 
 type Handler struct {
-	mon *application.Monitoring
+	mon application.Reader
 }
 
-func New(mon *application.Monitoring) *Handler {
+func New(mon application.Reader) *Handler {
 	return &Handler{mon: mon}
 }
 

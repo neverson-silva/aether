@@ -196,7 +196,7 @@ func TestDeployEnqueuesAndNotifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deploy: %v", err)
 	}
-	if len(q.jobs) != 1 || q.jobs[0].DeploymentID != dep.ID.String() {
+	if len(q.jobs) != 1 || q.jobs[0].ID != dep.ID.String() || q.jobs[0].DeploymentID != dep.ID.String() {
 		t.Fatalf("job não enfileirado: %+v", q.jobs)
 	}
 	if len(notified) != 1 || notified[0].Status != "queued" || notified[0].DepID != dep.ID {

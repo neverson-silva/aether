@@ -1,6 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { MagnifyingGlass } from '@phosphor-icons/react'
-import { type ReactElement, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactElement, type ReactNode, useMemo, useState } from 'react'
 
 export interface CommandPaletteItem {
   id: string

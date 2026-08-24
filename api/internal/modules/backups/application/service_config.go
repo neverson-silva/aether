@@ -74,6 +74,11 @@ func (s *DatabaseBackups) SaveConfiguration(ctx context.Context, orgID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	if s.Scheduler != nil {
+		if err := s.scheduleConfiguration(ctx, *saved); err != nil {
+			return nil, err
+		}
+	}
 	s.Audit.Record(ctx, orgID, "backup.configuration.update", "database", cfg.DatabaseID.String(), string(cfg.Schedule.Type)+" "+cfg.Schedule.Timezone)
 	return saved, nil
 }

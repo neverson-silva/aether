@@ -9,8 +9,10 @@ import (
 	"aether/internal/modules/backups/adapters/container"
 	"aether/internal/modules/backups/domain"
 	databasedomain "aether/internal/modules/databases/domain"
+	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/locks"
 	"aether/internal/platform/druntime/queue"
+	"aether/internal/platform/druntime/scheduler"
 	"aether/internal/platform/storage"
 )
 
@@ -21,9 +23,13 @@ type DatabaseBackups struct {
 	Destinations DestinationProvider
 	Exec         container.Executor
 	Queue        queue.Queue
+	Scheduler    scheduler.Scheduler
 	Locks        locks.LockManager
 	Audit        AuditRecorder
 	Notifier     BackupNotifier
+	Outbox       interface {
+		Enqueue(context.Context, events.Event, string) error
+	}
 	Timeout      time.Duration
 	Batch        int
 }

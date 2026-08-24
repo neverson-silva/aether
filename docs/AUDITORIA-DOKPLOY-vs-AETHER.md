@@ -1,6 +1,6 @@
 # Auditoria Técnica Comparativa — Dokploy 0.29.14 × Aether PaaS
 
-> Engenharia reversa + auditoria de paridade. Fonte: código-fonte do Dokploy (`dokploy-0.29.14/`, 186k LOC TS) e código-fonte do Aether (`api/internal/`, `web/`, `infra/`). Análise estática; nenhuma exploração destrutiva. Itens não comprovados marcados como `UNVERIFIED`.
+> Engenharia reversa + auditoria de paridade. Fonte: código-fonte do Dokploy (`dokploy-0.29.14/`, 186k LOC TS) e código-fonte do Aether (`api/internal/`, `frontend/web/`, `infra/`). Análise estática; nenhuma exploração destrutiva. Itens não comprovados marcados como `UNVERIFIED`.
 
 ---
 
@@ -36,7 +36,7 @@
 | Monitoramento | apps/monitoring (Go, SQLite, séries temporais) + WSS stats + alertas de threshold | gopsutil + SSE + `podman stats` (sem persistência, sem evaluator) |
 | Backup | Dumps reais (pg_dump etc.) + rclone S3 + restores + volume backups + schedules | Registro de rows; restore = no-op |
 | Observabilidade | WSS: deploy logs (tail -f), container logs (search/since), terminal SSH, stats | SSE: logs de container, host stats, eventos; terminal pty (podman exec) |
-| DB do produto | Postgres + SQLite (monitoring) | Postgres (+ Redis disponível via druntime, mas não usado) |
+| DB do produto | Postgres + SQLite (monitoring) | Postgres (+ NATS Core/JetStream como barramento assíncrono) |
 
 **Leitura**: o Dokploy é um orquestrador Docker Swarm multi-host com UI rica; o Aether é um orquestrador podman single-host com arquitetura limpa e tipos fortes. A estrutura do Aether (hexagonal, sqlc, testpool) é **mais fácil de testar e estender**; faltam os mecanismos de execução.
 
@@ -305,7 +305,7 @@ Legenda: ✅ completo · 🟡 parcial · ❌ ausente · 🔴 falso positivo (par
 | `?secrets=1` respeitado; DTO stubs (`server_id`, `cluster_id`, `volumes`) |
 | Workers de jobs com replicas reais; pipelines com timeout |
 | host logs/events reais (escrever aether.log) |
-| druntime: ativar adapter redis (queue/locks/ratelimit) |
+| druntime: adapters NATS para queue/locks/scheduler/state (Redis removido) |
 | PATCH de domínio não re-provisiona config Traefik (`domains/infra/store.go:69-74`) |
 | Compose import é casca (valida YAML e retorna ok sem criar — `templates/http/compose.go:135-147`) |
 | Mirror ignora `TagsFilter` no Run (`mirrors/application/mirrors.go:53-67`) |
@@ -616,7 +616,7 @@ Previews de PR               →  depende de Git + Domains(wildcard) + Deploy
 3. **Maiores riscos**: (a) **confiança enganosa** — módulos retornam sucesso sem efeito; (b) **scaffold sem executor** se espalhando; (c) **integridade do deploy** — modelo remove-then-run gera downtime em todo deploy, deploy falho derruba o app e não há recuperação de órfãos após crash (ver seção 2.1.3); (d) dependências de CLIs externas (nixpacks/pack) sem fallback; (e) **HTTPS/ACME não funcionando** no principal fluxo de domínios.
 4. **O que já está melhor que o Dokploy**: máquina de estados de deploy; healthcheck explícito; gerador Dockerfile/nginx próprio; planner com preview; SSO OIDC por org (após corrigir o callback); arquitetura hexagonal testável com testpool real; hot reload dev. *(Criptografia at-rest: agora é paridade, não vantagem — o Dokploy também cifra env.)*
 5. **O que implementar primeiro**: cancelamento/concorrência do worker → **corrigir ACME** → databases → backups reais → scheduler → API keys.
-6. **Partes da arquitetura a alterar**: (a) worker único → worker com fila por app (lock) + scheduler; (b) druntime memory → redis (queue/locks reais); (c) backups/snapshots → executores reais; (d) middleware de auth → API keys; (e) DTOs stubs → dados reais; (f) `VerifyCertificate`/provisionamento de domínios (detecção de certificado via `traefik exec` em vez de `wget`+binário).
+6. **Partes da arquitetura a alterar**: (a) worker único → worker com fila por app (lock) + scheduler; (b) druntime memory → nats (queue/locks reais, concluído); (c) backups/snapshots → executores reais; (d) middleware de auth → API keys; (e) DTOs stubs → dados reais; (f) `VerifyCertificate`/provisionamento de domínios (detecção de certificado via `traefik exec` em vez de `wget`+binário).
 7. **Features que NÃO valem a pena copiar**: Swarm (podman single-host é o modelo); Stripe/billing (fora do escopo self-hosted); railpack/BuildKit no podman (quebrado no nosso ambiente — documentado); SCIM (sem market).
 8. **Features a implementar de forma diferente**: previews (usar nosso domínio free em vez de sslip); backups (Go + S3 provider próprio em vez de rclone via shell); monitoramento (SSE + nosso storage em vez de app Go separado); notificações (reutilizar nosso `notification_channels` com dispatch real).
 9. **Onde criar vantagem competitiva**: (a) preview de Dockerfile/nginx gerado no wizard (transparência de build); (b) auditoria + ciclo de vida de variáveis (audit/export/import já existem); (c) DX: dev loop hot-reload + testes reais; (d) planner/export (compose/k8s/nomad) — ninguém mais tem; (e) terminal/SSE nativos sem Docker.

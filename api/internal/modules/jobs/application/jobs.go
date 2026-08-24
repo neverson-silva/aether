@@ -33,6 +33,10 @@ type Runtime interface {
 	Remove(ctx context.Context, containerID string) error
 }
 
+type OneShotRuntime interface {
+	RunOnce(ctx context.Context, name, image, command string, env []string) (string, error)
+}
+
 type podmanRuntime struct{}
 
 func NewRuntime() Runtime { return podmanRuntime{} }
@@ -46,6 +50,19 @@ func (podmanRuntime) Run(ctx context.Context, name, image, command string, env [
 	out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (podmanRuntime) RunOnce(ctx context.Context, name, image, command string, env []string) (string, error) {
+	args := []string{"run", "--rm", "--name", name}
+	for _, e := range env {
+		args = append(args, "-e", e)
+	}
+	args = append(args, image, "sh", "-c", command)
+	out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
+	if err != nil {
+		return strings.TrimSpace(string(out)), fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

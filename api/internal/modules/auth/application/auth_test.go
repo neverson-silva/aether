@@ -101,16 +101,29 @@ func TestRegisterDuplicateEmail(t *testing.T) {
 	}
 }
 
+func TestRegisterMultipleEmailsCreateUniqueOrganizations(t *testing.T) {
+	env := newTestEnv(t)
+	for i, email := range []string{"one@example.com", "two@example.com", "three@example.com"} {
+		_, token, err := env.svc.Register(env.ctx, email, "User", "senha-segura-123")
+		if err != nil {
+			t.Fatalf("register %d: %v", i, err)
+		}
+		if token == "" {
+			t.Fatalf("register %d: token vazio", i)
+		}
+	}
+}
+
 func TestRegisterAtomicity(t *testing.T) {
 	env := newTestEnv(t)
 	if _, _, err := env.svc.Register(env.ctx, "alice@example.com", "Alice", "senha-segura-123"); err != nil {
 		t.Fatalf("primeiro register: %v", err)
 	}
-	if _, _, err := env.svc.Register(env.ctx, "alice2@example.com", "Alice", "senha-segura-456"); !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("slug de org duplicado deveria falhar com conflict: %v", err)
+	if _, _, err := env.svc.Register(env.ctx, "alice2@example.com", "Alice", "senha-segura-456"); err != nil {
+		t.Fatalf("segundo register não deveria colidir: %v", err)
 	}
-	if _, err := env.svc.Users.GetUserByEmail(env.ctx, "alice2@example.com"); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("usuário do register falho não deveria persistir: %v", err)
+	if _, err := env.svc.Users.GetUserByEmail(env.ctx, "alice2@example.com"); err != nil {
+		t.Fatalf("usuário do segundo register deveria persistir: %v", err)
 	}
 }
 

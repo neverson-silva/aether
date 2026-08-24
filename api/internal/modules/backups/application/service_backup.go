@@ -2,11 +2,13 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 
 	"aether/internal/modules/backups/domain"
+	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/queue"
 )
 
@@ -92,17 +94,32 @@ func (s *DatabaseBackups) CancelBackup(ctx context.Context, backupID, orgID uuid
 			return err
 		}
 		s.notifyBackup(ctx, orgID, job.DatabaseID, job.ID, string(job.Status))
-		return s.enqueue(ctx, queue.Job{ID: job.ID.String(), Type: "backup.cancel", OrgID: orgID.String(), Payload: []byte(job.ID.String())})
+		return s.enqueue(ctx, queue.Job{ID: "cancel:" + job.ID.String(), Type: "backup.cancel", OrgID: orgID.String(), Payload: []byte(job.ID.String())})
 	default:
 		return domain.ErrValidation
 	}
 }
 
 func (s *DatabaseBackups) enqueue(ctx context.Context, job queue.Job) error {
+	if s.Outbox != nil {
+		payload, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		event := events.Event{
+			ID: uuid.NewString(), Type: jobEventType(job.Type), AggregateType: "job",
+			AggregateID: job.ID, Payload: payload, TS: time.Now().UTC(),
+		}
+		return s.Outbox.Enqueue(ctx, event, "backups")
+	}
 	if s.Queue == nil {
 		return nil
 	}
 	return s.Queue.Enqueue(ctx, "backups", job)
+}
+
+func jobEventType(jobType string) string {
+	return jobType + ".queued"
 }
 
 func (s *DatabaseBackups) failJob(ctx context.Context, orgID uuid.UUID, job *domain.BackupJob, code, msg string) error {

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
 	appsdomain "aether/internal/modules/apps/domain"
 	deploydomain "aether/internal/modules/deployments/domain"
 	variablesApp "aether/internal/modules/variables/application"
+	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/queue"
 )
 
@@ -20,7 +22,14 @@ type Deployments struct {
 	Queue     queue.Queue
 	Notifier  DeployNotifier
 	Canceller DeploymentCanceller
-	mu        sync.Mutex
+	Outbox    interface {
+		Enqueue(context.Context, events.Event, string) error
+	}
+	mu sync.Mutex
+}
+
+type atomicDeploymentStore interface {
+	CreateDeploymentAndOutbox(context.Context, *deploydomain.Deployment, uuid.UUID) (*deploydomain.Deployment, error)
 }
 
 type DeployNotifier interface {
@@ -72,30 +81,48 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 	number, err := d.Store.NextNumber(ctx, appID)
 	var dep *deploydomain.Deployment
 	if err == nil {
-		dep, err = d.Store.CreateDeployment(ctx, &deploydomain.Deployment{
+		candidate := &deploydomain.Deployment{
 			AppID: appID, Number: number, Status: deploydomain.StatusQueued,
 			Trigger: opts.Trigger, TriggeredBy: opts.TriggeredBy, CommitSHA: opts.CommitSHA,
 			ImageRef: opts.ImageRef, EnvSnapshot: snapshot, DeploySpec: spec,
-		})
+		}
+		if atomic, ok := d.Store.(atomicDeploymentStore); ok {
+			dep, err = atomic.CreateDeploymentAndOutbox(ctx, candidate, orgID)
+		} else {
+			dep, err = d.Store.CreateDeployment(ctx, candidate)
+		}
 	}
 	d.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	d.enqueue(ctx, dep, orgID)
+	if _, ok := d.Store.(atomicDeploymentStore); ok && d.Outbox != nil {
+		d.notify(ctx, dep)
+	} else {
+		d.enqueue(ctx, dep, orgID)
+	}
 	return dep, nil
 }
 
 func (d *Deployments) enqueue(ctx context.Context, dep *deploydomain.Deployment, orgID uuid.UUID) {
 	if d.Queue != nil {
-		_ = d.Queue.Enqueue(ctx, "deployments", queue.Job{
+		if err := d.Queue.Enqueue(ctx, "deployments", queue.Job{
+			ID:           dep.ID.String(),
 			DeploymentID: dep.ID.String(), AppID: dep.AppID.String(), OrgID: orgID.String(),
-		})
+		}); err != nil && d.Outbox != nil {
+			payload, _ := json.Marshal(queue.Job{ID: dep.ID.String(), DeploymentID: dep.ID.String(), AppID: dep.AppID.String(), OrgID: orgID.String()})
+			event := events.Event{ID: uuid.New().String(), Type: "deployment.queued", AggregateType: "deployment", AggregateID: dep.ID.String(), Payload: payload, TS: time.Now()}
+			_ = d.Outbox.Enqueue(ctx, event, "deployments")
+		}
 	}
 	if d.Notifier != nil {
-		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{
-			AppID: dep.AppID, DepID: dep.ID, Status: string(deploydomain.StatusQueued),
-		})
+		d.notify(ctx, dep)
+	}
+}
+
+func (d *Deployments) notify(ctx context.Context, dep *deploydomain.Deployment) {
+	if d.Notifier != nil {
+		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, DepID: dep.ID, Status: string(deploydomain.StatusQueued)})
 	}
 }
 

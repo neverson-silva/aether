@@ -197,6 +197,14 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 	if err != nil || rj.Terminal() {
 		return
 	}
+	if s.Locks != nil {
+		lock, ok, err := s.Locks.Acquire(ctx, "db:"+rj.TargetDatabaseID.String()+":restore", s.timeout())
+		if err != nil || !ok {
+			_ = s.failRestore(ctx, rj, "RESTORE_ALREADY_RUNNING", "another restore is running for this database")
+			return
+		}
+		defer func() { _ = s.Locks.Release(ctx, lock) }()
+	}
 	now := time.Now()
 	rj.StartedAt = &now
 	_ = rj.Transition(domain.RestorePreparing)

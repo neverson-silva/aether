@@ -64,6 +64,28 @@ func (s *Store) ListCronJobsByOrg(ctx context.Context, orgID uuid.UUID) ([]domai
 	return cronsFromRows(rows), nil
 }
 
+func (s *Store) ListEnabledCronJobs(ctx context.Context) ([]domain.CronJob, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id, a.org_id, c.app_id, c.name, c.schedule, c.command, c.enabled, c.last_run, c.next_run, c.created_at FROM cron_jobs c JOIN apps a ON a.id = c.app_id WHERE c.enabled ORDER BY c.next_run NULLS FIRST, c.created_at`)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	jobs := make([]domain.CronJob, 0)
+	for rows.Next() {
+		var job domain.CronJob
+		if err := rows.Scan(&job.ID, &job.OrgID, &job.AppID, &job.Name, &job.Schedule, &job.Command, &job.Enabled, &job.LastRun, &job.NextRun, &job.CreatedAt); err != nil {
+			return nil, mapErr(err)
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, mapErr(rows.Err())
+}
+
+func (s *Store) SetCronRun(ctx context.Context, id uuid.UUID, last, next time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE cron_jobs SET last_run = $2, next_run = $3 WHERE id = $1`, id, last, next)
+	return mapErr(err)
+}
+
 func (s *Store) UpdateCronJob(ctx context.Context, job *domain.CronJob) (*domain.CronJob, error) {
 	row, err := s.q.UpdateCronJob(ctx, gen.UpdateCronJobParams{
 		ID: job.ID, AppID: job.AppID, Schedule: job.Schedule, Command: job.Command, Enabled: job.Enabled,

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 
 	"aether/internal/modules/backups/domain"
+	"aether/internal/platform/druntime/queue"
 	gen "aether/internal/platform/infrastructure/pg/gen"
 )
 
@@ -175,6 +176,37 @@ func (s *DatabaseStore) ListQueuedJobs(ctx context.Context, limit int) ([]domain
 		return nil, mapErr(err)
 	}
 	return jobsFromRows(rows), nil
+}
+
+func (s *DatabaseStore) RecoverInterrupted(ctx context.Context, startedAt time.Time) ([]queue.Job, error) {
+	if err := s.q.RecoverInterruptedBackupJobs(ctx, sql.NullTime{Time: startedAt, Valid: true}); err != nil {
+		return nil, mapErr(err)
+	}
+	if err := s.q.RecoverInterruptedRestoreJobs(ctx, sql.NullTime{Time: startedAt, Valid: true}); err != nil {
+		return nil, mapErr(err)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT bj.id, d.org_id, 'backup'
+		FROM backup_jobs bj JOIN databases d ON d.id = bj.database_id
+		WHERE bj.status = 'queued'
+		UNION ALL
+		SELECT rj.id, d.org_id, 'restore'
+		FROM restore_jobs rj JOIN databases d ON d.id = rj.target_database_id
+		WHERE rj.status = 'queued'`)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	jobs := make([]queue.Job, 0)
+	for rows.Next() {
+		var id, orgID uuid.UUID
+		var jobType string
+		if err := rows.Scan(&id, &orgID, &jobType); err != nil {
+			return nil, mapErr(err)
+		}
+		jobs = append(jobs, queue.Job{ID: id.String(), Type: jobType, OrgID: orgID.String(), Payload: []byte(id.String())})
+	}
+	return jobs, mapErr(rows.Err())
 }
 
 func (s *DatabaseStore) CreateRestoreJob(ctx context.Context, job *domain.RestoreJob) (*domain.RestoreJob, error) {

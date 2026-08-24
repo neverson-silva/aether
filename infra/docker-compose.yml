@@ -14,12 +14,30 @@ services:
       retries: 10
     restart: unless-stopped
 
+  nats:
+    image: nats:2.14.2-alpine
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - aether-nats:/data
+      - ./nats.conf:/etc/nats/nats.conf:ro
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   aether:
     build:
       context: ..
       dockerfile: infra/Dockerfile
     depends_on:
       postgres:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     environment:
       DATABASE_HOST: postgres
@@ -29,6 +47,13 @@ services:
       DATABASE_PASSWORD: aether
       DATABASE_SSL_MODE: disable
       AETHER_API_ADDR: 0.0.0.0:8080
+      AETHER_STATE: /var/lib/aether
+      AETHER_RUNTIME_BACKEND: nats
+      AETHER_NATS_URL: nats://nats:4222
+      AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
+      AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
+    volumes:
+      - aether-state:/var/lib/aether
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -43,5 +68,74 @@ services:
       - "4000:4000"
     restart: unless-stopped
 
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    entrypoint: ["/usr/local/bin/aether-worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: aether
+      DATABASE_USER: aether
+      DATABASE_PASSWORD: aether
+      DATABASE_SSL_MODE: disable
+      AETHER_STATE: /var/lib/aether
+      AETHER_RUNTIME_BACKEND: nats
+      AETHER_NATS_URL: nats://nats:4222
+      AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
+      AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
+      AETHER_SNAPSHOT_HOST_DIR: /var/lib/aether/snapshots
+      AETHER_WORKER_HEALTH_ADDR: 0.0.0.0:8081
+    volumes:
+      - aether-state:/var/lib/aether
+      - ${AETHER_PODMAN_SOCKET:-/run/podman/podman.sock}:/run/podman/podman.sock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  monitoring:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    entrypoint: ["/usr/local/bin/aether-monitoring"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: aether
+      DATABASE_USER: aether
+      DATABASE_PASSWORD: aether
+      DATABASE_SSL_MODE: disable
+      AETHER_STATE: /var/lib/aether
+      AETHER_RUNTIME_BACKEND: nats
+      AETHER_NATS_URL: nats://nats:4222
+      AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
+      AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
+      AETHER_MONITORING_HEALTH_ADDR: 0.0.0.0:8082
+    volumes:
+      - aether-state:/var/lib/aether
+      - ${AETHER_PODMAN_SOCKET:-/run/podman/podman.sock}:/run/podman/podman.sock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
 volumes:
   aether-pg:
+  aether-nats:
+  aether-state:

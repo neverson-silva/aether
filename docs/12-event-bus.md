@@ -4,10 +4,9 @@
 > **RFC relacionada:** [`RFC-0005`](rfc/RFC-0005-event-bus.md)
 > **Princípios atendidos:** P5 (eventos como fonte primária de verdade), P2, P10.
 
-> **Implementação atual:** o barramento realtime (Redis pub/sub + Streams) e o hub WebSocket
-> (`seq`/`replay`, eventos efêmeros) estão implementados para entrega de eventos ao frontend e
-> fila durável de deploys. O Postgres continua a **fonte de verdade** dos estados; o event
-> sourcing completo (outbox na mesma transação, LSM global, snapshots) é visão futura.
+> **Implementação atual:** Core NATS entrega sinais realtime efêmeros e JetStream entrega o
+> event log, as filas duráveis, retries e DLQ. O Postgres continua a **fonte de verdade** dos
+> estados; o outbox PostgreSQL confirma a publicação somente depois da entrega ao JetStream.
 
 ---
 
@@ -74,13 +73,12 @@ periódicas.
 | Cenário | Transporte |
 |---------|-----------|
 | Instância única (dev/teste) | `AETHER_RUNTIME_BACKEND=memory` — pub/sub em processo + event log em memória |
-| Produção / multi-instância (default) | `AETHER_RUNTIME_BACKEND=redis` — Redis **pub/sub** (`notify:org:<org>`) + **Streams** (event log `ev:org:<org>`, fila de deploy `q:deployments:*`) |
+| Produção / multi-instância (default) | `AETHER_RUNTIME_BACKEND=nats` — Core NATS para sinais efêmeros + JetStream para event log, jobs, retries e DLQ |
 | Cliente (browser) | WebSocket único `/api/v1/ws/realtime` (hub por org), com `seq`/`replay` e eventos efêmeros |
 
-Em produção o Redis é o barramento realtime entre instâncias da API e a fila durável de deploys
-(consumer groups). O Postgres continua sendo a **fonte de verdade** dos estados; o event log Redis
-é o canal de entrega realtime + trilha de auditoria recente (MAXLEN 5000 por org). O `install.sh`
-e o `dev.sh` configuram `AETHER_RUNTIME_BACKEND=redis` por padrão.
+Em produção o NATS é o barramento entre instâncias da API e os workers. O Postgres continua
+sendo a **fonte de verdade** dos estados; o event log JetStream é o canal de entrega realtime
+com replay recente. O `install.sh` e o `dev.sh` configuram `AETHER_RUNTIME_BACKEND=nats`.
 
 ## 6. Sagas
 

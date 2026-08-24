@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	natsgo "github.com/nats-io/nats.go"
 
 	alertsApp "aether/internal/modules/alerts/application"
 	alertshttp "aether/internal/modules/alerts/http"
@@ -93,6 +94,7 @@ import (
 	"aether/internal/platform/druntime"
 	"aether/internal/platform/druntime/adapter"
 	"aether/internal/platform/hostinfo"
+	"aether/internal/platform/outbox"
 	githubscm "aether/internal/platform/scm/github"
 	"aether/internal/platform/storage"
 	"aether/internal/platform/worker"
@@ -135,20 +137,6 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	appsHandler := appshttp.New(appsSvc)
 	deployHandler := deployhttp.New(deploySvc, appsStore, appOps, cfg.LogsDir, deployWorkerRuntime)
 
-	workerCtx, stopWorker := context.WithCancel(ctx)
-	defer stopWorker()
-	deployWorker := &worker.Worker{
-		Store:          deployStore,
-		Apps:           appsStore,
-		Runtime:        deployWorkerRuntime,
-		LogsDir:        cfg.LogsDir,
-		BuildsDir:      cfg.BuildsDir,
-		UploadsDir:     cfg.UploadsDir,
-		IngressNetwork: cfg.IngressNetwork,
-		CnbBuilder:     cfg.CnbBuilder,
-		Logger:         slog.Default(),
-	}
-	deploySvc.Canceller = deployWorker
 	domainsStore := domainsInfra.NewStore(pool)
 	databasesStore := databasesInfra.NewStore(pool)
 	appsSvc.Databases = databasesStore
@@ -162,9 +150,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		},
 	}
 	domainsHandler := domainshttp.New(domainsSvc)
-	ensureIngress(workerCtx, cfg)
-	provisionWorker := &domainsApp.ProvisionWorker{Store: domainsStore, Provisioner: domainsSvc.Provisioner}
-	go provisionWorker.Run(workerCtx)
+	ensureIngress(ctx, cfg)
 
 	jobsStore := jobsInfra.NewStore(pool)
 	jobsSvc := &jobsApp.Jobs{Store: jobsStore, Apps: appsStore, Runtime: jobsApp.NewRuntime()}
@@ -264,25 +250,38 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	statsSvc := &statsApp.Stats{Apps: appsStore, Deployments: deployStore, Databases: databasesStore, Runtime: deployWorkerRuntime}
 	statsHandler := statshttp.New(statsSvc)
 
-	rtRuntime, err := adapter.New(context.Background(), druntime.Config{
-		Backend:       cfg.RuntimeBackend,
-		RedisAddr:     cfg.RedisAddr,
-		RedisPassword: cfg.RedisPassword,
-		RedisUsername: cfg.RedisUsername,
-		RedisDB:       cfg.RedisDB,
-	})
+	runtimeConfig := druntime.Config{
+		Backend:  cfg.RuntimeBackend,
+		NATSURL:  cfg.NATSURL,
+		NATSName: cfg.NATSName,
+		NATSUser: cfg.NATSUser, NATSPassword: cfg.NATSPassword,
+	}
+	var sharedNATS *natsgo.Conn
+	if cfg.RuntimeBackend == "" || cfg.RuntimeBackend == "nats" {
+		options := []natsgo.Option{natsgo.Name(cfg.NATSName + "-api")}
+		if cfg.NATSUser != "" || cfg.NATSPassword != "" {
+			options = append(options, natsgo.UserInfo(cfg.NATSUser, cfg.NATSPassword))
+		}
+		sharedNATS, err = natsgo.Connect(cfg.NATSURL, options...)
+		if err != nil {
+			slog.Error("connect shared NATS", "err", err)
+			os.Exit(1)
+		}
+		defer sharedNATS.Drain()
+	}
+	var rtRuntime *druntime.Runtime
+	if sharedNATS != nil {
+		rtRuntime, err = adapter.NewWithConn(context.Background(), runtimeConfig, sharedNATS)
+	} else {
+		rtRuntime, err = adapter.New(context.Background(), runtimeConfig)
+	}
 	if err != nil {
 		slog.Error("runtime realtime", "err", err)
 		os.Exit(1)
 	}
 	var eventLog realtimeApp.EventLog
-	if cfg.RuntimeBackend == "redis" {
-		eventLog, err = realtimeInfra.NewRedisEventLog(druntime.Config{
-			RedisAddr:     cfg.RedisAddr,
-			RedisPassword: cfg.RedisPassword,
-			RedisUsername: cfg.RedisUsername,
-			RedisDB:       cfg.RedisDB,
-		})
+	if sharedNATS != nil {
+		eventLog, err = realtimeInfra.NewNATSEventLogWithConn(sharedNATS)
 		if err != nil {
 			slog.Error("event log realtime", "err", err)
 			os.Exit(1)
@@ -290,19 +289,15 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	realtimeSvc := &realtimeApp.Realtime{
 		Presence: rtRuntime.Presence, PubSub: rtRuntime.PubSub,
-		Apps: appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
+		Queue: rtRuntime.Queue,
+		Apps:  appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
 		Log: eventLog, Notifications: notificationsSvc,
 	}
 	databasesStudio.Cache = rtRuntime.Cache
 	databasesStudio.CatalogTTL = time.Duration(cfg.StudioCacheTTLSeconds) * time.Second
-	deployWorker.Notifier = realtimeSvc
-	deployWorker.LogNotifier = realtimeSvc
 	deploySvc.Queue = rtRuntime.Queue
+	deploySvc.Outbox = outbox.NewStore(pool)
 	deploySvc.Notifier = realtimeSvc
-	deployWorker.Queue = rtRuntime.Queue
-	go deployWorker.Run(workerCtx, 3*time.Second)
-	deployWatcher := &worker.Watcher{Store: deployStore, Runtime: deployWorkerRuntime, Notifier: realtimeSvc, Logger: slog.Default()}
-	go deployWatcher.Run(workerCtx, 10*time.Second)
 
 	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)
 	dbBackupsSvc := &backupsApp.DatabaseBackups{
@@ -312,14 +307,15 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Destinations: settingsDestProvider{s: settingsSvc},
 		Exec:         container.NewPodman(),
 		Queue:        rtRuntime.Queue,
+		Scheduler:    rtRuntime.Scheduler,
 		Locks:        rtRuntime.Locks,
 		Audit:        auditRecorder{store: svc.AuditLog},
 		Notifier:     realtimeSvc,
+		Outbox:       outbox.NewStore(pool),
 		Timeout:      45 * time.Minute,
 	}
 	dbBackupsHandler := backupshttp.NewDatabaseBackupHandler(dbBackupsSvc)
-	go (&backupsApp.BackupWorker{Service: dbBackupsSvc}).Run(workerCtx)
-	go (&backupsApp.BackupScheduler{Service: dbBackupsSvc}).Run(workerCtx, 15*time.Second)
+	backupsSvc.Async = dbBackupsSvc
 	realtimeHub := realtimeInfra.NewHub(realtimeInfra.HubOptions{
 		SubscribeOrg: func(ctx context.Context, orgID uuid.UUID, handler func(realtimeDomain.Event)) (func(), error) {
 			sub, err := realtimeSvc.SubscribeEvents(ctx, orgID, handler)
@@ -334,9 +330,18 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	})
 	realtimeHandler := realtimehttp.New(realtimeSvc, realtimeHub)
 
-	monitoringSvc := monitoringApp.NewMonitoring(deployWorkerRuntime, hostSvc, slog.Default(), monitoringInfra.NewStore(pool))
-	go monitoringSvc.Run(workerCtx, 2*time.Second)
-	monitoringHandler := monitoringhttp.New(monitoringSvc)
+	monitoringHistory := monitoringApp.NewMonitoring(nil, nil, slog.Default(), monitoringInfra.NewStore(pool))
+	var monitoringReader *monitoringInfra.Reader
+	if sharedNATS != nil {
+		monitoringReader, err = monitoringInfra.NewReaderWithConn(ctx, sharedNATS, monitoringHistory)
+	} else {
+		monitoringReader, err = monitoringInfra.NewReaderWithAuth(ctx, cfg.NATSURL, cfg.NATSName, cfg.NATSUser, cfg.NATSPassword, monitoringHistory)
+	}
+	if err != nil {
+		slog.Error("monitoring realtime", "err", err)
+		os.Exit(1)
+	}
+	monitoringHandler := monitoringhttp.New(monitoringReader)
 
 	sourceStore := sourcecontrolInfra.NewStore(pool)
 	var githubProvider *githubscm.Provider
@@ -366,7 +371,14 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	router.WithDatabaseBackups(dbBackupsHandler)
 	router.WithSourceControl(sourceHandler)
 	router.SetReadiness(func(ctx context.Context) error {
-		return pool.Ping(ctx)
+		if err := pool.Ping(ctx); err != nil {
+			return err
+		}
+		if runtimeReady := rtRuntime.Queue; runtimeReady != nil {
+			_, err := runtimeReady.Len(ctx, "deployments")
+			return err
+		}
+		return nil
 	})
 	router.ServeFrontend("frontend/web/dist")
 
@@ -388,7 +400,6 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
-	stopWorker()
 	_ = rtRuntime.Close(shutdownCtx)
 	slog.Info("api encerrada")
 }

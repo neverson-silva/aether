@@ -55,11 +55,19 @@ func (h *Handler) RestoreDatabase(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.backups.RestoreDatabase(c.Request.Context(), dbID, orgID(c), backupID); err != nil {
+	if h.backups.Async == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "async restore backend is not configured"})
+		return
+	}
+	job, err := h.backups.Async.RequestRestore(c.Request.Context(), backupID, dbID, orgID(c))
+	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "restored"})
+	c.JSON(http.StatusAccepted, gin.H{
+		"id": job.ID, "backup_id": job.BackupID, "target_database_id": job.TargetDatabaseID,
+		"status": job.Status, "error_code": job.ErrorCode, "error_message": job.ErrorMessage,
+	})
 }
 
 func (h *Handler) CreateStateBackup(c *gin.Context) {

@@ -25,6 +25,7 @@ import (
 	deploydomain "aether/internal/modules/deployments/domain"
 	"aether/internal/platform/druntime/queue"
 	"aether/internal/platform/git"
+	"aether/internal/platform/observability"
 	"aether/internal/platform/planner"
 )
 
@@ -53,11 +54,25 @@ type Worker struct {
 	LogNotifier       LogNotifier
 	CnbBuilder        string
 	Queue             queue.Queue
+	QueueConcurrency  int
+	Metrics           *observability.Metrics
 	deploymentTimeout time.Duration
 
 	mu         sync.Mutex
 	inFlight   map[uuid.UUID]bool
 	cancellers map[uuid.UUID]context.CancelFunc
+}
+
+type interruptedDeploymentStore interface {
+	RecoverInterrupted(context.Context, time.Time) error
+}
+
+func (w *Worker) RecoverInterrupted(ctx context.Context, cutoff time.Time) error {
+	store, ok := w.Store.(interruptedDeploymentStore)
+	if !ok {
+		return nil
+	}
+	return store.RecoverInterrupted(ctx, cutoff)
 }
 
 const maxDeploymentTimeout = 20 * time.Minute
@@ -108,12 +123,35 @@ func (w *Worker) runQueue(ctx context.Context) {
 		return
 	}
 	defer consumer.Close()
-	lastDrain := time.Time{}
+	go w.drainLoop(ctx)
+	for range w.queueConcurrency() {
+		go w.consumeQueueLoop(ctx, consumer)
+	}
+	<-ctx.Done()
+}
+
+func (w *Worker) queueConcurrency() int {
+	if w.QueueConcurrency < 1 {
+		return 1
+	}
+	return w.QueueConcurrency
+}
+
+func (w *Worker) drainLoop(ctx context.Context) {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
 	for {
-		if time.Since(lastDrain) > 60*time.Second {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 			w.drainQueued(ctx)
-			lastDrain = time.Now()
 		}
+	}
+}
+
+func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) {
+	for {
 		job, err := consumer.Next(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -136,19 +174,61 @@ func (w *Worker) runQueue(ctx context.Context) {
 		w.inFlight[depID] = true
 		w.mu.Unlock()
 		dep, err := w.Store.GetDeployment(ctx, depID)
-		if err != nil || dep == nil || dep.Status != deploydomain.StatusQueued {
+		if err != nil {
+			w.mu.Lock()
+			delete(w.inFlight, depID)
+			w.mu.Unlock()
+			_ = consumer.Nack(ctx, job)
+			continue
+		}
+		if dep == nil || dep.Status != deploydomain.StatusQueued {
 			w.mu.Lock()
 			delete(w.inFlight, depID)
 			w.mu.Unlock()
 			_ = consumer.Ack(ctx, job)
 			continue
 		}
-		w.deploy(ctx, dep)
+		stopProgress := queue.StartProgress(ctx, consumer, job)
+		finish := func(bool) {}
+		if w.Metrics != nil {
+			finish = w.Metrics.StartJob(job.Type)
+		}
+		processErr := w.processQueueJob(ctx, dep)
+		stopProgress()
+		if w.Metrics != nil {
+			current, getErr := w.Store.GetDeployment(ctx, depID)
+			finish(processErr != nil || getErr == nil && current != nil && current.Status == deploydomain.StatusFailed)
+		}
 		w.mu.Lock()
 		delete(w.inFlight, depID)
 		w.mu.Unlock()
-		_ = consumer.Ack(ctx, job)
+		if w.queueIsPermanent(processErr) {
+			_ = consumer.Ack(ctx, job)
+		} else if processErr != nil {
+			_ = consumer.Nack(ctx, job)
+		} else {
+			_ = consumer.Ack(ctx, job)
+		}
 	}
+}
+
+func (w *Worker) queueIsPermanent(err error) bool {
+	return err != nil && queue.IsPermanent(err)
+}
+
+func (w *Worker) processQueueJob(ctx context.Context, dep *deploydomain.Deployment) error {
+	w.deploy(ctx, dep)
+	current, err := w.Store.GetDeployment(ctx, dep.ID)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return errors.New("deployment disappeared during processing")
+	}
+	if current.Status.Terminal() {
+		return nil
+	}
+	return fmt.Errorf("deployment ended in non-terminal state %s", current.Status)
 }
 
 func (w *Worker) drainQueued(ctx context.Context) {

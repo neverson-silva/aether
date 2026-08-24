@@ -29,14 +29,11 @@ export function RestoreDialog({
   const run = async () => {
     setRestoring(true);
     setRestoreError(null);
-    try {
-      const result = await restore.mutateAsync(backup.id);
-      if (result.status !== "completed") {
-        throw new Error(`Restore ended with status: ${result.status}`);
-      }
-      setRestoreResult(result);
-      add({ title: "Restore completed", tone: "success" });
-      onClose();
+		try {
+			const result = await restore.mutateAsync(backup.id);
+			setRestoreResult(result);
+			add({ title: result.status === "completed" ? "Restore completed" : "Restore queued", tone: "success" });
+			onClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Restore failed";
       setRestoreError(message);

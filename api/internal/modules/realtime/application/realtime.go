@@ -20,7 +20,9 @@ import (
 	"aether/internal/modules/realtime/domain"
 	"aether/internal/platform/druntime/presence"
 	"aether/internal/platform/druntime/pubsub"
+	"aether/internal/platform/druntime/queue"
 	"aether/internal/platform/hostinfo"
+	"aether/internal/platform/messaging"
 )
 
 type Realtime struct {
@@ -31,6 +33,7 @@ type Realtime struct {
 	Ports         PortReader
 	Log           EventLog
 	Notifications NotificationsSink
+	Queue         queue.Queue
 
 	mu    sync.Mutex
 	stats map[string]*domain.NetAppStat
@@ -67,6 +70,14 @@ func (r *Realtime) Metrics(ctx context.Context) domain.Metrics {
 		if subscribers, err := r.PubSub.Subscribers(ctx); err == nil {
 			metrics.Subscribers = subscribers
 			metrics.TotalChannels = len(subscribers)
+		}
+	}
+	if provider, ok := r.Queue.(queue.MetricsProvider); ok {
+		metrics.Queues = make(map[string]queue.Metrics)
+		for _, item := range []struct{ stream, group string }{{"deployments", "workers"}, {"backups", "backup-workers"}, {"snapshots", "snapshot-workers"}, {"cron", "cron-workers"}} {
+			if value, err := provider.QueueMetrics(ctx, item.stream, item.group); err == nil {
+				metrics.Queues[item.stream] = value
+			}
 		}
 	}
 	return metrics
@@ -244,7 +255,7 @@ func (r *Realtime) PublishEvent(ctx context.Context, orgID uuid.UUID, event doma
 	if err != nil {
 		return err
 	}
-	return r.PubSub.Publish(ctx, "notify:org:"+orgID.String(), data)
+	return r.PubSub.Publish(ctx, messaging.NotifyOrg(orgID.String()), data)
 }
 
 func (r *Realtime) RecentEvents(ctx context.Context, orgID uuid.UUID, limit int) ([]domain.Event, error) {
@@ -297,7 +308,7 @@ func (r *Realtime) SubscribeEvents(ctx context.Context, orgID uuid.UUID, handler
 	if r.PubSub == nil {
 		return nil, nil
 	}
-	return r.PubSub.Subscribe(ctx, "notify:org:"+orgID.String(), func(_ context.Context, msg pubsub.Message) {
+	return r.PubSub.Subscribe(ctx, messaging.NotifyOrg(orgID.String()), func(_ context.Context, msg pubsub.Message) {
 		handler(domain.ParseEvent(msg.Data))
 	}, pubsub.WithBuffer(256))
 }

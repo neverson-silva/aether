@@ -182,6 +182,16 @@ func (c *consumer) Close() error {
 	c.q.mu.Lock()
 	defer c.q.mu.Unlock()
 	c.closed = true
+	s := c.q.stream(c.stream)
+	if g := s.groups[c.group]; g != nil {
+		for id, j := range g.inflight {
+			if j.inFlight == c.consumerID {
+				j.inFlight = ""
+				g.pending[id] = j
+				delete(g.inflight, id)
+			}
+		}
+	}
 	return nil
 }
 
@@ -207,6 +217,17 @@ func (q *Queue) DeadLetterLen(_ context.Context, stream string) (int64, error) {
 	defer q.mu.Unlock()
 	s := q.stream(stream)
 	return int64(len(s.dlq)), nil
+}
+
+func (q *Queue) QueueMetrics(_ context.Context, stream, group string) (queue.Metrics, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	s := q.stream(stream)
+	result := queue.Metrics{Stream: stream, Pending: int64(len(s.jobs)), DeadLetter: int64(len(s.dlq))}
+	if g := s.groups[group]; g != nil {
+		result.AckPending = int64(len(g.inflight))
+	}
+	return result, nil
 }
 
 func (q *Queue) Cancel(_ context.Context, stream, jobID string) error {

@@ -14,6 +14,7 @@ import (
 type Backups struct {
 	Store     domain.Store
 	Databases DatabaseStore
+	Async     *DatabaseBackups
 }
 
 type DatabaseStore interface {

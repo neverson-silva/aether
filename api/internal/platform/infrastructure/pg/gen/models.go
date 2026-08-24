@@ -411,6 +411,19 @@ type OutWebhook struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type OutboxEvent struct {
+	ID            uuid.UUID    `json:"id"`
+	Topic         string       `json:"topic"`
+	EventType     string       `json:"event_type"`
+	AggregateType string       `json:"aggregate_type"`
+	AggregateID   string       `json:"aggregate_id"`
+	Payload       []byte       `json:"payload"`
+	AvailableAt   time.Time    `json:"available_at"`
+	Attempts      int32        `json:"attempts"`
+	PublishedAt   sql.NullTime `json:"published_at"`
+	CreatedAt     time.Time    `json:"created_at"`
+}
+
 type Pipeline struct {
 	ID        uuid.UUID       `json:"id"`
 	OrgID     uuid.UUID       `json:"org_id"`
@@ -579,22 +592,23 @@ type ServerToken struct {
 }
 
 type ServiceSource struct {
-	ID                 uuid.UUID `json:"id"`
-	ServiceID          uuid.UUID `json:"service_id"`
-	ConnectionID       uuid.UUID `json:"connection_id"`
-	RepositoryID       string    `json:"repository_id"`
-	RepositoryOwner    string    `json:"repository_owner"`
-	RepositoryName     string    `json:"repository_name"`
-	RepositoryFullName string    `json:"repository_full_name"`
-	DefaultBranch      string    `json:"default_branch"`
-	Branch             string    `json:"branch"`
-	AutoDeploy         bool      `json:"auto_deploy"`
-	RootDirectory      string    `json:"root_directory"`
-	WatchPaths         []string  `json:"watch_paths"`
-	IgnorePaths        []string  `json:"ignore_paths"`
-	WatchRootFiles     bool      `json:"watch_root_files"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                      uuid.UUID `json:"id"`
+	ServiceID               uuid.UUID `json:"service_id"`
+	ConnectionID            uuid.UUID `json:"connection_id"`
+	RepositoryID            string    `json:"repository_id"`
+	RepositoryOwner         string    `json:"repository_owner"`
+	RepositoryName          string    `json:"repository_name"`
+	RepositoryFullName      string    `json:"repository_full_name"`
+	DefaultBranch           string    `json:"default_branch"`
+	Branch                  string    `json:"branch"`
+	AutoDeploy              bool      `json:"auto_deploy"`
+	RootDirectory           string    `json:"root_directory"`
+	WatchPaths              []string  `json:"watch_paths"`
+	IgnorePaths             []string  `json:"ignore_paths"`
+	WatchRootFiles          bool      `json:"watch_root_files"`
+	CreatedAt               time.Time `json:"created_at"`
+	UpdatedAt               time.Time `json:"updated_at"`
+	EnvironmentTemplatePath string    `json:"environment_template_path"`
 }
 
 type Snapshot struct {

@@ -11,15 +11,16 @@ import (
 	"aether/internal/platform/druntime/pubsub"
 	"aether/internal/platform/druntime/queue"
 	"aether/internal/platform/druntime/ratelimit"
+	"aether/internal/platform/druntime/scheduler"
 	"aether/internal/platform/druntime/state"
 )
 
 type Config struct {
-	Backend       string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-	RedisUsername string
+	Backend      string
+	NATSURL      string
+	NATSName     string
+	NATSUser     string
+	NATSPassword string
 }
 
 type Runtime struct {
@@ -32,6 +33,7 @@ type Runtime struct {
 	Presence  presence.Presence
 	Events    events.EventBus
 	State     state.State
+	Scheduler scheduler.Scheduler
 
 	close func(context.Context) error
 }
@@ -73,6 +75,7 @@ type Metrics struct {
 	CacheErrors   int64
 	Subscribers   map[string]int
 	TotalChannels int
+	Queues        map[string]queue.Metrics
 }
 
 func (r *Runtime) Metrics(ctx context.Context) Metrics {
@@ -85,6 +88,14 @@ func (r *Runtime) Metrics(ctx context.Context) Metrics {
 	if subs, err := r.PubSub.Subscribers(ctx); err == nil {
 		m.Subscribers = subs
 		m.TotalChannels = len(subs)
+	}
+	if provider, ok := r.Queue.(queue.MetricsProvider); ok {
+		m.Queues = make(map[string]queue.Metrics)
+		for _, item := range []struct{ stream, group string }{{"deployments", "workers"}, {"backups", "backup-workers"}, {"snapshots", "snapshot-workers"}, {"cron", "cron-workers"}} {
+			if metrics, err := provider.QueueMetrics(ctx, item.stream, item.group); err == nil {
+				m.Queues[item.stream] = metrics
+			}
+		}
 	}
 	return m
 }

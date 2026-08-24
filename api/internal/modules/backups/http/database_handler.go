@@ -336,7 +336,7 @@ func (h *DBBackupHandler) RequestRestore(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, restoreJobDTOFrom(*job))
+	c.JSON(http.StatusAccepted, restoreJobDTOFrom(*job))
 }
 
 func (h *DBBackupHandler) ListRestoreJobs(c *gin.Context) {

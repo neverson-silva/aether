@@ -50,7 +50,7 @@ func (a *Auth) Register(ctx context.Context, email, name, password string) (*dom
 	if err != nil {
 		return nil, "", err
 	}
-	user, org, err := a.Users.Register(ctx, email, name, hash, "", defaultOrgName, "my-organization")
+	user, org, err := a.Users.Register(ctx, email, name, hash, "", defaultOrgName, "org-"+uuid.NewString()[:8])
 	if err != nil {
 		return nil, "", err
 	}
@@ -111,7 +111,7 @@ func (a *Auth) SSOLogin(ctx context.Context, email, name string) (*domain.User, 
 		if name == "" {
 			name = email
 		}
-		user, org, err := a.Users.Register(ctx, email, name, "", "", defaultOrgName, "my-organization")
+		user, org, err := a.Users.Register(ctx, email, name, "", "", defaultOrgName, "org-"+uuid.NewString()[:8])
 		if err != nil {
 			return nil, "", err
 		}

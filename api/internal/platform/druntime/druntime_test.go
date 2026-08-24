@@ -19,9 +19,6 @@ import (
 func newRT(t *testing.T, backend string) *druntime.Runtime {
 	t.Helper()
 	cfg := druntime.Config{Backend: backend}
-	if backend == "redis" {
-		cfg.RedisAddr = "127.0.0.1:6380"
-	}
 	rt, err := adapter.New(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("adapter %s: %v", backend, err)
@@ -31,7 +28,7 @@ func newRT(t *testing.T, backend string) *druntime.Runtime {
 }
 
 func TestPubSubFanout(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -74,7 +71,7 @@ func TestPubSubFanout(t *testing.T) {
 }
 
 func TestCacheTTLAndInvalidate(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()
@@ -102,7 +99,7 @@ func TestCacheTTLAndInvalidate(t *testing.T) {
 }
 
 func TestLockFencingAndExclusion(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()
@@ -137,7 +134,7 @@ func TestLockFencingAndExclusion(t *testing.T) {
 }
 
 func TestLockTTLExpires(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()
@@ -158,7 +155,7 @@ func TestLockTTLExpires(t *testing.T) {
 }
 
 func TestRateLimitTokenBucket(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()
@@ -188,7 +185,7 @@ func TestRateLimitTokenBucket(t *testing.T) {
 }
 
 func TestPresence(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()
@@ -214,7 +211,7 @@ func TestPresence(t *testing.T) {
 }
 
 func TestEventBus(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -249,7 +246,7 @@ func TestEventBus(t *testing.T) {
 }
 
 func TestRuntimeState(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -292,7 +289,7 @@ func TestRuntimeState(t *testing.T) {
 }
 
 func TestQueueEnqueueAck(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -344,7 +341,7 @@ func TestQueueEnqueueAck(t *testing.T) {
 }
 
 func TestQueueNackDeadLetter(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -373,7 +370,7 @@ func TestQueueNackDeadLetter(t *testing.T) {
 }
 
 func TestQueueCancel(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -391,7 +388,7 @@ func TestQueueCancel(t *testing.T) {
 }
 
 func TestQueueConcurrentConsumersNoDoubleDelivery(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			wctx, wcancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -463,7 +460,7 @@ func TestQueueConcurrentConsumersNoDoubleDelivery(t *testing.T) {
 }
 
 func TestRunOnceIdempotency(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()
@@ -487,7 +484,7 @@ func TestRunOnceIdempotency(t *testing.T) {
 }
 
 func TestCacheAddExclusive(t *testing.T) {
-	for _, backend := range []string{"memory", "redis"} {
+	for _, backend := range []string{"memory"} {
 		t.Run(backend, func(t *testing.T) {
 			rt := newRT(t, backend)
 			ctx := context.Background()

@@ -134,8 +134,18 @@ func TestMongoRows(t *testing.T) {
 	if len(res.Columns) != 3 || len(res.Rows) != 2 {
 		t.Fatalf("mongoRows cols=%v rows=%d", res.Columns, len(res.Rows))
 	}
-	if s, ok := res.Rows[0][2].(string); !ok || !strings.Contains(s, "admin") {
-		t.Errorf("nested json cell = %v", res.Rows[0][2])
+	metaIndex := -1
+	for i, column := range res.Columns {
+		if column == "meta" {
+			metaIndex = i
+			break
+		}
+	}
+	if metaIndex < 0 {
+		t.Fatal("meta column is missing")
+	}
+	if s, ok := res.Rows[0][metaIndex].(string); !ok || !strings.Contains(s, "admin") {
+		t.Errorf("nested json cell = %v", res.Rows[0][metaIndex])
 	}
 }
 

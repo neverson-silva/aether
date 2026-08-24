@@ -342,6 +342,55 @@ func TestStartManualBackupEnqueuesAndConflict(t *testing.T) {
 	}
 }
 
+func TestCancelBackupUsesDistinctQueueMessageID(t *testing.T) {
+	svc, store, _, q, _ := newService()
+	dbID := uuid.New()
+	store.config = &domain.BackupConfiguration{
+		ID: uuid.New(), DatabaseID: dbID, DestinationID: uuid.New(), Enabled: true,
+		Schedule:  domain.Schedule{Type: domain.ScheduleDaily, At: "03:00", Timezone: "UTC"},
+		Retention: domain.Retention{Type: domain.RetentionAll},
+	}
+	job, err := svc.StartManualBackup(context.Background(), dbID, uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := job.Transition(domain.BackupPreparing); err != nil {
+		t.Fatal(err)
+	}
+	if err := job.Transition(domain.BackupRunning); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.CancelBackup(context.Background(), job.ID, uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.jobs) != 2 {
+		t.Fatalf("expected backup and cancellation messages, got %d", len(q.jobs))
+	}
+	if q.jobs[0].ID == q.jobs[1].ID || q.jobs[1].ID != "cancel:"+job.ID.String() {
+		t.Fatalf("cancellation message reused the backup identity: %+v", q.jobs)
+	}
+}
+
+func TestRequestRestoreQueuesDurableJob(t *testing.T) {
+	svc, store, _, q, _ := newService()
+	backupID := uuid.New()
+	targetID := uuid.New()
+	store.jobs[backupID] = &domain.BackupJob{ID: backupID, DatabaseID: uuid.New(), Status: domain.BackupCompleted, Engine: "postgres", DestinationID: uuid.New()}
+	job, err := svc.RequestRestore(context.Background(), backupID, targetID, uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != domain.RestoreQueued {
+		t.Fatalf("expected queued restore, got %s", job.Status)
+	}
+	if len(q.jobs) != 1 || q.jobs[0].ID != job.ID.String() || q.jobs[0].Type != "restore" {
+		t.Fatalf("unexpected restore queue job: %+v", q.jobs)
+	}
+}
+
 func TestManualBackupPipelineToCompleted(t *testing.T) {
 	svc, store, prov, _, _ := newService()
 	dbID := uuid.New()

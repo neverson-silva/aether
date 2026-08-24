@@ -157,10 +157,10 @@ The platform is **event-driven and realtime**. The frontend MUST NOT fetch
 state by polling.
 
 ### How realtime works
-- **Postgres is the source of truth** for states; Redis is the realtime bus:
-  pub/sub (`notify:org:<org>`) for fanout + Streams for the event log
-  (`ev:org:<org>`, seq per org) and the deploy queue (`q:deployments:*`,
-  consumer groups).
+- **Postgres is the source of truth** for states; NATS is the async backbone:
+  Core NATS (`aether.live.*`) for ephemeral fanout + JetStream for the event log
+  (`aether.events.*`, seq per org), durable job streams (`aether.jobs.*`,
+  durable consumers with ACK/NAK, retry backoff and DLQ) and schedulers.
 - **Frontend**: a single WebSocket (`/api/v1/ws/realtime`) per session, via
   `RealtimeProvider`/`NotificationProvider`; initial bootstrap over REST and
   incremental updates through WS events. Protocol: subscribe by authorized
@@ -170,7 +170,7 @@ state by polling.
 - The server sends ping/heartbeat; the client must respond `{"op":"ping"}`
   every ~25s (hub read timeout is 45s). The `Timeout` middleware MUST NOT be
   applied to `/api/v1/ws/` paths.
-- Backend: `AETHER_RUNTIME_BACKEND=redis` in production and dev
+- Backend: `AETHER_RUNTIME_BACKEND=nats` in production and dev
   (`dev.sh`/`install.sh`); `memory` only for tests.
 
 ### Anti-polling rule
@@ -185,8 +185,8 @@ state by polling.
 
 ## Containers / Infra
 
-- API, frontend, postgres and redis run in podman containers (via
-  `install.sh`).
+- API, frontend, worker, monitoring, postgres and nats run in podman containers
+  (via `install.sh`).
 - `podman` is the only host dependency.
 - After code changes: rebuild via `./install.sh start` (builds the image and
   restarts).

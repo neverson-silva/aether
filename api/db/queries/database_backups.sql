@@ -152,3 +152,19 @@ FROM restore_jobs
 WHERE status = 'queued'
 ORDER BY created_at
 LIMIT $1;
+
+-- name: RecoverInterruptedBackupJobs :exec
+UPDATE backup_jobs
+SET status = 'queued', started_at = NULL, completed_at = NULL,
+    error_code = NULL, error_message = NULL
+WHERE status IN ('preparing', 'running', 'uploading', 'verifying', 'cancelling')
+  AND started_at IS NOT NULL
+  AND started_at < $1;
+
+-- name: RecoverInterruptedRestoreJobs :exec
+UPDATE restore_jobs
+SET status = 'queued', started_at = NULL, completed_at = NULL,
+    error_code = NULL, error_message = NULL
+WHERE status IN ('preparing', 'downloading', 'restoring', 'verifying', 'cancelling')
+  AND started_at IS NOT NULL
+  AND started_at < $1;

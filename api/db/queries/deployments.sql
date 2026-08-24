@@ -73,6 +73,13 @@ WHERE status = 'queued'
 ORDER BY created_at ASC
 LIMIT 10;
 
+-- name: RecoverInterruptedDeployments :exec
+UPDATE deployments
+SET status = 'failed', error = 'deployment interrupted by worker shutdown', finished_at = now()
+WHERE status IN ('building', 'starting', 'health_checking')
+  AND started_at IS NOT NULL
+  AND started_at < $1;
+
 -- name: GetDeploymentCompose :one
 SELECT compose_yaml
 FROM deployments
