@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { getServer } from "../../../../api/client";
 import { LogViewer, type LogLine as DesignLogLine } from "@aether/design-system";
 
-const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
+const ANSI_RE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/;
 const TAG_RE = /^\[([a-z_\-]+)\]/i;
 
@@ -25,11 +25,12 @@ type LogRow = { id: number; text: string; json: string | null; ts: string; level
 let ROW_ID = 0;
 
 export function classify(line: string): LogRow {
-  const text = stripANSI(line);
-  const json = tryPrettyJSON(text);
-  const tsMatch = text.match(TIMESTAMP_RE);
-  const tagMatch = text.match(TAG_RE);
-  const lower = text.toLowerCase();
+  const text = line;
+  const plainText = stripANSI(line);
+  const json = tryPrettyJSON(plainText);
+  const tsMatch = plainText.match(TIMESTAMP_RE);
+  const tagMatch = plainText.match(TAG_RE);
+  const lower = plainText.toLowerCase();
   let level = "";
   if (/\b(error|failed|falhou|fatal|panic|exception|traceback)\b/.test(lower)) level = "error";
   else if (/\b(warn|warning)\b/.test(lower)) level = "warn";
@@ -59,7 +60,7 @@ export function LiveLogs({ appId }: { appId: string }) {
       id: String(row.id),
       timestamp: row.ts || undefined,
       severity: row.level === "error" ? "error" : row.level === "warn" ? "warning" : row.level === "info" ? "info" : "info",
-      message: row.json ?? row.text.slice(row.ts.length).trimStart(),
+      message: row.json ?? (row.ts && row.text.startsWith(row.ts) ? row.text.slice(row.ts.length).trimStart() : row.text),
     })),
     [rows],
   );

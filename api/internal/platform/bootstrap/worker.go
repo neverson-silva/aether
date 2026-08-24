@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -120,6 +121,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		IngressNetwork: cfg.IngressNetwork, CnbBuilder: cfg.CnbBuilder,
 		Logger: slog.Default(), Queue: rtRuntime.Queue,
 		Metrics: metrics, QueueConcurrency: 4,
+		Notifier: realtimeSvc, LogNotifier: realtimeSvc,
 	}
 	deployWatcher := &worker.Watcher{Store: deployStore, Runtime: deployRuntime, Notifier: realtimeSvc, Logger: slog.Default()}
 	provisionWorker := &domainsApp.ProvisionWorker{Store: domainsStore, Provisioner: domainsSvc.Provisioner}
@@ -146,18 +148,18 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	snapshotWorker := &snapshotsApp.SnapshotWorker{Store: snapshotsInfra.NewStore(pool), Executor: snapshotsInfra.PodmanExecutor{OutputDir: snapshotOutputDir}, OutputDir: snapshotOutputDir, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
 	if err := checkWorkerConsumers(workerCtx, rtRuntime.Queue); err != nil {
-		return err
+		return fmt.Errorf("initialize job consumers: %w", err)
 	}
 
 	if err := deployWorker.RecoverInterrupted(workerCtx, time.Now().Add(-30*time.Minute)); err != nil {
-		return err
+		return fmt.Errorf("recover interrupted deployments: %w", err)
 	}
 	go (&outbox.Dispatcher{Store: outbox.NewStore(pool), Bus: rtRuntime.Events, Jobs: rtRuntime.Queue}).Run(workerCtx)
 	go deployWatcher.Run(workerCtx, 10*time.Second)
 	go provisionWorker.Run(workerCtx)
 	backupWorker := &backupsApp.BackupWorker{Service: dbBackupsSvc, Metrics: metrics, Concurrency: 2}
 	if err := backupWorker.RecoverInterrupted(workerCtx, time.Now().Add(-90*time.Minute)); err != nil {
-		return err
+		return fmt.Errorf("recover interrupted backups: %w", err)
 	}
 	go deployWorker.Run(workerCtx, 3*time.Second)
 	go backupWorker.Run(workerCtx)

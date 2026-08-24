@@ -162,7 +162,12 @@ export function useServiceSource(appID: string) {
 export function useSaveServiceSource(appID: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: ServiceSourceInput) => apiPut<ServiceSource>(`/api/v1/apps/${appID}/source`, body),
+    mutationFn: async (body: ServiceSourceInput) => {
+      const saved = normalizeServiceSource(
+        await apiPut<ServiceSourceResponse>(`/api/v1/apps/${appID}/source`, body),
+      );
+      return { ...saved, ...body };
+    },
     onSuccess: (source) => {
       queryClient.setQueryData(["service-source", appID], source);
     },

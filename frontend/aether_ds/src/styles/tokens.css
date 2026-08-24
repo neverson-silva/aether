@@ -81,8 +81,8 @@
   --semantic-action-success-active: var(--aether-green-900);
   --semantic-action-secondary: var(--aether-white);
   --semantic-action-secondary-hover: var(--aether-blue-200);
-  --semantic-action-secondary-border: var(--semantic-action-primary);
-  --semantic-action-secondary-content: var(--semantic-action-primary);
+  --semantic-action-secondary-border: var(--semantic-border-default);
+  --semantic-action-secondary-content: var(--semantic-content-primary);
   --semantic-action-quiet-hover: var(--aether-neutral-100);
   --semantic-action-quiet-content: var(--semantic-action-primary);
   --semantic-selection-background: var(--aether-blue-200);
@@ -206,8 +206,8 @@
   --semantic-action-success-active: var(--aether-green-900);
   --semantic-action-secondary: var(--semantic-surface-raised);
   --semantic-action-secondary-hover: var(--semantic-surface-high);
-  --semantic-action-secondary-border: var(--semantic-action-primary);
-  --semantic-action-secondary-content: var(--semantic-action-primary);
+  --semantic-action-secondary-border: var(--semantic-border-default);
+  --semantic-action-secondary-content: var(--semantic-content-primary);
   --semantic-action-quiet-hover: rgba(255, 255, 255, 0.05);
   --semantic-action-quiet-content: var(--semantic-action-primary);
   --semantic-selection-background: rgba(176, 198, 255, 0.2);

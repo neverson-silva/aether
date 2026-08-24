@@ -746,6 +746,11 @@ start_auxiliary() {
     -e "AETHER_MODE=$MODE"
     --restart unless-stopped
   )
+  if [[ "$binary" == "aether-worker" ]]; then
+    args+=( -e "AETHER_WORKER_HEALTH_ADDR=0.0.0.0:8081" -p "127.0.0.1:8081:8081" )
+  elif [[ "$binary" == "aether-monitoring" ]]; then
+    args+=( -e "AETHER_MONITORING_HEALTH_ADDR=0.0.0.0:8082" -p "127.0.0.1:8082:8082" )
+  fi
   if [[ -n "$sock_src" ]]; then
     args+=( -v "$sock_src:$sock_src:ro" -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
   fi
@@ -868,15 +873,16 @@ ensure_registry() {
 
 ensure_builder() {
   $RUNTIME pull "docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}" >/dev/null 2>&1 || true
+  $RUNTIME pull "${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04}" >/dev/null 2>&1 || true
   local source_stamp builder_stamp
-  source_stamp="$(sha256sum "$PROJECT_ROOT/infra/buildpacks/node-server/bin/build" "$PROJECT_ROOT/infra/buildpacks/node-server/bin/detect" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/build" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/detect" "$PROJECT_ROOT/infra/builders/build-builder.sh" | sha256sum | awk '{print $1}')"
+  source_stamp="$(sha256sum "$PROJECT_ROOT/infra/buildpacks/node-server/bin/build" "$PROJECT_ROOT/infra/buildpacks/node-server/bin/detect" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/build" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/detect" "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" | sha256sum | awk '{print $1}')"
   builder_stamp="$STATE_DIR/cnb-builder.stamp"
   if $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 && [[ -f "$builder_stamp" ]] && grep -qx "$source_stamp" "$builder_stamp"; then
     info "CNB builder already present ($CNB_BUILDER)."
     return 0
   fi
-  info "Building CNB builder ($CNB_BUILDER) — Paketo node + aether/spa-static..."
-  bash "$PROJECT_ROOT/infra/builders/build-builder.sh" || fail "CNB builder build failed."
+  info "Building CNB builder ($CNB_BUILDER) — aether buildpacks + ubuntu run image..."
+  bash "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" || fail "CNB builder build failed."
   $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$builder_stamp"

@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import {
   Button,
   Card,
+  EmptyState,
   MetricCard,
   Progress,
   RuntimeStatus,
@@ -140,7 +141,7 @@ function Dashboard() {
             <div className="flex-1 divide-y divide-border overflow-hidden">
               {projects.length === 0 ? (
                 <div className="p-8 text-center text-body-sm text-muted-foreground">
-                  No projects yet. Create one to get started.
+                  <EmptyState title="No projects yet" description="Create one to get started." className="border-0" />
                 </div>
               ) : (
                 visibleProjects.map((project) => (
@@ -222,7 +223,7 @@ function Dashboard() {
         <Card
           variant="elevated"
           header={
-            <div>
+            <div className="-mx-4 -mt-1 -translate-y-3">
               <h2 className="text-headline-sm font-semibold text-foreground">
                 Resource usage
               </h2>
@@ -232,7 +233,7 @@ function Dashboard() {
             </div>
           }
         >
-          <div className="space-y-6">
+          <div className="space-y-6 mt-4 px-2">
             <ResourceMeter
               label="CPU allocation"
               value={summary?.cpu_pct ?? 0}

@@ -4,7 +4,7 @@ import type { Deployment } from "../../../../api/types";
 import { useCancelDeployment, useDeployCompare } from "../../../../hooks";
 import { ArrowsClockwise, ArrowUUpLeft, X } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
-import { Badge, Button, Card, Checkbox, Dialog, Skeleton, useToast } from "@aether/design-system";
+import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Skeleton, useToast } from "@aether/design-system";
 import { DeploymentLogModal } from "./DeploymentLogModal";
 
 function cn(...classes: Array<string | false | undefined>) { return classes.filter(Boolean).join(" "); }
@@ -169,7 +169,7 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
             </tbody>
           </table>
         </div>
-        {(deployments ?? []).length === 0 && <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">No deployments yet.</p>}
+        {(deployments ?? []).length === 0 && <EmptyState title="No deployments yet" description="Deploy the service to create its first deployment." className="border-0" />}
       </Card>
 
       <Dialog open={!!comparePair} onOpenChange={(open) => { if (!open) setComparePair(null); }} title="Deploy comparison" trigger={<button type="button" className="hidden" aria-hidden="true" tabIndex={-1} />}>

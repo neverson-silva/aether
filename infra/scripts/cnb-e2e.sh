@@ -17,7 +17,7 @@ case "$(uname -m)" in
 esac
 PLATFORM="linux/$CNB_ARCH"
 
-bash infra/builders/build-builder.sh >/dev/null 2>&1 || true
+bash infra/buildpacks/builders/build-builder.sh >/dev/null 2>&1 || true
 
 pass=0
 fail=0

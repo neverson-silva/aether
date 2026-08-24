@@ -86,6 +86,7 @@ export interface Project {
 export interface Resources {
   cpus: string;
   mem_mb: number;
+  storage_mb?: number;
 }
 
 export interface HealthCheck {
@@ -118,6 +119,7 @@ export interface App {
   cluster_id: string;
   environment_id: string;
   port: number;
+  storage_mb: number;
   resources: Resources;
   health_check: HealthCheck;
   volumes: Volume[];

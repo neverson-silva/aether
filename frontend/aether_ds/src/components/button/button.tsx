@@ -14,6 +14,8 @@ const button = tv({
       ghost: 'text-button-quiet-foreground hover:bg-button-quiet-hover',
       danger:
         'bg-action-danger text-status-danger-foreground shadow-sm hover:bg-action-danger-hover active:bg-action-danger-active',
+      'destructive-ghost':
+        'border border-transparent text-status-danger hover:bg-status-danger-container/20 hover:text-status-danger hover:border-status-danger/40 active:bg-status-danger-container/30',
       success:
         'bg-button-success text-button-success-foreground shadow-sm hover:bg-button-success-hover active:bg-button-success-active',
       quiet: 'text-button-quiet-foreground hover:bg-button-quiet-hover',
@@ -37,6 +39,7 @@ export type ButtonVariant =
   | 'secondary'
   | 'ghost'
   | 'danger'
+  | 'destructive-ghost'
   | 'success'
   | 'quiet'
   | 'outline'

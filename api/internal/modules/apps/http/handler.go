@@ -69,8 +69,9 @@ type appReq struct {
 }
 
 type resourcesReq struct {
-	CPUs  string `json:"cpus"`
-	MemMB *int   `json:"mem_mb"`
+	CPUs      string `json:"cpus"`
+	MemMB     *int   `json:"mem_mb"`
+	StorageMB *int   `json:"storage_mb"`
 }
 
 type hcReq struct {
@@ -480,6 +481,9 @@ func appFromReq(req *appReq, c *gin.Context, projectID uuid.UUID) (*domain.App, 
 	if req.Resources.MemMB != nil {
 		app.MemMB = *req.Resources.MemMB
 	}
+	if req.Resources.StorageMB != nil {
+		app.StorageMB = *req.Resources.StorageMB
+	}
 	if req.ImageRetention != nil {
 		app.ImageRetention = *req.ImageRetention
 	}
@@ -535,7 +539,7 @@ func appDTO(a *domain.App) gin.H {
 		"start_command": a.StartCommand, "root_folder": a.RootFolder, "dist_folder": a.DistFolder,
 		"watch_paths": a.WatchPaths, "created_at": a.CreatedAt, "updated_at": a.UpdatedAt,
 		"resources": gin.H{
-			"cpus": a.CPUs, "mem_mb": a.MemMB,
+			"cpus": a.CPUs, "mem_mb": a.MemMB, "storage_mb": a.StorageMB,
 		},
 		"server_id": "", "cluster_id": "", "volumes": []gin.H{},
 		"health_check": gin.H{

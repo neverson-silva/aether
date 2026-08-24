@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { AppWindow, Database, HardDrive, Monitor, Pause, Play, Pulse } from "@phosphor-icons/react";
-import { ActivityFeed, Gauge, Skeleton, type ActivityItem } from "@aether/design-system";
+import { ActivityFeed, EmptyState, Gauge, Skeleton, type ActivityItem } from "@aether/design-system";
 import {
   useHostEvents,
   useHostLogs,
@@ -492,9 +492,7 @@ function Monitoring() {
           ) : activityItems.length ? (
             <ActivityFeed items={activityItems} realtime={connected} empty="No activity yet." />
           ) : (
-            <p className="py-lg text-center font-body-sm text-body-sm text-on-surface-variant/60">
-              {events.isError ? "Unable to load activity." : "No activity yet."}
-            </p>
+            events.isError ? <p className="py-lg text-center font-body-sm text-body-sm text-on-surface-variant/60">Unable to load activity.</p> : <EmptyState title="No activity yet" className="border-0 p-4" />
           )}
         </div>
       </div>

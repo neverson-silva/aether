@@ -11,7 +11,7 @@ import {
   useRunMirror,
   useDeleteMirror,
 } from "../../../hooks";
-import { Badge, Button, Card, Input, useToast } from "@aether/design-system";
+import { Badge, Button, Card, EmptyState, Input, useToast } from "@aether/design-system";
 
 const schema = z.object({
   repo: z.string().min(1),
@@ -109,8 +109,8 @@ function Registry() {
         <table className="w-full text-left"><thead><tr className="border-b border-border text-label-caps text-muted-foreground"><th className="px-3 py-3">Repository</th><th className="px-3 py-3">Tags</th><th className="px-3 py-3">Size</th><th className="px-3 py-3"></th></tr></thead><tbody>
           {(images.data ?? []).length === 0 && (
             <tr>
-              <td colSpan={4} className="px-sm py-lg font-body-sm text-body-sm text-on-surface-variant text-center">
-                {enabled ? "No images yet. Deploy an app to push its image here." : "Enable the registry to start collecting images."}
+              <td colSpan={4}>
+                <EmptyState title={enabled ? "No images yet" : "Registry is disabled"} description={enabled ? "Deploy an app to push its image here." : "Enable the registry to start collecting images."} className="border-0" />
               </td>
             </tr>
           )}

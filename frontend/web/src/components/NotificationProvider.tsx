@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { Bell } from "@phosphor-icons/react";
-import { useToast } from "@aether/design-system";
+import { Bell, BellRinging, CheckCircle, Clock, HardDrives, Info, RocketLaunch, Warning, XCircle } from "@phosphor-icons/react";
+import { EmptyState, useToast } from "@aether/design-system";
 import { useNavigate } from "@tanstack/react-router";
 import type { EventEnvelope, NotificationItem } from "../hooks";
 import { useRealtimeEvent } from "./RealtimeProvider";
@@ -29,10 +29,23 @@ export function useNotifications(): NotificationContextValue {
 
 function toneForType(type: string): "error" | "success" | "warning" | "info" {
   if (type.includes("failed") || type.includes("error")) return "error";
-  if (type.includes("ready") || type.includes("finished") || type.includes("recovered")) return "success";
+  if (type.includes("ready") || type.includes("finished") || type.includes("completed") || type.includes("success") || type.includes("recovered")) return "success";
   if (type.includes("queued")) return "info";
   if (type.includes("building") || type.includes("starting") || type.includes("healthcheck")) return "warning";
   return "info";
+}
+
+function notificationVisual(type: string) {
+  if (type.includes("failed") || type.includes("error")) return { Icon: XCircle, color: "text-error", dot: "bg-error" };
+  if (type.includes("ready") || type.includes("finished") || type.includes("completed") || type.includes("success") || type.includes("recovered")) return { Icon: CheckCircle, color: "text-success", dot: "bg-success" };
+  if (type.includes("rolled_back") || type.includes("cancelled")) return { Icon: Warning, color: "text-warning", dot: "bg-warning" };
+  if (type.includes("queued") || type.includes("building") || type.includes("starting") || type.includes("healthcheck")) return { Icon: Clock, color: "text-warning", dot: "bg-warning" };
+  if (type.startsWith("deploy.")) return { Icon: RocketLaunch, color: "text-primary", dot: "bg-primary" };
+  if (type.startsWith("server.") || type.startsWith("database.")) return { Icon: HardDrives, color: "text-primary", dot: "bg-primary" };
+  if (type.startsWith("alert.")) return { Icon: BellRinging, color: "text-error", dot: "bg-error" };
+  if (type.startsWith("backup.")) return { Icon: HardDrives, color: "text-primary", dot: "bg-primary" };
+  if (type.startsWith("info.")) return { Icon: Info, color: "text-primary", dot: "bg-primary" };
+  return { Icon: Bell, color: "text-on-surface-variant", dot: "bg-on-surface-variant" };
 }
 
 function isNotifiable(type: string): boolean {
@@ -131,7 +144,7 @@ function BellDropdown() {
       </div>
       <div className="max-h-96 overflow-y-auto">
         {list.length === 0 && (
-          <p className="font-body-sm text-body-sm text-on-surface-variant p-4 text-center">No notifications yet.</p>
+          <EmptyState title="No notifications yet" className="border-0 p-6" />
         )}
         {list.slice(0, 50).map((n) => {
           let parsed: Record<string, string> = {};
@@ -140,6 +153,8 @@ function BellDropdown() {
           } catch {
           }
           const target = parsed.app_id || parsed.service_id;
+          const visual = notificationVisual(n.type);
+          const NotificationIcon = visual.Icon;
           return (
             <button
               key={n.id}
@@ -149,12 +164,12 @@ function BellDropdown() {
               }}
               className={`w-full flex items-start gap-2 px-3 py-2.5 hover:bg-surface-container-high transition-colors text-left ${!n.read ? "bg-surface-container-high/40" : ""}`}
             >
-              <Bell size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <NotificationIcon size={16} weight="duotone" className={`mt-0.5 shrink-0 ${visual.color}`} aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <span className={`font-body-sm text-body-sm line-clamp-5 break-words ${!n.read ? "text-on-surface font-semibold" : "text-on-surface-variant"}`} title={n.message}>{n.message}</span>
                 <span className="block font-code-md text-code-md text-on-surface-variant/60">{relativeTime(n.created_at)}</span>
               </span>
-              {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-1.5" />}
+              {!n.read && <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${visual.dot}`} />}
             </button>
           );
         })}
@@ -174,7 +189,7 @@ export function BellButton() {
   return (
     <button
       onClick={openBell}
-      className="relative text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high"
+      className="relative text-primary hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high"
       aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
     >
       <Bell size={18} aria-hidden="true" />

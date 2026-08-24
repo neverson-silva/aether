@@ -37,6 +37,22 @@ button:not(:disabled),
 [role="button"]:not(:disabled) {
   cursor: pointer;
 }
+.aether-switch {
+  background-color: var(--semantic-surface-control);
+  transition: background-color var(--motion-fast) var(--motion-ease-standard);
+}
+.aether-switch[data-checked] {
+  background-color: var(--semantic-action-primary);
+}
+.aether-switch-thumb {
+  background-color: var(--semantic-content-on-primary);
+  transform: translateX(0);
+  transition: transform var(--motion-emphasis) var(--motion-ease-standard);
+  will-change: transform;
+}
+.aether-switch-thumb[data-checked] {
+  transform: translateX(1rem);
+}
 
 .aether-button[data-variant="primary"] { background-color: var(--semantic-action-primary); color: var(--semantic-content-on-primary); }
 .aether-button[data-variant="primary"]:not(:disabled):hover { background-color: var(--semantic-action-primary-hover); }

@@ -9,8 +9,6 @@ import { z } from "zod";
 import { useParams } from "@tanstack/react-router";
 import { CronJobs } from "./-components/CronJobs";
 import { Autopilot } from "./-components/Autopilot";
-import { Workers } from "./-components/Workers";
-import { Previews } from "./-components/Previews";
 import { Terminal } from "./-components/Terminal";
 import { ComposeTab } from "./-components/ComposeTab";
 import { DomainsPanel } from "../../../components/DomainsPanel";
@@ -34,7 +32,6 @@ import {
   useSetWebhook,
   useSaveServiceSource,
   useServiceSource,
-  useImportServiceTemplate,
   useStats,
   useTimeline,
 } from "@/hooks";
@@ -65,7 +62,6 @@ import {
   Target,
   TerminalWindow,
   Trash,
-  Users,
   X,
 } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
@@ -76,11 +72,14 @@ import {
   Card,
   CodeBlock,
   Dialog,
+  EmptyState,
   Field,
   Input,
   NativeSelect,
   RuntimeStatus,
   Skeleton,
+  Slider,
+  Switch,
   useToast,
 } from "@aether/design-system";
 import { isRuntimeLive, mapRuntimeStatus } from "../../../lib/runtime-status";
@@ -127,8 +126,6 @@ const TABS = [
   "metrics",
   "settings",
   "cron",
-  "workers",
-  "previews",
   "terminal",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -141,8 +138,6 @@ const TAB_ICONS: Record<Tab, typeof Code> = {
   metrics: ChartLine,
   settings: Gear,
   cron: ListChecks,
-  workers: Users,
-  previews: Globe,
   terminal: TerminalWindow,
 };
 
@@ -158,7 +153,7 @@ function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const { data: detail } = useAppDetail(appId);
-  const { data: source } = useServiceSource(appId);
+  const { data: source, isLoading: sourceLoading } = useServiceSource(appId);
   const app = detail?.app;
   const { data: detailSecrets } = useAppDetailSecrets(appId, envEditorOpen);
   const envEditorVars = useMemo(
@@ -172,10 +167,7 @@ function AppDetail() {
   );
   const { data: deployments } = useDeployments(appId);
   const { data: domains } = useDomains("apps", appId);
-  const statsEnabled = Boolean(
-    app &&
-    isRuntimeLive(mapRuntimeStatus(undefined, app.latest_deployment?.status)),
-  );
+  const statsEnabled = Boolean(app);
   const { data: stats } = useStats(appId, statsEnabled);
   const { data: timeline } = useTimeline(appId);
   const { data: states } = useAppStates();
@@ -192,7 +184,6 @@ function AppDetail() {
   const deleteEnv = useDeleteEnv(appId);
   const setWebhook = useSetWebhook(appId);
   const saveSource = useSaveServiceSource(appId);
-  const importServiceTemplate = useImportServiceTemplate(appId);
   const updateApp = useUpdateApp(appId);
 
   const { add } = useToast();
@@ -212,7 +203,7 @@ function AppDetail() {
   const [copied, setCopied] = useState(false);
   const [copiedInt, setCopiedInt] = useState(false);
   const [autodeploy, setAutodeploy] = useState(false);
-  const [environmentTemplatePath, setEnvironmentTemplatePath] = useState(".env.example");
+  const [actionState, setActionState] = useState<string | null>(null);
   const [viewLogsDep, setViewLogsDep] = useState<string | null>(null);
 
   useEffect(() => {
@@ -225,11 +216,20 @@ function AppDetail() {
   useEffect(() => {
     if (source) {
       setAutodeploy(source.auto_deploy);
-      setEnvironmentTemplatePath(source.environment_template_path || ".env.example");
     }
   }, [source]);
   const latest = deployments?.slice().sort((a, b) => b.number - a.number)[0];
-  const state = states?.[appId] ?? "unknown";
+  const observedState = states?.[appId];
+  useEffect(() => {
+    if (!actionState || !observedState) return;
+    if (actionState === "running" && observedState === "running") {
+      setActionState(null);
+    }
+    if (actionState === "stopped" && observedState !== "running") {
+      setActionState(null);
+    }
+  }, [actionState, observedState]);
+  const state = actionState ?? observedState ?? "unknown";
   const runtimeStatus = mapRuntimeStatus(state, latest?.status);
   const running = state === "running";
 
@@ -246,6 +246,58 @@ function AppDetail() {
     const probe = (netq ?? []).find((n) => n.app_id === app.id);
     return probe?.addr ? `http://${probe.addr}` : null;
   })();
+
+  const updateAutodeploy = (next: boolean) => {
+    if (!source) {
+      add({
+        title: "Source control is unavailable",
+        description: "Reconnect the repository before enabling autodeploy.",
+        tone: "error",
+      });
+      return;
+    }
+    if (!source.connection_id || !source.repository_id) {
+      add({
+        title: "Source control configuration is incomplete",
+        description: "Reconnect the repository before enabling autodeploy.",
+        tone: "error",
+      });
+      return;
+    }
+    setAutodeploy(next);
+    saveSource.mutate(
+      {
+        connection_id: source.connection_id,
+        repository_id: source.repository_id,
+        repository_owner: source.repository_owner,
+        repository_name: source.repository_name,
+        repository_full_name: source.repository_full_name,
+        default_branch: source.default_branch,
+        branch: source.branch,
+        auto_deploy: next,
+        root_directory: source.root_directory,
+        environment_template_path: source.environment_template_path,
+        watch_paths: source.watch_paths ?? [],
+        ignore_paths: source.ignore_paths ?? [],
+        watch_root_files: source.watch_root_files,
+      },
+      {
+        onSuccess: () =>
+          add({
+            title: next ? "Autodeploy enabled" : "Autodeploy disabled",
+            tone: "success",
+          }),
+        onError: (error) => {
+          setAutodeploy(source.auto_deploy);
+          add({
+            title: "Could not update autodeploy",
+            description: error.message,
+            tone: "error",
+          });
+        },
+      },
+    );
+  };
 
   const copyURL = () => {
     if (!liveURL) return;
@@ -270,9 +322,12 @@ function AppDetail() {
     }
   };
 
-  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+  const run = (fn: () => Promise<unknown>, okMsg: string, onSuccess?: () => void) => {
     fn().then(
-      () => add({ title: okMsg, tone: "success" }),
+      () => {
+        onSuccess?.();
+        add({ title: okMsg, tone: "success" });
+      },
       (e) =>
         add({
           title: "Operation failed",
@@ -396,9 +451,29 @@ function AppDetail() {
                   Deploy, rebuild or control this service
                 </p>
               </div>
-              <span className="px-3 py-1.5 bg-surface-container-high border border-outline-variant rounded text-body-sm font-medium text-on-surface-variant">
-                {app.source_type === "git" ? "Git" : "Image"}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <Button
+                  variant="ghost"
+                  icon={designIcon(TerminalWindow)}
+                  onClick={() => setTab("terminal")}
+                >
+                  Open Terminal
+                </Button>
+                <Button
+                  variant="ghost"
+                  icon={designIcon(ArrowSquareOut)}
+                  onClick={() => {
+                    if (liveURL) window.open(liveURL, "_blank");
+                    else
+                      add({
+                        title: "Add a domain to open the URL",
+                        tone: "error",
+                      });
+                  }}
+                >
+                  Visit URL
+                </Button>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button
@@ -418,10 +493,15 @@ function AppDetail() {
               </Button>
               {running ? (
                 <Button
-                  variant="danger"
+                  variant='danger'
                   icon={designIcon(Stop)}
+                  loading={stop.isPending}
                   onClick={() =>
-                    run(() => stop.mutateAsync(app.id), "Service stopped")
+                    run(
+                      () => stop.mutateAsync(app.id),
+                      "Service stopped",
+                      () => setActionState("stopped"),
+                    )
                   }
                 >
                   Stop
@@ -430,98 +510,29 @@ function AppDetail() {
                 <Button
                   variant="success"
                   icon={designIcon(Play)}
+                  loading={start.isPending}
                   onClick={() =>
-                    run(() => start.mutateAsync(app.id), "Service started")
+                    run(
+                      () => start.mutateAsync(app.id),
+                      "Service started",
+                      () => setActionState("running"),
+                    )
                   }
                 >
                   Start
                 </Button>
               )}
-              <Button
-                variant="secondary"
-                icon={designIcon(TerminalWindow)}
-                onClick={() => setTab("terminal")}
-              >
-                Open Terminal
-              </Button>
-              <Button
-                variant="secondary"
-                icon={designIcon(ArrowSquareOut)}
-                onClick={() => {
-                  if (liveURL) window.open(liveURL, "_blank");
-                  else
-                    add({
-                      title: "Add a domain to open the URL",
-                      tone: "error",
-                    });
-                }}
-              >
-                Visit URL
-              </Button>
               <div className="ml-auto flex items-center gap-3">
                 <span className="text-body-sm text-on-surface-variant">
-                  Autodeploy
+                  Automatic deploys
                 </span>
-                <button
-                  type="button"
-                  disabled={!source || saveSource.isPending}
-                  onClick={() => {
-                    if (!source) return;
-                    if (!source.connection_id || !source.repository_id) {
-                      add({
-                        title: "Source control configuration is incomplete",
-                        description:
-                          "Reconnect the repository before enabling autodeploy.",
-                        tone: "error",
-                      });
-                      return;
-                    }
-                    const next = !source.auto_deploy;
-                    setAutodeploy(next);
-                    saveSource.mutate(
-                      {
-                        connection_id: source.connection_id,
-                        repository_id: source.repository_id,
-                        repository_owner: source.repository_owner,
-                        repository_name: source.repository_name,
-                        repository_full_name: source.repository_full_name,
-                        default_branch: source.default_branch,
-                        branch: source.branch,
-                        auto_deploy: next,
-                        root_directory: source.root_directory,
-                        environment_template_path: source.environment_template_path,
-                        watch_paths: source.watch_paths ?? [],
-                        ignore_paths: source.ignore_paths ?? [],
-                        watch_root_files: source.watch_root_files,
-                      },
-                      {
-                        onSuccess: () =>
-                          add({
-                            title: next
-                              ? "Autodeploy enabled"
-                              : "Autodeploy disabled",
-                            tone: "success",
-                          }),
-                        onError: (error) => {
-                          setAutodeploy(source.auto_deploy);
-                          add({
-                            title: "Could not update autodeploy",
-                            description: error.message,
-                            tone: "error",
-                          });
-                        },
-                      },
-                    );
-                  }}
-                  aria-label={
-                    autodeploy ? "Disable autodeploy" : "Enable autodeploy"
-                  }
-                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors disabled:opacity-50 ${autodeploy ? "bg-primary" : "bg-surface-container-high border border-outline-variant"}`}
-                >
-                  <div
-                    className={`absolute top-1 w-3 h-3 bg-on-primary rounded-full transition-all ${autodeploy ? "right-1 bg-on-primary" : "left-1 bg-on-surface-variant/60"}`}
-                  />
-                </button>
+                <Switch
+                  ariaLabel="Automatic deploys"
+                  checked={autodeploy}
+                  disabled={sourceLoading || saveSource.isPending}
+                  loading={saveSource.isPending}
+                  onCheckedChange={(checked) => updateAutodeploy(checked)}
+                />
               </div>
             </div>
           </div>
@@ -864,9 +875,7 @@ function AppDetail() {
                     </button>
                   </div>
                 ) : (
-                  <p className="font-body-sm text-body-sm text-on-surface-variant relative z-10">
-                    No deployments yet.
-                  </p>
+                  <EmptyState title="No deployments yet" description="Deploy the service to create its first deployment." className="relative z-10 border-0" />
                 )}
               </div>
 
@@ -893,7 +902,9 @@ function AppDetail() {
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">
             Live Logs
           </h2>
-          <LiveLogs appId={app.id} />
+          <div className="mt-md">
+            <LiveLogs appId={app.id} />
+          </div>
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mt-lg mb-md">
             Event timeline
           </h2>
@@ -984,42 +995,63 @@ function AppDetail() {
             <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
               CPU
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-sm mb-md">
-              {["0.25", "0.5", "1", "2"].map((c) => (
-                <button
-                  key={c}
-                  onClick={() =>
-                    updateApp.mutate({ resources: { cpus: c } as never })
-                  }
-                  className={`px-sm py-2 rounded border font-code-md text-code-md transition-colors ${String(detail?.app.resources?.cpus ?? "") === c ? "border-primary bg-primary/10 text-primary" : "border-outline-variant text-on-surface-variant hover:border-primary/40"}`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+            <Slider
+              min={0.25}
+              max={8}
+              step={0.25}
+              value={Number.parseFloat(String(detail?.app.resources?.cpus ?? "0.5")) || 0.5}
+              onValueChange={(value) => {
+                const next = Array.isArray(value) ? value[0] : value;
+                if (typeof next === "number") {
+                  updateApp.mutate({ resources: { cpus: next.toString() } as never });
+                }
+              }}
+            />
+            <p className="font-code-md text-code-md text-on-surface-variant mb-md">
+              {detail?.app.resources?.cpus ?? "0.5"} CPU allocated
+            </p>
             <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
               Memory
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-sm mb-md">
-              {[
-                { l: "256 MB", v: 256 },
-                { l: "512 MB", v: 512 },
-                { l: "1 GB", v: 1024 },
-                { l: "2 GB", v: 2048 },
-                { l: "4 GB", v: 4096 },
-                { l: "∞", v: 0 },
-              ].map((m) => (
-                <button
-                  key={m.l}
-                  onClick={() =>
-                    updateApp.mutate({ resources: { mem_mb: m.v } as never })
-                  }
-                  className={`px-sm py-2 rounded border font-code-md text-code-md transition-colors ${detail?.app.resources?.mem_mb === m.v ? "border-primary bg-primary/10 text-primary" : "border-outline-variant text-on-surface-variant hover:border-primary/40"}`}
-                >
-                  {m.l}
-                </button>
-              ))}
-            </div>
+            <Slider
+              min={256}
+              max={8192}
+              step={256}
+              value={Math.min(8192, Math.max(256, detail?.app.resources?.mem_mb || 256))}
+              onValueChange={(value) => {
+                const next = Array.isArray(value) ? value[0] : value;
+                if (typeof next === "number") {
+                  updateApp.mutate({ resources: { mem_mb: next } as never });
+                }
+              }}
+            />
+            <p className="font-code-md text-code-md text-on-surface-variant mb-md">
+              {detail?.app.resources?.mem_mb && detail.app.resources.mem_mb % 1024 === 0
+                ? `${detail.app.resources.mem_mb / 1024} GB RAM`
+                : `${detail?.app.resources?.mem_mb ?? 256} MB RAM`}
+            </p>
+            <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
+              Storage
+            </p>
+            <Slider
+              min={0}
+              max={102400}
+              step={1024}
+              value={Math.min(102400, Math.max(0, detail?.app.storage_mb ?? 0))}
+              onValueChange={(value) => {
+                const next = Array.isArray(value) ? value[0] : value;
+                if (typeof next === "number") {
+                  updateApp.mutate({ resources: { storage_mb: next } as never });
+                }
+              }}
+            />
+            <p className="font-code-md text-code-md text-on-surface-variant mb-md">
+              {detail?.app.storage_mb
+                ? detail.app.storage_mb % 1024 === 0
+                  ? `${detail.app.storage_mb / 1024} GB storage`
+                  : `${detail.app.storage_mb} MB storage`
+                : "Unlimited storage"}
+            </p>
             <p className="font-code-md text-code-md text-on-surface-variant/60">
               Applies on the next deploy. CPU accepts decimals (0.5) or
               millicores (500m).
@@ -1066,55 +1098,6 @@ function AppDetail() {
                 <TerminalWindow size={14} />
                 Open editor
               </Button>
-            </div>
-            <div className="mb-md rounded border border-outline-variant/60 p-sm">
-              <div className="flex flex-col gap-sm sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    label="Environment template file"
-                    value={environmentTemplatePath}
-                    onChange={(event) => setEnvironmentTemplatePath(event.target.value)}
-                    placeholder=".env.example"
-                  />
-                  <p className="mt-xs font-body-sm text-body-sm text-on-surface-variant">Variables found in this file will be added automatically with empty values.</p>
-                </div>
-                <div className="flex shrink-0 gap-sm">
-                  <Button
-                    variant="ghost"
-                    disabled={!source || saveSource.isPending}
-                    onClick={() => {
-                      if (!source) return;
-                      saveSource.mutate({
-                        connection_id: source.connection_id,
-                        repository_id: source.repository_id,
-                        repository_owner: source.repository_owner,
-                        repository_name: source.repository_name,
-                        repository_full_name: source.repository_full_name,
-                        default_branch: source.default_branch,
-                        branch: source.branch,
-                        auto_deploy: source.auto_deploy,
-                        root_directory: source.root_directory,
-                        environment_template_path: environmentTemplatePath.trim() || ".env.example",
-                        watch_paths: source.watch_paths ?? [],
-                        ignore_paths: source.ignore_paths ?? [],
-                        watch_root_files: source.watch_root_files,
-                      }, { onSuccess: () => add({ title: "Environment template saved", tone: "success" }), onError: (error) => add({ title: "Could not save environment template", description: error.message, tone: "error" }) });
-                    }}
-                  >
-                    Save template
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    disabled={!source || importServiceTemplate.isPending}
-                    onClick={() => importServiceTemplate.mutate(undefined, {
-                      onSuccess: (result) => add({ title: result.found ? (result.imported ? `${result.imported} variables imported` : "No new variables found") : "Environment template not found", tone: result.found ? "success" : "info" }),
-                      onError: (error) => add({ title: "Could not import environment template", description: error.message, tone: "error" }),
-                    })}
-                  >
-                    Import from template
-                  </Button>
-                </div>
-              </div>
             </div>
             <div className="space-y-sm mb-md">
               {(detail?.env ?? []).map((e) => (
@@ -1205,8 +1188,6 @@ function AppDetail() {
       )}
 
       {tab === "cron" && <CronJobs appID={app.id} />}
-      {tab === "workers" && <Workers appID={app.id} />}
-      {tab === "previews" && <Previews appID={app.id} />}
       {tab === "terminal" && <Terminal appID={app.id} />}
       {tab === "domains" && <DomainsPanel kind="apps" id={app.id} />}
 

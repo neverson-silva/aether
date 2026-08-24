@@ -130,6 +130,7 @@ export function LogViewer({
     const previousQuery = previousQueryRef.current
     const wasAtBottom = activeFollowTail && atBottomRef.current
     const isAppend =
+      previousVisible.length > 0 &&
       previousQuery === query &&
       previousVisible.length <= visible.length &&
       previousVisible.every((line, index) => line.id === visible[index]?.id)

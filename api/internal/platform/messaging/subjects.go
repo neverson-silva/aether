@@ -7,7 +7,7 @@ const (
 	DLQPrefix          = "aether.dlq."
 	StatePrefix        = "aether.state."
 	MonitoringPrefix   = "aether.monitoring."
-	NotifyPrefix       = "notify:"
+	NotifyPrefix       = "aether.notify."
 	MonitoringSnapshot = MonitoringPrefix + "snapshot"
 )
 
@@ -16,4 +16,4 @@ func Events(topic string) string    { return EventsPrefix + topic }
 func Live(topic string) string      { return LivePrefix + topic }
 func DLQ(stream string) string      { return DLQPrefix + stream }
 func State(key string) string       { return StatePrefix + key }
-func NotifyOrg(orgID string) string { return NotifyPrefix + "org:" + orgID }
+func NotifyOrg(orgID string) string { return NotifyPrefix + "org." + orgID }

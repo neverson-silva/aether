@@ -23,6 +23,7 @@ type RunSpec struct {
 	NetworkAlias  string
 	MemMB         int
 	CPUs          string
+	StorageMB     int
 	Labels        map[string]string
 }
 
@@ -315,6 +316,9 @@ func (podmanRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	}
 	if spec.CPUs != "" {
 		args = append(args, "--cpus", spec.CPUs)
+	}
+	if spec.StorageMB > 0 {
+		args = append(args, "--storage-opt", fmt.Sprintf("size=%dm", spec.StorageMB))
 	}
 	for k, v := range spec.Labels {
 		args = append(args, "--label", k+"="+v)

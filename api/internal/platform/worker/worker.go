@@ -346,7 +346,7 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
 	containerID, err := w.Runtime.Run(ctx, RunSpec{
 		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: spec.Port, ContainerPort: containerPort,
 		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8],
-		MemMB: spec.MemMB, CPUs: spec.CPUs, Labels: labels,
+		MemMB: spec.MemMB, CPUs: spec.CPUs, StorageMB: spec.StorageMB, Labels: labels,
 	})
 	if err != nil {
 		w.fail(ctx, dep, "", err)
@@ -821,6 +821,7 @@ type runSpec struct {
 	NetworkAlias  string      `json:"network_alias"`
 	MemMB         int         `json:"mem_mb"`
 	CPUs          string      `json:"cpus"`
+	StorageMB     int         `json:"storage_mb"`
 	HealthCheck   healthCheck `json:"health_check"`
 }
 

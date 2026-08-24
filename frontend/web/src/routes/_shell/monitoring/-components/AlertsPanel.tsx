@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Plus, Tag, Trash, XCircle } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
-import { Badge, Button, Card, Input, NativeSelect, useToast } from "@aether/design-system";
+import { Badge, Button, Card, EmptyState, Input, NativeSelect, useToast } from "@aether/design-system";
 import { useAlertEvents, useAlertRules, useCreateAlertRule, useDeleteAlertRule, useResolveAlert, useApps } from "../../../../hooks";
 
 const METRIC_LABEL: Record<string, string> = { cpu: "CPU %", memory: "Memory (MiB)", memory_pct: "Memory %", disk: "Disk (MiB)" };
@@ -59,7 +59,7 @@ export function AlertsPanel() {
             </Button>
           </div>
         ))}
-        {(rules ?? []).length === 0 && <p className="font-body-sm text-body-sm text-on-surface-variant">No alert rules yet. Add one above (e.g. CPU above 80%).</p>}
+        {(rules ?? []).length === 0 && <EmptyState title="No alert rules yet" description="Add one above, for example CPU above 80%." className="border-0 p-4" />}
       </div>
 
       <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Alert history</h2>
@@ -81,7 +81,7 @@ export function AlertsPanel() {
             )}
           </div>
         ))}
-        {(events ?? []).length === 0 && <p className="font-body-sm text-body-sm text-on-surface-variant">No alert events recorded.</p>}
+        {(events ?? []).length === 0 && <EmptyState title="No alert events recorded" className="border-0 p-4" />}
       </div>
     </Card>
   );

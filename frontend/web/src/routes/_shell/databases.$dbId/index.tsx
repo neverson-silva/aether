@@ -13,7 +13,7 @@ import {
 import type { DatabaseDeployment } from "../../../hooks/use-database-deployments";
 import { getServer } from "../../../api/client";
 import { TechIcon } from "../../../components/TechIcon";
-import { AlertDialog, Badge, Button, Card, LogViewer, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
+import { AlertDialog, Badge, Button, Card, EmptyState, LogViewer, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
 import { ArrowSquareOut, Check, Copy, Database as DatabaseIcon, Gear, Globe, Play, RocketLaunch, Stop, Table, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { DbTerminal } from "./-components/DbTerminal";
 import { DatabaseDeploymentLogModal } from "./-components/DatabaseDeploymentLogModal";
@@ -170,7 +170,7 @@ function DatabaseDetail() {
                   Rebuild
                 </Button>
                 {running ? (
-                  <Button variant="danger" icon={designIcon(Stop)} onClick={() => run(() => stop.mutateAsync(dbId), "Database stopped")}>
+                <Button variant="destructive-ghost" icon={designIcon(Stop)} onClick={() => run(() => stop.mutateAsync(dbId), "Database stopped")}>
                     Stop
                   </Button>
                 ) : (
@@ -305,9 +305,7 @@ function DatabaseDetail() {
             </table>
           </div>
           {(deployments ?? []).length === 0 && (
-            <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">
-              No deployments yet. Use Deploy to start the database container from the official image.
-            </p>
+            <EmptyState title="No deployments yet" description="Use Deploy to start the database container from the official image." className="border-0" />
           )}
         </Card>
       )}
@@ -361,7 +359,7 @@ function DatabaseDetail() {
               </div>
             </div>
           ) : (
-            loadingStats ? <div className="space-y-sm py-lg" aria-label="Loading metrics"><Skeleton variant="card" /><Skeleton variant="card" /></div> : <div className="text-center py-lg"><p className="font-body-sm text-body-sm text-on-surface-variant">No live metrics available (no active container).</p></div>
+            loadingStats ? <div className="space-y-sm py-lg" aria-label="Loading metrics"><Skeleton variant="card" /><Skeleton variant="card" /></div> : <EmptyState title="No live metrics available" description="Metrics appear when a container is active." className="border-0" />
           )}
         </Card>
       )}

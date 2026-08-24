@@ -8,7 +8,7 @@ import {
   useDeleteDatabaseBackupConfig,
   useS3Destinations,
 } from "../../../../hooks";
-import { AlertDialog, Badge, Button, Card, useToast } from "@aether/design-system";
+import { AlertDialog, Badge, Button, Card, EmptyState, useToast } from "@aether/design-system";
 import { ArrowUUpLeft, CloudArrowUp, Gear, Plus, Trash } from "@phosphor-icons/react";
 import { BackupConfigDialog, describeScheduleExport } from "./BackupConfigDialog";
 import { RestoreDialog } from "./RestoreDialog";
@@ -117,9 +117,7 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Backup history</h2>
         </div>
         {(backups ?? []).length === 0 ? (
-          <p className="px-lg py-xl font-body-md text-body-md text-on-surface-variant text-center">
-            No backups yet. Run your first backup with “Backup now”.
-          </p>
+          <EmptyState title="No backups yet" description="Run your first backup with “Backup now”" className="border-0" />
         ) : (
           <div className="divide-y divide-outline-variant/40">
             {(backups ?? []).map((b) => {

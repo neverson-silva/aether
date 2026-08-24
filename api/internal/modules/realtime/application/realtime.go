@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"sort"
@@ -120,7 +121,7 @@ func (r *Realtime) NotifyDeploy(ctx context.Context, event deploydomain.DeployEv
 	}
 	payload, _ := json.Marshal(event)
 	msg := deployMessage(app.Name, event)
-	_ = r.PublishEvent(ctx, app.OrgID, domain.Event{
+	if err := r.PublishEvent(ctx, app.OrgID, domain.Event{
 		Type: "deploy." + event.Status, Aggregate: "deployment",
 		AppID:         event.AppID.String(),
 		ResourceType:  "deployment",
@@ -128,7 +129,9 @@ func (r *Realtime) NotifyDeploy(ctx context.Context, event deploydomain.DeployEv
 		CorrelationID: event.DepID.String(),
 		Message:       msg,
 		Payload:       payload,
-	})
+	}); err != nil {
+		slog.Error("publish deployment realtime event", "org_id", app.OrgID, "deployment_id", event.DepID, "status", event.Status, "err", err)
+	}
 	if r.Notifications != nil && notifiableDeployStatus(event.Status) {
 		_, _ = r.Notifications.Create(ctx, &alertsdomain.Notification{
 			OrgID:   app.OrgID,

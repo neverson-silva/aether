@@ -23,7 +23,7 @@ You are the platform engineer for **Aether**, a self-hosted PaaS (Dokploy/Heroku
 
 ## Build types (app deployments, Dokploy-like)
 
-**CNB é a engine de build oficial** (`api/internal/platform/worker/worker.go`) e o builder é **100% buildpacks próprios** — `localhost:5000/builder:node-spa`, construído com `infra/builders/build-builder.sh` (podman build + push para o registry local `aether-registry:5000`; `pack builder create` NÃO funciona com podman — "duplicate paths" no unpack). `dev.sh`/`install.sh` garantem registry + builder.
+**CNB é a engine de build oficial** (`api/internal/platform/worker/worker.go`) e o builder é **100% buildpacks próprios** — `localhost:5000/builder:node-spa`, construído com `infra/buildpacks/builders/build-builder.sh` (podman build + push para o registry local `aether-registry:5000`; `pack builder create` NÃO funciona com podman — "duplicate paths" no unpack). `dev.sh`/`install.sh` garantem registry + builder.
 
 - default/`buildpacks`/legado → **CNB**: `pack build <img> -p <src> -B localhost:5000/builder:node-spa --docker-host=inherit`. Grupos:
   - `aether/spa-static` (grupo 1): SPAs/SSG (React/Vue/Angular/Vite/Gatsby/Docusaurus/Eleventy/Next export) — instala Node via engines.node, npm ci + build, serve com static-web-server + SPA fallback + $PORT.

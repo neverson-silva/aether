@@ -11,7 +11,7 @@ import {
   useDeleteCluster,
   useServers,
 } from "../../../hooks";
-import { Badge, Button, Card, Dialog, Field, Input, NativeSelect, useToast } from "@aether/design-system";
+import { Badge, Button, Card, Dialog, EmptyState, Field, Input, NativeSelect, useToast } from "@aether/design-system";
 import { Cube, LinkBreak, Plus, Trash } from "@phosphor-icons/react";
 
 const schema = z.object({
@@ -84,9 +84,7 @@ function Clusters() {
             </div>
           </div>
           {c.servers.length === 0 ? (
-            <p className="font-body-sm text-body-sm text-on-surface-variant">
-              No servers in this cluster yet. Deploys targeting it stay local until a node joins.
-            </p>
+            <EmptyState title="No servers in this cluster yet" description="Deploys targeting it stay local until a node joins." className="border-0 p-4" />
           ) : (
             <div className="space-y-sm">
               {c.servers.map((srv) => (
@@ -112,11 +110,7 @@ function Clusters() {
         </Card>
       ))}
       {(clusters ?? []).length === 0 && (
-        <Card>
-          <p className="font-body-sm text-body-sm text-on-surface-variant">
-            No clusters yet. Group your agents for affinity-aware scheduling.
-          </p>
-        </Card>
+        <EmptyState title="No clusters yet" description="Group your agents for affinity-aware scheduling." action={<Button icon={Plus} onClick={() => setOpen(true)}>Create cluster</Button>} />
       )}
 
       <Dialog open={open} trigger={<span />} onOpenChange={setOpen} title="New cluster">
@@ -150,9 +144,7 @@ function Clusters() {
               />
             </Field>
             {unassigned.length === 0 && (
-              <p className="font-body-sm text-body-sm text-on-surface-variant">
-                No unassigned servers available.
-              </p>
+              <EmptyState title="No unassigned servers available" className="border-0 p-4" />
             )}
           </div>
         )}

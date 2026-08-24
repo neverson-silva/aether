@@ -66,7 +66,7 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 		return nil, err
 	}
 	spec, _ := json.Marshal(map[string]any{
-		"name": app.Name, "port": app.Port, "mem_mb": app.MemMB, "cpus": app.CPUs,
+		"name": app.Name, "port": app.Port, "mem_mb": app.MemMB, "cpus": app.CPUs, "storage_mb": app.StorageMB,
 		"image": app.Image, "git_url": app.GitURL, "git_branch": app.GitBranch, "upload_id": app.UploadID,
 		"build_type": app.BuildType, "dockerfile": app.Dockerfile, "build_command": app.BuildCommand,
 		"install_command": app.InstallCommand, "start_command": app.StartCommand,

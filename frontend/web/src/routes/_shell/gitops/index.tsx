@@ -9,7 +9,7 @@ import {
   useGitOps,
   useSyncGitOps,
 } from "../../../hooks";
-import { Badge, Button, Card, Dialog, Field, Input, NativeSelect, Skeleton, useToast } from "@aether/design-system";
+import { Badge, Button, Card, Dialog, EmptyState, Field, Input, NativeSelect, Skeleton, useToast } from "@aether/design-system";
 import { ArrowsClockwise, Plus, Trash } from "@phosphor-icons/react";
 
 const schema = z.object({
@@ -105,7 +105,7 @@ function GitOps() {
               ))}
             </tbody></table>
             {(configs ?? []).length === 0 && !isLoading && (
-              <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">No GitOps configs yet.</p>
+              <EmptyState title="No GitOps configs yet" description="Create a configuration to manage deployments from Git." className="border-0" />
             )}
           </div>
         </Card>

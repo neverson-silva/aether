@@ -19,7 +19,7 @@ import {
 import type { DestinationType, S3Destination } from "../../../api/types";
 import { Archive, CheckCircle, CloudArrowUp, Database, FloppyDisk, Folder, Globe, IdentificationCard, Key, Link as LinkIcon, MagicWand, PencilSimple, Plus, Trash, WifiHigh, XCircle } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
-import { Badge, Button, Card, Dialog, Field, Input, NativeSelect, useToast } from "@aether/design-system";
+import { Badge, Button, Card, Dialog, EmptyState, Field, Input, NativeSelect, useToast } from "@aether/design-system";
 
 function cn(...classes: Array<string | false | undefined>) { return classes.filter(Boolean).join(" "); }
 
@@ -244,7 +244,7 @@ export function Storage() {
           ))}
         </tbody></table></div>
         {(dests ?? []).length === 0 && (
-          <p className="font-body-sm text-body-sm text-on-surface-variant p-sm">No destinations configured.</p>
+          <EmptyState title="No destinations configured" description="Add a storage destination to manage backups." className="border-0" />
         )}
       </Card>
 
@@ -429,7 +429,7 @@ export function SnapshotSchedulesSection() {
           </div>
         ))}
         {(schedules ?? []).length === 0 && (
-          <p className="font-body-sm text-body-sm text-on-surface-variant/60">No schedules yet.</p>
+          <EmptyState title="No schedules yet" description="Create a snapshot schedule to automate backups." className="border-0" />
         )}
       </div>
     </Card>

@@ -5,7 +5,7 @@ import { useOrg } from "../components/OrgProvider";
 import { useOrgAudit, useOrgDetail, useOrgMembers, useProjects } from "../hooks";
 import { apiDelete, apiPost, apiPut } from "../api/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Badge, Button, Checkbox, Field, Input, Modal, NativeSelect, Skeleton, useToast } from "@aether/design-system";
+import { Badge, Button, Checkbox, EmptyState, Field, Input, Modal, NativeSelect, Skeleton, useToast } from "@aether/design-system";
 import type { OrgMember } from "../api/types";
 
 export const Route = createFileRoute("/organizations/$id")({
@@ -228,7 +228,7 @@ function OrganizationPage() {
                 ))}
                 {filteredMembers.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-md py-lg text-center text-on-surface-variant">No members yet. Invite your teammates.</td>
+                    <td colSpan={4}><EmptyState title="No members yet" description="Invite your teammates." className="border-0" /></td>
                   </tr>
                 )}
               </tbody>
@@ -254,12 +254,7 @@ function OrganizationPage() {
             </button>
           ))}
           {projects?.length === 0 && (
-            <div className="col-span-full rounded-xl border border-dashed border-outline-variant p-xl text-center">
-              <p className="font-body-sm text-on-surface-variant">No projects in this organization yet.</p>
-              <button onClick={() => navigate({ to: "/projects/new" })} className="mt-md px-md py-2 rounded-lg bg-primary text-on-primary font-body-sm font-semibold">
-                Create your first project
-              </button>
-            </div>
+            <div className="col-span-full"><EmptyState title="No projects in this organization yet" action={<Button onClick={() => navigate({ to: "/projects/new" })}>Create your first project</Button>} /></div>
           )}
         </div>
       )}
@@ -278,7 +273,7 @@ function OrganizationPage() {
               </div>
             );
           })}
-          {audit?.length === 0 && <p className="p-md text-center text-on-surface-variant">No audit events yet.</p>}
+          {audit?.length === 0 && <EmptyState title="No audit events yet" className="border-0" />}
         </div>
       )}
 
@@ -296,7 +291,7 @@ function OrganizationPage() {
                       <span className="font-body-sm text-on-surface">{p.name}</span>
                     </div>
                   ))}
-                  {projects?.length === 0 && <p className="p-sm text-on-surface-variant font-body-sm">No projects yet.</p>}
+                  {projects?.length === 0 && <EmptyState title="No projects yet" className="border-0 p-4" />}
                 </div>
               </div>
               <div className="flex justify-end gap-sm pt-md border-t border-outline-variant">

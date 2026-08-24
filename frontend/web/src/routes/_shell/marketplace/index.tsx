@@ -13,7 +13,7 @@ import {
   useTemplates,
 } from "../../../hooks";
 import type { TemplateItem } from "../../../hooks";
-import { Badge, Button, Dialog, Field, Input, NativeSelect, useToast } from "@aether/design-system";
+import { Badge, Button, Dialog, EmptyState, Field, Input, NativeSelect, useToast } from "@aether/design-system";
 import { Plus, Star } from "@phosphor-icons/react";
 import { Markdown } from "../../../components/Markdown";
 import { TechIcon } from "../../../components/TechIcon";
@@ -170,7 +170,7 @@ function Marketplace() {
       )}
 
       {tab === "favorites" && favTemplates.length === 0 && (
-        <p className="font-body-sm text-body-sm text-on-surface-variant">No favorites yet. Star templates to pin them here.</p>
+        <EmptyState title="No favorites yet" description="Star templates to pin them here." className="border-0" />
       )}
 
       <div>

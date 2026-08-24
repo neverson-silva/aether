@@ -190,11 +190,11 @@ export function Shell() {
               onCreate={() => navigate({ to: "/organizations/new" })}
             />
           }
-          breadcrumb={[
-            ...(currentProject
-              ? [{ label: currentProject, current: true }]
-              : []),
-          ]}
+          // breadcrumb={[
+          //   ...(currentProject
+          //     ? [{ label: currentProject, current: true }]
+          //     : []),
+          // ]}
           onNavigate={(href) => navigate({ to: href } as never)}
           command={
             <IconButton

@@ -54,11 +54,16 @@ func (s *Stats) AppStats(ctx context.Context, appID, orgID uuid.UUID) (Container
 	if _, err := s.Apps.GetApp(ctx, appID, orgID); err != nil {
 		return ContainerInfo{}, err
 	}
-	deps, err := s.Deployments.ListByApp(ctx, appID, 1)
-	if err != nil || len(deps) == 0 || deps[0].ContainerID == "" {
+	deps, err := s.Deployments.ListByApp(ctx, appID, 50)
+	if err != nil {
 		return ContainerInfo{}, ErrNotFound
 	}
-	return s.containerInfo(ctx, deps[0].ContainerID)
+	for _, deployment := range deps {
+		if deployment.Status == deploydomain.StatusReady && deployment.ContainerID != "" {
+			return s.containerInfo(ctx, deployment.ContainerID)
+		}
+	}
+	return ContainerInfo{}, ErrNotFound
 }
 
 func (s *Stats) DatabaseStats(ctx context.Context, dbID, orgID uuid.UUID) (ContainerInfo, error) {

@@ -2,7 +2,7 @@ import { AppDomains } from "./-components/AppDomains";
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
 import { useApps, useNetQ } from "../../../hooks";
-import { Badge, Card } from "@aether/design-system";
+import { Badge, Card, EmptyState } from "@aether/design-system";
 import { Gauge, ShareNetwork } from "@phosphor-icons/react";
 
 function LatencyBar({ p50, p95 }: { p50: number; p95: number }) {
@@ -66,8 +66,8 @@ function Networking() {
             ))}
             {useNetQView().length === 0 && (
               <tr>
-                <td colSpan={5} className="px-sm py-lg text-center font-body-sm text-body-sm text-on-surface-variant">
-                  No probes yet — deploy an app and wait for the first sample.
+                <td colSpan={5}>
+                  <EmptyState title="No probes yet" description="Deploy an app and wait for the first sample." className="border-0" />
                 </td>
               </tr>
             )}

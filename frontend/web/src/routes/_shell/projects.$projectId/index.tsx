@@ -28,7 +28,7 @@ import {
   useDatabaseDeploy,
   useComposeUp,
 } from "../../../hooks";
-import { AlertDialog, Badge, BulkActionBar, Button, Card, Dialog, EnvironmentSwitcher, Field, Input, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
+import { AlertDialog, Badge, BulkActionBar, Button, Card, Dialog, EmptyState, EnvironmentSwitcher, Field, Input, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
 import type { BadgeProps, Icon as DesignIcon } from "@aether/design-system";
 import { CaretDown, CaretUp, CheckCircle, Database, Gear, Info, PencilSimple, Plus, RocketLaunch, Star, Trash, Warning } from "@phosphor-icons/react";
 import { CreateServiceLauncher } from "../../../components/CreateServiceLauncher";
@@ -359,7 +359,7 @@ function ProjectDetail() {
       {isLoading ? (
         <Skeleton variant="card" className="min-h-48" />
       ) : !activeEnv ? (
-        <p className="font-body-sm text-body-sm text-on-surface-variant">No environments yet.</p>
+        <EmptyState title="No environments yet" description="Create an environment to organize service deployments." />
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-lg">
@@ -403,11 +403,7 @@ function ProjectDetail() {
           />
 
           {allServices.length === 0 ? (
-            <div className="bg-surface-container-low border border-outline-variant rounded-lg p-md">
-              <p className="font-body-sm text-body-sm text-on-surface-variant">
-                No services in this environment yet. Create one in Services.
-              </p>
-            </div>
+            <EmptyState title="No services in this environment yet" description="Create one in Services." />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
               {allServices.map((svc) => {

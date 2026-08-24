@@ -1,6 +1,7 @@
 import type { LogLine } from "@aether/design-system";
 
 const timestampPattern = /^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)/;
+const ansiPattern = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 
 export function toDeploymentLogLines(content: string, error?: string): LogLine[] {
   const messages = [
@@ -9,9 +10,9 @@ export function toDeploymentLogLines(content: string, error?: string): LogLine[]
   ];
 
   return messages.map((rawMessage, index) => {
-    const message = rawMessage.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
-    const timestamp = message.match(timestampPattern)?.[1];
-    const lowerMessage = message.toLowerCase();
+    const plainMessage = rawMessage.replace(ansiPattern, "");
+    const timestamp = plainMessage.match(timestampPattern)?.[1];
+    const lowerMessage = plainMessage.toLowerCase();
     const severity = /\b(error|failed|fatal|panic|exception|traceback)\b/.test(lowerMessage)
       ? "error"
       : /\b(warn|warning)\b/.test(lowerMessage)
@@ -21,10 +22,10 @@ export function toDeploymentLogLines(content: string, error?: string): LogLine[]
           : "info";
 
     return {
-      id: `${index}-${message}`,
+      id: `${index}-${plainMessage}`,
       timestamp,
       severity,
-      message: timestamp ? message.slice(timestamp.length).trimStart() : message,
+      message: timestamp && rawMessage.startsWith(timestamp) ? rawMessage.slice(timestamp.length).trimStart() : rawMessage,
     };
   });
 }
