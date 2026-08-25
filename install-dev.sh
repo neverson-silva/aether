@@ -123,6 +123,14 @@ run_sudo() {
   fi
 }
 
+system_bus_available() {
+  [[ -S /run/dbus/system_bus_socket || -S /run/systemd/private ]]
+}
+
+user_bus_available() {
+  [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/bus" ]]
+}
+
 # ---------------------------------------------------------------------------
 # RUNTIME — podman (única dependência do host)
 detect_runtime() {
@@ -223,7 +231,7 @@ ensure_linux_host() {
     host_log "ok: podman.socket already present ($sock)"
   else
     host_log "step: enable podman.socket"
-    if [[ "$(id -u)" -eq 0 ]]; then
+    if [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" && "$(id -u)" -eq 0 && system_bus_available ]]; then
       if systemctl enable --now podman.socket >/dev/null 2>&1; then
         host_log "ok: podman.socket enabled (system)"
         info "  ✓ podman.socket enabled (system)"
@@ -231,9 +239,9 @@ ensure_linux_host() {
         host_log "fail: systemctl enable --now podman.socket"
         warn "  podman.socket could not be enabled — deploy orchestration will be limited."
       fi
-    else
+    elif [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" && "$(id -u)" -ne 0 ]]; then
       export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-      if systemctl --user enable --now podman.socket >/dev/null 2>&1; then
+      if user_bus_available && systemctl --user enable --now podman.socket >/dev/null 2>&1; then
         host_log "ok: podman.socket enabled (user)"
         info "  ✓ podman.socket enabled (user: $(id -un))"
       else
@@ -304,7 +312,7 @@ ensure_linux_host() {
 
   # 4) loginctl linger (rootless) — mantém o user manager vivo para que
   #    containers com restart=unless-stopped subam sozinhos após logout/reboot.
-  if [[ "$(id -u)" -ne 0 ]] && command_exists loginctl; then
+  if [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" && "$(id -u)" -ne 0 ]] && command_exists loginctl && system_bus_available; then
     local linger
     linger="$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || true)"
     if [[ "$linger" == "yes" ]]; then
