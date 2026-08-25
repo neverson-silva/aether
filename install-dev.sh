@@ -759,10 +759,7 @@ start_api() {
     # pack/buildpacks), já que o source de um -v é resolvido
     # dentro da VM, não no container.
     args+=( -v "$sock_src:$sock_src:ro" )
-    if [[ "$sock_src" != "/var/run/docker.sock" ]]; then
-      args+=( -v "$sock_src:/var/run/docker.sock:ro" )
-    fi
-    args+=( -e "CONTAINER_HOST=unix:///var/run/docker.sock" -e "DOCKER_HOST=unix:///var/run/docker.sock" )
+    args+=( -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
     sock_mount=1
     info "  ✓ podman socket mounted (for app deployments): $sock_src"
   fi
@@ -778,7 +775,7 @@ start_api() {
       fi
       local clean_args=()
       for a in "${args[@]}"; do
-        [[ "$a" == *"podman.sock:ro" || "$a" == *"docker.sock:ro" ]] && continue
+        [[ "$a" == *"podman.sock:ro" ]] && continue
         [[ "$a" == "CONTAINER_HOST=unix://"* ]] && continue
         [[ "$a" == "DOCKER_HOST=unix://"* ]] && continue
         clean_args+=( "$a" )
@@ -843,10 +840,7 @@ start_auxiliary() {
   fi
   if [[ -n "$sock_src" ]]; then
     args+=( -v "$sock_src:$sock_src:ro" )
-    if [[ "$sock_src" != "/var/run/docker.sock" ]]; then
-      args+=( -v "$sock_src:/var/run/docker.sock:ro" )
-    fi
-    args+=( -e "CONTAINER_HOST=unix:///var/run/docker.sock" -e "DOCKER_HOST=unix:///var/run/docker.sock" )
+    args+=( -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
   fi
   info "Starting $container..."
   $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start $container."
