@@ -146,9 +146,6 @@ validate_checkout() {
 run_development_installer() {
   export AETHER_MODE="${AETHER_MODE:-prod}"
   export DEV_MODE="${DEV_MODE:-false}"
-  if [[ ! -S /run/dbus/system_bus_socket && ! -S /run/systemd/private ]]; then
-    export AETHER_SKIP_SYSTEMD_SETUP=true
-  fi
   export AETHER_PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
   if [[ -z "${AETHER_STATE:-}" ]]; then
     if [[ "$(id -u)" -eq 0 ]]; then

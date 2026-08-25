@@ -357,6 +357,9 @@ start_podman_socket_without_systemd() {
     export AETHER_PODMAN_SOCKET="$socket"
     return 0
   fi
+  if [[ -S "$socket" ]]; then
+    rm -f -- "$socket"
+  fi
   info "  Starting Podman API service directly on $socket..."
   nohup podman system service --time=0 "unix://$socket" >/tmp/aether-podman-service.log 2>&1 &
   local attempt
