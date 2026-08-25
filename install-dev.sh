@@ -224,6 +224,8 @@ ensure_linux_host() {
   [[ "$(uname -s)" == "Linux" ]] || return 0
   host_log "=== host setup begin (user $(id -un), uid $(id -u)) ==="
 
+  configure_system_podman_service
+
   # 1) podman.socket — a API monta o socket para orquestrar deploys de apps.
   local sock
   sock="$(podman_socket)"
@@ -335,6 +337,19 @@ ensure_linux_host() {
   fi
 
   host_log "=== host setup end ==="
+}
+
+configure_system_podman_service() {
+  [[ "$(uname -s)" == "Linux" ]] || return 0
+  [[ "$(id -u)" -eq 0 ]] || return 0
+  [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" ]] || return 0
+  system_bus_available || return 0
+  command_exists systemctl || return 0
+  run_sudo mkdir -p /etc/systemd/system/podman.service.d
+  run_sudo sh -c 'printf "%s\n" "[Service]" "ExecStart=" "ExecStart=/usr/bin/podman system service --time=0" > /etc/systemd/system/podman.service.d/aether-timeout.conf'
+  run_sudo systemctl daemon-reload >/dev/null 2>&1 || return 0
+  run_sudo systemctl restart podman.socket >/dev/null 2>&1 || true
+  host_log "ok: podman.service configured without an API timeout"
 }
 
 podman_socket_healthy() {

@@ -44,7 +44,7 @@ remove_container() {
   local container="$1"
   if podman container exists "$container" 2>/dev/null; then
     info "Removing container $container."
-    podman rm -f "$container" >/dev/null
+    podman rm -t 0 -f "$container" >/dev/null
   fi
 }
 
@@ -52,7 +52,7 @@ remove_volume() {
   local volume="$1"
   if podman volume exists "$volume" 2>/dev/null; then
     info "Removing volume $volume."
-    podman volume rm "$volume" >/dev/null
+    podman volume rm -f "$volume" >/dev/null
   fi
 }
 
@@ -64,7 +64,7 @@ remove_image() {
   fi
 }
 
-for container in aether-api aether-worker aether-monitoring aether-web aether-postgres aether-nats aether-registry; do
+for container in aether-api aether-worker aether-monitoring aether-web aether-postgres aether-nats aether-registry aether-traefik; do
   remove_container "$container"
 done
 
@@ -72,10 +72,12 @@ for volume in aether-pg-data aether-nats-data aether-traefik aether-pack-cache; 
   remove_volume "$volume"
 done
 
-podman network exists aether-net 2>/dev/null && podman network rm aether-net >/dev/null || true
-
 for image in aether.local/api:1 aether.local/web:1 aether.local/builder:node-spa 127.0.0.1:5000/builder:node-spa localhost:5000/builder:node-spa; do
   remove_image "$image"
+done
+
+for network in aether-net aether-ingress aether-internal; do
+  podman network exists "$network" 2>/dev/null && podman network rm "$network" >/dev/null 2>&1 || true
 done
 
 if [[ -d "$STATE_DIR" && "$STATE_DIR" != "/" && "$STATE_DIR" != "$HOME" ]]; then
