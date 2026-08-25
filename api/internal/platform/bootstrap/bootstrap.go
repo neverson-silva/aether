@@ -107,7 +107,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Tokens: infra.NewSigner(secret), Hash: infra.NewHasher(),
 		TokenTTL: 7 * 24 * time.Hour,
 	}
-	handler := authhttp.New(svc)
+	handler := authhttp.New(svc, cfg.CookieSecure)
 
 	appsStore := appsInfra.NewStore(pool)
 	appsSecrets, err := appsInfra.NewSecretCipher(secretKey)

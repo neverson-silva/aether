@@ -13,11 +13,12 @@ import (
 )
 
 type Handler struct {
-	auth *application.Auth
+	auth         *application.Auth
+	cookieSecure bool
 }
 
-func New(auth *application.Auth) *Handler {
-	return &Handler{auth: auth}
+func New(auth *application.Auth, cookieSecure bool) *Handler {
+	return &Handler{auth: auth, cookieSecure: cookieSecure}
 }
 
 const (
@@ -60,7 +61,7 @@ func (h *Handler) Register(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	setAuthCookie(c, token)
+	h.setAuthCookie(c, token)
 	c.JSON(http.StatusCreated, gin.H{
 		"token": token,
 		"user":  gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
@@ -80,7 +81,7 @@ func (h *Handler) Login(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	setAuthCookie(c, token)
+	h.setAuthCookie(c, token)
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"user":  gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
@@ -334,8 +335,12 @@ func (h *Handler) AuthStatus(c *gin.Context) {
 }
 
 func (h *Handler) Logout(c *gin.Context) {
-	c.SetSameSite(http.SameSiteNoneMode)
-	c.SetCookie("aether_token", "", -1, "/", "", true, true)
+	sameSite := http.SameSiteLaxMode
+	if h.cookieSecure {
+		sameSite = http.SameSiteNoneMode
+	}
+	c.SetSameSite(sameSite)
+	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecure, true)
 	c.JSON(http.StatusOK, gin.H{"status": "logged_out"})
 }
 
@@ -359,9 +364,13 @@ func orgID(c *gin.Context) uuid.UUID {
 	return c.MustGet(ContextOrgID).(uuid.UUID)
 }
 
-func setAuthCookie(c *gin.Context, token string) {
-	c.SetSameSite(http.SameSiteNoneMode)
-	c.SetCookie("aether_token", token, 86400*7, "/", "", true, true)
+func (h *Handler) setAuthCookie(c *gin.Context, token string) {
+	sameSite := http.SameSiteLaxMode
+	if h.cookieSecure {
+		sameSite = http.SameSiteNoneMode
+	}
+	c.SetSameSite(sameSite)
+	c.SetCookie("aether_token", token, 86400*7, "/", "", h.cookieSecure, true)
 }
 
 func abort(c *gin.Context, err error) {
