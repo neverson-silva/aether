@@ -4,7 +4,8 @@ set -euo pipefail
 readonly REPOSITORY_URL="${AETHER_REPOSITORY_URL:-https://github.com/neverson-silva/aether.git}"
 readonly REPOSITORY_REF="${AETHER_REPOSITORY_REF:-main}"
 readonly INSTALL_DIR="${AETHER_INSTALL_DIR:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/opt/aether'; else printf '%s/.local/share/aether' "$HOME"; fi)}"
-readonly ENV_FILE="${AETHER_ENV_FILE:-$INSTALL_DIR/.env}"
+readonly DEFAULT_STATE_DIR="${AETHER_STATE:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/var/lib/aether'; else printf '%s/.aether' "$HOME"; fi)}"
+readonly ENV_FILE="${AETHER_ENV_FILE:-$DEFAULT_STATE_DIR/.env}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -108,6 +109,16 @@ prepare_install_dir() {
   fi
 }
 
+preserve_install_configuration() {
+  local checkout_env="$INSTALL_DIR/.env"
+  if [[ "$ENV_FILE" != "$checkout_env" && -f "$checkout_env" && ! -e "$ENV_FILE" ]]; then
+    mkdir -p "$(dirname "$ENV_FILE")"
+    cp -p "$checkout_env" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    info "Preserved installation configuration in $ENV_FILE."
+  fi
+}
+
 validate_checkout() {
   [[ -x "$INSTALL_DIR/install-dev.sh" ]] || fail "The cloned repository does not contain executable install-dev.sh."
   [[ -f "$INSTALL_DIR/infra/Dockerfile" ]] || fail "The cloned repository is missing infra/Dockerfile."
@@ -121,14 +132,27 @@ run_development_installer() {
   export AETHER_PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
   if [[ -z "${AETHER_STATE:-}" ]]; then
     if [[ "$(id -u)" -eq 0 ]]; then
-      export AETHER_STATE="/var/lib/aether"
+      export AETHER_STATE="$DEFAULT_STATE_DIR"
     else
       export AETHER_STATE="$HOME/.aether"
     fi
   fi
   export AETHER_ENV_FILE="$ENV_FILE"
   cd "$INSTALL_DIR"
-  exec "$INSTALL_DIR/install-dev.sh" "${1:-install}"
+  "$INSTALL_DIR/install-dev.sh" "${1:-install}"
+}
+
+cleanup_install_dir() {
+  [[ -n "$INSTALL_DIR" && "$INSTALL_DIR" != "/" && "$INSTALL_DIR" != "$HOME" ]] || fail "Refusing to remove an unsafe install path: $INSTALL_DIR"
+  [[ -d "$INSTALL_DIR/.git" ]] || return 0
+  if [[ "$ENV_FILE" == "$INSTALL_DIR/"* && -f "$ENV_FILE" && ! -e "$DEFAULT_STATE_DIR/.env" ]]; then
+    mkdir -p "$DEFAULT_STATE_DIR"
+    cp -p "$ENV_FILE" "$DEFAULT_STATE_DIR/.env"
+    chmod 600 "$DEFAULT_STATE_DIR/.env"
+    info "Moved installation configuration to $DEFAULT_STATE_DIR/.env."
+  fi
+  info "Removing the temporary Aether checkout from $INSTALL_DIR."
+  rm -rf -- "$INSTALL_DIR"
 }
 
 main() {
@@ -145,13 +169,17 @@ main() {
   install_bootstrap_dependencies
   prepare_install_dir
   validate_checkout
+  preserve_install_configuration
 
   if [[ "$command" == "update" ]]; then
     command="install"
   fi
   info "Running Aether production installer from $INSTALL_DIR."
-  info "State is kept outside the checkout at ${AETHER_STATE:-$HOME/.aether}."
+  info "State is kept outside the checkout at $DEFAULT_STATE_DIR."
   run_development_installer "$command"
+  if [[ "$command" == "install" || "$command" == "start" ]]; then
+    cleanup_install_dir
+  fi
 }
 
 main "$@"

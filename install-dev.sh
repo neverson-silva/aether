@@ -78,6 +78,27 @@ resolve_public_url() {
   printf 'http://%s:%s' "$host" "$WEB_PORT"
 }
 
+resolve_public_host() {
+  if [[ -n "${AETHER_PUBLIC_HOST:-}" ]]; then
+    printf '%s' "$AETHER_PUBLIC_HOST"
+    return
+  fi
+  if [[ -n "${AETHER_PUBLIC_URL:-}" ]]; then
+    local configured_host="${AETHER_PUBLIC_URL#*://}"
+    configured_host="${configured_host%%/*}"
+    configured_host="${configured_host%%:*}"
+    [[ -n "$configured_host" ]] && printf '%s' "$configured_host" && return
+  fi
+  local host=""
+  if command_exists curl; then
+    for service in https://api.ipify.org https://icanhazip.com https://ifconfig.me/ip; do
+      host="$(curl -fsS --max-time 3 "$service" 2>/dev/null | tr -d '[:space:]' || true)"
+      [[ -n "$host" ]] && break
+    done
+  fi
+  printf '%s' "${host:-127.0.0.1}"
+}
+
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 # host_log — registro por passo da configuração de host (Linux nativo).
@@ -576,14 +597,27 @@ build_api_image() {
 }
 
 ensure_web_image() {
-  if $RUNTIME image exists "$WEB_IMAGE" >/dev/null 2>&1; then
-    return 0
-  fi
   [[ -f "$FRONTEND_DIR/package.json" ]] || fail "Frontend package.json not found."
   [[ -f "$PROJECT_ROOT/infra/web.Dockerfile" ]] || fail "Web Dockerfile not found."
+  local build_env="$FRONTEND_DIR/.env.production.local"
+  local backup_env=""
+  if [[ -e "$build_env" ]]; then
+    backup_env="$(mktemp "${TMPDIR:-/tmp}/aether-web-env.XXXXXX")"
+    mv "$build_env" "$backup_env"
+  fi
+  printf 'VITE_API_TARGET="%s"\nVITE_AETHER_PUBLIC_URL="%s"\n' "$AETHER_API_PUBLIC_URL" "$AETHER_PUBLIC_URL" > "$build_env"
+  cleanup_web_build_env() {
+    rm -f "$build_env"
+    if [[ -n "$backup_env" ]]; then
+      mv "$backup_env" "$build_env"
+    fi
+  }
   info "Building the web image ($WEB_IMAGE)..."
-  $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" \
-    || fail "Web image build failed."
+  if ! $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT"; then
+    cleanup_web_build_env
+    fail "Web image build failed."
+  fi
+  cleanup_web_build_env
   info "  ✓ image built: $WEB_IMAGE"
 }
 
@@ -619,7 +653,7 @@ start_api() {
     $RUNTIME rm -f "$API_CONTAINER" >/dev/null 2>&1
   fi
 
-  info "Starting API container ($API_CONTAINER) on 127.0.0.1:$API_PORT..."
+  info "Starting API container ($API_CONTAINER) on $AETHER_API_PUBLIC_URL..."
   local args=(run -d)
   if [[ -f "$ENV_FILE" ]]; then
     args+=(--env-file "$ENV_FILE")
@@ -629,7 +663,7 @@ start_api() {
     --network "$NET_NAME"
     --network-alias "$API_CONTAINER"
     --security-opt label=disable
-    -p "127.0.0.1:$API_PORT:8080"
+    -p "$API_PORT:8080"
     -v "$STATE_DIR:/var/lib/aether"
     -v "aether-traefik:/var/lib/aether/traefik"
     -v "aether-pack-cache:/root/.cache/pack"
@@ -806,7 +840,7 @@ start_web() {
   $RUNTIME run -d \
     --name "$WEB_CONTAINER" \
     --network "$NET_NAME" \
-    -p "127.0.0.1:$WEB_PORT:4000" \
+    -p "$WEB_PORT:4000" \
     -v "$conf:/etc/nginx/conf.d/default.conf:ro" \
     --restart unless-stopped \
     "$WEB_IMAGE" >/dev/null || fail "Failed to start the web container."
@@ -1003,7 +1037,12 @@ EOF
 
 main() {
   banner
+  export AETHER_PUBLIC_HOST="$(resolve_public_host)"
   export AETHER_PUBLIC_URL="$(resolve_public_url)"
+  export AETHER_API_PUBLIC_URL="http://$AETHER_PUBLIC_HOST:$API_PORT"
+  if [[ "$AETHER_PUBLIC_HOST" == "127.0.0.1" || "$AETHER_PUBLIC_HOST" == "localhost" ]]; then
+    warn "Could not detect a routable host IP. Set AETHER_PUBLIC_HOST before installing for remote access."
+  fi
   info "Aether — self-hosted installer (web port: $WEB_PORT, API: $API_PORT)"
   echo
 
@@ -1079,7 +1118,7 @@ main() {
   echo -e "${GREEN}│  ✓ Aether installed and running successfully!                    │${NC}"
   echo -e "${GREEN}└──────────────────────────────────────────────────────────────┘${NC}"
   echo
-  echo -e "  API:      ${CYAN}http://127.0.0.1:$API_PORT${NC}"
+  echo -e "  API:      ${CYAN}$AETHER_API_PUBLIC_URL${NC}"
   echo -e "  Web:      ${CYAN}$AETHER_PUBLIC_URL${NC} (nginx container)"
   echo -e "  State:    $STATE_DIR"
   echo -e "  Logs:     ${CYAN}./install-dev.sh logs${NC}"
