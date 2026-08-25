@@ -26,6 +26,14 @@ BUILDER_TAG="$REGISTRY/builder:node-spa"
 LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
 RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
 STACK_ID="io.buildpacks.stacks.aether"
+HOST_DISTRO="$(if [[ -r /etc/os-release ]]; then . /etc/os-release; printf '%s' "${ID:-linux}"; else printf 'linux'; fi)"
+case "${AETHER_BUILDER_DISTRO:-$HOST_DISTRO}" in
+  fedora|rhel|centos|rocky|almalinux|ol|amzn) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-quay.io/fedora/fedora:latest}" ;;
+  alpine) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/alpine:3.21}" ;;
+  arch|manjaro) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/archlinux:base}" ;;
+  opensuse*|sles) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-registry.opensuse.org/opensuse/leap:15.6}" ;;
+  *) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04}" ;;
+esac
 
 # Ordem de detecção (marcadores fortes primeiro; node-server rejeita SPA; spa pega o resto)
 ORDER_BPS=(php-server ruby-server dotnet-server go-server rust-server jvm-server node-server spa-static)
@@ -33,6 +41,7 @@ ORDER_BPS=(php-server ruby-server dotnet-server go-server rust-server jvm-server
 info() { printf '\033[0;32m[builder]\033[0m %s\n' "$*"; }
 
 command -v podman >/dev/null || { echo "podman é necessário"; exit 1; }
+info "host distro: $HOST_DISTRO; builder base: $BUILDER_BASE_IMAGE"
 
 # ---------------------------------------------------------------------------
 # 1. Registry local (podman machine: host network = VM localhost, visível aos
@@ -105,19 +114,39 @@ BUILDER_META="{\"description\":\"Aether CNB builder\",\"buildpacks\":$BP_META_JS
 STACK_META="{\"id\":\"$STACK_ID\"}"
 
 # 2.6 Dockerfile
-cat > "$CTX/Dockerfile" <<'EOF'
-FROM docker.io/library/ubuntu:24.04
+cat > "$CTX/Dockerfile" <<EOF
+FROM $BUILDER_BASE_IMAGE
 
 ENV CNB_STACK_ID=io.buildpacks.stacks.aether \
     CNB_USER_ID=1001 \
     CNB_GROUP_ID=1000 \
     CNB_PLATFORM_API=0.12
 
-RUN apt-get update -qq && apt-get install -y -qq \
-      bash curl unzip xz-utils git ca-certificates build-essential \
-      libssl-dev pkg-config software-properties-common \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1001 -g 1000 -s /bin/bash cnb
+RUN set -eux; \
+    if command -v apt-get >/dev/null 2>&1; then \
+      export DEBIAN_FRONTEND=noninteractive; \
+      apt-get update -qq; \
+      apt-get install -y -qq --no-install-recommends bash curl unzip xz-utils git ca-certificates build-essential libssl-dev pkg-config passwd; \
+      rm -rf /var/lib/apt/lists/*; \
+    elif command -v dnf >/dev/null 2>&1; then \
+      dnf install -y bash curl unzip xz git ca-certificates gcc gcc-c++ make openssl-devel pkgconf-pkg-config shadow-utils; \
+      dnf clean all; \
+      rm -rf /var/cache/dnf; \
+    elif command -v apk >/dev/null 2>&1; then \
+      apk add --no-cache bash curl unzip xz git ca-certificates build-base openssl-dev pkgconf shadow; \
+    elif command -v pacman >/dev/null 2>&1; then \
+      pacman -Sy --noconfirm --needed bash curl unzip xz git ca-certificates base-devel openssl pkgconf shadow; \
+      pacman -Scc --noconfirm; \
+    elif command -v zypper >/dev/null 2>&1; then \
+      zypper --non-interactive refresh; \
+      zypper --non-interactive install bash curl unzip xz git ca-certificates gcc gcc-c++ make libopenssl-devel pkg-config shadow; \
+      zypper clean --all; \
+    else \
+      echo "No supported package manager found in builder base image" >&2; \
+      exit 1; \
+    fi; \
+    groupadd -g 1000 cnb 2>/dev/null || true; \
+    useradd -m -u 1001 -g 1000 -s /bin/bash cnb 2>/dev/null || true
 
 COPY cnb /cnb
 
@@ -125,8 +154,8 @@ RUN chown -R 1001:1000 /cnb
 
 ARG BUILDER_META
 ARG STACK_META
-LABEL io.buildpacks.builder.metadata="$BUILDER_META" \
-      io.buildpacks.stack.id="$STACK_META"
+LABEL io.buildpacks.builder.metadata="\$BUILDER_META" \
+      io.buildpacks.stack.id="\$STACK_META"
 
 WORKDIR /workspace
 USER 1001:1000
