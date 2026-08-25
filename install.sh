@@ -158,6 +158,7 @@ run_development_installer() {
     fi
   fi
   export AETHER_ENV_FILE="$ENV_FILE"
+  configure_runtime_socket
   cd "$INSTALL_DIR"
   "$INSTALL_DIR/install-dev.sh" "${1:-install}"
 }

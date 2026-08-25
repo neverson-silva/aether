@@ -227,7 +227,7 @@ ensure_linux_host() {
   # 1) podman.socket — a API monta o socket para orquestrar deploys de apps.
   local sock
   sock="$(podman_socket)"
-  if [[ -n "$sock" && -S "$sock" ]]; then
+  if [[ -n "$sock" && -S "$sock" ]] && podman_socket_healthy "$sock"; then
     host_log "ok: podman.socket already present ($sock)"
   else
     host_log "step: enable podman.socket"
@@ -248,6 +248,9 @@ ensure_linux_host() {
         host_log "fail: systemctl --user enable --now podman.socket"
         warn "  podman.socket could not be enabled — deploy orchestration will be limited."
       fi
+    fi
+    if [[ "$(uname -s)" == "Linux" ]]; then
+      start_podman_socket_without_systemd
     fi
   fi
 
@@ -332,6 +335,43 @@ ensure_linux_host() {
   fi
 
   host_log "=== host setup end ==="
+}
+
+podman_socket_healthy() {
+  local socket="$1"
+  curl --unix-socket "$socket" -fsS http://d/_ping >/dev/null 2>&1 \
+    || curl --unix-socket "$socket" -fsS http://d/libpod/_ping >/dev/null 2>&1
+}
+
+start_podman_socket_without_systemd() {
+  local socket
+  if [[ "$(id -u)" -eq 0 ]]; then
+    socket="/run/podman/podman.sock"
+    mkdir -p /run/podman
+  else
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    socket="$XDG_RUNTIME_DIR/podman/podman.sock"
+    mkdir -p "$(dirname "$socket")"
+  fi
+  if podman_socket_healthy "$socket"; then
+    export AETHER_PODMAN_SOCKET="$socket"
+    return 0
+  fi
+  info "  Starting Podman API service directly on $socket..."
+  nohup podman system service --time=0 "unix://$socket" >/tmp/aether-podman-service.log 2>&1 &
+  local attempt
+  for attempt in {1..20}; do
+    if podman_socket_healthy "$socket"; then
+      export AETHER_PODMAN_SOCKET="$socket"
+      host_log "ok: podman API service started directly ($socket)"
+      info "  ✓ podman API service available ($socket)"
+      return 0
+    fi
+    sleep 1
+  done
+  host_log "fail: podman API service did not become ready ($socket)"
+  warn "  Podman API socket is unavailable — deploy orchestration will be limited."
+  return 1
 }
 
 podman_socket() {
