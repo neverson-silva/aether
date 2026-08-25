@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ type ProviderHooks struct {
 	Apps      ProviderAppStore
 	Deployer  Deployer
 	Passwords domain.PasswordCipher
+	Logger    *slog.Logger
 }
 
 type ProviderAppStore interface {
@@ -39,6 +41,9 @@ func (p *ProviderHooks) gitApp(ctx context.Context, appID uuid.UUID) (*appsdomai
 }
 
 func (p *ProviderHooks) GitHub(ctx context.Context, appID uuid.UUID, body io.Reader, signature string) (int, any) {
+	if p.Logger != nil {
+		p.Logger.Info("github webhook received", "app_id", appID)
+	}
 	app, status, payload := p.gitApp(ctx, appID)
 	if app == nil {
 		return status, payload
@@ -59,6 +64,9 @@ func (p *ProviderHooks) GitHub(ctx context.Context, appID uuid.UUID, body io.Rea
 	event, err := git.ParsePushEvent(raw)
 	if err != nil {
 		return http.StatusBadRequest, map[string]any{"error": err.Error()}
+	}
+	if p.Logger != nil {
+		p.Logger.Info("github webhook parsed", "app_id", app.ID, "app_name", app.Name, "branch", event.Branch())
 	}
 	if event.Branch() != app.GitBranch {
 		return http.StatusOK, map[string]any{"status": "ignored", "reason": "branch diferente"}

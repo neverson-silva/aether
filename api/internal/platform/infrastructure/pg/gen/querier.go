@@ -81,6 +81,7 @@ type Querier interface {
 	DeleteProject(ctx context.Context, arg DeleteProjectParams) error
 	DeleteProjectVariable(ctx context.Context, arg DeleteProjectVariableParams) error
 	DeleteS3Destination(ctx context.Context, arg DeleteS3DestinationParams) error
+	DeleteSCMConnection(ctx context.Context, arg DeleteSCMConnectionParams) error
 	DeleteServer(ctx context.Context, id uuid.UUID) error
 	DeleteServiceSource(ctx context.Context, arg DeleteServiceSourceParams) error
 	DeleteSnapshot(ctx context.Context, arg DeleteSnapshotParams) error

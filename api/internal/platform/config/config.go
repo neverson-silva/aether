@@ -99,7 +99,7 @@ func Load() (*Config, error) {
 	publicURL := envOr("AETHER_PUBLIC_URL", "")
 	freeDomainBase := envOr("AETHER_FREE_DOMAIN_BASE", "")
 	if devMode {
-		if publicURL == "" || !isLocalURL(publicURL) {
+		if publicURL == "" {
 			publicURL = "http://localhost:8080"
 		}
 		if freeDomainBase == "" {

@@ -79,7 +79,16 @@ export function Dialog({
                 </BaseDialog.Close>
               </div>
             ) : null}
-            <div className={`${size === 'wizard' ? 'flex h-full min-h-0 flex-col overflow-hidden' : overflow === 'hidden' ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-4' : 'min-h-0 flex-1 overflow-y-auto px-6 py-5'}`}>{children}</div>
+            <div
+              style={
+                size === 'wizard' || overflow === 'hidden'
+                  ? undefined
+                  : { padding: '1.25rem 1.5rem' }
+              }
+              className={`${size === 'wizard' ? 'flex h-full min-h-0 flex-col overflow-hidden' : overflow === 'hidden' ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-4' : 'min-h-0 flex-1 overflow-y-auto'}`}
+            >
+              {children}
+            </div>
             {footer ? <DialogFooter>{footer}</DialogFooter> : null}
           </BaseDialog.Popup>
         </BaseDialog.Viewport>

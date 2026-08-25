@@ -169,6 +169,21 @@ func (q *Queries) CreateSCMManifestState(ctx context.Context, arg CreateSCMManif
 	return err
 }
 
+const deleteSCMConnection = `-- name: DeleteSCMConnection :exec
+DELETE FROM scm_connections
+WHERE id = $1 AND organization_id = $2
+`
+
+type DeleteSCMConnectionParams struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+}
+
+func (q *Queries) DeleteSCMConnection(ctx context.Context, arg DeleteSCMConnectionParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSCMConnection, arg.ID, arg.OrganizationID)
+	return err
+}
+
 const deleteServiceSource = `-- name: DeleteServiceSource :exec
 DELETE FROM service_sources
 WHERE service_id = $1

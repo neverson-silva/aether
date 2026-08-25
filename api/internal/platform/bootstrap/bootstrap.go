@@ -215,7 +215,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	webhooksStore := webhooksInfra.NewStore(pool)
 	webhooksSvc := &webhooksApp.Webhooks{Store: webhooksStore, Passwords: dbCipher}
 	webhookProviders := &webhooksApp.ProviderHooks{
-		Apps: appsStore, Passwords: dbCipher, Deployer: webhookDeployer{svc: deploySvc},
+		Apps: appsStore, Passwords: dbCipher, Deployer: webhookDeployer{svc: deploySvc}, Logger: logger,
 	}
 	webhooksHandler := webhookshttp.New(webhooksSvc, webhookProviders)
 

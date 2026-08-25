@@ -94,6 +94,7 @@ func (r *Router) WithSourceControl(h *sourcecontrolhttp.Handler) *Router {
 		authed.POST("/source-control/github/manifest/start", h.StartGitHubManifest)
 		authed.GET("/source-control/github/connections", h.ListConnections)
 		authed.POST("/source-control/github/connections", h.ConnectGitHub)
+		authed.DELETE("/source-control/github/connections/:connectionID", h.DisconnectGitHub)
 		authed.GET("/source-control/github/repositories", h.ListRepositories)
 		authed.GET("/source-control/github/repositories/:repositoryID/branches", h.ListBranches)
 		authed.GET("/source-control/github/repositories/:repositoryID/file", h.GetRepositoryFile)

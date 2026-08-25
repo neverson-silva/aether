@@ -2,7 +2,9 @@ package http
 
 import (
 	"database/sql"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -75,6 +77,23 @@ func (h *Handler) ConnectGitHub(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": connection.ID, "provider": connection.Provider, "external_account_id": connection.ExternalAccountID, "external_account_name": connection.ExternalAccountName, "installation_id": connection.InstallationID, "status": connection.Status})
 }
 
+func (h *Handler) DisconnectGitHub(c *gin.Context) {
+	if h.Connections == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "github source control is not configured"})
+		return
+	}
+	connectionID, err := uuid.Parse(c.Param("connectionID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+		return
+	}
+	if err := h.Connections.Disconnect(c.Request.Context(), orgID(c), connectionID); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "could not disconnect GitHub"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) ListRepositories(c *gin.Context) {
 	if h.Connections == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "github source control is not configured"})
@@ -87,6 +106,9 @@ func (h *Handler) ListRepositories(c *gin.Context) {
 	}
 	repositories, err := h.Connections.ListRepositories(c.Request.Context(), installationID)
 	if err != nil {
+		if writeGitHubUnavailable(c, err) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -104,6 +126,9 @@ func (h *Handler) ListBranches(c *gin.Context) {
 	}
 	branches, err := h.Connections.ListBranches(c.Request.Context(), c.Query("installation_id"), c.Param("repositoryID"))
 	if err != nil {
+		if writeGitHubUnavailable(c, err) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -127,6 +152,9 @@ func (h *Handler) GetRepositoryFile(c *gin.Context) {
 	}
 	content, err := h.Connections.GetFile(c.Request.Context(), c.Query("installation_id"), c.Param("repositoryID"), path, ref)
 	if err != nil {
+		if writeGitHubUnavailable(c, err) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -226,19 +254,19 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 		return
 	}
 	var request struct {
-		ConnectionID       uuid.UUID `json:"connection_id" binding:"required"`
-		RepositoryID       string    `json:"repository_id" binding:"required"`
-		RepositoryOwner    string    `json:"repository_owner"`
-		RepositoryName     string    `json:"repository_name"`
-		RepositoryFullName string    `json:"repository_full_name"`
-		DefaultBranch      string    `json:"default_branch"`
-		Branch             string    `json:"branch"`
-		AutoDeploy         bool      `json:"auto_deploy"`
-		RootDirectory      string    `json:"root_directory"`
-		EnvironmentTemplatePath string `json:"environment_template_path"`
-		WatchPaths         []string  `json:"watch_paths"`
-		IgnorePaths        []string  `json:"ignore_paths"`
-		WatchRootFiles     bool      `json:"watch_root_files"`
+		ConnectionID            uuid.UUID `json:"connection_id" binding:"required"`
+		RepositoryID            string    `json:"repository_id" binding:"required"`
+		RepositoryOwner         string    `json:"repository_owner"`
+		RepositoryName          string    `json:"repository_name"`
+		RepositoryFullName      string    `json:"repository_full_name"`
+		DefaultBranch           string    `json:"default_branch"`
+		Branch                  string    `json:"branch"`
+		AutoDeploy              bool      `json:"auto_deploy"`
+		RootDirectory           string    `json:"root_directory"`
+		EnvironmentTemplatePath string    `json:"environment_template_path"`
+		WatchPaths              []string  `json:"watch_paths"`
+		IgnorePaths             []string  `json:"ignore_paths"`
+		WatchRootFiles          bool      `json:"watch_root_files"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -303,6 +331,7 @@ func (h *Handler) DeleteServiceSource(c *gin.Context) {
 }
 
 func (h *Handler) GitHubPush(c *gin.Context) {
+	slog.Default().Info("github webhook received", "event", c.GetHeader("X-GitHub-Event"), "delivery_id", c.GetHeader("X-GitHub-Delivery"))
 	if h.Service == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "github source control is not configured"})
 		return
@@ -347,4 +376,13 @@ func orgID(c *gin.Context) uuid.UUID {
 
 func userID(c *gin.Context) uuid.UUID {
 	return c.MustGet(authhttp.ContextUserID).(uuid.UUID)
+}
+
+func writeGitHubUnavailable(c *gin.Context, err error) bool {
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		c.JSON(http.StatusNotFound, gin.H{"error": "github connection is no longer available"})
+		return true
+	}
+	return false
 }

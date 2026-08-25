@@ -20,6 +20,7 @@ type ConnectionStore interface {
 	ListConnections(ctx context.Context, organizationID uuid.UUID, provider domain.Provider) ([]domain.Connection, error)
 	GetConnectionByInstallation(ctx context.Context, provider domain.Provider, installationID string) (*domain.Connection, error)
 	GetConnection(ctx context.Context, id uuid.UUID) (*domain.Connection, error)
+	DeleteConnection(ctx context.Context, id, organizationID uuid.UUID) error
 	AttachInstallation(ctx context.Context, id uuid.UUID, installationID, accountID, accountName string) (*domain.Connection, error)
 	CreateManifestState(ctx context.Context, state string, organizationID, userID uuid.UUID, returnURL string, expiresAt time.Time) error
 	ConsumeManifestState(ctx context.Context, state string) (uuid.UUID, uuid.UUID, string, error)

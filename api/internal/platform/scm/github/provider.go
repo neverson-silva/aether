@@ -34,6 +34,16 @@ type Provider struct {
 	InstallationID string
 }
 
+type APIError struct {
+	StatusCode int
+	Status     string
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("github api returned %s: %s", e.Status, e.Message)
+}
+
 type ManifestApp struct {
 	ID            int64  `json:"id"`
 	Slug          string `json:"slug"`
@@ -181,6 +191,14 @@ func (p *Provider) GetInstallation(ctx context.Context, installationID string) (
 	return domain.Installation{
 		ID: strconv.FormatInt(response.ID, 10), AccountID: strconv.FormatInt(response.Account.ID, 10), AccountName: accountName,
 	}, nil
+}
+
+func (p *Provider) Uninstall(ctx context.Context, installationID string) error {
+	token, err := p.appJWT()
+	if err != nil {
+		return err
+	}
+	return p.request(ctx, http.MethodDelete, "/app/installations/"+url.PathEscape(installationID), token, nil, nil)
 }
 
 func (p *Provider) GetRepository(ctx context.Context, repoID string) (domain.Repository, error) {
@@ -411,7 +429,7 @@ func (p *Provider) request(ctx context.Context, method, path, token string, body
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return fmt.Errorf("github api returned %s: %s", response.Status, strings.TrimSpace(string(message)))
+		return &APIError{StatusCode: response.StatusCode, Status: response.Status, Message: strings.TrimSpace(string(message))}
 	}
 	if result == nil {
 		return nil

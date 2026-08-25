@@ -31,6 +31,8 @@ import {
   useSetEnv,
   useSetWebhook,
   useSaveServiceSource,
+  useSourceControlConnections,
+  useSourceControlRepositories,
   useServiceSource,
   useStats,
   useTimeline,
@@ -70,6 +72,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   CodeBlock,
   Dialog,
   EmptyState,
@@ -113,6 +116,12 @@ const deploymentTone = (status: string) =>
 const deploymentLabel = (status: string) =>
   status === "ready" ? "success" : status;
 
+const parseProviderPaths = (value: string) =>
+  value
+    .split(/[\n,]/)
+    .map((path) => path.trim())
+    .filter(Boolean);
+
 const webhookSchema = z.object({
   secret: z.string().min(1, "Secret is required"),
 });
@@ -154,6 +163,9 @@ function AppDetail() {
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const { data: detail } = useAppDetail(appId);
   const { data: source, isLoading: sourceLoading } = useServiceSource(appId);
+  const { data: sourceConnections } = useSourceControlConnections();
+  const sourceConnection = sourceConnections?.find((connection) => connection.id === source?.connection_id);
+  const { data: providerRepositories } = useSourceControlRepositories(sourceConnection?.installation_id);
   const app = detail?.app;
   const { data: detailSecrets } = useAppDetailSecrets(appId, envEditorOpen);
   const envEditorVars = useMemo(
@@ -197,6 +209,14 @@ function AppDetail() {
   };
   const [confirmRollback, setConfirmRollback] = useState(false);
   const [webhookModal, setWebhookModal] = useState(false);
+  const [providerEditing, setProviderEditing] = useState(false);
+  const [providerRepositoryId, setProviderRepositoryId] = useState("");
+  const [providerBranch, setProviderBranch] = useState("");
+  const [providerRootDirectory, setProviderRootDirectory] = useState("");
+  const [providerWatchPaths, setProviderWatchPaths] = useState("");
+  const [providerIgnorePaths, setProviderIgnorePaths] = useState("");
+  const [providerWatchRootFiles, setProviderWatchRootFiles] = useState(false);
+  const [providerAutoDeploy, setProviderAutoDeploy] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPort, setEditPort] = useState(0);
@@ -295,6 +315,60 @@ function AppDetail() {
             tone: "error",
           });
         },
+      },
+    );
+  };
+
+  const openProviderEditor = () => {
+    if (!source) return;
+    setProviderBranch(source.branch || source.default_branch || "main");
+    setProviderRepositoryId(source.repository_id);
+    setProviderRootDirectory(source.root_directory || "/");
+    setProviderWatchPaths((source.watch_paths ?? []).join(", "));
+    setProviderIgnorePaths((source.ignore_paths ?? []).join(", "));
+    setProviderWatchRootFiles(source.watch_root_files);
+    setProviderAutoDeploy(source.auto_deploy);
+    setProviderEditing(true);
+  };
+
+  const saveProvider = () => {
+    if (!source) return;
+    const selectedRepository = providerRepositories?.find((repository) => repository.id === providerRepositoryId);
+    const repository = selectedRepository ?? {
+      id: source.repository_id,
+      owner: source.repository_owner,
+      name: source.repository_name,
+      full_name: source.repository_full_name,
+      default_branch: source.default_branch,
+    };
+    saveSource.mutate(
+      {
+        connection_id: source.connection_id,
+        repository_id: repository.id,
+        repository_owner: repository.owner,
+        repository_name: repository.name,
+        repository_full_name: repository.full_name,
+        default_branch: repository.default_branch,
+        branch: providerBranch.trim() || repository.default_branch || "main",
+        auto_deploy: providerAutoDeploy,
+        root_directory: providerRootDirectory.trim() || "/",
+        environment_template_path: source.environment_template_path,
+        watch_paths: parseProviderPaths(providerWatchPaths),
+        ignore_paths: parseProviderPaths(providerIgnorePaths),
+        watch_root_files: providerWatchRootFiles,
+      },
+      {
+        onSuccess: () => {
+          setAutodeploy(providerAutoDeploy);
+          setProviderEditing(false);
+          add({ title: "Provider settings saved", tone: "success" });
+        },
+        onError: (error) =>
+          add({
+            title: "Could not save provider settings",
+            description: error.message,
+            tone: "error",
+          }),
       },
     );
   };
@@ -574,77 +648,95 @@ function AppDetail() {
                 <label className="block font-label-caps text-label-caps text-on-surface-variant">
                   {app.source_type === "git" ? "Repository" : "Image"}
                 </label>
-                <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                  <span className="font-code-md text-code-md text-on-surface truncate">
-                    {app.source_type === "git"
-                      ? source?.repository_full_name || app.git_url || "—"
-                      : app.image}
-                  </span>
-                  <ArrowSquareOut size={16} className="text-muted-foreground" />
-                </div>
+                {providerEditing && source ? (
+                  <NativeSelect
+                    value={providerRepositoryId}
+                    onChange={(event) => setProviderRepositoryId(event.target.value)}
+                    options={[
+                      { label: source.repository_full_name || "Current repository", value: source.repository_id },
+                      ...(providerRepositories ?? [])
+                        .filter((repository) => repository.id !== source.repository_id)
+                        .map((repository) => ({ label: repository.full_name, value: repository.id })),
+                    ]}
+                  />
+                ) : (
+                  <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
+                    <span className="font-code-md text-code-md text-on-surface truncate">
+                      {app.source_type === "git" ? source?.repository_full_name || app.git_url || "—" : app.image}
+                    </span>
+                    <ArrowSquareOut size={16} className="text-muted-foreground" />
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="block font-label-caps text-label-caps text-on-surface-variant">
-                    Branch
-                  </label>
-                  <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                    <span className="font-code-md text-code-md text-on-surface">
-                      {source?.branch || app.git_branch || "main"}
-                    </span>
-                    <ArrowSquareOut
-                      size={16}
-                      className="text-muted-foreground"
-                    />
-                  </div>
+                  <label className="block font-label-caps text-label-caps text-on-surface-variant">Branch</label>
+                  {providerEditing && source ? (
+                    <Input value={providerBranch} onChange={(event) => setProviderBranch(event.target.value)} />
+                  ) : (
+                    <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
+                      <span className="font-code-md text-code-md text-on-surface">{source?.branch || app.git_branch || "main"}</span>
+                      <ArrowSquareOut size={16} className="text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <label className="block font-label-caps text-label-caps text-on-surface-variant">
-                    Port
-                  </label>
+                  <label className="block font-label-caps text-label-caps text-on-surface-variant">Port</label>
                   <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                    <span className="font-code-md text-code-md text-on-surface">
-                      :{app.port}
-                    </span>
-                    <ArrowSquareOut
-                      size={16}
-                      className="text-muted-foreground"
-                    />
+                    <span className="font-code-md text-code-md text-on-surface">:{app.port}</span>
+                    <ArrowSquareOut size={16} className="text-muted-foreground" />
                   </div>
                 </div>
               </div>
             </div>
             {source && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-outline-variant">
-                <div>
-                  <span className="block font-label-caps text-label-caps text-on-surface-variant">
-                    Root directory
-                  </span>
-                  <span className="font-code-md text-code-md text-on-surface">
-                    {source.root_directory || "/"}
-                  </span>
+                <div className="space-y-2">
+                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Root directory</span>
+                  {providerEditing ? (
+                    <Input value={providerRootDirectory} onChange={(event) => setProviderRootDirectory(event.target.value)} />
+                  ) : (
+                    <span className="font-code-md text-code-md text-on-surface">{source.root_directory || "/"}</span>
+                  )}
                 </div>
-                <div>
-                  <span className="block font-label-caps text-label-caps text-on-surface-variant">
-                    Watch paths
-                  </span>
-                  <span className="font-code-md text-code-md text-on-surface">
-                    {(source.watch_paths ?? []).length || "All service files"}
-                  </span>
+                <div className="space-y-2">
+                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Watch paths</span>
+                  {providerEditing ? (
+                    <Input value={providerWatchPaths} onChange={(event) => setProviderWatchPaths(event.target.value)} />
+                  ) : (
+                    <span className="font-code-md text-code-md text-on-surface">{(source.watch_paths ?? []).length || "All service files"}</span>
+                  )}
                 </div>
-                <div>
-                  <span className="block font-label-caps text-label-caps text-on-surface-variant">
-                    Root files
-                  </span>
-                  <span className="font-code-md text-code-md text-on-surface">
-                    {source.watch_root_files ? "Included" : "Ignored"}
-                  </span>
+                <div className="space-y-2">
+                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Root files</span>
+                  {providerEditing ? (
+                    <Checkbox
+                      label="Include root files"
+                      checked={providerWatchRootFiles}
+                      onCheckedChange={(checked) => setProviderWatchRootFiles(checked === true)}
+                    />
+                  ) : (
+                    <span className="font-code-md text-code-md text-on-surface">{source.watch_root_files ? "Included" : "Ignored"}</span>
+                  )}
                 </div>
               </div>
             )}
-            <div className="flex justify-end pt-4">
-              <Button onClick={() => setTab("settings")}>Configure</Button>
-            </div>
+            {providerEditing && source ? (
+              <div className="flex items-center justify-between border-t border-outline-variant pt-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-body-sm font-medium text-foreground">Automatic deploys</span>
+                  <Switch ariaLabel="Automatic deploys" checked={providerAutoDeploy} onCheckedChange={setProviderAutoDeploy} />
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="ghost" onClick={() => setProviderEditing(false)}>Cancel</Button>
+                  <Button loading={saveSource.isPending} onClick={saveProvider}>Save changes</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-end pt-4">
+                <Button onClick={openProviderEditor}>Edit</Button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -35,7 +35,7 @@ export AETHER_STATE="${AETHER_STATE:-$HOME/.aether}"
 export DEV_MODE="${DEV_MODE:-true}"
 export AETHER_API_ADDR="${AETHER_API_ADDR:-127.0.0.1:8090}"
 if [[ "${DEV_MODE}" == "true" || "${DEV_MODE}" == "1" || "${DEV_MODE}" == "TRUE" || "${DEV_MODE}" == "yes" ]]; then
-  export AETHER_PUBLIC_URL="http://localhost:5173"
+	export AETHER_PUBLIC_URL="${AETHER_PUBLIC_URL:-http://localhost:5173}"
 else
   if [[ -z "${AETHER_PUBLIC_URL:-}" ]]; then
     PUBLIC_HOST=""

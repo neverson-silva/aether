@@ -28,6 +28,10 @@ func EvaluateTrigger(rules BuildTriggerRules, changedFiles []string, filesKnown 
 		if file == "" || matchesAny(ignore, file) {
 			continue
 		}
+		if len(watch) == 0 && rules.RootDirectory == "" {
+			matches = append(matches, file)
+			continue
+		}
 		if rules.WatchRootFiles && !strings.Contains(file, "/") {
 			matches = append(matches, file)
 			continue

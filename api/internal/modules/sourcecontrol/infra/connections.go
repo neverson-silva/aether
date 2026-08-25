@@ -40,6 +40,10 @@ func (s *Store) GetConnection(ctx context.Context, id uuid.UUID) (*domain.Connec
 	return connectionFromValues(row.ID, row.OrganizationID, row.Provider, row.ExternalAccountID, row.ExternalAccountName, row.InstallationID, row.Status, row.Metadata, row.CredentialsEnc, row.CreatedAt, row.UpdatedAt), nil
 }
 
+func (s *Store) DeleteConnection(ctx context.Context, id, organizationID uuid.UUID) error {
+	return s.q.DeleteSCMConnection(ctx, gen.DeleteSCMConnectionParams{ID: id, OrganizationID: organizationID})
+}
+
 func (s *Store) AttachInstallation(ctx context.Context, id uuid.UUID, installationID, accountID, accountName string) (*domain.Connection, error) {
 	row, err := s.q.AttachSCMConnectionInstallation(ctx, gen.AttachSCMConnectionInstallationParams{
 		ID: id, InstallationID: installationID, ExternalAccountID: accountID, ExternalAccountName: accountName,

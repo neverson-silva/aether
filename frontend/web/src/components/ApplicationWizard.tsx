@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CaretDown, Check, CheckCircle, Code, Database, FileArrowUp, FileText, FolderOpen, Gear, Globe, Info, LinkSimple, MagnifyingGlass, Package, Pulse, SpinnerGap, Warning, Wrench } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCreateApp, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
-import { apiPut, getServer } from "../api/client";
+import { useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { ApiError, apiPut, getServer } from "../api/client";
 import { TechIcon } from "./TechIcon";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { Accordion, Attachment, Button, Input, Modal, NativeSelect, Select, SelectSearch, VariableEditor, type VariableRow, Wizard, useToast } from "@aether/design-system";
@@ -87,8 +87,10 @@ export function ApplicationWizard({
   const { data: projects } = useProjects();
   const { data: connections } = useSourceControlConnections();
   const startGitHubManifest = useStartGitHubManifest();
+  const disconnectGitHub = useDisconnectGitHub();
   const githubConnection = connections?.find((connection) => connection.provider === "github" && connection.status === "active" && !!connection.installation_id);
   const { data: repositories, isLoading: repositoriesLoading, isError: repositoriesError, error: repositoriesQueryError, refetch: refetchRepositories } = useSourceControlRepositories(githubConnection?.installation_id);
+  const githubInstallationUnavailable = repositoriesQueryError instanceof ApiError && repositoriesQueryError.status === 404;
   const createApp = useCreateApp();
   const { add } = useToast();
 
@@ -288,7 +290,7 @@ export function ApplicationWizard({
           repository_full_name: selectedRepository.full_name,
           default_branch: selectedRepository.default_branch,
           branch,
-          auto_deploy: true,
+          auto_deploy: false,
           root_directory: rootFolder,
           environment_template_path: environmentTemplatePath.trim() || ".env.example",
           watch_paths: watchPaths.split(",").map((path) => path.trim()).filter(Boolean),
@@ -368,9 +370,9 @@ export function ApplicationWizard({
                       <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
                         Deploy directly from a connected GitHub account. Pushes will automatically trigger new builds.
                       </p>
-                      {!githubConnection ? (
+                      {!githubConnection || githubInstallationUnavailable ? (
                         <div className="space-y-sm rounded-md border border-border bg-surface-dim p-md">
-                          <p className="text-body-sm text-muted-foreground">Connect a GitHub App installation to search repositories.</p>
+                          <p className="text-body-sm text-muted-foreground">{githubInstallationUnavailable ? "The GitHub installation is no longer available." : "Connect a GitHub App installation to search repositories."}</p>
                           <button type="button" disabled={startGitHubManifest.isPending} onClick={async () => {
                             try {
                               const manifest = await startGitHubManifest.mutateAsync({
@@ -392,28 +394,33 @@ export function ApplicationWizard({
                           }} className="text-body-sm font-semibold text-primary disabled:opacity-50">{startGitHubManifest.isPending ? "Connecting..." : "Connect GitHub"}</button>
                         </div>
                       ) : (
-                        <SelectSearch
-                          label="Repository"
-                          placeholder="Search repositories"
-                          value={selectedRepo}
-                          options={(repositories ?? []).map((repository) => ({
-                            value: repository.id,
-                            label: repository.full_name,
-                          }))}
-                          disabled={repositoriesLoading || repositoriesError}
-                          error={repositoriesError ? (repositoriesQueryError instanceof Error ? repositoriesQueryError.message : "Could not load repositories.") : undefined}
-                          onValueChange={(value) => {
-                            const repository = repositories?.find((item) => item.id === value);
-                            if (!repository) return;
-                            setSelectedRepo(repository.id);
-                            setBranch(repository.default_branch || "main");
-                            setCustomUrl("");
-                            setZipUpload(null);
-                            if (kind === "web") runDetect({ git_url: `https://github.com/${repository.full_name}.git` });
-                          }}
-                        />
+                        <div className="space-y-sm">
+                          <SelectSearch
+                            label="Repository"
+                            placeholder="Search repositories"
+                            value={selectedRepo}
+                            options={(repositories ?? []).map((repository) => ({
+                              value: repository.id,
+                              label: repository.full_name,
+                            }))}
+                            disabled={repositoriesLoading || repositoriesError}
+                            error={repositoriesError && !githubInstallationUnavailable ? (repositoriesQueryError instanceof Error ? repositoriesQueryError.message : "Could not load repositories.") : undefined}
+                            onValueChange={(value) => {
+                              const repository = repositories?.find((item) => item.id === value);
+                              if (!repository) return;
+                              setSelectedRepo(repository.id);
+                              setBranch(repository.default_branch || "main");
+                              setCustomUrl("");
+                              setZipUpload(null);
+                              if (kind === "web") runDetect({ git_url: `https://github.com/${repository.full_name}.git` });
+                            }}
+                          />
+                          <button type="button" disabled={disconnectGitHub.isPending} onClick={() => disconnectGitHub.mutate(githubConnection.id)} className="text-body-sm font-semibold text-primary disabled:opacity-50">
+                            {disconnectGitHub.isPending ? "Disconnecting..." : "Disconnect GitHub"}
+                          </button>
+                        </div>
                       )}
-                      {githubConnection && repositoriesError ? (
+                      {githubConnection && repositoriesError && !githubInstallationUnavailable ? (
                         <button type="button" onClick={() => refetchRepositories()} className="text-body-sm font-semibold text-primary">Retry repository search</button>
                       ) : null}
                       {selectedRepository && <p className="mt-sm font-body-sm text-body-sm text-primary">Selected: {selectedRepository.full_name}</p>}

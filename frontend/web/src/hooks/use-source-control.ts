@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, apiPut } from "../api/client";
+import { apiDelete, apiGet, apiPost, apiPut } from "../api/client";
 
 export interface SourceControlConnection {
   id: string;
@@ -109,6 +109,14 @@ export function useSourceControlConnections() {
   return useQuery({
     queryKey: ["source-control", "connections"],
     queryFn: () => apiGet<SourceControlConnection[]>("/api/v1/source-control/github/connections"),
+  });
+}
+
+export function useDisconnectGitHub() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionID: string) => apiDelete(`/api/v1/source-control/github/connections/${connectionID}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["source-control"] }),
   });
 }
 

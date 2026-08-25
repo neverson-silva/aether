@@ -69,6 +69,29 @@ func (s *Connections) List(ctx context.Context, organizationID uuid.UUID) ([]dom
 	return s.Store.ListConnections(ctx, organizationID, domain.ProviderGitHub)
 }
 
+func (s *Connections) Disconnect(ctx context.Context, organizationID, connectionID uuid.UUID) error {
+	connection, err := s.Store.GetConnection(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+	if connection.OrganizationID != organizationID || connection.Provider != domain.ProviderGitHub {
+		return errors.New("connection not found")
+	}
+	if connection.InstallationID != "" {
+		provider, providerErr := s.providerFromConnection(connection)
+		if providerErr != nil {
+			return providerErr
+		}
+		if uninstallErr := provider.Uninstall(ctx, connection.InstallationID); uninstallErr != nil {
+			var apiErr *github.APIError
+			if !errors.As(uninstallErr, &apiErr) || apiErr.StatusCode != 404 {
+				return uninstallErr
+			}
+		}
+	}
+	return s.Store.DeleteConnection(ctx, connectionID, organizationID)
+}
+
 func (s *Connections) ListRepositories(ctx context.Context, installationID string) ([]domain.Repository, error) {
 	provider, err := s.ProviderForInstallation(ctx, installationID)
 	if err != nil {

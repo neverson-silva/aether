@@ -59,14 +59,14 @@ is_true() {
 }
 
 resolve_public_url() {
-  if is_true "$DEV_MODE"; then
-    printf 'http://localhost:%s' "$WEB_PORT"
-    return
-  fi
-  if [[ -n "${AETHER_PUBLIC_URL:-}" ]]; then
-    printf '%s' "${AETHER_PUBLIC_URL%/}"
-    return
-  fi
+	if [[ -n "${AETHER_PUBLIC_URL:-}" ]]; then
+		printf '%s' "${AETHER_PUBLIC_URL%/}"
+		return
+	fi
+	if is_true "$DEV_MODE"; then
+		printf 'http://localhost:%s' "$WEB_PORT"
+		return
+	fi
   local host="${AETHER_PUBLIC_HOST:-}"
   if [[ -z "$host" ]] && command_exists curl; then
     for service in https://api.ipify.org https://icanhazip.com https://ifconfig.me/ip; do

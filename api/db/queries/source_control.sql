@@ -89,6 +89,10 @@ SELECT id, organization_id, provider, external_account_id, external_account_name
 FROM scm_connections
 WHERE id = $1;
 
+-- name: DeleteSCMConnection :exec
+DELETE FROM scm_connections
+WHERE id = $1 AND organization_id = $2;
+
 -- name: AttachSCMConnectionInstallation :one
 UPDATE scm_connections
 SET installation_id = $2, external_account_id = $3, external_account_name = $4,

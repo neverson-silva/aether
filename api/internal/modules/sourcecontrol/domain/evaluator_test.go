@@ -38,3 +38,10 @@ func TestEvaluateTriggerFallsBackWhenFilesAreUnknown(t *testing.T) {
 		t.Fatalf("unexpected decision: %+v", decision)
 	}
 }
+
+func TestEvaluateTriggerMatchesAnyFileWithoutWatchFilters(t *testing.T) {
+	decision := EvaluateTrigger(BuildTriggerRules{AutoDeploy: true}, []string{"src/main.ts"}, true)
+	if !decision.Trigger || decision.Reason != ReasonWatchPathMatched {
+		t.Fatalf("expected automatic deployment for an unfiltered file change: %+v", decision)
+	}
+}
