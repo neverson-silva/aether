@@ -512,7 +512,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 
 	w.appendLog(dep, "cnb (smartbuild): building "+img+" with builder "+builder)
 	w.appendLog(dep, "cnb: docker host "+dockerHost)
-	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host", dockerHost, "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
+	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}
