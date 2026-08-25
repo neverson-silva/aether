@@ -23,6 +23,6 @@ COPY api/db/migrations /app/api/db/migrations
 EXPOSE 8080 8081 8082
 ENV AETHER_STATE=/var/lib/aether
 ENV AETHER_API_ADDR=0.0.0.0:8080
-ENV CONTAINER_HOST=unix:///run/podman/podman.sock
-ENV DOCKER_HOST=unix:///run/podman/podman.sock
+ENV CONTAINER_HOST=unix:///var/run/docker.sock
+ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENTRYPOINT ["/usr/local/bin/aether-api"]

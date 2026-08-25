@@ -335,7 +335,9 @@ ensure_linux_host() {
 }
 
 podman_socket() {
-  if [[ -S "/run/podman/podman.sock" ]]; then
+  if [[ -n "${AETHER_PODMAN_SOCKET:-}" && -S "$AETHER_PODMAN_SOCKET" ]]; then
+    echo "$AETHER_PODMAN_SOCKET"
+  elif [[ -S "/run/podman/podman.sock" ]]; then
     echo "/run/podman/podman.sock"
   elif [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]]; then
     echo "$XDG_RUNTIME_DIR/podman/podman.sock"
@@ -714,7 +716,10 @@ start_api() {
     # pack/buildpacks), já que o source de um -v é resolvido
     # dentro da VM, não no container.
     args+=( -v "$sock_src:$sock_src:ro" )
-    args+=( -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
+    if [[ "$sock_src" != "/var/run/docker.sock" ]]; then
+      args+=( -v "$sock_src:/var/run/docker.sock:ro" )
+    fi
+    args+=( -e "CONTAINER_HOST=unix:///var/run/docker.sock" -e "DOCKER_HOST=unix:///var/run/docker.sock" )
     sock_mount=1
     info "  ✓ podman socket mounted (for app deployments): $sock_src"
   fi
@@ -730,7 +735,7 @@ start_api() {
       fi
       local clean_args=()
       for a in "${args[@]}"; do
-        [[ "$a" == *"podman.sock:ro" ]] && continue
+        [[ "$a" == *"podman.sock:ro" || "$a" == *"docker.sock:ro" ]] && continue
         [[ "$a" == "CONTAINER_HOST=unix://"* ]] && continue
         [[ "$a" == "DOCKER_HOST=unix://"* ]] && continue
         clean_args+=( "$a" )
@@ -794,7 +799,11 @@ start_auxiliary() {
     args+=( -e "AETHER_MONITORING_HEALTH_ADDR=0.0.0.0:8082" -p "127.0.0.1:8082:8082" )
   fi
   if [[ -n "$sock_src" ]]; then
-    args+=( -v "$sock_src:$sock_src:ro" -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
+    args+=( -v "$sock_src:$sock_src:ro" )
+    if [[ "$sock_src" != "/var/run/docker.sock" ]]; then
+      args+=( -v "$sock_src:/var/run/docker.sock:ro" )
+    fi
+    args+=( -e "CONTAINER_HOST=unix:///var/run/docker.sock" -e "DOCKER_HOST=unix:///var/run/docker.sock" )
   fi
   info "Starting $container..."
   $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start $container."

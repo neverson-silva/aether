@@ -77,6 +77,23 @@ install_bootstrap_dependencies() {
   esac
 }
 
+configure_runtime_socket() {
+  if [[ -n "${AETHER_PODMAN_SOCKET:-}" && -S "$AETHER_PODMAN_SOCKET" ]]; then
+    export AETHER_PODMAN_SOCKET
+    return 0
+  fi
+  if [[ -S /run/podman/podman.sock ]]; then
+    export AETHER_PODMAN_SOCKET=/run/podman/podman.sock
+  elif [[ -S "/run/user/$(id -u)/podman/podman.sock" ]]; then
+    export AETHER_PODMAN_SOCKET="/run/user/$(id -u)/podman/podman.sock"
+  elif [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]]; then
+    export AETHER_PODMAN_SOCKET="$XDG_RUNTIME_DIR/podman/podman.sock"
+  else
+    unset AETHER_PODMAN_SOCKET
+    warn "Podman socket was not found yet; install-dev.sh will retry its runtime detection."
+  fi
+}
+
 validate_host() {
   [[ "$(uname -s)" == "Linux" ]] || fail "The production installer supports Linux servers only. Use install-dev.sh on macOS."
   case "$(uname -m)" in
@@ -170,6 +187,7 @@ main() {
 
   validate_host
   install_bootstrap_dependencies
+  configure_runtime_socket
   prepare_install_dir
   validate_checkout
   preserve_install_configuration

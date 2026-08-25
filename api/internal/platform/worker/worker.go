@@ -512,7 +512,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 
 	w.appendLog(dep, "cnb (smartbuild): building "+img+" with builder "+builder)
 	w.appendLog(dep, "cnb: docker host "+dockerHost)
-	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
+	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=unix:///var/run/docker.sock", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}
@@ -545,7 +545,7 @@ func cnbDockerHost() string {
 			return value
 		}
 	}
-	for _, path := range []string{"/run/podman/podman.sock", "/run/user/" + strconv.Itoa(os.Getuid()) + "/podman/podman.sock"} {
+	for _, path := range []string{"/var/run/docker.sock", "/run/podman/podman.sock", "/run/user/" + strconv.Itoa(os.Getuid()) + "/podman/podman.sock"} {
 		if info, err := os.Stat(path); err == nil && info.Mode()&os.ModeSocket != 0 {
 			return "unix://" + path
 		}
