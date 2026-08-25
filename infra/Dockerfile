@@ -27,4 +27,5 @@ ENV AETHER_STATE=/var/lib/aether
 ENV AETHER_API_ADDR=0.0.0.0:8080
 ENV CONTAINER_HOST=unix:///run/podman/podman.sock
 ENV DOCKER_HOST=unix:///run/podman/podman.sock
+ENV DOCKER_API_VERSION=1.40
 ENTRYPOINT ["/usr/local/bin/aether-api"]

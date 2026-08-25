@@ -517,7 +517,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 		args = append(args, "--env", e)
 	}
 	cmd := exec.CommandContext(ctx, "pack", args...)
-	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "CONTAINER_HOST="+dockerHost, "PACK_VOLUME_KEY=aether-"+dep.AppID.String()[:8])
+	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "CONTAINER_HOST="+dockerHost, "DOCKER_API_VERSION=1.40", "PACK_VOLUME_KEY=aether-"+dep.AppID.String()[:8])
 	out, err := w.streamCmd(ctx, dep, cmd)
 	if err != nil {
 		if strings.Contains(out, "No buildpack groups passed detection") {
