@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS build
+FROM docker.io/library/golang:1.26-alpine AS build
 WORKDIR /src/api
 COPY api/go.mod api/go.sum ./
 RUN go mod download
@@ -7,7 +7,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-api ./cmd/a
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-worker ./cmd/worker \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-monitoring ./cmd/monitoring
 
-FROM alpine:3.20
+FROM docker.io/library/alpine:3.20
 ARG TARGETARCH
 RUN apk add --no-cache ca-certificates tzdata podman podman-compose containers-common curl git \
     && if [ "$TARGETARCH" = "arm64" ]; then PACK_ARCH=linux-arm64; else PACK_ARCH=linux; fi \
