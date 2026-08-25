@@ -578,8 +578,11 @@ func isDevMode() bool {
 }
 
 func cnbBuildEnv(srcDir string, spec runSpec) []string {
-	var out []string
+	out := []string{"CNB_PLATFORM_API=0.12"}
 	for _, e := range spec.Env {
+		if strings.HasPrefix(e, "CNB_PLATFORM_API=") {
+			continue
+		}
 		if strings.HasPrefix(e, "BP_") || strings.HasPrefix(e, "CNB_") {
 			out = append(out, e)
 		}

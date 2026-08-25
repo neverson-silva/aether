@@ -62,7 +62,7 @@ curl -fsSLo /tmp/lifecycle.tgz "https://github.com/buildpacks/lifecycle/releases
 tar -xzf /tmp/lifecycle.tgz -C "$CTX/cnb"
 rm -f /tmp/lifecycle.tgz
 chmod +x "$CTX/cnb/lifecycle"/*
-"$CTX/cnb/lifecycle/lifecycle" version || true
+CNB_PLATFORM_API=0.12 "$CTX/cnb/lifecycle/lifecycle" version || true
 
 # 2.2 buildpacks (aether/*)
 BP_META_JSON="["
