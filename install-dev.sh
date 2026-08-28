@@ -944,7 +944,7 @@ server {
     }
 }
 EOF
-  info "nginx config generated: $conf"
+  printf '%s\n' "${GREEN}[aether]${NC} Application gateway configuration prepared." >&2
   echo "$conf"
 }
 
