@@ -499,15 +499,21 @@ type RegistrySetting struct {
 }
 
 type RestoreJob struct {
-	ID               uuid.UUID    `json:"id"`
-	BackupID         uuid.UUID    `json:"backup_id"`
-	TargetDatabaseID uuid.UUID    `json:"target_database_id"`
-	Status           string       `json:"status"`
-	ErrorCode        string       `json:"error_code"`
-	ErrorMessage     string       `json:"error_message"`
-	StartedAt        sql.NullTime `json:"started_at"`
-	CompletedAt      sql.NullTime `json:"completed_at"`
-	CreatedAt        time.Time    `json:"created_at"`
+	ID               uuid.UUID     `json:"id"`
+	BackupID         uuid.NullUUID `json:"backup_id"`
+	TargetDatabaseID uuid.UUID     `json:"target_database_id"`
+	Status           string        `json:"status"`
+	ErrorCode        string        `json:"error_code"`
+	ErrorMessage     string        `json:"error_message"`
+	StartedAt        sql.NullTime  `json:"started_at"`
+	CompletedAt      sql.NullTime  `json:"completed_at"`
+	CreatedAt        time.Time     `json:"created_at"`
+	SourceType       string        `json:"source_type"`
+	SourceFilename   string        `json:"source_filename"`
+	SourceSize       int64         `json:"source_size"`
+	SourceChecksum   string        `json:"source_checksum"`
+	SourceFormat     string        `json:"source_format"`
+	UploadedBytes    int64         `json:"uploaded_bytes"`
 }
 
 type S3Destination struct {

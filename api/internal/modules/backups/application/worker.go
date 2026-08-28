@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -45,7 +47,55 @@ func (w *BackupWorker) RecoverInterrupted(ctx context.Context, cutoff time.Time)
 			return err
 		}
 	}
+	if abandoned, ok := w.Service.Store.(interface {
+		FailAbandonedUploads(context.Context, time.Time) error
+	}); ok {
+		if err := abandoned.FailAbandonedUploads(ctx, cutoff); err != nil {
+			return err
+		}
+	}
+	_ = w.CleanupUploadArtifacts(ctx)
 	return nil
+}
+
+func (w *BackupWorker) CleanupUploadArtifacts(ctx context.Context) error {
+	if w.Service.UploadRoot == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(w.Service.UploadRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		id, parseErr := uuid.Parse(entry.Name())
+		if parseErr != nil {
+			continue
+		}
+		job, getErr := w.Service.Store.GetRestoreJob(ctx, id)
+		if getErr != nil || job.Terminal() || time.Since(job.CreatedAt) > 7*24*time.Hour {
+			_ = os.RemoveAll(filepath.Join(w.Service.UploadRoot, entry.Name()))
+		}
+	}
+	return nil
+}
+
+func (w *BackupWorker) RunUploadCleanupLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = w.CleanupUploadArtifacts(ctx)
+		}
+	}
 }
 
 func (w *BackupWorker) Run(ctx context.Context) {

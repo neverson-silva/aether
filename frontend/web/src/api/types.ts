@@ -468,13 +468,19 @@ export interface BackupJob {
 
 export interface RestoreJob {
   id: string;
-  backup_id: string;
+  backup_id: string | null;
   target_database_id: string;
   status: string;
   error_code: string;
   error_message: string;
   started_at?: string | null;
   completed_at?: string | null;
+  source_type: "backup" | "upload" | string;
+  source_filename: string;
+  source_size: number;
+  source_checksum: string;
+  source_format: string;
+  uploaded_bytes: number;
 }
 
 export interface PreflightCheck {

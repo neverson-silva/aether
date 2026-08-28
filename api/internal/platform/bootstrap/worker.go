@@ -139,7 +139,8 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		Destinations: settingsDestProvider{s: settingsSvc}, Exec: container.NewPodman(),
 		Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Audit: auditRecorder{store: store},
 		Notifier: realtimeSvc, Timeout: 45 * time.Minute,
-		Outbox: outbox.NewStore(pool),
+		Outbox:     outbox.NewStore(pool),
+		UploadRoot: filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes,
 	}
 	cronWorker := &jobsApp.CronWorker{Store: jobsInfra.NewStore(pool), Apps: appsStore, Runtime: jobsApp.NewRuntime(), Resolver: cronResolver, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
 	snapshotOutputDir := os.Getenv("AETHER_SNAPSHOT_HOST_DIR")
@@ -161,6 +162,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	if err := backupWorker.RecoverInterrupted(workerCtx, time.Now().Add(-90*time.Minute)); err != nil {
 		return fmt.Errorf("recover interrupted backups: %w", err)
 	}
+	go backupWorker.RunUploadCleanupLoop(workerCtx)
 	go deployWorker.Run(workerCtx, 3*time.Second)
 	go backupWorker.Run(workerCtx)
 	go platformscheduler.Run(workerCtx, rtRuntime.Locks,

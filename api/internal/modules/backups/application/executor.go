@@ -1,11 +1,14 @@
 package application
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -210,65 +213,12 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 	_ = rj.Transition(domain.RestorePreparing)
 	_, _ = s.Store.UpdateRestoreJob(ctx, rj)
 
-	backup, err := s.Store.GetJob(ctx, rj.BackupID)
-	if err != nil {
-		_ = s.failRestore(ctx, rj, "RESTORE_BACKUP_NOT_FOUND", err.Error())
+	artifact, sourceErr := s.openRestoreSource(ctx, rj, orgID)
+	if sourceErr != nil {
+		_ = s.failRestore(ctx, rj, sourceErr.code, sourceErr.msg)
 		return
 	}
-	provider, err := s.Destinations.GetProvider(ctx, backup.DestinationID, orgID)
-	if err != nil {
-		_ = s.failRestore(ctx, rj, "RESTORE_STORAGE_ACCESS_FAILED", err.Error())
-		return
-	}
-	if err := rj.Transition(domain.RestoreDownload); err != nil {
-		_ = s.failRestore(ctx, rj, "RESTORE_STATE_INVALID", err.Error())
-		return
-	}
-	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
-		_ = s.failRestore(ctx, rj, "RESTORE_STATE_UPDATE_FAILED", err.Error())
-		return
-	}
-	obj, err := provider.GetObject(ctx, storage.GetObjectInput{Key: backup.StorageKey})
-	if err != nil {
-		_ = s.failRestore(ctx, rj, "RESTORE_BACKUP_NOT_FOUND", err.Error())
-		return
-	}
-
-	file, err := os.CreateTemp("", "paas-restore-*")
-	if err != nil {
-		_ = obj.Body.Close()
-		_ = s.failRestore(ctx, rj, "RESTORE_DISK_FULL", err.Error())
-		return
-	}
-	path := file.Name()
-	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(file, hash), obj.Body)
-	if err != nil {
-		_ = file.Close()
-		_ = obj.Body.Close()
-		_ = s.failRestore(ctx, rj, "RESTORE_DOWNLOAD_FAILED", err.Error())
-		return
-	}
-	if err := file.Close(); err != nil {
-		_ = obj.Body.Close()
-		_ = s.failRestore(ctx, rj, "RESTORE_DISK_WRITE_FAILED", err.Error())
-		return
-	}
-	_ = obj.Body.Close()
-	defer os.Remove(path)
-	if written == 0 {
-		_ = s.failRestore(ctx, rj, "RESTORE_EMPTY_BACKUP", "backup object is empty")
-		return
-	}
-	if (backup.SizeBytes > 0 && written != backup.SizeBytes) || (obj.ContentLength > 0 && written != obj.ContentLength) {
-		_ = s.failRestore(ctx, rj, "RESTORE_SIZE_MISMATCH", "backup object size does not match its metadata")
-		return
-	}
-
-	if backup.Checksum != "" && hex.EncodeToString(hash.Sum(nil)) != backup.Checksum {
-		_ = s.failRestore(ctx, rj, "RESTORE_CHECKSUM_MISMATCH", "checksum verification failed")
-		return
-	}
+	defer artifact.cleanup()
 
 	target, err := s.Databases.Get(ctx, rj.TargetDatabaseID, orgID)
 	if err != nil {
@@ -298,13 +248,7 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 		return
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		_ = s.failRestore(ctx, rj, "RESTORE_DATABASE_UNAVAILABLE", err.Error())
-		return
-	}
-	defer f.Close()
-	if err := adapter.Restore(ctx, desc, f); err != nil {
+	if err := adapter.Restore(ctx, desc, artifact.reader); err != nil {
 		_ = s.failRestore(ctx, rj, "RESTORE_FAILED", err.Error())
 		return
 	}
@@ -319,7 +263,173 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 		return
 	}
 	_, _ = s.Store.UpdateRestoreJob(ctx, rj)
+	if rj.SourceType == domain.RestoreSourceUpload {
+		s.removeUploadArtifact(rj.ID)
+	}
+	s.notifyRestore(ctx, orgID, rj.TargetDatabaseID, rj.ID, string(rj.Status))
 	s.Audit.Record(ctx, orgID, "restore.completed", "database", rj.TargetDatabaseID.String(), rj.ID.String())
+}
+
+type restoreArtifact struct {
+	reader  io.ReadCloser
+	cleanup func()
+}
+
+type restoreSourceError struct {
+	code string
+	msg  string
+}
+
+func (s *DatabaseBackups) openRestoreSource(ctx context.Context, rj *domain.RestoreJob, orgID uuid.UUID) (*restoreArtifact, *restoreSourceError) {
+	switch rj.SourceType {
+	case domain.RestoreSourceUpload:
+		return s.openUploadedSource(ctx, rj)
+	case domain.RestoreSourceBackup:
+		return s.openBackupSource(ctx, rj, orgID)
+	default:
+		return nil, &restoreSourceError{"RESTORE_SOURCE_INVALID", "unsupported restore source"}
+	}
+}
+
+func (s *DatabaseBackups) openUploadedSource(ctx context.Context, rj *domain.RestoreJob) (*restoreArtifact, *restoreSourceError) {
+	path := s.uploadArtifactPath(rj.ID)
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil, &restoreSourceError{"RESTORE_UPLOAD_ARTIFACT_MISSING", "uploaded restore artifact is missing"}
+	}
+	if st.Size() == 0 {
+		return nil, &restoreSourceError{"RESTORE_EMPTY_BACKUP", "uploaded file is empty"}
+	}
+	if rj.SourceSize > 0 && st.Size() != rj.SourceSize {
+		return nil, &restoreSourceError{"RESTORE_SIZE_MISMATCH", "uploaded file size changed after upload"}
+	}
+	if err := rj.Transition(domain.RestoreDownload); err != nil {
+		return nil, &restoreSourceError{"RESTORE_STATE_INVALID", err.Error()}
+	}
+	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
+		return nil, &restoreSourceError{"RESTORE_STATE_UPDATE_FAILED", err.Error()}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, &restoreSourceError{"RESTORE_DISK_UNREADABLE", err.Error()}
+	}
+	detected := DetectUploadFormat(path, rj.SourceFormat)
+	if detected == "sql.gz" || detected == "gzip" {
+		gz, gzErr := gzip.NewReader(f)
+		if gzErr != nil {
+			_ = f.Close()
+			return nil, &restoreSourceError{"RESTORE_INVALID_FORMAT", "uploaded file is not a valid gzip archive"}
+		}
+		return &restoreArtifact{reader: gz, cleanup: func() { _ = gz.Close(); _ = f.Close() }}, nil
+	}
+	rj.SourceFormat = detected
+	return &restoreArtifact{reader: f, cleanup: func() { _ = f.Close() }}, nil
+}
+
+func (s *DatabaseBackups) openBackupSource(ctx context.Context, rj *domain.RestoreJob, orgID uuid.UUID) (*restoreArtifact, *restoreSourceError) {
+	if rj.BackupID == nil {
+		return nil, &restoreSourceError{"RESTORE_BACKUP_NOT_FOUND", "restore has no source backup"}
+	}
+	backup, err := s.Store.GetJob(ctx, *rj.BackupID)
+	if err != nil {
+		return nil, &restoreSourceError{"RESTORE_BACKUP_NOT_FOUND", err.Error()}
+	}
+	provider, err := s.Destinations.GetProvider(ctx, backup.DestinationID, orgID)
+	if err != nil {
+		return nil, &restoreSourceError{"RESTORE_STORAGE_ACCESS_FAILED", err.Error()}
+	}
+	if err := rj.Transition(domain.RestoreDownload); err != nil {
+		return nil, &restoreSourceError{"RESTORE_STATE_INVALID", err.Error()}
+	}
+	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
+		return nil, &restoreSourceError{"RESTORE_STATE_UPDATE_FAILED", err.Error()}
+	}
+	obj, err := provider.GetObject(ctx, storage.GetObjectInput{Key: backup.StorageKey})
+	if err != nil {
+		return nil, &restoreSourceError{"RESTORE_BACKUP_NOT_FOUND", err.Error()}
+	}
+
+	file, err := os.CreateTemp("", "paas-restore-*")
+	if err != nil {
+		_ = obj.Body.Close()
+		return nil, &restoreSourceError{"RESTORE_DISK_FULL", err.Error()}
+	}
+	path := file.Name()
+	hash := sha256.New()
+	written, err := io.Copy(io.MultiWriter(file, hash), obj.Body)
+	if err != nil {
+		_ = file.Close()
+		_ = obj.Body.Close()
+		_ = os.Remove(path)
+		return nil, &restoreSourceError{"RESTORE_DOWNLOAD_FAILED", err.Error()}
+	}
+	if err := file.Close(); err != nil {
+		_ = obj.Body.Close()
+		_ = os.Remove(path)
+		return nil, &restoreSourceError{"RESTORE_DISK_WRITE_FAILED", err.Error()}
+	}
+	_ = obj.Body.Close()
+	if written == 0 {
+		_ = os.Remove(path)
+		return nil, &restoreSourceError{"RESTORE_EMPTY_BACKUP", "backup object is empty"}
+	}
+	if (backup.SizeBytes > 0 && written != backup.SizeBytes) || (obj.ContentLength > 0 && written != obj.ContentLength) {
+		_ = os.Remove(path)
+		return nil, &restoreSourceError{"RESTORE_SIZE_MISMATCH", "backup object size does not match its metadata"}
+	}
+	if backup.Checksum != "" && hex.EncodeToString(hash.Sum(nil)) != backup.Checksum {
+		_ = os.Remove(path)
+		return nil, &restoreSourceError{"RESTORE_CHECKSUM_MISMATCH", "checksum verification failed"}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return nil, &restoreSourceError{"RESTORE_DISK_UNREADABLE", err.Error()}
+	}
+	return &restoreArtifact{reader: f, cleanup: func() { _ = f.Close(); _ = os.Remove(path) }}, nil
+}
+
+func (s *DatabaseBackups) uploadArtifactPath(restoreID uuid.UUID) string {
+	return filepath.Join(s.UploadRoot, restoreID.String(), "payload")
+}
+
+func sanitizeSourceFilename(name string) string {
+	name = filepath.Base(strings.TrimSpace(name))
+	name = strings.ReplaceAll(name, "..", "")
+	if name == "." || name == "/" || name == "" {
+		return "restore"
+	}
+	if len(name) > 255 {
+		name = name[len(name)-255:]
+	}
+	return name
+}
+
+var gzipMagic = []byte{0x1f, 0x8b}
+
+func DetectUploadFormat(path, current string) string {
+	if current == "sql.gz" || current == "gzip" {
+		return "sql.gz"
+	}
+	var only [8]byte
+	f, err := os.Open(path)
+	if err == nil {
+		_, _ = f.Read(only[:])
+		_ = f.Close()
+	}
+	if len(only) >= len(gzipMagic) && only[0] == gzipMagic[0] && only[1] == gzipMagic[1] {
+		return "sql.gz"
+	}
+	if len(only) >= 5 && string(only[:5]) == "PGDMP" {
+		return "dump"
+	}
+	if len(only) >= 6 && string(only[:6]) == "ustar\x00" {
+		return "tar"
+	}
+	if current != "" {
+		return current
+	}
+	return fileNameExt(filepath.Base(path))
 }
 
 func (s *DatabaseBackups) failRestore(ctx context.Context, rj *domain.RestoreJob, code, msg string) error {
@@ -331,5 +441,8 @@ func (s *DatabaseBackups) failRestore(ctx context.Context, rj *domain.RestoreJob
 		return err
 	}
 	_, err := s.Store.UpdateRestoreJob(ctx, rj)
+	if rj.SourceType == domain.RestoreSourceUpload {
+		s.removeUploadArtifact(rj.ID)
+	}
 	return err
 }

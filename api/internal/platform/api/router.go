@@ -485,6 +485,12 @@ func (r *Router) registerDatabaseBackupRoutes(authed *gin.RouterGroup) {
 	authed.POST("/databases/:dbID/backups/:backupID/restore", r.dbBackups.RequestRestore)
 	authed.GET("/databases/:dbID/backups/:backupID/preflight", r.dbBackups.PreflightRestore)
 	authed.GET("/databases/:dbID/backups/:backupID/restore-jobs", r.dbBackups.ListRestoreJobs)
+	authed.POST("/databases/:dbID/restores", r.dbBackups.CreateRestore)
+	authed.POST("/databases/:dbID/restores/:restoreID/upload", r.dbBackups.UploadRestoreFile)
+	authed.POST("/databases/:dbID/restores/:restoreID/validate", r.dbBackups.ValidateUpload)
+	authed.POST("/databases/:dbID/restores/:restoreID/start", r.dbBackups.StartUploadRestore)
+	authed.GET("/databases/:dbID/restores/:restoreID", r.dbBackups.GetRestore)
+	authed.DELETE("/databases/:dbID/restores/:restoreID", r.dbBackups.DeleteRestore)
 }
 
 func (r *Router) Handler() http.Handler {

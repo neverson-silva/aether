@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppWindow, Gear } from "@phosphor-icons/react";
-import { Badge } from "@aether/design-system";
+import { Badge, Skeleton } from "@aether/design-system";
 import type { MonitoringResource, ResourceOwner } from "../../../../hooks";
 import { fmtBytes, fmtRate } from "./format";
 
@@ -20,19 +20,24 @@ const OWNER_LABEL: Record<ResourceOwner, string> = {
   unknown: "Unknown",
 };
 
+const VISIBLE_STATES = new Set(["running", "stopped"]);
+
 export function ResourcesTable({
   resources,
   selectedId,
   onSelect,
+  loading = false,
 }: {
   resources: MonitoringResource[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  loading?: boolean;
 }) {
   const [filter, setFilter] = useState<ResourceOwner | "all">("all");
-  const rows = resources.filter((r) => filter === "all" || r.owner === filter);
+  const visibleResources = resources.filter((r) => VISIBLE_STATES.has(r.state));
+  const rows = visibleResources.filter((r) => filter === "all" || r.owner === filter);
 
-  const count = (o: ResourceOwner) => resources.filter((r) => r.owner === o).length;
+  const count = (o: ResourceOwner) => visibleResources.filter((r) => r.owner === o).length;
 
   return (
     <div className="bg-surface-container border border-outline-variant rounded-lg overflow-hidden">
@@ -55,6 +60,7 @@ export function ResourcesTable({
         </div>
       </div>
       <div className="overflow-x-auto">
+        {loading ? <div className="p-md"><Skeleton variant="table" aria-label="Loading resource usage" /></div> : null}
         <table className="w-full text-left border-collapse min-w-[760px]">
           <thead>
             <tr className="font-label-caps text-label-caps text-on-surface-variant/70 border-b border-outline-variant/50">
@@ -68,7 +74,7 @@ export function ResourcesTable({
               <th className="py-2 pr-lg pl-2 font-normal text-right">Disk I/O</th>
             </tr>
           </thead>
-          <tbody className="font-code-md text-code-md text-on-surface-variant divide-y divide-outline-variant/40">
+          {!loading && <tbody className="font-code-md text-code-md text-on-surface-variant divide-y divide-outline-variant/40">
             {rows.map((r) => {
               const selected = r.id === selectedId;
               return (
@@ -130,10 +136,10 @@ export function ResourcesTable({
                 </tr>
               );
             })}
-          </tbody>
+          </tbody>}
         </table>
       </div>
-      {rows.length === 0 && (
+      {!loading && rows.length === 0 && (
         <p className="font-body-sm text-body-sm text-on-surface-variant/60 text-center py-lg">
           {filter === "all" ? "No user workloads are running." : `No ${OWNER_LABEL[filter]} resources.`}
         </p>

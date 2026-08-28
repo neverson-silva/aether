@@ -82,6 +82,9 @@ type RestoreStatus string
 
 const (
 	RestoreQueued     RestoreStatus = "queued"
+	RestoreUploading  RestoreStatus = "uploading"
+	RestoreValidating RestoreStatus = "validating"
+	RestoreReady      RestoreStatus = "ready"
 	RestorePreparing  RestoreStatus = "preparing"
 	RestoreDownload   RestoreStatus = "downloading"
 	RestoreRunning    RestoreStatus = "restoring"
@@ -92,13 +95,26 @@ const (
 	RestoreCancelled  RestoreStatus = "cancelled"
 )
 
+type RestoreSourceType string
+
+const (
+	RestoreSourceBackup RestoreSourceType = "backup"
+	RestoreSourceUpload RestoreSourceType = "upload"
+)
+
 type RestoreJob struct {
 	ID               uuid.UUID
-	BackupID         uuid.UUID
+	BackupID         *uuid.UUID
 	TargetDatabaseID uuid.UUID
 	Status           RestoreStatus
 	ErrorCode        string
 	ErrorMessage     string
+	SourceType       RestoreSourceType
+	SourceFilename   string
+	SourceSize       int64
+	SourceChecksum   string
+	SourceFormat     string
+	UploadedBytes    int64
 	StartedAt        *time.Time
 	CompletedAt      *time.Time
 	CreatedAt        time.Time
@@ -115,6 +131,12 @@ func (j *RestoreJob) Transition(to RestoreStatus) error {
 func validRestoreTransition(from, to RestoreStatus) bool {
 	switch from {
 	case RestoreQueued:
+		return to == RestoreUploading || to == RestorePreparing || to == RestoreCancelled || to == RestoreFailed
+	case RestoreUploading:
+		return to == RestoreValidating || to == RestoreCancelled || to == RestoreFailed
+	case RestoreValidating:
+		return to == RestoreReady || to == RestoreFailed || to == RestoreCancelled
+	case RestoreReady:
 		return to == RestorePreparing || to == RestoreCancelled || to == RestoreFailed
 	case RestorePreparing:
 		return to == RestoreDownload || to == RestoreFailed || to == RestoreCancelled

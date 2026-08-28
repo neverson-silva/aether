@@ -98,4 +98,30 @@ export const apiDelete = <T>(path: string) => api<T>(path, { method: "DELETE" })
 export const apiPatch = <T>(path: string, body?: unknown) =>
   api<T>(path, { method: "PATCH", body });
 
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const res = await http.post<T>(`${getServer()}${path}`, form, {
+      headers: { "X-File-Size": String(file.size) },
+      onUploadProgress: (event) => {
+        if (onProgress && event.total) {
+          onProgress(event.loaded, event.total);
+        }
+      },
+    });
+    return res.data;
+  } catch (err) {
+    const axiosErr = err as AxiosError<{ error?: string }>;
+    const status = axiosErr.response?.status ?? 0;
+    const message =
+      axiosErr.response?.data?.error || axiosErr.message || "network error";
+    throw new ApiError(status, message);
+  }
+}
+
 export { http };

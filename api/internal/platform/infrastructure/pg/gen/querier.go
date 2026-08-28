@@ -88,6 +88,7 @@ type Querier interface {
 	DeleteSnapshotSchedule(ctx context.Context, arg DeleteSnapshotScheduleParams) error
 	DeleteWorker(ctx context.Context, id uuid.UUID) error
 	DisableTOTP(ctx context.Context, id uuid.UUID) error
+	FailAbandonedUploadRestores(ctx context.Context, createdAt time.Time) error
 	FinishPipelineRun(ctx context.Context, arg FinishPipelineRunParams) error
 	GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, error)
 	GetAlertRule(ctx context.Context, id uuid.UUID) (AlertRule, error)

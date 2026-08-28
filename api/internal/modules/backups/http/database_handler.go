@@ -1,6 +1,7 @@
 package http
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -357,6 +358,167 @@ func (h *DBBackupHandler) ListRestoreJobs(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+func (h *DBBackupHandler) CreateRestore(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	dbID, ok := h.dbID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Filename string `json:"filename"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	job, err := h.svc.CreateUploadRestore(c.Request.Context(), dbID, orgID(c), req.Filename)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, restoreJobDTOFrom(*job))
+}
+
+func (h *DBBackupHandler) UploadRestoreFile(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	dbID, ok := h.dbID(c)
+	if !ok {
+		return
+	}
+	restoreID, err := uuid.Parse(c.Param("restoreID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	reader, err := c.Request.MultipartReader()
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	for {
+		part, partErr := reader.NextPart()
+		if partErr == io.EOF {
+			break
+		}
+		if partErr != nil {
+			abort(c, partErr)
+			return
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		expected := int64(-1)
+		if raw := c.GetHeader("X-File-Size"); raw != "" {
+			if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed >= 0 {
+				expected = parsed
+			}
+		}
+		job, writeErr := h.svc.WriteUpload(c.Request.Context(), dbID, restoreID, orgID(c), part, expected)
+		if writeErr != nil {
+			if job == nil {
+				abort(c, writeErr)
+				return
+			}
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": writeErr.Error(), "restore_job": restoreJobDTOFrom(*job)})
+			return
+		}
+		c.JSON(http.StatusOK, restoreJobDTOFrom(*job))
+		return
+	}
+	abort(c, domain.ErrValidation)
+}
+
+func (h *DBBackupHandler) ValidateUpload(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	dbID, ok := h.dbID(c)
+	if !ok {
+		return
+	}
+	restoreID, err := uuid.Parse(c.Param("restoreID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	job, err := h.svc.ValidateUpload(c.Request.Context(), dbID, restoreID, orgID(c))
+	if err != nil {
+		if job == nil {
+			abort(c, err)
+			return
+		}
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "restore_job": restoreJobDTOFrom(*job)})
+		return
+	}
+	c.JSON(http.StatusOK, restoreJobDTOFrom(*job))
+}
+
+func (h *DBBackupHandler) StartUploadRestore(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	dbID, ok := h.dbID(c)
+	if !ok {
+		return
+	}
+	restoreID, err := uuid.Parse(c.Param("restoreID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	job, err := h.svc.StartUploadRestore(c.Request.Context(), dbID, restoreID, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, restoreJobDTOFrom(*job))
+}
+
+func (h *DBBackupHandler) GetRestore(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	dbID, ok := h.dbID(c)
+	if !ok {
+		return
+	}
+	restoreID, err := uuid.Parse(c.Param("restoreID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	job, err := h.svc.GetRestore(c.Request.Context(), dbID, restoreID, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, restoreJobDTOFrom(*job))
+}
+
+func (h *DBBackupHandler) DeleteRestore(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	dbID, ok := h.dbID(c)
+	if !ok {
+		return
+	}
+	restoreID, err := uuid.Parse(c.Param("restoreID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	if err := h.svc.CancelUploadRestore(c.Request.Context(), dbID, restoreID, orgID(c)); err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func configToDTO(cfg *domain.BackupConfiguration) backupConfigDTO {
 	var next *string
 	if cfg.NextRunAt != nil {
@@ -411,13 +573,26 @@ type restoreJobDTO struct {
 	ErrorMessage     string  `json:"error_message"`
 	StartedAt        *string `json:"started_at"`
 	CompletedAt      *string `json:"completed_at"`
+	SourceType       string  `json:"source_type"`
+	SourceFilename   string  `json:"source_filename"`
+	SourceSize       int64   `json:"source_size"`
+	SourceChecksum   string  `json:"source_checksum"`
+	SourceFormat     string  `json:"source_format"`
+	UploadedBytes    int64   `json:"uploaded_bytes"`
 }
 
 func restoreJobDTOFrom(j domain.RestoreJob) restoreJobDTO {
+	var backupID string
+	if j.BackupID != nil {
+		backupID = j.BackupID.String()
+	}
 	return restoreJobDTO{
-		ID: j.ID.String(), BackupID: j.BackupID.String(), TargetDatabaseID: j.TargetDatabaseID.String(),
+		ID: j.ID.String(), BackupID: backupID, TargetDatabaseID: j.TargetDatabaseID.String(),
 		Status: string(j.Status), ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage,
 		StartedAt: timePtrStr(j.StartedAt), CompletedAt: timePtrStr(j.CompletedAt),
+		SourceType: string(j.SourceType), SourceFilename: j.SourceFilename,
+		SourceSize: j.SourceSize, SourceChecksum: j.SourceChecksum, SourceFormat: j.SourceFormat,
+		UploadedBytes: j.UploadedBytes,
 	}
 }
 

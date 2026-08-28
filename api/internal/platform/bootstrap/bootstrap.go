@@ -312,7 +312,8 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Audit:        auditRecorder{store: svc.AuditLog},
 		Notifier:     realtimeSvc,
 		Outbox:       outbox.NewStore(pool),
-		Timeout:      45 * time.Minute,
+		UploadRoot:   filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes,
+		Timeout: 45 * time.Minute,
 	}
 	dbBackupsHandler := backupshttp.NewDatabaseBackupHandler(dbBackupsSvc)
 	backupsSvc.Async = dbBackupsSvc

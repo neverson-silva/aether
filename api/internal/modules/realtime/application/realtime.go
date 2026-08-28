@@ -191,6 +191,31 @@ func (r *Realtime) NotifyBackup(ctx context.Context, orgID, databaseID, backupID
 	})
 }
 
+func (r *Realtime) NotifyRestore(ctx context.Context, orgID, targetDBID, restoreID uuid.UUID, status string) {
+	payload, _ := json.Marshal(map[string]string{
+		"database_id": targetDBID.String(),
+		"restore_id":  restoreID.String(),
+		"status":      status,
+	})
+	_ = r.PublishEvent(ctx, orgID, domain.Event{
+		Type: "restore." + status, Aggregate: "restore", ResourceType: "database", ResourceID: targetDBID.String(),
+		CorrelationID: restoreID.String(), Message: "Restore " + status, Payload: payload,
+	})
+}
+
+func (r *Realtime) NotifyRestoreProgress(ctx context.Context, orgID, dbID, restoreID uuid.UUID, uploaded, total int64) {
+	payload, _ := json.Marshal(map[string]any{
+		"database_id":    dbID.String(),
+		"restore_id":     restoreID.String(),
+		"uploaded_bytes": uploaded,
+		"total_bytes":    total,
+	})
+	_ = r.PublishEvent(ctx, orgID, domain.Event{
+		Type: "restore.upload.progress", Aggregate: "restore", ResourceType: "database", ResourceID: dbID.String(),
+		CorrelationID: restoreID.String(), Payload: payload, Ephemeral: true,
+	})
+}
+
 func backupMessage(status string) string {
 	switch status {
 	case "completed":

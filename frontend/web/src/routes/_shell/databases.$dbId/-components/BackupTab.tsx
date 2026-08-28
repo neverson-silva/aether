@@ -9,9 +9,10 @@ import {
   useS3Destinations,
 } from "../../../../hooks";
 import { AlertDialog, Badge, Button, Card, EmptyState, useToast } from "@aether/design-system";
-import { ArrowUUpLeft, CloudArrowUp, Gear, Plus, Trash } from "@phosphor-icons/react";
+import { ArrowUUpLeft, CloudArrowUp, FileArrowUp, Gear, Plus, Trash } from "@phosphor-icons/react";
 import { BackupConfigDialog, describeScheduleExport } from "./BackupConfigDialog";
 import { RestoreDialog } from "./RestoreDialog";
+import { UploadRestoreDialog } from "./UploadRestoreDialog";
 
 const ACTIVE_STATUSES = ["queued", "preparing", "running", "uploading", "verifying", "cancelling"];
 type DesignIcon = NonNullable<ComponentProps<typeof Button>["icon"]>;
@@ -43,6 +44,7 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
   const [configOpen, setConfigOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<BackupConfig | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<BackupJob | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BackupConfig | null>(null);
 
@@ -64,9 +66,12 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
             Schedule point-in-time backups of this database to an S3 destination. Backups are streamed, checksummed and
             verified after upload.
           </p>
-          <div className="mt-lg">
-          <Button icon={designIcon(Gear)} onClick={() => { setEditingConfig(null); setConfigOpen(true); }} disabled={(destinations ?? []).length === 0}>
+          <div className="mt-lg flex flex-wrap items-center justify-center gap-sm">
+            <Button icon={designIcon(Gear)} onClick={() => { setEditingConfig(null); setConfigOpen(true); }} disabled={(destinations ?? []).length === 0}>
               Configure backup
+            </Button>
+            <Button variant="outline" icon={designIcon(FileArrowUp)} onClick={() => setUploadOpen(true)}>
+              Restore from file
             </Button>
           </div>
           {(destinations ?? []).length === 0 && (
@@ -78,6 +83,7 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
         {configOpen && destinations && (
         <BackupConfigDialog dbId={dbId} existing={null} destinations={destinations} onClose={() => setConfigOpen(false)} />
         )}
+        {uploadOpen && <UploadRestoreDialog dbId={dbId} dbName={dbName} onClose={() => setUploadOpen(false)} />}
       </div>
     );
   }
@@ -115,6 +121,9 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant/60">
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Backup history</h2>
+          <Button variant="quiet" size="sm" icon={designIcon(CloudArrowUp)} onClick={() => setUploadOpen(true)}>
+            Upload restore
+          </Button>
         </div>
         {(backups ?? []).length === 0 ? (
           <EmptyState title="No backups yet" description="Run your first backup with “Backup now”" className="border-0" />
@@ -168,6 +177,7 @@ export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
         <BackupConfigDialog dbId={dbId} existing={editingConfig} destinations={destinations} onClose={() => { setConfigOpen(false); setEditingConfig(null); }} />
       )}
       {restoreTarget && <RestoreDialog dbId={dbId} dbName={dbName} backup={restoreTarget} onClose={() => setRestoreTarget(null)} />}
+      {uploadOpen && <UploadRestoreDialog dbId={dbId} dbName={dbName} onClose={() => setUploadOpen(false)} />}
       {deleteOpen && (
         <AlertDialog
           trigger={<span />}

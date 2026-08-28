@@ -211,13 +211,19 @@ func (s *DatabaseStore) RecoverInterrupted(ctx context.Context, startedAt time.T
 
 func (s *DatabaseStore) CreateRestoreJob(ctx context.Context, job *domain.RestoreJob) (*domain.RestoreJob, error) {
 	row, err := s.q.CreateRestoreJob(ctx, gen.CreateRestoreJobParams{
-		BackupID:         job.BackupID,
+		BackupID:         nullUUID(job.BackupID),
 		TargetDatabaseID: job.TargetDatabaseID,
 		Status:           string(job.Status),
 		ErrorCode:        job.ErrorCode,
 		ErrorMessage:     job.ErrorMessage,
 		StartedAt:        nullTime(job.StartedAt),
 		CompletedAt:      nullTime(job.CompletedAt),
+		SourceType:       string(job.SourceType),
+		SourceFilename:   job.SourceFilename,
+		SourceSize:       job.SourceSize,
+		SourceChecksum:   job.SourceChecksum,
+		SourceFormat:     job.SourceFormat,
+		UploadedBytes:    job.UploadedBytes,
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -235,17 +241,26 @@ func (s *DatabaseStore) GetRestoreJob(ctx context.Context, id uuid.UUID) (*domai
 
 func (s *DatabaseStore) UpdateRestoreJob(ctx context.Context, job *domain.RestoreJob) (*domain.RestoreJob, error) {
 	row, err := s.q.UpdateRestoreJob(ctx, gen.UpdateRestoreJobParams{
-		ID:           job.ID,
-		Status:       string(job.Status),
-		ErrorCode:    job.ErrorCode,
-		ErrorMessage: job.ErrorMessage,
-		StartedAt:    nullTime(job.StartedAt),
-		CompletedAt:  nullTime(job.CompletedAt),
+		ID:             job.ID,
+		Status:         string(job.Status),
+		ErrorCode:      job.ErrorCode,
+		ErrorMessage:   job.ErrorMessage,
+		StartedAt:      nullTime(job.StartedAt),
+		CompletedAt:    nullTime(job.CompletedAt),
+		SourceFilename: job.SourceFilename,
+		SourceSize:     job.SourceSize,
+		SourceChecksum: job.SourceChecksum,
+		SourceFormat:   job.SourceFormat,
+		UploadedBytes:  job.UploadedBytes,
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	return restoreFromRow(row), nil
+}
+
+func (s *DatabaseStore) FailAbandonedUploads(ctx context.Context, olderThan time.Time) error {
+	return mapErr(s.q.FailAbandonedUploadRestores(ctx, olderThan))
 }
 
 func (s *DatabaseStore) ListRestoreJobsByTarget(ctx context.Context, targetID uuid.UUID, limit int) ([]domain.RestoreJob, error) {
@@ -329,10 +344,20 @@ func jobsFromRows(rows []gen.BackupJob) []domain.BackupJob {
 
 func restoreFromRow(r gen.RestoreJob) *domain.RestoreJob {
 	return &domain.RestoreJob{
-		ID: r.ID, BackupID: r.BackupID, TargetDatabaseID: r.TargetDatabaseID,
+		ID: r.ID, BackupID: uuidFromNull(r.BackupID), TargetDatabaseID: r.TargetDatabaseID,
 		Status: domain.RestoreStatus(r.Status), ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage,
 		StartedAt: timePtr(r.StartedAt), CompletedAt: timePtr(r.CompletedAt), CreatedAt: r.CreatedAt,
+		SourceType: domain.RestoreSourceType(r.SourceType), SourceFilename: r.SourceFilename,
+		SourceSize: r.SourceSize, SourceChecksum: r.SourceChecksum, SourceFormat: r.SourceFormat,
+		UploadedBytes: r.UploadedBytes,
 	}
+}
+
+func uuidFromNull(v uuid.NullUUID) *uuid.UUID {
+	if !v.Valid {
+		return nil
+	}
+	return &v.UUID
 }
 
 func nullTime(v *time.Time) sql.NullTime {

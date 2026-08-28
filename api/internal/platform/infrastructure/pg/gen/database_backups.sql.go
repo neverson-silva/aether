@@ -150,20 +150,28 @@ func (q *Queries) CreateBackupJob(ctx context.Context, arg CreateBackupJobParams
 
 const createRestoreJob = `-- name: CreateRestoreJob :one
 INSERT INTO restore_jobs (
-    backup_id, target_database_id, status, error_code, error_message, started_at, completed_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    backup_id, target_database_id, status, error_code, error_message, started_at, completed_at,
+    source_type, source_filename, source_size, source_checksum, source_format, uploaded_bytes
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
-          started_at, completed_at, created_at
+          started_at, completed_at, created_at, source_type, source_filename,
+          source_size, source_checksum, source_format, uploaded_bytes
 `
 
 type CreateRestoreJobParams struct {
-	BackupID         uuid.UUID    `json:"backup_id"`
-	TargetDatabaseID uuid.UUID    `json:"target_database_id"`
-	Status           string       `json:"status"`
-	ErrorCode        string       `json:"error_code"`
-	ErrorMessage     string       `json:"error_message"`
-	StartedAt        sql.NullTime `json:"started_at"`
-	CompletedAt      sql.NullTime `json:"completed_at"`
+	BackupID         uuid.NullUUID `json:"backup_id"`
+	TargetDatabaseID uuid.UUID     `json:"target_database_id"`
+	Status           string        `json:"status"`
+	ErrorCode        string        `json:"error_code"`
+	ErrorMessage     string        `json:"error_message"`
+	StartedAt        sql.NullTime  `json:"started_at"`
+	CompletedAt      sql.NullTime  `json:"completed_at"`
+	SourceType       string        `json:"source_type"`
+	SourceFilename   string        `json:"source_filename"`
+	SourceSize       int64         `json:"source_size"`
+	SourceChecksum   string        `json:"source_checksum"`
+	SourceFormat     string        `json:"source_format"`
+	UploadedBytes    int64         `json:"uploaded_bytes"`
 }
 
 func (q *Queries) CreateRestoreJob(ctx context.Context, arg CreateRestoreJobParams) (RestoreJob, error) {
@@ -175,6 +183,12 @@ func (q *Queries) CreateRestoreJob(ctx context.Context, arg CreateRestoreJobPara
 		arg.ErrorMessage,
 		arg.StartedAt,
 		arg.CompletedAt,
+		arg.SourceType,
+		arg.SourceFilename,
+		arg.SourceSize,
+		arg.SourceChecksum,
+		arg.SourceFormat,
+		arg.UploadedBytes,
 	)
 	var i RestoreJob
 	err := row.Scan(
@@ -187,6 +201,12 @@ func (q *Queries) CreateRestoreJob(ctx context.Context, arg CreateRestoreJobPara
 		&i.StartedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.SourceType,
+		&i.SourceFilename,
+		&i.SourceSize,
+		&i.SourceChecksum,
+		&i.SourceFormat,
+		&i.UploadedBytes,
 	)
 	return i, err
 }
@@ -197,6 +217,19 @@ DELETE FROM backup_configurations WHERE id = $1
 
 func (q *Queries) DeleteBackupConfiguration(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.ExecContext(ctx, deleteBackupConfiguration, id)
+	return err
+}
+
+const failAbandonedUploadRestores = `-- name: FailAbandonedUploadRestores :exec
+UPDATE restore_jobs
+SET status = 'failed', error_code = 'RESTORE_UPLOAD_INTERRUPTED',
+    error_message = 'restore upload was interrupted before completion', completed_at = now()
+WHERE status IN ('uploading', 'validating', 'ready')
+  AND created_at < $1
+`
+
+func (q *Queries) FailAbandonedUploadRestores(ctx context.Context, createdAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, failAbandonedUploadRestores, createdAt)
 	return err
 }
 
@@ -267,7 +300,8 @@ func (q *Queries) GetBackupJob(ctx context.Context, id uuid.UUID) (BackupJob, er
 
 const getRestoreJob = `-- name: GetRestoreJob :one
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
-       started_at, completed_at, created_at
+       started_at, completed_at, created_at, source_type, source_filename,
+       source_size, source_checksum, source_format, uploaded_bytes
 FROM restore_jobs
 WHERE id = $1
 `
@@ -285,6 +319,12 @@ func (q *Queries) GetRestoreJob(ctx context.Context, id uuid.UUID) (RestoreJob, 
 		&i.StartedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.SourceType,
+		&i.SourceFilename,
+		&i.SourceSize,
+		&i.SourceChecksum,
+		&i.SourceFormat,
+		&i.UploadedBytes,
 	)
 	return i, err
 }
@@ -573,7 +613,8 @@ func (q *Queries) ListEnabledBackupConfigurations(ctx context.Context) ([]ListEn
 
 const listRestoreJobsByTarget = `-- name: ListRestoreJobsByTarget :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
-       started_at, completed_at, created_at
+       started_at, completed_at, created_at, source_type, source_filename,
+       source_size, source_checksum, source_format, uploaded_bytes
 FROM restore_jobs
 WHERE target_database_id = $1
 ORDER BY created_at DESC
@@ -604,6 +645,12 @@ func (q *Queries) ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJo
 			&i.StartedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.SourceType,
+			&i.SourceFilename,
+			&i.SourceSize,
+			&i.SourceChecksum,
+			&i.SourceFormat,
+			&i.UploadedBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -620,7 +667,8 @@ func (q *Queries) ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJo
 
 const listRestoreJobsDue = `-- name: ListRestoreJobsDue :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
-       started_at, completed_at, created_at
+       started_at, completed_at, created_at, source_type, source_filename,
+       source_size, source_checksum, source_format, uploaded_bytes
 FROM restore_jobs
 WHERE status = 'queued'
 ORDER BY created_at
@@ -646,6 +694,12 @@ func (q *Queries) ListRestoreJobsDue(ctx context.Context, limit int32) ([]Restor
 			&i.StartedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.SourceType,
+			&i.SourceFilename,
+			&i.SourceSize,
+			&i.SourceChecksum,
+			&i.SourceFormat,
+			&i.UploadedBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -844,19 +898,27 @@ func (q *Queries) UpdateBackupJob(ctx context.Context, arg UpdateBackupJobParams
 
 const updateRestoreJob = `-- name: UpdateRestoreJob :one
 UPDATE restore_jobs
-SET status = $2, error_code = $3, error_message = $4, started_at = $5, completed_at = $6
+SET status = $2, error_code = $3, error_message = $4, started_at = $5, completed_at = $6,
+    source_filename = $7, source_size = $8, source_checksum = $9, source_format = $10,
+    uploaded_bytes = $11
 WHERE id = $1
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
-          started_at, completed_at, created_at
+          started_at, completed_at, created_at, source_type, source_filename,
+          source_size, source_checksum, source_format, uploaded_bytes
 `
 
 type UpdateRestoreJobParams struct {
-	ID           uuid.UUID    `json:"id"`
-	Status       string       `json:"status"`
-	ErrorCode    string       `json:"error_code"`
-	ErrorMessage string       `json:"error_message"`
-	StartedAt    sql.NullTime `json:"started_at"`
-	CompletedAt  sql.NullTime `json:"completed_at"`
+	ID             uuid.UUID    `json:"id"`
+	Status         string       `json:"status"`
+	ErrorCode      string       `json:"error_code"`
+	ErrorMessage   string       `json:"error_message"`
+	StartedAt      sql.NullTime `json:"started_at"`
+	CompletedAt    sql.NullTime `json:"completed_at"`
+	SourceFilename string       `json:"source_filename"`
+	SourceSize     int64        `json:"source_size"`
+	SourceChecksum string       `json:"source_checksum"`
+	SourceFormat   string       `json:"source_format"`
+	UploadedBytes  int64        `json:"uploaded_bytes"`
 }
 
 func (q *Queries) UpdateRestoreJob(ctx context.Context, arg UpdateRestoreJobParams) (RestoreJob, error) {
@@ -867,6 +929,11 @@ func (q *Queries) UpdateRestoreJob(ctx context.Context, arg UpdateRestoreJobPara
 		arg.ErrorMessage,
 		arg.StartedAt,
 		arg.CompletedAt,
+		arg.SourceFilename,
+		arg.SourceSize,
+		arg.SourceChecksum,
+		arg.SourceFormat,
+		arg.UploadedBytes,
 	)
 	var i RestoreJob
 	err := row.Scan(
@@ -879,6 +946,12 @@ func (q *Queries) UpdateRestoreJob(ctx context.Context, arg UpdateRestoreJobPara
 		&i.StartedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.SourceType,
+		&i.SourceFilename,
+		&i.SourceSize,
+		&i.SourceChecksum,
+		&i.SourceFormat,
+		&i.UploadedBytes,
 	)
 	return i, err
 }

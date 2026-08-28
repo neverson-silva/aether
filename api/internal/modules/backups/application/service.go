@@ -30,8 +30,14 @@ type DatabaseBackups struct {
 	Outbox       interface {
 		Enqueue(context.Context, events.Event, string) error
 	}
-	Timeout      time.Duration
-	Batch        int
+	UploadRoot     string
+	MaxUploadBytes int64
+	Timeout        time.Duration
+	Batch          int
+}
+
+type RestoreNotifier interface {
+	NotifyRestore(ctx context.Context, orgID, targetDBID, restoreID uuid.UUID, status string)
 }
 
 type DatabasesReader interface {
@@ -66,4 +72,10 @@ func (s *DatabaseBackups) batch() int {
 		return 20
 	}
 	return s.Batch
+}
+
+func (s *DatabaseBackups) notifyRestore(ctx context.Context, orgID, targetDBID, restoreID uuid.UUID, status string) {
+	if notifier, ok := s.Notifier.(RestoreNotifier); ok {
+		notifier.NotifyRestore(ctx, orgID, targetDBID, restoreID, status)
+	}
 }

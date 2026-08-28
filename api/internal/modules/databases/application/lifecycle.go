@@ -30,14 +30,25 @@ type ContainerRuntime interface {
 	Exec(ctx context.Context, containerID string, env []string, args ...string) (string, string, error)
 }
 
-var dbImages = map[domain.Engine]string{
-	domain.EnginePostgres: "docker.io/postgres:16",
-	domain.EngineMysql:    "docker.io/mysql:8.4",
-	domain.EngineMariaDB:  "docker.io/mariadb:11",
-	domain.EngineRedis:    "docker.io/redis:7",
-	domain.EngineMongoDB:  "docker.io/mongo:7",
-	domain.EngineMSSQL:    "mcr.microsoft.com/mssql/server:2022",
-	domain.EngineOracle:   "gvenzl/oracle-free:23",
+var dbImageRepositories = map[domain.Engine]string{
+	domain.EnginePostgres: "docker.io/postgres",
+	domain.EngineMysql:    "docker.io/mysql",
+	domain.EngineMariaDB:  "docker.io/mariadb",
+	domain.EngineRedis:    "docker.io/redis",
+	domain.EngineMongoDB:  "docker.io/mongo",
+	domain.EngineMSSQL:    "mcr.microsoft.com/mssql/server",
+	domain.EngineOracle:   "gvenzl/oracle-free",
+}
+
+func dbImage(engine domain.Engine, version string) string {
+	repository := dbImageRepositories[engine]
+	if repository == "" {
+		return ""
+	}
+	if version == "" {
+		version = defaultVersions[engine]
+	}
+	return repository + ":" + version
 }
 
 func dbEnv(db *domain.Database, pass string) []string {
@@ -82,7 +93,7 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 	if d.Runtime == nil {
 		return "", errors.New("database runtime not configured")
 	}
-	image := dbImages[db.Engine]
+	image := dbImage(db.Engine, db.Version)
 	if image == "" {
 		return "", fmt.Errorf("%w: unsupported engine %s", domain.ErrValidation, db.Engine)
 	}
@@ -200,7 +211,7 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 	dep := d.recordDeployment(ctx, db, trigger, deploydomain.StatusStarting, "", "")
 	if dep != nil {
 		d.appendDeployLog(dep.ID, "Deploying database '"+db.Name+"' ("+string(db.Engine)+")")
-		d.appendDeployLog(dep.ID, "Pulling image "+dbImages[db.Engine])
+		d.appendDeployLog(dep.ID, "Pulling image "+dbImage(db.Engine, db.Version))
 	}
 	containerID, err := d.deploy(ctx, db)
 	if err != nil {

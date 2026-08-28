@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -57,6 +58,14 @@ func (s *DatabaseBackups) RestorePreflight(ctx context.Context, backupID, target
 		result.Ready = false
 		result.Compatible = false
 	}
+	if engineOK {
+		versionErr := validateRestoreCompatibility(backup.Engine, backup.EngineVersion, target.Version)
+		result.Checks = append(result.Checks, check("Version compatibility", versionErr == nil, versionCheckMessage(backup.Engine, backup.EngineVersion, target.Version, versionErr)))
+		if versionErr != nil {
+			result.Ready = false
+			result.Compatible = false
+		}
+	}
 
 	provider, err := s.Destinations.GetProvider(ctx, backup.DestinationID, orgID)
 	if err != nil {
@@ -102,6 +111,16 @@ func (s *DatabaseBackups) RestorePreflight(ctx context.Context, backupID, target
 	}
 
 	return result, nil
+}
+
+func versionCheckMessage(engine, sourceVersion, targetVersion string, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	if sourceVersion == "" {
+		return "source version unavailable"
+	}
+	return fmt.Sprintf("%s %s → %s %s", displayEngine(engine), sourceVersion, displayEngine(engine), targetVersion)
 }
 
 func check(name string, ok bool, msg string) PreflightCheck {

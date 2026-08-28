@@ -98,6 +98,23 @@ func TestDatabaseValidation(t *testing.T) {
 	}
 }
 
+func TestDatabaseImageUsesSelectedVersion(t *testing.T) {
+	tests := []struct {
+		engine  domain.Engine
+		version string
+		image   string
+	}{
+		{domain.EnginePostgres, "17", "docker.io/postgres:17"},
+		{domain.EnginePostgres, "latest", "docker.io/postgres:latest"},
+		{domain.EngineMysql, "latest", "docker.io/mysql:latest"},
+	}
+	for _, test := range tests {
+		if got := dbImage(test.engine, test.version); got != test.image {
+			t.Fatalf("dbImage(%q, %q) = %q, want %q", test.engine, test.version, got, test.image)
+		}
+	}
+}
+
 func TestDatabaseIsolation(t *testing.T) {
 	e := newEnv(t)
 	db, _ := e.svc.Create(e.ctx, e.orgID, e.projectID, "db", domain.EngineRedis, "", "", "", 0, 0)

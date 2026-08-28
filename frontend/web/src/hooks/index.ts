@@ -177,6 +177,7 @@ export * from "./use-database-backup-now";
 export * from "./use-database-backups";
 export * from "./use-database-backup-cancel";
 export * from "./use-database-backup-restore";
+export * from "./use-database-upload-restore";
 export * from "./use-database-backup-preflight";
 export * from "./use-app-compose";
 export * from "./use-deployment-compose";

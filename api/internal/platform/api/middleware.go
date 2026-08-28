@@ -79,7 +79,7 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 func Timeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/api/v1/ws/") || (strings.Contains(path, "/backups/") && strings.HasSuffix(path, "/restore")) {
+		if strings.HasPrefix(path, "/api/v1/ws/") || (strings.Contains(path, "/backups/") && strings.HasSuffix(path, "/restore")) || strings.Contains(path, "/restores/") && strings.HasSuffix(path, "/upload") {
 			c.Next()
 			return
 		}

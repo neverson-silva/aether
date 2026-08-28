@@ -119,27 +119,34 @@ LIMIT $1;
 
 -- name: CreateRestoreJob :one
 INSERT INTO restore_jobs (
-    backup_id, target_database_id, status, error_code, error_message, started_at, completed_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    backup_id, target_database_id, status, error_code, error_message, started_at, completed_at,
+    source_type, source_filename, source_size, source_checksum, source_format, uploaded_bytes
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
-          started_at, completed_at, created_at;
+          started_at, completed_at, created_at, source_type, source_filename,
+          source_size, source_checksum, source_format, uploaded_bytes;
 
 -- name: GetRestoreJob :one
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
-       started_at, completed_at, created_at
+       started_at, completed_at, created_at, source_type, source_filename,
+       source_size, source_checksum, source_format, uploaded_bytes
 FROM restore_jobs
 WHERE id = $1;
 
 -- name: UpdateRestoreJob :one
 UPDATE restore_jobs
-SET status = $2, error_code = $3, error_message = $4, started_at = $5, completed_at = $6
+SET status = $2, error_code = $3, error_message = $4, started_at = $5, completed_at = $6,
+    source_filename = $7, source_size = $8, source_checksum = $9, source_format = $10,
+    uploaded_bytes = $11
 WHERE id = $1
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
-          started_at, completed_at, created_at;
+          started_at, completed_at, created_at, source_type, source_filename,
+          source_size, source_checksum, source_format, uploaded_bytes;
 
 -- name: ListRestoreJobsByTarget :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
-       started_at, completed_at, created_at
+       started_at, completed_at, created_at, source_type, source_filename,
+       source_size, source_checksum, source_format, uploaded_bytes
 FROM restore_jobs
 WHERE target_database_id = $1
 ORDER BY created_at DESC
@@ -147,7 +154,8 @@ LIMIT $2;
 
 -- name: ListRestoreJobsDue :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
-       started_at, completed_at, created_at
+       started_at, completed_at, created_at, source_type, source_filename,
+       source_size, source_checksum, source_format, uploaded_bytes
 FROM restore_jobs
 WHERE status = 'queued'
 ORDER BY created_at
@@ -168,3 +176,10 @@ SET status = 'queued', started_at = NULL, completed_at = NULL,
 WHERE status IN ('preparing', 'downloading', 'restoring', 'verifying', 'cancelling')
   AND started_at IS NOT NULL
   AND started_at < $1;
+
+-- name: FailAbandonedUploadRestores :exec
+UPDATE restore_jobs
+SET status = 'failed', error_code = 'RESTORE_UPLOAD_INTERRUPTED',
+    error_message = 'restore upload was interrupted before completion', completed_at = now()
+WHERE status IN ('uploading', 'validating', 'ready')
+  AND created_at < $1;

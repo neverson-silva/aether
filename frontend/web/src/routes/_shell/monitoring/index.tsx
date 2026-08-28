@@ -98,12 +98,17 @@ function DistributionCard({
   color,
   agg,
   detail,
+  loading,
 }: {
   title: string;
   color: string;
   agg: { cpu_of_host: number; mem_usage: number; net_rx_rate: number; net_tx_rate: number; storage_usage: number; available: boolean; running_count: number; count: number } | undefined;
   detail: string;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return <Skeleton variant="card" className="min-h-[14rem]" aria-label={`Loading ${title} metrics`} />;
+  }
   if (!agg || !agg.available) {
     return (
       <div className="flex min-h-[14rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
@@ -173,6 +178,10 @@ function ChartPanel({ title, subtitle, legend, children }: { title: string; subt
   );
 }
 
+function ChartSkeleton() {
+  return <Skeleton variant="card" className="h-36" aria-label="Loading monitoring chart" />;
+}
+
 function Monitoring() {
   const { snapshot, connected } = useMonitoring();
   const events = useHostEvents();
@@ -190,6 +199,7 @@ function Monitoring() {
   };
 
   const stats = snapshot?.host;
+  const loading = !snapshot || !stats;
   const points = history.data ?? [];
   const selected = useMemo(() => snapshot?.resources.find((r) => r.id === selectedId) ?? null, [snapshot, selectedId]);
 
@@ -300,18 +310,21 @@ function Monitoring() {
           color={COLORS.aether}
           agg={snapshot?.aether}
           detail={`${snapshot?.aether?.running_count ?? 0} active / ${snapshot?.aether?.count ?? 0} resources`}
+          loading={loading}
         />
         <DistributionCard
           title="User Workloads"
           color={COLORS.user}
           agg={snapshot?.user}
           detail={`${snapshot?.user?.running_count ?? 0} active / ${snapshot?.user?.count ?? 0} resources`}
+          loading={loading}
         />
         <DistributionCard
           title="System / unaccounted"
           color={COLORS.system}
           agg={snapshot?.system}
           detail="Host minus Aether and user attribution"
+          loading={loading}
         />
       </div>
       <p className="font-body-sm text-body-sm text-on-surface-variant/60 -mt-md">
@@ -352,14 +365,14 @@ function Monitoring() {
               { label: "User", color: COLORS.user },
             ]}
           >
-            <LineChart
+            {loading ? <ChartSkeleton /> : <LineChart
               unit={(v) => v.toFixed(0) + "%"}
               series={[
                 { name: "Host", color: COLORS.host, points: points.map((p) => p.host_cpu) },
                 { name: "Aether", color: COLORS.aether, points: points.map((p) => p.aether_cpu) },
                 { name: "User", color: COLORS.user, points: points.map((p) => p.user_cpu) },
               ]}
-            />
+            />}
           </ChartPanel>
           <ChartPanel
             title="Memory"
@@ -370,14 +383,14 @@ function Monitoring() {
               { label: "User", color: COLORS.user },
             ]}
           >
-            <LineChart
+            {loading ? <ChartSkeleton /> : <LineChart
               unit={(v) => v.toFixed(0) + "%"}
               series={[
                 { name: "Host", color: COLORS.host, points: points.map((p) => p.host_mem) },
                 { name: "Aether", color: COLORS.aether, points: points.map((p) => p.aether_mem_pct) },
                 { name: "User", color: COLORS.user, points: points.map((p) => p.user_mem_pct) },
               ]}
-            />
+            />}
           </ChartPanel>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-md mt-md">
@@ -389,13 +402,13 @@ function Monitoring() {
               { label: "Sent", color: COLORS.netTx },
             ]}
           >
-            <LineChart
+            {loading ? <ChartSkeleton /> : <LineChart
               unit={fmtRate}
               series={[
                 { name: "RX", color: COLORS.netRx, points: points.map((p) => p.net_rx) },
                 { name: "TX", color: COLORS.netTx, points: points.map((p) => p.net_tx) },
               ]}
-            />
+            />}
           </ChartPanel>
           <ChartPanel
             title="Distribution"
@@ -405,18 +418,18 @@ function Monitoring() {
               { label: "User", color: COLORS.user },
             ]}
           >
-            <LineChart
+            {loading ? <ChartSkeleton /> : <LineChart
               unit={(v) => v.toFixed(0) + "%"}
               series={[
                 { name: "Aether", color: COLORS.aether, points: points.map((p) => p.aether_cpu) },
                 { name: "User", color: COLORS.user, points: points.map((p) => p.user_cpu) },
               ]}
-            />
+            />}
           </ChartPanel>
         </div>
       </div>
 
-      <ResourcesTable resources={snapshot?.resources ?? []} selectedId={selectedId} onSelect={setSelectedId} />
+      <ResourcesTable loading={loading} resources={snapshot?.resources ?? []} selectedId={selectedId} onSelect={setSelectedId} />
 
       {selected && (
         <div className="bg-surface-container border border-outline-variant rounded-lg p-md">

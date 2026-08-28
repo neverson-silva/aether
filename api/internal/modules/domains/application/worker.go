@@ -45,7 +45,7 @@ func (w *ProvisionWorker) process(ctx context.Context) {
 
 func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 	alias := w.Provisioner.Alias(d.AppID, d.ServiceType)
-	if err := w.Provisioner.WriteDomainConfig(d, alias, false); err != nil {
+	if err := w.Provisioner.WriteDomainConfig(d, alias, d.HTTPS); err != nil {
 		w.scheduleRetry(ctx, d, err)
 		return
 	}

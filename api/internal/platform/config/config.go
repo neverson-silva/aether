@@ -67,6 +67,7 @@ type Config struct {
 	NATSPassword   string
 
 	StudioCacheTTLSeconds int
+	RestoreMaxUploadBytes int64
 
 	CnbBuilder string
 
@@ -167,6 +168,7 @@ func Load() (*Config, error) {
 		GitHubWebhookSecret:      os.Getenv("AETHER_GITHUB_WEBHOOK_SECRET"),
 		GitHubAPIURL:             envOr("AETHER_GITHUB_API_URL", "https://api.github.com"),
 		StudioCacheTTLSeconds:    envInt("AETHER_STUDIO_CACHE_TTL", 300),
+		RestoreMaxUploadBytes:    int64(envInt("AETHER_RESTORE_MAX_UPLOAD_BYTES", 0)),
 		CookieSecure:             envBool("AETHER_COOKIE_SECURE", false),
 	}
 	if cfg.ACMEDirectory == "" {

@@ -9,13 +9,13 @@ import { AdvancedSettings } from "./AdvancedSettings";
 import { Button, Dialog, Field, Input, NativeSelect, useToast } from "@aether/design-system";
 
 export const DB_ENGINES: { value: string; label: string; tagline: string; icon: string; versions: string[] }[] = [
-  { value: "postgres", label: "PostgreSQL", tagline: "Relational SQL", icon: "postgres", versions: ["16", "15", "14"] },
-  { value: "mysql", label: "MySQL", tagline: "Relational SQL", icon: "mysql", versions: ["8.4", "8.0", "8.4.3"] },
-  { value: "mariadb", label: "MariaDB", tagline: "MySQL compatible", icon: "mariadb", versions: ["11.4", "11.6", "10.11"] },
-  { value: "mongodb", label: "MongoDB", tagline: "NoSQL document", icon: "mongodb", versions: ["7.0", "6.0", "7.0.16"] },
-  { value: "redis", label: "Redis", tagline: "In-memory datastore", icon: "redis", versions: ["7.2", "7.4", "6.2"] },
-  { value: "mssql", label: "SQL Server", tagline: "Enterprise SQL", icon: "mssql", versions: ["2022", "2022-CU15", "2022-CU14"] },
-  { value: "oracle", label: "Oracle", tagline: "Enterprise SQL", icon: "oracle", versions: ["23", "23.3", "23.2"] },
+  { value: "postgres", label: "PostgreSQL", tagline: "Relational SQL", icon: "postgres", versions: ["17", "16", "15", "14", "latest"] },
+  { value: "mysql", label: "MySQL", tagline: "Relational SQL", icon: "mysql", versions: ["8.4", "8.0", "8.4.3", "latest"] },
+  { value: "mariadb", label: "MariaDB", tagline: "MySQL compatible", icon: "mariadb", versions: ["11.4", "11.6", "10.11", "latest"] },
+  { value: "mongodb", label: "MongoDB", tagline: "NoSQL document", icon: "mongodb", versions: ["7.0", "6.0", "7.0.16", "latest"] },
+  { value: "redis", label: "Redis", tagline: "In-memory datastore", icon: "redis", versions: ["7.2", "7.4", "6.2", "latest"] },
+  { value: "mssql", label: "SQL Server", tagline: "Enterprise SQL", icon: "mssql", versions: ["2022", "2022-CU15", "2022-CU14", "latest"] },
+  { value: "oracle", label: "Oracle", tagline: "Enterprise SQL", icon: "oracle", versions: ["23", "23.3", "23.2", "latest"] },
 ];
 
 const schema = z.object({
