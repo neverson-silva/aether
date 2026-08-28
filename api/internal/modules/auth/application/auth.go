@@ -69,7 +69,6 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*domain.User,
 	email = strings.ToLower(strings.TrimSpace(email))
 	user, err := a.Users.GetUserByEmail(ctx, email)
 	if err != nil {
-		println("DEBUG_LOGIN_GETUSER:", err.Error())
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, "", domain.ErrInvalidCredentials
 		}
@@ -80,7 +79,6 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*domain.User,
 	}
 	orgs, err := a.Orgs.ListOrgsForUser(ctx, user.ID)
 	if err != nil {
-		println("DEBUG_LOGIN_ORGS:", err.Error())
 		return nil, "", err
 	}
 	if len(orgs) == 0 {
@@ -96,6 +94,27 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*domain.User,
 		ResourceType: "user", ResourceID: user.ID.String(),
 	})
 	return user, token, nil
+}
+
+func (a *Auth) Refresh(ctx context.Context, raw string) (string, string, error) {
+	token, err := a.Tokens.Verify(ctx, raw)
+	if err != nil || token.Kind != "refresh" {
+		return "", "", domain.ErrUnauthorized
+	}
+	access, err := a.Tokens.Sign(ctx, token.Subject, token.OrgID, token.Role, token.Global, 10*time.Minute)
+	if err != nil {
+		return "", "", err
+	}
+	refresh, err := a.Tokens.SignRefresh(ctx, token.Subject, token.OrgID, token.Role, token.Global, 20*time.Minute)
+	return access, refresh, err
+}
+
+func (a *Auth) CreateRefresh(ctx context.Context, raw string) (string, error) {
+	token, err := a.Tokens.Verify(ctx, raw)
+	if err != nil {
+		return "", domain.ErrUnauthorized
+	}
+	return a.Tokens.SignRefresh(ctx, token.Subject, token.OrgID, token.Role, token.Global, 20*time.Minute)
 }
 
 func (a *Auth) SSOLogin(ctx context.Context, email, name string) (*domain.User, string, error) {

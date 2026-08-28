@@ -105,7 +105,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	svc := &authApp.Auth{
 		Users: store, Orgs: store, Members: store, Keys: store, AuditLog: store,
 		Tokens: infra.NewSigner(secret), Hash: infra.NewHasher(),
-		TokenTTL: 7 * 24 * time.Hour,
+		TokenTTL: 10 * time.Minute,
 	}
 	handler := authhttp.New(svc, cfg.CookieSecure)
 

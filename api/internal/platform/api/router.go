@@ -156,6 +156,7 @@ func (r *Router) routes() {
 	}
 	authRoutes.POST("/auth/register", r.auth.Register)
 	authRoutes.POST("/auth/login", r.auth.Login)
+	authRoutes.POST("/auth/refresh", r.auth.Refresh)
 	authRoutes.POST("/auth/logout", r.auth.Logout)
 	authRoutes.GET("/auth/status", r.auth.AuthStatus)
 	authRoutes.GET("/sso/public", r.settings.PublicSSO)

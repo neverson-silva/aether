@@ -28,7 +28,8 @@ const designIcon = (icon: typeof RocketLaunch) => icon as unknown as DesignIcon;
 
 function getDatabaseStatus(status: string): ServiceStatus {
   if (status === "ready") return "healthy";
-  if (["creating", "starting"].includes(status)) return "deploying";
+  if (status === "creating") return "unknown";
+  if (status === "starting") return "deploying";
   if (status === "failed") return "failed";
   return "unknown";
 }
@@ -52,6 +53,7 @@ function ServiceCard({
   port,
   memory,
   status,
+  label,
   kind,
 }: {
   href: string;
@@ -60,6 +62,7 @@ function ServiceCard({
   port: number;
   memory?: string;
   status: ServiceStatus;
+  label?: string;
   kind: "app" | "database";
 }) {
   const Icon = kind === "database" ? Database : Cube;
@@ -71,7 +74,7 @@ function ServiceCard({
             <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Icon size={22} weight="duotone" aria-hidden="true" />
             </span>
-            <RuntimeStatus status={status} live={status === "healthy" || status === "deploying"} />
+            <RuntimeStatus status={status} label={label} live={status === "healthy" || status === "deploying"} />
           </div>
           <div className="min-w-0 flex-1">
             <Typography as="h3" level="heading" truncate>{name}</Typography>
@@ -148,6 +151,7 @@ function Services() {
                 detail={`${database.engine} ${database.version}`}
                 port={database.port}
                 status={getDatabaseStatus(database.status)}
+                label={database.status === "creating" ? "Pending deployment" : undefined}
                 kind="database"
               />
             ))}

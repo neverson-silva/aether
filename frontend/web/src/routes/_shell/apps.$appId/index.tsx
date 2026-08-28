@@ -201,6 +201,7 @@ function AppDetail() {
   const { add } = useToast();
   const navigate = Route.useNavigate();
   const search = Route.useSearch();
+  const returnTo = search.returnTo || "/apps";
   const tab: Tab = search.tab ?? "overview";
   const setTab = (nextTab: Tab) => {
     void navigate({
@@ -473,7 +474,7 @@ function AppDetail() {
                 deleteApp.mutate(app.id, {
                   onSuccess: () => {
                     add({ title: "Application deleted", tone: "success" });
-                    window.location.href = `/projects/${app.project_id}`;
+                    window.location.href = returnTo;
                   },
                   onError: (e) =>
                     add({
@@ -1402,6 +1403,7 @@ function AppDetail() {
                     onSuccess: () => {
                       add({ title: "Service updated", tone: "success" });
                       setEditOpen(false);
+                      window.location.href = returnTo;
                     },
                     onError: (e) =>
                       add({
@@ -1428,6 +1430,7 @@ function AppDetail() {
 export const Route = createFileRoute("/_shell/apps/$appId/")({
   validateSearch: z.object({
     tab: z.enum(TABS).optional(),
+    returnTo: z.string().optional(),
   }),
   component: AppDetail,
 });

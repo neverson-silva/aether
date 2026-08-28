@@ -86,12 +86,14 @@ type payload struct {
 	Role string `json:"role"`
 	Glob string `json:"glob"`
 	Exp  int64  `json:"exp"`
+	Kind string `json:"kind"`
 }
 
 func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
 	body, err := json.Marshal(payload{
 		Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global,
-		Exp: time.Now().Add(ttl).Unix(),
+		Exp:  time.Now().Add(ttl).Unix(),
+		Kind: "access",
 	})
 	if err != nil {
 		return "", err
@@ -101,6 +103,17 @@ func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain
 	mac.Write([]byte(encoded))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return encoded + "." + sig, nil
+}
+
+func (s *Signer) SignRefresh(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	body, err := json.Marshal(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: time.Now().Add(ttl).Unix(), Kind: "refresh"})
+	if err != nil {
+		return "", err
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(body)
+	mac := hmac.New(sha256.New, s.secret)
+	mac.Write([]byte(encoded))
+	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
 func (s *Signer) Verify(ctx context.Context, token string) (*domain.AuthToken, error) {
@@ -138,6 +151,6 @@ func (s *Signer) Verify(ctx context.Context, token string) (*domain.AuthToken, e
 	}
 	return &domain.AuthToken{
 		Subject: sub, OrgID: org, Role: domain.Role(p.Role), Global: p.Glob,
-		Expires: time.Unix(p.Exp, 0),
+		Expires: time.Unix(p.Exp, 0), Kind: p.Kind,
 	}, nil
 }

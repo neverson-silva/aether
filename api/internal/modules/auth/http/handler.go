@@ -62,17 +62,20 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 	h.setAuthCookie(c, token)
+	refresh, err := h.auth.CreateRefresh(c.Request.Context(), token)
+	if err != nil {
+		abort(c, err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{
-		"token": token,
-		"user":  gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
+		"token": token, "refresh_token": refresh,
+		"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
 	})
 }
 
 func (h *Handler) Login(c *gin.Context) {
-	println("DEBUG_LOGIN_ENTER")
 	var req loginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		println("DEBUG_BIND_LOGIN:", err.Error())
 		abort(c, domain.ErrValidation)
 		return
 	}
@@ -82,10 +85,32 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 	h.setAuthCookie(c, token)
+	refresh, err := h.auth.CreateRefresh(c.Request.Context(), token)
+	if err != nil {
+		abort(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"user":  gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
+		"token": token, "refresh_token": refresh,
+		"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
 	})
+}
+
+func (h *Handler) Refresh(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrUnauthorized)
+		return
+	}
+	access, refresh, err := h.auth.Refresh(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	h.setAuthCookie(c, access)
+	c.JSON(http.StatusOK, gin.H{"token": access, "refresh_token": refresh})
 }
 
 func (h *Handler) Me(c *gin.Context) {
@@ -370,7 +395,7 @@ func (h *Handler) setAuthCookie(c *gin.Context, token string) {
 		sameSite = http.SameSiteNoneMode
 	}
 	c.SetSameSite(sameSite)
-	c.SetCookie("aether_token", token, 86400*7, "/", "", h.cookieSecure, true)
+	c.SetCookie("aether_token", token, 600, "/", "", h.cookieSecure, true)
 }
 
 func abort(c *gin.Context, err error) {

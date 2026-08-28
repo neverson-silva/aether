@@ -423,7 +423,7 @@ function ProjectDetail() {
                       className="absolute bottom-3 left-3 z-10 size-4 accent-primary"
                     />
                     <Link
-                      to={target}
+                      to={`${target}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
                       className="group flex min-w-0 flex-col items-start gap-sm rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-md pb-10 pt-5 transition-colors hover:border-primary/50 hover:bg-surface-container-high/40"
                       title={`Open ${svc.name}`}
                     >
@@ -454,7 +454,7 @@ function ProjectDetail() {
       />
 
       <CreateServiceLauncher open={createOpen} onClose={() => setCreateOpen(false)} fixedProjectId={projectId} fixedEnvironmentId={selected ?? undefined} />
-      <DatabaseWizard open={dbCreateOpen} onClose={() => setDbCreateOpen(false)} fixedProjectId={projectId} />
+      <DatabaseWizard open={dbCreateOpen} onClose={() => setDbCreateOpen(false)} fixedProjectId={projectId} onCreated={(databaseId) => { window.location.href = `/databases/${databaseId}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`; }} />
 
       <Dialog open={renameTarget !== null} trigger={<span />} onOpenChange={(value) => { if (!value) setRenameTarget(null); }} title="Rename service">
         <div className="space-y-5">

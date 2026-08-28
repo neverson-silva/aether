@@ -94,6 +94,7 @@ type AuthToken struct {
 	Role    Role
 	Global  string
 	Expires time.Time
+	Kind    string
 }
 
 type AuditEvent struct {

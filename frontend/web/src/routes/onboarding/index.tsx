@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle, Code, Database, Eye, EyeSlash, GithubLogo, Lightning, LockKey, RocketLaunch, UserCircle } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
 import { Badge, Button, Checkbox, Field, Input, Progress, Typography, useToast } from "@aether/design-system";
-import { api, apiGet, getServer, setToken } from "../../api/client";
+import { api, apiGet, getServer, setRefreshToken, setToken } from "../../api/client";
 
 const signupSchema = z.object({
   name: z.string().min(2, "Name is required"),
@@ -57,8 +57,9 @@ function Onboarding() {
 
   const submit = async (values: SignupForm) => {
     try {
-      const response = await api<{ token: string }>("/api/v1/auth/register", { method: "POST", body: { name: values.name, email: values.email, password: values.password } });
+      const response = await api<{ token: string; refresh_token: string }>("/api/v1/auth/register", { method: "POST", body: { name: values.name, email: values.email, password: values.password } });
       setToken(response.token);
+      setRefreshToken(response.refresh_token);
       add({ title: "Account created", tone: "success" });
       await navigate({ to: "/" });
     } catch (error) {

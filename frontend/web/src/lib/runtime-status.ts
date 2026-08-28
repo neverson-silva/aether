@@ -1,6 +1,6 @@
 import type { RuntimeStatusValue } from "@aether/design-system";
 
-const deployingStates = ["queued", "building", "starting", "health_checking", "creating", "provisioning", "syncing"];
+const deployingStates = ["queued", "building", "starting", "health_checking", "provisioning", "syncing"];
 const failedStates = ["failed", "cancelled", "rolled_back", "error", "dead"];
 const offlineStates = ["stopped", "exited", "no_container", "offline", "disabled"];
 

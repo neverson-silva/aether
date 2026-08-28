@@ -32,7 +32,7 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine }: { open: boolean; onClose: () => void; fixedProjectId?: string; initialEngine?: string }) {
+export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine, onCreated }: { open: boolean; onClose: () => void; fixedProjectId?: string; initialEngine?: string; onCreated?: (databaseId: string) => void }) {
   const { data: projects } = useProjects();
   const createDb = useCreateDatabase();
   const { add } = useToast();
@@ -56,7 +56,7 @@ export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine }:
 
   const submit = async (values: FormValues) => {
     try {
-      await createDb.mutateAsync({
+      const database = await createDb.mutateAsync({
         project_id: values.project_id,
         name: values.name,
         engine: values.engine,
@@ -66,7 +66,8 @@ export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine }:
         mem_mb: memMB,
         storage_mb: storageMB,
       });
-      add({ title: "Deploy it manually from the service page", tone: "info" });
+      add({ title: "Database created", tone: "success" });
+      onCreated?.(database.id);
       onClose();
       reset();
     } catch (err) {

@@ -7,9 +7,56 @@ fi
 set -euo pipefail
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
-info()  { echo -e "${GREEN}[aether]${NC} $*" >&2; }
-warn()  { echo -e "${YELLOW}[aether]${NC} $*" >&2; }
-fail()  { echo -e "${RED}[aether]${NC} $*" >&2; exit 1; }
+info()  { echo -e "${GREEN}[aether]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[aether]${NC} $*"; }
+fail()  { progress_stop; echo -e "${RED}[aether]${NC} $*"; exit 1; }
+
+PROGRESS_ENABLED=0
+PROGRESS_CURRENT=0
+PROGRESS_TOTAL=1
+PROGRESS_STARTED=0
+PROGRESS_LABEL=""
+
+progress_start() {
+  PROGRESS_STARTED="$(date +%s)"
+  if [[ -t 1 && -z "${AETHER_PLAIN_OUTPUT:-}" ]]; then
+    PROGRESS_ENABLED=1
+  fi
+}
+
+progress_render() {
+  [[ "$PROGRESS_ENABLED" -eq 1 ]] || return 0
+  local width=28 filled remaining percent elapsed
+  filled=$((PROGRESS_CURRENT * width / PROGRESS_TOTAL))
+  remaining=$((width - filled))
+  percent=$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))
+  elapsed=$(( $(date +%s) - PROGRESS_STARTED ))
+  printf '\r\033[2K  [%3d%%] %s  (%02dm %02ds)' "$percent" "$PROGRESS_LABEL" "$((elapsed / 60))" "$((elapsed % 60))"
+}
+
+progress_step() {
+  PROGRESS_CURRENT="$1"
+  PROGRESS_LABEL="$2"
+  if [[ "$PROGRESS_ENABLED" -eq 1 ]]; then
+    progress_render
+  else
+    info "[$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))%] $PROGRESS_LABEL"
+  fi
+}
+
+progress_finish() {
+  progress_render
+  if [[ "$PROGRESS_ENABLED" -eq 1 ]]; then
+    printf '\n'
+  fi
+}
+
+progress_stop() {
+  if [[ "$PROGRESS_ENABLED" -eq 1 ]]; then
+    printf '\n'
+    PROGRESS_ENABLED=0
+  fi
+}
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${AETHER_ENV_FILE:-$PROJECT_ROOT/.env}"
@@ -52,6 +99,7 @@ DEV_MODE="${DEV_MODE:-false}"
 MODE="${AETHER_MODE:-dev}"
 CRED_FILE="$STATE_DIR/.aether-db"
 HOST_LOG="$STATE_DIR/logs/host-setup.log"
+INSTALL_LOG="${AETHER_INSTALL_LOG:-$STATE_DIR/logs/installer.log}"
 FORCE_API_RECREATE=0
 
 is_true() {
@@ -147,13 +195,13 @@ ensure_podman_machine() {
     info "Podman machine already exists."
   else
     info "Creating Podman machine..."
-    podman machine init || fail "podman machine init failed"
+    podman machine init >/dev/null || fail "The application environment could not be initialized."
   fi
   local state
   state="$(podman machine inspect --format '{{.State}}' 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
   if [[ "$state" != "running" ]]; then
     info "Starting Podman machine..."
-    podman machine start || fail "podman machine start failed"
+    podman machine start >/dev/null || fail "The application environment could not be started."
   fi
   info "Podman machine: $(podman machine inspect --format '{{.Name}} {{.State}}' 2>/dev/null || podman info --format '{{.Host.Arch}}')"
 
@@ -166,7 +214,7 @@ ensure_podman_machine() {
   fi
 
   # Permite o Traefik (rootless) expor as portas 80/443.
-  podman machine ssh -- "sudo sh -c 'echo net.ipv4.ip_unprivileged_port_start=80 > /etc/sysctl.d/80-unpriv-ports.conf' && sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80" 2>/dev/null \
+  podman machine ssh -- "sudo sh -c 'echo net.ipv4.ip_unprivileged_port_start=80 > /etc/sysctl.d/80-unpriv-ports.conf' && sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80" >/dev/null 2>/dev/null \
     || true
 }
 
@@ -475,15 +523,15 @@ PG_PORT='$PG_PORT'
 NATS_PORT='$NATS_PORT'
 EOF
   chmod 600 "$CRED_FILE"
-  info "Database credentials generated automatically (saved to $CRED_FILE, 0600)."
+  info "Application data credentials initialized securely."
 }
 
 ensure_network() {
   if ! $RUNTIME network exists "$NET_NAME" 2>/dev/null; then
-    info "Creating podman network '$NET_NAME'..."
+    info "Preparing the application network..."
     $RUNTIME network create "$NET_NAME" >/dev/null
   else
-    info "Podman network '$NET_NAME' already exists."
+    info "Application network already prepared."
   fi
 }
 
@@ -530,7 +578,7 @@ ensure_postgres() {
       && info "Password synced in PostgreSQL." \
       || warn "Could not sync the password — check the container."
   else
-    info "Creating PostgreSQL ($PG_IMAGE) with user '$DB_USER'..."
+    info "Initializing application data storage..."
     $runtime run -d \
       --name "$PG_CONTAINER" \
       --network "$NET_NAME" \
@@ -542,7 +590,7 @@ ensure_postgres() {
       -v aether-pg-data:/var/lib/postgresql/data \
       --restart unless-stopped \
       "$PG_IMAGE" >/dev/null
-    info "PostgreSQL started on 127.0.0.1:$PG_PORT (database '$DB_NAME')."
+    info "Application data storage started."
   fi
 
   info "Waiting for PostgreSQL to become healthy..."
@@ -552,13 +600,13 @@ ensure_postgres() {
     [[ $tries -gt 60 ]] && fail "PostgreSQL did not become ready in 60s."
     sleep 2
   done
-  info "PostgreSQL ready."
+  info "Application data storage ready."
 }
 
 ensure_nats() {
 	ensure_nats_auth
 	if [[ -n "${AETHER_NATS_URL:-}" ]]; then
-    info "NATS already configured at $AETHER_NATS_URL — reusing."
+    info "Application messaging already configured — reusing existing configuration."
     NATS_URL_EFFECTIVE="$AETHER_NATS_URL"
     return 0
   fi
@@ -584,12 +632,12 @@ ensure_nats() {
     fi
   fi
   if [[ -n "$exists" ]]; then
-    info "NATS already exists ($NATS_CONTAINER) — using the existing one."
+    info "Application messaging already prepared — reusing the existing service."
     local running
     running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$NATS_CONTAINER" || true)"
     [[ "$running" -eq 0 ]] && $runtime start "$NATS_CONTAINER"
   else
-    info "Creating NATS with JetStream ($NATS_IMAGE)..."
+    info "Preparing application messaging..."
     $runtime run -d \
       --name "$NATS_CONTAINER" \
       --network "$NET_NAME" \
@@ -609,7 +657,7 @@ ensure_nats() {
   done
   export AETHER_NATS_URL="nats://$NATS_CONTAINER:4222"
   NATS_URL_EFFECTIVE="$AETHER_NATS_URL"
-  info "NATS ready (container $NATS_CONTAINER)."
+  info "Application messaging ready."
 }
 
 ensure_nats_auth() {
@@ -636,9 +684,9 @@ ensure_master_key() {
   local keydir="$STATE_DIR/keys"
   local keyfile="$keydir/master.key"
   if [[ -f "$keyfile" ]]; then
-    info "Master key found at $keyfile — reusing (never overwrites)."
+    info "Security credentials already initialized — preserving existing credentials."
   else
-    info "Generating master key (AES-256) at $keyfile..."
+    info "Initializing secure application credentials..."
     mkdir -p "$keydir"
     umask 077
     if command_exists openssl; then
@@ -648,7 +696,7 @@ ensure_master_key() {
       printf '\n' >> "$keyfile"
     fi
     chmod 600 "$keyfile"
-    info "Master key generated (0600). It is NEVER stored in the database."
+    info "Secure application credentials initialized."
   fi
 }
 
@@ -657,11 +705,11 @@ ensure_master_key() {
 build_api_image() {
   [[ -f "$PROJECT_ROOT/infra/Dockerfile" ]] || fail "Dockerfile not found. Run from inside the project directory."
   [[ -f "$PROJECT_ROOT/api/cmd/api/main.go" ]] || fail "API source not found in ./api/cmd/api."
-  info "Building the API image ($API_IMAGE)..."
-  info "  (Go build + runtime — all inside a container)"
+  info "Preparing the application services..."
+  mkdir -p "$(dirname "$INSTALL_LOG")"
   $RUNTIME build -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT" \
-    || fail "Image build failed."
-  info "  ✓ image built: $API_IMAGE"
+    >>"$INSTALL_LOG" 2>&1 || fail "The application services could not be prepared."
+  info "Application services prepared."
 }
 
 ensure_web_image() {
@@ -680,13 +728,14 @@ ensure_web_image() {
       mv "$backup_env" "$build_env"
     fi
   }
-  info "Building the web image ($WEB_IMAGE)..."
-  if ! $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT"; then
+  info "Preparing the application interface..."
+  mkdir -p "$(dirname "$INSTALL_LOG")"
+  if ! $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" >>"$INSTALL_LOG" 2>&1; then
     cleanup_web_build_env
-    fail "Web image build failed."
+    fail "The application interface could not be prepared."
   fi
   cleanup_web_build_env
-  info "  ✓ image built: $WEB_IMAGE"
+  info "Application interface prepared."
 }
 
 api_exists() {
@@ -985,7 +1034,8 @@ ensure_builder() {
     return 0
   fi
   info "Building CNB builder ($CNB_BUILDER) — aether buildpacks + ubuntu run image..."
-  bash "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" || fail "CNB builder build failed."
+  mkdir -p "$(dirname "$INSTALL_LOG")"
+  bash "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" >>"$INSTALL_LOG" 2>&1 || fail "The application build environment could not be prepared."
   $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$builder_stamp"
@@ -1106,6 +1156,11 @@ EOF
 
 main() {
   banner
+  progress_start
+  PROGRESS_TOTAL=7
+  if [[ "${1:-install}" == "update" && -z "${AETHER_INSTALL_LOG:-}" ]]; then
+    INSTALL_LOG="$STATE_DIR/logs/updater.log"
+  fi
   export AETHER_PUBLIC_HOST="$(resolve_public_host)"
   export AETHER_PUBLIC_URL="$(resolve_public_url)"
   export AETHER_API_PUBLIC_URL="http://$AETHER_PUBLIC_HOST:$API_PORT"
@@ -1152,35 +1207,36 @@ main() {
       ;;
   esac
 
-  info "1/6 Checking the system..."
+  progress_step 1 "Checking your system"
   ensure_runtime
 
-  info "2/6 Preparing directories and keys..."
+  progress_step 2 "Securing application data"
   ensure_master_key
 
-  info "3/6 Setting up containers (network, postgres, NATS)..."
+  progress_step 3 "Preparing application services"
   ensure_network
   ensure_postgres
   ensure_nats
 
-  info "3.5/6 Setting up registry + CNB builder..."
+  progress_step 4 "Preparing the application build environment"
   ensure_registry
   ensure_builder
 
-  info "4/6 Building the API and frontend images..."
+  progress_step 5 "Preparing the application"
   build_api_image
   ensure_web_image
 
-  info "5/6 Starting the host agent + API container..."
+  progress_step 6 "Starting Aether"
   start_agent
   FORCE_API_RECREATE=1
   start_api
   start_workers
   start_web
 
-  info "6/6 Verifying the installation..."
+  progress_step 7 "Verifying the installation"
   status_cmd
 
+  progress_finish
   info "Finalizing..."
   echo
   echo -e "${GREEN}┌──────────────────────────────────────────────────────────────┐${NC}"
@@ -1188,10 +1244,8 @@ main() {
   echo -e "${GREEN}└──────────────────────────────────────────────────────────────┘${NC}"
   echo
   echo -e "  API:      ${CYAN}$AETHER_API_PUBLIC_URL${NC}"
-  echo -e "  Web:      ${CYAN}$AETHER_PUBLIC_URL${NC} (nginx container)"
-  echo -e "  State:    $STATE_DIR"
+  echo -e "  Web:      ${CYAN}$AETHER_PUBLIC_URL${NC}"
   echo -e "  Logs:     ${CYAN}./install-dev.sh logs${NC}"
-  echo -e "  Host log: $HOST_LOG (instalação/configuração do host)"
   echo
   echo -e "  Commands:"
   echo -e "    ${CYAN}./install-dev.sh start${NC}   — start everything (containers)"
@@ -1199,8 +1253,8 @@ main() {
   echo -e "    ${CYAN}./install-dev.sh status${NC}  — check the status"
   echo -e "    ${CYAN}./install-dev.sh logs${NC}    — follow the API logs"
   echo
-  echo -e "  Everything (API, frontend, postgres, NATS) runs in podman containers."
-  echo -e "  podman is the only tool required on this host."
+  echo -e "  Aether is ready to use."
 }
 
-main "$@"
+mkdir -p "$(dirname "$INSTALL_LOG")"
+main "$@" 2>>"$INSTALL_LOG"

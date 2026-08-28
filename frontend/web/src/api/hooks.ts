@@ -9,6 +9,7 @@ import {
   apiPut,
   getServer,
   setServer,
+  setRefreshToken,
   setToken,
 } from "./client";
 import type {
@@ -69,6 +70,7 @@ export function useLogin() {
         password,
       });
       setToken(data.token);
+      setRefreshToken(data.refresh_token);
       return data;
     },
   });

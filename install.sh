@@ -6,6 +6,7 @@ readonly REPOSITORY_REF="${AETHER_REPOSITORY_REF:-main}"
 readonly INSTALL_DIR="${AETHER_INSTALL_DIR:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/opt/aether'; else printf '%s/.local/share/aether' "$HOME"; fi)}"
 readonly DEFAULT_STATE_DIR="${AETHER_STATE:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/var/lib/aether'; else printf '%s/.aether' "$HOME"; fi)}"
 readonly ENV_FILE="${AETHER_ENV_FILE:-$DEFAULT_STATE_DIR/.env}"
+INSTALL_LOG="${AETHER_INSTALL_LOG:-$DEFAULT_STATE_DIR/logs/installer.log}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -20,10 +21,11 @@ fail() { echo -e "${RED}[aether]${NC} $*" >&2; exit 1; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 run_root() {
+  mkdir -p "$(dirname "$INSTALL_LOG")"
   if [[ "$(id -u)" -eq 0 ]]; then
-    "$@"
+    "$@" >>"$INSTALL_LOG" 2>&1
   elif command_exists sudo; then
-    sudo "$@"
+    sudo "$@" >>"$INSTALL_LOG" 2>&1
   else
     fail "Root privileges are required to install system dependencies. Install sudo or run this script as root."
   fi
@@ -115,14 +117,14 @@ prepare_install_dir() {
     remote="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || true)"
     [[ "$remote" == "$REPOSITORY_URL" || "$remote" == "${REPOSITORY_URL%.git}" ]] || fail "Existing directory has a different Git remote: $remote"
     [[ -z "$(git -C "$INSTALL_DIR" status --porcelain)" ]] || fail "Existing Aether checkout has local changes: $INSTALL_DIR"
-    info "Updating Aether checkout in $INSTALL_DIR."
-    git -C "$INSTALL_DIR" fetch --depth 1 origin "$REPOSITORY_REF"
-    git -C "$INSTALL_DIR" checkout -B "$REPOSITORY_REF" "origin/$REPOSITORY_REF"
+    info "Preparing the latest application version."
+    git -C "$INSTALL_DIR" fetch --depth 1 origin "$REPOSITORY_REF" >>"$INSTALL_LOG" 2>&1
+    git -C "$INSTALL_DIR" checkout -B "$REPOSITORY_REF" "origin/$REPOSITORY_REF" >>"$INSTALL_LOG" 2>&1
   elif [[ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
     fail "Install directory is not an Aether Git checkout and is not empty: $INSTALL_DIR"
   else
-    info "Cloning Aether from $REPOSITORY_URL into $INSTALL_DIR."
-    git clone --depth 1 --branch "$REPOSITORY_REF" "$REPOSITORY_URL" "$INSTALL_DIR"
+    info "Downloading the application."
+    git clone --depth 1 --branch "$REPOSITORY_REF" "$REPOSITORY_URL" "$INSTALL_DIR" >>"$INSTALL_LOG" 2>&1
   fi
 }
 
@@ -132,7 +134,7 @@ preserve_install_configuration() {
     mkdir -p "$(dirname "$ENV_FILE")"
     cp -p "$checkout_env" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
-    info "Preserved installation configuration in $ENV_FILE."
+    info "Existing application configuration preserved."
   fi
 }
 
@@ -183,6 +185,10 @@ main() {
       ;;
   esac
 
+  if [[ "$command" == "update" && -z "${AETHER_INSTALL_LOG:-}" ]]; then
+    INSTALL_LOG="$DEFAULT_STATE_DIR/logs/updater.log"
+  fi
+
   validate_host
   install_bootstrap_dependencies
   configure_runtime_socket
@@ -193,8 +199,8 @@ main() {
   if [[ "$command" == "update" ]]; then
     command="install"
   fi
-  info "Running Aether production installer from $INSTALL_DIR."
-  info "State is kept outside the checkout at $DEFAULT_STATE_DIR."
+  export AETHER_INSTALL_LOG="$INSTALL_LOG"
+  info "Preparing the Aether installation."
   run_development_installer "$command"
   if [[ "$command" == "install" || "$command" == "start" ]]; then
     cleanup_install_dir
