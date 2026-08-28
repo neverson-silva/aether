@@ -422,8 +422,8 @@ function ProjectDetail() {
                       aria-label={`Select ${svc.name}`}
                       className="absolute bottom-3 left-3 z-10 size-4 accent-primary"
                     />
-                    <Link
-                      to={`${target}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+                    <a
+                      href={`${target}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
                       className="group flex min-w-0 flex-col items-start gap-sm rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-md pb-10 pt-5 transition-colors hover:border-primary/50 hover:bg-surface-container-high/40"
                       title={`Open ${svc.name}`}
                     >
@@ -436,7 +436,7 @@ function ProjectDetail() {
                         <span className="block truncate font-code-md text-code-md text-on-surface-variant/60">{sub}{!isCompose && ` · :${svc.port}`}</span>
                       </span>
                       <span className="self-end text-on-surface-variant/30 transition-colors group-hover:text-primary">→</span>
-                    </Link>
+                    </a>
                   </div>
                 );
               })}
