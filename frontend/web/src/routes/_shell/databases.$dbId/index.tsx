@@ -105,7 +105,7 @@ function DatabaseDetail() {
           <div className="flex flex-wrap items-center gap-3 mb-2">
             <TechIcon name={db?.engine} size={32} className="text-primary shrink-0" />
             <h2 className="font-display-lg text-[clamp(1.5rem,4vw,3rem)] leading-[1.1] text-on-surface truncate">{db?.name ?? "Database"}</h2>
-            {db && <RuntimeStatus status={runtimeStatus} live={isRuntimeLive(runtimeStatus)} />}
+            {db && <RuntimeStatus status={runtimeStatus} label={db.status === "creating" ? "Pending deployment" : undefined} live={isRuntimeLive(runtimeStatus)} />}
           </div>
           <p className="font-body-md text-body-md text-on-surface-variant">
             {db?.engine} {db?.version} · port :{db?.port}
@@ -255,7 +255,7 @@ function DatabaseDetail() {
             <div className="bg-surface border border-outline-variant rounded-xl p-6">
               <h3 className="font-label-caps text-label-caps text-on-surface-variant mb-4 uppercase">Status</h3>
               <div className="flex items-center gap-md">
-                <RuntimeStatus status={runtimeStatus} live={isRuntimeLive(runtimeStatus)} />
+                <RuntimeStatus status={runtimeStatus} label={db?.status === "creating" ? "Pending deployment" : undefined} live={isRuntimeLive(runtimeStatus)} />
               <Button variant="ghost" onClick={() => void reloadStats()} loading={loadingStats} disabled={loadingStats}>
                   Refresh
                 </Button>
