@@ -166,6 +166,7 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 			continue
 		}
 		if job.Type == "service-deploy" {
+			w.logInfo(ctx, "service deployment job received", "job_id", job.ID, "service_id", job.AppID)
 			stopProgress := queue.StartProgress(ctx, consumer, job)
 			if w.ServiceDeploy == nil {
 				stopProgress()
@@ -178,7 +179,8 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				SpecID    string `json:"spec_id"`
 				OrgID     string `json:"org_id"`
 			}
-			if json.Unmarshal(job.Payload, &payload) != nil {
+			if err := json.Unmarshal(job.Payload, &payload); err != nil {
+				w.log(ctx, "decode service deployment job", err)
 				stopProgress()
 				_ = consumer.Ack(ctx, job)
 				continue
@@ -187,11 +189,13 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 			specID, specErr := uuid.Parse(payload.SpecID)
 			orgID, orgErr := uuid.Parse(payload.OrgID)
 			if serviceErr != nil || specErr != nil || orgErr != nil {
+				w.log(ctx, "parse service deployment job identifiers", fmt.Errorf("service=%q spec=%q org=%q", payload.ServiceID, payload.SpecID, payload.OrgID))
 				stopProgress()
 				_ = consumer.Ack(ctx, job)
 				continue
 			}
 			if err := w.ServiceDeploy(ctx, payload.Kind, serviceID, specID, orgID); err != nil {
+				w.log(ctx, "process service deployment job", err)
 				stopProgress()
 				_ = consumer.Nack(ctx, job)
 			} else {
@@ -863,6 +867,12 @@ func (w *Worker) appendLog(dep *deploydomain.Deployment, line string) {
 func (w *Worker) log(ctx context.Context, msg string, err error) {
 	if w.Logger != nil {
 		w.Logger.Error(msg, "err", err)
+	}
+}
+
+func (w *Worker) logInfo(ctx context.Context, msg string, args ...any) {
+	if w.Logger != nil {
+		w.Logger.InfoContext(ctx, msg, args...)
 	}
 }
 

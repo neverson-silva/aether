@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -584,7 +585,13 @@ func (h *Handler) enqueueServiceDeployment(ctx context.Context, serviceID, specI
 	if err != nil {
 		return err
 	}
-	return h.deploymentQueue.Enqueue(ctx, "deployments", queue.Job{ID: uuid.NewString(), Type: "service-deploy", Payload: payload, OrgID: organizationID.String(), AppID: specID.String()})
+	job := queue.Job{ID: uuid.NewString(), Type: "service-deploy", Payload: payload, OrgID: organizationID.String(), AppID: specID.String()}
+	if err := h.deploymentQueue.Enqueue(ctx, "deployments", job); err != nil {
+		slog.Error("service deployment job enqueue failed", "error", err, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
+		return err
+	}
+	slog.Info("service deployment job enqueued", "job_id", job.ID, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
+	return nil
 }
 
 func (h *Handler) Timeline(c *gin.Context) {
@@ -852,7 +859,7 @@ func (h *Handler) Deployments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
-	kind, specID, err := h.resolve(c, id)
+	_, _, err = h.resolve(c, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
@@ -882,23 +889,6 @@ ORDER BY d.number DESC LIMIT 50`, id)
 	if err := rows.Err(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
-	}
-	if kind == string(servicedomain.KindCompose) && len(result) == 0 {
-		status := "ready"
-		var composeStatus string
-		if statusErr := h.db.QueryRow(c.Request.Context(), `SELECT status FROM compose_apps WHERE id = $1`, specID).Scan(&composeStatus); statusErr == nil {
-			switch composeStatus {
-			case "pending":
-				status = "queued"
-			case "deploying":
-				status = "starting"
-			case "stopped":
-				status = "cancelled"
-			case "error":
-				status = "failed"
-			}
-		}
-		result = append(result, gin.H{"id": id, "service_id": id, "number": 1, "status": status, "created_at": nil, "started_at": nil, "finished_at": nil})
 	}
 	c.JSON(http.StatusOK, result)
 }
