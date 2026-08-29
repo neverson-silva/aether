@@ -325,6 +325,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Apps:  appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
 		Log: eventLog, Notifications: notificationsSvc,
 	}
+	servicesHandler.WithNotifier(realtimeSvc)
 	databasesSvc.Notifier = realtimeSvc
 	databasesStudio.Cache = rtRuntime.Cache
 	databasesStudio.CatalogTTL = time.Duration(cfg.StudioCacheTTLSeconds) * time.Second

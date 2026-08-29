@@ -80,6 +80,16 @@ type Handler struct {
 	}
 	logsDir         string
 	deploymentQueue queue.Queue
+	notifier        interface {
+		NotifyDeploy(context.Context, deploydomain.DeployEvent)
+	}
+}
+
+func (h *Handler) WithNotifier(notifier interface {
+	NotifyDeploy(context.Context, deploydomain.DeployEvent)
+}) *Handler {
+	h.notifier = notifier
+	return h
 }
 
 type composeRuntime struct {
@@ -608,6 +618,9 @@ RETURNING id`, specID, serviceID, kind).Scan(&deploymentID)
 		return uuid.Nil, err
 	}
 	slog.Info("service deployment job enqueued", "job_id", job.ID, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
+	if h.notifier != nil {
+		h.notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{ServiceID: serviceID, DepID: deploymentID, Status: string(deploydomain.StatusQueued)})
+	}
 	return deploymentID, nil
 }
 

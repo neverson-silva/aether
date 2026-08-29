@@ -50,7 +50,7 @@ function notificationVisual(type: string) {
 
 function isNotifiable(type: string): boolean {
   if (type.startsWith("deploy.")) {
-    return ["deploy.queued", "deploy.ready", "deploy.failed", "deploy.rolled_back", "deploy.cancelled"].includes(type);
+		return ["deploy.queued", "deploy.starting", "deploy.failed", "deploy.ready", "deploy.rolled_back", "deploy.cancelled"].includes(type);
   }
   return (
     type.startsWith("backup.") ||

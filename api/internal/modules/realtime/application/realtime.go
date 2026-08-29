@@ -311,7 +311,7 @@ func deployMessage(appName string, event deploydomain.DeployEvent) string {
 	}
 	switch event.Status {
 	case "queued":
-		return "Deploy of " + appName + " started"
+		return "Deploy of " + appName + " queued"
 	case "building":
 		return "Building " + appName
 	case "starting":
