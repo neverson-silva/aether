@@ -111,7 +111,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
               )}
             </div>
           )}
-          <ComposeEditor value={content} onChange={setContent} />
+          {sourceMode === "editor" ? <ComposeEditor value={content} onChange={setContent} /> : null}
         </div>
 
         <div className="flex justify-between border-t border-outline-variant pt-lg">

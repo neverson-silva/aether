@@ -1,11 +1,13 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { z } from "zod";
 import Editor from "@monaco-editor/react";
 import { AlertDialog, Badge, Button, Card, Skeleton, useToast } from "@aether/design-system";
 import { FileCode, Play, Stop, Trash } from "@phosphor-icons/react";
 import { useComposeStack, useComposeUp, useComposeDown, useDeleteCompose } from "../../hooks";
 
 export const Route = createFileRoute("/_shell/compose/$id")({
+  validateSearch: z.object({ returnTo: z.string().optional() }),
   component: ComposeStackPage,
 });
 
@@ -14,7 +16,7 @@ type Tab = (typeof TABS)[number];
 
 export function ComposeStackPage() {
   const { id } = Route.useParams();
-  const navigate = useNavigate();
+  const search = Route.useSearch();
   const { add } = useToast();
   const { data: stack, isLoading } = useComposeStack(id);
   const up = useComposeUp();
@@ -24,9 +26,13 @@ export function ComposeStackPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const services = useMemo(() => {
-    const m = stack?.compose?.match(/^  (\w[\w-]*):\s*$/gm) ?? [];
-    return m.map((s) => s.replace(/^\s+|\s*:\s*$/g, ""));
+    const matches = stack?.compose?.match(/^  (\w[\w-]*):\s*$/gm) ?? [];
+    return matches.map((entry) => entry.replace(/^\s+|\s*:\s*$/g, ""));
   }, [stack]);
+  const composeLines = (stack?.compose ?? "").split("\n");
+  const imageCount = composeLines.filter((line) => /^\s+image:\s*/.test(line)).length;
+  const portCount = composeLines.filter((line) => /^\s+-\s*["']?\d+(:\d+)?/.test(line)).length;
+  const volumeCount = composeLines.filter((line) => /^\s+-\s*[^-].*:\//.test(line)).length;
 
   if (isLoading) return <div className="space-y-lg"><Skeleton variant="card" className="min-h-48" /></div>;
   if (!stack) {
@@ -41,7 +47,7 @@ export function ComposeStackPage() {
     try {
       await del.mutateAsync(id);
       add({ title: "Stack deleted", tone: "success" });
-      navigate({ to: "/marketplace" });
+      window.location.href = search.returnTo || "/apps";
     } catch (e) {
       add({ title: "Delete failed", description: e instanceof Error ? e.message : "Unable to delete stack.", tone: "error" });
     }
@@ -73,8 +79,8 @@ export function ComposeStackPage() {
                     onError: (e) => add({ title: "Start failed", description: e instanceof Error ? e.message : "Unable to start stack.", tone: "error" }),
                   })
                 }
-              >
-                Start
+                >
+                Deploy
               </Button>
             )}
             <Button variant="ghost" icon={Trash as never} onClick={() => setConfirmDelete(true)}>
@@ -97,7 +103,8 @@ export function ComposeStackPage() {
       </div>
 
       {tab === "overview" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-md">
+        <>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-md">
           <Card className="p-md">
             <FileCode size={24} className="text-primary" />
             <p className="font-headline-md font-bold text-on-surface mt-sm">{services.length}</p>
@@ -120,7 +127,29 @@ export function ComposeStackPage() {
             <p className="font-headline-md font-bold text-on-surface mt-sm">{new Date(stack.created_at).toLocaleDateString()}</p>
             <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Created</p>
           </Card>
+          <Card className="p-md">
+            <FileCode size={24} className="text-primary" />
+            <p className="font-headline-md font-bold text-on-surface mt-sm">{imageCount}</p>
+            <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Images</p>
+          </Card>
+          <Card className="p-md">
+            <FileCode size={24} className="text-primary" />
+            <p className="font-headline-md font-bold text-on-surface mt-sm">{portCount}</p>
+            <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Exposed ports</p>
+          </Card>
+          <Card className="p-md">
+            <FileCode size={24} className="text-primary" />
+            <p className="font-headline-md font-bold text-on-surface mt-sm">{volumeCount}</p>
+            <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Volumes</p>
+          </Card>
         </div>
+        <Card className="mt-md">
+          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">Services in this stack</h2>
+          <div className="grid gap-sm sm:grid-cols-2 xl:grid-cols-3">
+            {services.map((service) => <div key={service} className="flex items-center gap-sm rounded-lg border border-outline-variant bg-surface-container-low px-md py-sm"><FileCode size={18} className="text-primary" /><span className="font-body-md text-on-surface">{service}</span><Badge tone="neutral" className="ml-auto">Configured</Badge></div>)}
+          </div>
+        </Card>
+        </>
       )}
 
       {tab === "compose" && (
