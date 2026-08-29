@@ -12,9 +12,9 @@ import (
 )
 
 const createVolume = `-- name: CreateVolume :one
-INSERT INTO app_volumes (app_id, name, mount_path)
-VALUES ($1, $2, $3)
-RETURNING id, app_id, name, mount_path
+INSERT INTO app_volumes (app_id, service_id, name, mount_path)
+VALUES ($1, (SELECT service_id FROM apps WHERE id = $1), $2, $3)
+RETURNING id, app_id, name, mount_path, service_id
 `
 
 type CreateVolumeParams struct {
@@ -31,42 +31,44 @@ func (q *Queries) CreateVolume(ctx context.Context, arg CreateVolumeParams) (App
 		&i.AppID,
 		&i.Name,
 		&i.MountPath,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getVolumeByApp = `-- name: GetVolumeByApp :one
-SELECT id, app_id, name, mount_path
-FROM app_volumes
-WHERE app_id = $1 AND name = $2
+SELECT v.id, v.app_id, v.name, v.mount_path, v.service_id
+FROM app_volumes v
+WHERE (v.service_id = (SELECT service_id FROM apps WHERE apps.id = $1) OR v.app_id = $1) AND v.name = $2
 `
 
 type GetVolumeByAppParams struct {
-	AppID uuid.UUID `json:"app_id"`
-	Name  string    `json:"name"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }
 
 func (q *Queries) GetVolumeByApp(ctx context.Context, arg GetVolumeByAppParams) (AppVolume, error) {
-	row := q.db.QueryRowContext(ctx, getVolumeByApp, arg.AppID, arg.Name)
+	row := q.db.QueryRowContext(ctx, getVolumeByApp, arg.ID, arg.Name)
 	var i AppVolume
 	err := row.Scan(
 		&i.ID,
 		&i.AppID,
 		&i.Name,
 		&i.MountPath,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const listVolumesByApp = `-- name: ListVolumesByApp :many
-SELECT id, app_id, name, mount_path
-FROM app_volumes
-WHERE app_id = $1
-ORDER BY name
+SELECT v.id, v.app_id, v.name, v.mount_path, v.service_id
+FROM app_volumes v
+WHERE v.service_id = (SELECT service_id FROM apps WHERE apps.id = $1) OR v.app_id = $1
+ORDER BY v.name
 `
 
-func (q *Queries) ListVolumesByApp(ctx context.Context, appID uuid.UUID) ([]AppVolume, error) {
-	rows, err := q.db.QueryContext(ctx, listVolumesByApp, appID)
+func (q *Queries) ListVolumesByApp(ctx context.Context, id uuid.UUID) ([]AppVolume, error) {
+	rows, err := q.db.QueryContext(ctx, listVolumesByApp, id)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +81,7 @@ func (q *Queries) ListVolumesByApp(ctx context.Context, appID uuid.UUID) ([]AppV
 			&i.AppID,
 			&i.Name,
 			&i.MountPath,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}

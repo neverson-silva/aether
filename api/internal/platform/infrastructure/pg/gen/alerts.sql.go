@@ -25,9 +25,9 @@ func (q *Queries) CountUnreadNotifications(ctx context.Context, orgID uuid.UUID)
 }
 
 const createAlertEvent = `-- name: CreateAlertEvent :one
-INSERT INTO alert_events (org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at
+INSERT INTO alert_events (org_id, rule_id, app_id, service_id, app_name, severity, message, value, threshold, metric)
+VALUES ($1, $2, $3, COALESCE((SELECT a.service_id FROM apps AS a WHERE a.id = $3), (SELECT c.service_id FROM compose_apps AS c WHERE c.id = $3), (SELECT d.service_id FROM databases AS d WHERE d.id = $3), (SELECT s.id FROM services AS s WHERE s.id = $3)), $4, $5, $6, $7, $8, $9)
+RETURNING id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at, service_id
 `
 
 type CreateAlertEventParams struct {
@@ -68,14 +68,15 @@ func (q *Queries) CreateAlertEvent(ctx context.Context, arg CreateAlertEventPara
 		&i.Metric,
 		&i.CreatedAt,
 		&i.ResolvedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const createAlertRule = `-- name: CreateAlertRule :one
-INSERT INTO alert_rules (org_id, name, metric, threshold, window_s, severity, target_app)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at
+INSERT INTO alert_rules (org_id, name, metric, threshold, window_s, severity, target_app, service_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE((SELECT a.service_id FROM apps AS a WHERE a.id = $7), (SELECT s.id FROM services AS s WHERE s.id = $7)))
+RETURNING id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at, service_id
 `
 
 type CreateAlertRuleParams struct {
@@ -110,6 +111,7 @@ func (q *Queries) CreateAlertRule(ctx context.Context, arg CreateAlertRuleParams
 		&i.Enabled,
 		&i.TargetApp,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -211,7 +213,7 @@ func (q *Queries) DeleteChannel(ctx context.Context, arg DeleteChannelParams) er
 }
 
 const getAlertRule = `-- name: GetAlertRule :one
-SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at
+SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at, service_id
 FROM alert_rules
 WHERE id = $1
 `
@@ -230,12 +232,13 @@ func (q *Queries) GetAlertRule(ctx context.Context, id uuid.UUID) (AlertRule, er
 		&i.Enabled,
 		&i.TargetApp,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const listAlertEventsByOrg = `-- name: ListAlertEventsByOrg :many
-SELECT id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at
+SELECT id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at, service_id
 FROM alert_events
 WHERE org_id = $1
 ORDER BY created_at DESC
@@ -269,6 +272,7 @@ func (q *Queries) ListAlertEventsByOrg(ctx context.Context, arg ListAlertEventsB
 			&i.Metric,
 			&i.CreatedAt,
 			&i.ResolvedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -284,7 +288,7 @@ func (q *Queries) ListAlertEventsByOrg(ctx context.Context, arg ListAlertEventsB
 }
 
 const listAlertRules = `-- name: ListAlertRules :many
-SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at
+SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at, service_id
 FROM alert_rules
 WHERE org_id = $1
 ORDER BY name
@@ -310,6 +314,7 @@ func (q *Queries) ListAlertRules(ctx context.Context, orgID uuid.UUID) ([]AlertR
 			&i.Enabled,
 			&i.TargetApp,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}

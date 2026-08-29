@@ -51,21 +51,23 @@ type CreateTableInput struct {
 }
 
 type Database struct {
-	ID          uuid.UUID
-	OrgID       uuid.UUID
-	ProjectID   uuid.UUID
-	Name        string
-	Engine      Engine
-	Version     string
-	Port        int
-	DBName      string
-	User        string
-	PassEnc     string
-	MemMB       int
-	StorageMB   int
-	Status      string
-	ContainerID string
-	CreatedAt   time.Time
+	ID            uuid.UUID
+	ServiceID     uuid.UUID
+	OrgID         uuid.UUID
+	ProjectID     uuid.UUID
+	EnvironmentID *uuid.UUID
+	Name          string
+	Engine        Engine
+	Version       string
+	Port          int
+	DBName        string
+	User          string
+	PassEnc       string
+	MemMB         int
+	StorageMB     int
+	Status        string
+	ContainerID   string
+	CreatedAt     time.Time
 }
 
 type PasswordCipher interface {

@@ -71,12 +71,59 @@ func (o *AppOps) Restart(ctx context.Context, appID, orgID uuid.UUID) (string, e
 
 // Delete para e remove o container do app (se houver). Idempotente.
 func (o *AppOps) Delete(ctx context.Context, appID, orgID uuid.UUID) error {
-	_ = o.Runtime.RemoveByLabel(ctx, "aether.service-id="+appID.String())
+	return o.DeleteService(ctx, appID, appID, orgID)
+}
+
+func (o *AppOps) StartService(ctx context.Context, appID, serviceID, orgID uuid.UUID) (string, error) {
+	return o.start(ctx, appID, serviceID, orgID)
+}
+
+func (o *AppOps) StopService(ctx context.Context, appID, serviceID, orgID uuid.UUID) (string, error) {
+	return o.stop(ctx, appID, serviceID, orgID)
+}
+
+func (o *AppOps) RestartService(ctx context.Context, appID, serviceID, orgID uuid.UUID) (string, error) {
+	container, err := o.latestContainer(ctx, appID, orgID)
+	if err != nil {
+		return "", err
+	}
+	if err := o.Runtime.Restart(ctx, container); err != nil {
+		return "", err
+	}
+	return o.State(ctx, appID, orgID)
+}
+
+func (o *AppOps) DeleteService(ctx context.Context, appID, serviceID, orgID uuid.UUID) error {
+	if err := o.Runtime.RemoveByLabel(ctx, "aether.service-id="+serviceID.String()); err == nil {
+		return nil
+	}
 	container, err := o.latestContainer(ctx, appID, orgID)
 	if err != nil {
 		return nil
 	}
 	return o.Runtime.Remove(ctx, container)
+}
+
+func (o *AppOps) start(ctx context.Context, appID, serviceID, orgID uuid.UUID) (string, error) {
+	container, err := o.latestContainer(ctx, appID, orgID)
+	if err != nil {
+		return "", err
+	}
+	if err := o.Runtime.Start(ctx, container); err != nil {
+		return "", err
+	}
+	return o.State(ctx, appID, orgID)
+}
+
+func (o *AppOps) stop(ctx context.Context, appID, serviceID, orgID uuid.UUID) (string, error) {
+	container, err := o.latestContainer(ctx, appID, orgID)
+	if err != nil {
+		return "", err
+	}
+	if err := o.Runtime.Stop(ctx, container); err != nil {
+		return "", err
+	}
+	return o.State(ctx, appID, orgID)
 }
 
 func (o *AppOps) Rebuild(ctx context.Context, appID, orgID uuid.UUID, by string) (*deploydomain.Deployment, error) {

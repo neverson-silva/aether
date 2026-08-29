@@ -26,6 +26,7 @@ type AlertEvent struct {
 	Metric     string        `json:"metric"`
 	CreatedAt  time.Time     `json:"created_at"`
 	ResolvedAt sql.NullTime  `json:"resolved_at"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
 }
 
 type AlertRule struct {
@@ -39,6 +40,7 @@ type AlertRule struct {
 	Enabled   bool          `json:"enabled"`
 	TargetApp uuid.NullUUID `json:"target_app"`
 	CreatedAt time.Time     `json:"created_at"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 type ApiKey struct {
@@ -84,33 +86,37 @@ type App struct {
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
 	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
 }
 
 type AppEnv struct {
-	AppID  uuid.UUID `json:"app_id"`
-	Name   string    `json:"name"`
-	Value  string    `json:"value"`
-	Secret bool      `json:"secret"`
+	AppID     uuid.NullUUID `json:"app_id"`
+	Name      string        `json:"name"`
+	Value     string        `json:"value"`
+	Secret    bool          `json:"secret"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 type AppPolicy struct {
-	AppID        uuid.UUID `json:"app_id"`
-	Enabled      bool      `json:"enabled"`
-	CpuMin       float32   `json:"cpu_min"`
-	CpuMax       float32   `json:"cpu_max"`
-	MemMinMb     int32     `json:"mem_min_mb"`
-	MemMaxMb     int32     `json:"mem_max_mb"`
-	ScaleUpPct   int32     `json:"scale_up_pct"`
-	ScaleDownPct int32     `json:"scale_down_pct"`
-	CooldownMin  int32     `json:"cooldown_min"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	AppID        uuid.UUID     `json:"app_id"`
+	Enabled      bool          `json:"enabled"`
+	CpuMin       float32       `json:"cpu_min"`
+	CpuMax       float32       `json:"cpu_max"`
+	MemMinMb     int32         `json:"mem_min_mb"`
+	MemMaxMb     int32         `json:"mem_max_mb"`
+	ScaleUpPct   int32         `json:"scale_up_pct"`
+	ScaleDownPct int32         `json:"scale_down_pct"`
+	CooldownMin  int32         `json:"cooldown_min"`
+	UpdatedAt    time.Time     `json:"updated_at"`
+	ServiceID    uuid.NullUUID `json:"service_id"`
 }
 
 type AppVolume struct {
-	ID        uuid.UUID `json:"id"`
-	AppID     uuid.UUID `json:"app_id"`
-	Name      string    `json:"name"`
-	MountPath string    `json:"mount_path"`
+	ID        uuid.UUID     `json:"id"`
+	AppID     uuid.UUID     `json:"app_id"`
+	Name      string        `json:"name"`
+	MountPath string        `json:"mount_path"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 type AuditLog struct {
@@ -125,11 +131,12 @@ type AuditLog struct {
 }
 
 type AutopilotEvent struct {
-	ID        uuid.UUID `json:"id"`
-	AppID     uuid.UUID `json:"app_id"`
-	Action    string    `json:"action"`
-	Detail    string    `json:"detail"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uuid.UUID     `json:"id"`
+	AppID     uuid.UUID     `json:"app_id"`
+	Action    string        `json:"action"`
+	Detail    string        `json:"detail"`
+	CreatedAt time.Time     `json:"created_at"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 type Backup struct {
@@ -142,25 +149,27 @@ type Backup struct {
 	Kind       string        `json:"kind"`
 	Dest       string        `json:"dest"`
 	CreatedAt  time.Time     `json:"created_at"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
 }
 
 type BackupConfiguration struct {
-	ID             uuid.UUID    `json:"id"`
-	DatabaseID     uuid.UUID    `json:"database_id"`
-	Enabled        bool         `json:"enabled"`
-	DestinationID  uuid.UUID    `json:"destination_id"`
-	PathPrefix     string       `json:"path_prefix"`
-	ScheduleType   string       `json:"schedule_type"`
-	ScheduleMinute int32        `json:"schedule_minute"`
-	ScheduleAt     string       `json:"schedule_at"`
-	ScheduleDay    string       `json:"schedule_day"`
-	ScheduleStart  string       `json:"schedule_start"`
-	ScheduleCron   string       `json:"schedule_cron"`
-	Timezone       string       `json:"timezone"`
-	RetentionType  string       `json:"retention_type"`
-	NextRunAt      sql.NullTime `json:"next_run_at"`
-	CreatedAt      time.Time    `json:"created_at"`
-	UpdatedAt      time.Time    `json:"updated_at"`
+	ID             uuid.UUID     `json:"id"`
+	DatabaseID     uuid.UUID     `json:"database_id"`
+	Enabled        bool          `json:"enabled"`
+	DestinationID  uuid.UUID     `json:"destination_id"`
+	PathPrefix     string        `json:"path_prefix"`
+	ScheduleType   string        `json:"schedule_type"`
+	ScheduleMinute int32         `json:"schedule_minute"`
+	ScheduleAt     string        `json:"schedule_at"`
+	ScheduleDay    string        `json:"schedule_day"`
+	ScheduleStart  string        `json:"schedule_start"`
+	ScheduleCron   string        `json:"schedule_cron"`
+	Timezone       string        `json:"timezone"`
+	RetentionType  string        `json:"retention_type"`
+	NextRunAt      sql.NullTime  `json:"next_run_at"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	ServiceID      uuid.NullUUID `json:"service_id"`
 }
 
 type BackupJob struct {
@@ -181,6 +190,7 @@ type BackupJob struct {
 	StartedAt       sql.NullTime  `json:"started_at"`
 	CompletedAt     sql.NullTime  `json:"completed_at"`
 	CreatedAt       time.Time     `json:"created_at"`
+	ServiceID       uuid.NullUUID `json:"service_id"`
 }
 
 type Branding struct {
@@ -210,41 +220,45 @@ type ComposeApp struct {
 	Status        string        `json:"status"`
 	CreatedAt     time.Time     `json:"created_at"`
 	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	ServiceID     uuid.UUID     `json:"service_id"`
 }
 
 type CronJob struct {
-	ID        uuid.UUID    `json:"id"`
-	AppID     uuid.UUID    `json:"app_id"`
-	Name      string       `json:"name"`
-	Schedule  string       `json:"schedule"`
-	Command   string       `json:"command"`
-	Enabled   bool         `json:"enabled"`
-	LastRun   sql.NullTime `json:"last_run"`
-	NextRun   sql.NullTime `json:"next_run"`
-	CreatedAt time.Time    `json:"created_at"`
+	ID        uuid.UUID     `json:"id"`
+	AppID     uuid.UUID     `json:"app_id"`
+	Name      string        `json:"name"`
+	Schedule  string        `json:"schedule"`
+	Command   string        `json:"command"`
+	Enabled   bool          `json:"enabled"`
+	LastRun   sql.NullTime  `json:"last_run"`
+	NextRun   sql.NullTime  `json:"next_run"`
+	CreatedAt time.Time     `json:"created_at"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 type Database struct {
-	ID          uuid.UUID `json:"id"`
-	OrgID       uuid.UUID `json:"org_id"`
-	ProjectID   uuid.UUID `json:"project_id"`
-	Name        string    `json:"name"`
-	Engine      string    `json:"engine"`
-	Version     string    `json:"version"`
-	Port        int32     `json:"port"`
-	DbName      string    `json:"db_name"`
-	DbUser      string    `json:"db_user"`
-	PassEnc     string    `json:"pass_enc"`
-	MemMb       int32     `json:"mem_mb"`
-	StorageMb   int32     `json:"storage_mb"`
-	Status      string    `json:"status"`
-	ContainerID string    `json:"container_id"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.UUID     `json:"org_id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	Name          string        `json:"name"`
+	Engine        string        `json:"engine"`
+	Version       string        `json:"version"`
+	Port          int32         `json:"port"`
+	DbName        string        `json:"db_name"`
+	DbUser        string        `json:"db_user"`
+	PassEnc       string        `json:"pass_enc"`
+	MemMb         int32         `json:"mem_mb"`
+	StorageMb     int32         `json:"storage_mb"`
+	Status        string        `json:"status"`
+	ContainerID   string        `json:"container_id"`
+	CreatedAt     time.Time     `json:"created_at"`
+	ServiceID     uuid.UUID     `json:"service_id"`
+	EnvironmentID uuid.NullUUID `json:"environment_id"`
 }
 
 type Deployment struct {
 	ID          uuid.UUID             `json:"id"`
-	AppID       uuid.UUID             `json:"app_id"`
+	AppID       uuid.NullUUID         `json:"app_id"`
 	Number      int32                 `json:"number"`
 	Status      string                `json:"status"`
 	Trigger     string                `json:"trigger"`
@@ -261,11 +275,12 @@ type Deployment struct {
 	CreatedAt   time.Time             `json:"created_at"`
 	StartedAt   sql.NullTime          `json:"started_at"`
 	FinishedAt  sql.NullTime          `json:"finished_at"`
+	ServiceID   uuid.NullUUID         `json:"service_id"`
 }
 
 type Domain struct {
 	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.UUID     `json:"app_id"`
+	AppID         uuid.NullUUID `json:"app_id"`
 	Host          string        `json:"host"`
 	Https         bool          `json:"https"`
 	CertStatus    string        `json:"cert_status"`
@@ -281,6 +296,7 @@ type Domain struct {
 	LastError     string        `json:"last_error"`
 	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
 	ServiceType   string        `json:"service_type"`
+	ServiceID     uuid.NullUUID `json:"service_id"`
 }
 
 type EnvVariable struct {
@@ -433,6 +449,7 @@ type Pipeline struct {
 	Stages    json.RawMessage `json:"stages"`
 	Enabled   bool            `json:"enabled"`
 	CreatedAt time.Time       `json:"created_at"`
+	ServiceID uuid.NullUUID   `json:"service_id"`
 }
 
 type PipelineRun struct {
@@ -454,6 +471,7 @@ type Preview struct {
 	Domain       string        `json:"domain"`
 	Status       string        `json:"status"`
 	CreatedAt    time.Time     `json:"created_at"`
+	ServiceID    uuid.NullUUID `json:"service_id"`
 }
 
 type Project struct {
@@ -514,6 +532,7 @@ type RestoreJob struct {
 	SourceChecksum   string        `json:"source_checksum"`
 	SourceFormat     string        `json:"source_format"`
 	UploadedBytes    int64         `json:"uploaded_bytes"`
+	ServiceID        uuid.NullUUID `json:"service_id"`
 }
 
 type S3Destination struct {
@@ -597,24 +616,38 @@ type ServerToken struct {
 	ExpiresAt sql.NullTime  `json:"expires_at"`
 }
 
+type Service struct {
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.UUID     `json:"org_id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	Name          string        `json:"name"`
+	Kind          string        `json:"kind"`
+	Status        string        `json:"status"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+	DeletedAt     sql.NullTime  `json:"deleted_at"`
+}
+
 type ServiceSource struct {
-	ID                      uuid.UUID `json:"id"`
-	ServiceID               uuid.UUID `json:"service_id"`
-	ConnectionID            uuid.UUID `json:"connection_id"`
-	RepositoryID            string    `json:"repository_id"`
-	RepositoryOwner         string    `json:"repository_owner"`
-	RepositoryName          string    `json:"repository_name"`
-	RepositoryFullName      string    `json:"repository_full_name"`
-	DefaultBranch           string    `json:"default_branch"`
-	Branch                  string    `json:"branch"`
-	AutoDeploy              bool      `json:"auto_deploy"`
-	RootDirectory           string    `json:"root_directory"`
-	WatchPaths              []string  `json:"watch_paths"`
-	IgnorePaths             []string  `json:"ignore_paths"`
-	WatchRootFiles          bool      `json:"watch_root_files"`
-	CreatedAt               time.Time `json:"created_at"`
-	UpdatedAt               time.Time `json:"updated_at"`
-	EnvironmentTemplatePath string    `json:"environment_template_path"`
+	ID                      uuid.UUID     `json:"id"`
+	ServiceID               uuid.UUID     `json:"service_id"`
+	ConnectionID            uuid.UUID     `json:"connection_id"`
+	RepositoryID            string        `json:"repository_id"`
+	RepositoryOwner         string        `json:"repository_owner"`
+	RepositoryName          string        `json:"repository_name"`
+	RepositoryFullName      string        `json:"repository_full_name"`
+	DefaultBranch           string        `json:"default_branch"`
+	Branch                  string        `json:"branch"`
+	AutoDeploy              bool          `json:"auto_deploy"`
+	RootDirectory           string        `json:"root_directory"`
+	WatchPaths              []string      `json:"watch_paths"`
+	IgnorePaths             []string      `json:"ignore_paths"`
+	WatchRootFiles          bool          `json:"watch_root_files"`
+	CreatedAt               time.Time     `json:"created_at"`
+	UpdatedAt               time.Time     `json:"updated_at"`
+	EnvironmentTemplatePath string        `json:"environment_template_path"`
+	LegacyAppID             uuid.NullUUID `json:"legacy_app_id"`
 }
 
 type Snapshot struct {
@@ -627,6 +660,7 @@ type Snapshot struct {
 	Chunks     int32         `json:"chunks"`
 	DedupSaved int64         `json:"dedup_saved"`
 	CreatedAt  time.Time     `json:"created_at"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
 }
 
 type SnapshotSchedule struct {
@@ -641,6 +675,7 @@ type SnapshotSchedule struct {
 	LastRun    sql.NullTime  `json:"last_run"`
 	NextRun    sql.NullTime  `json:"next_run"`
 	CreatedAt  time.Time     `json:"created_at"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
 }
 
 type Template struct {
@@ -687,13 +722,14 @@ type VariableAudit struct {
 }
 
 type Worker struct {
-	ID          uuid.UUID `json:"id"`
-	AppID       uuid.UUID `json:"app_id"`
-	Name        string    `json:"name"`
-	Command     string    `json:"command"`
-	Replicas    int32     `json:"replicas"`
-	Enabled     bool      `json:"enabled"`
-	Status      string    `json:"status"`
-	ContainerID string    `json:"container_id"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uuid.UUID     `json:"id"`
+	AppID       uuid.UUID     `json:"app_id"`
+	Name        string        `json:"name"`
+	Command     string        `json:"command"`
+	Replicas    int32         `json:"replicas"`
+	Enabled     bool          `json:"enabled"`
+	Status      string        `json:"status"`
+	ContainerID string        `json:"container_id"`
+	CreatedAt   time.Time     `json:"created_at"`
+	ServiceID   uuid.NullUUID `json:"service_id"`
 }

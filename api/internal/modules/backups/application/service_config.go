@@ -38,9 +38,11 @@ func (s *DatabaseBackups) SaveConfiguration(ctx context.Context, orgID uuid.UUID
 	if cfg.DatabaseID == uuid.Nil {
 		return nil, domain.ErrValidation
 	}
-	if _, err := s.Databases.Get(ctx, cfg.DatabaseID, orgID); err != nil {
+	db, err := s.Databases.Get(ctx, cfg.DatabaseID, orgID)
+	if err != nil {
 		return nil, err
 	}
+	cfg.ServiceID = db.ServiceID
 	if !create {
 		current, err := s.GetConfiguration(ctx, cfg.DatabaseID, cfg.ID, orgID)
 		if err != nil {

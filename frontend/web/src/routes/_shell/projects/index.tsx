@@ -20,7 +20,7 @@ import {
   Typography,
   useToast,
 } from "@aether/design-system";
-import { useApps, useDatabases, useProjects } from "../../../hooks";
+import { useProjects, useServices } from "../../../hooks";
 import { api } from "../../../api/client";
 
 const schema = z.object({
@@ -35,14 +35,12 @@ function formatDate(iso: string) {
 
 function Projects() {
   const { data: projects, isLoading } = useProjects();
-  const { data: apps } = useApps();
-  const { data: databases } = useDatabases();
+  const { data: services } = useServices();
   const queryClient = useQueryClient();
   const { add } = useToast();
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
-  const appsByProject = (apps ?? []).reduce<Record<string, number>>((counts, app) => ({ ...counts, [app.project_id]: (counts[app.project_id] ?? 0) + 1 }), {});
-  const databasesByProject = (databases ?? []).reduce<Record<string, number>>((counts, database) => ({ ...counts, [database.project_id]: (counts[database.project_id] ?? 0) + 1 }), {});
+  const servicesByProject = (services ?? []).reduce<Record<string, number>>((counts, service) => ({ ...counts, [service.project_id]: (counts[service.project_id] ?? 0) + 1 }), {});
   const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { name: "" } });
 
   const rename = async (values: z.infer<typeof schema>) => {
@@ -63,8 +61,7 @@ function Projects() {
       add({ title: "Project deleted", tone: "success" });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["projects"] }),
-        queryClient.invalidateQueries({ queryKey: ["apps"] }),
-        queryClient.invalidateQueries({ queryKey: ["databases"] }),
+        queryClient.invalidateQueries({ queryKey: ["services"] }),
       ]);
     } catch (error) {
       add({ title: "Unable to delete project", description: error instanceof Error ? error.message : "Try again.", tone: "error" });
@@ -115,7 +112,7 @@ function Projects() {
         {projects?.length ? (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {projects.map((project, index) => {
-              const services = (appsByProject[project.id] ?? 0) + (databasesByProject[project.id] ?? 0);
+              const serviceCount = servicesByProject[project.id] ?? 0;
               const isHealthy = index % 2 === 0;
               return (
                 <Card key={project.id} as="article" variant="interactive" padding="none" className="overflow-visible">
@@ -127,7 +124,7 @@ function Projects() {
                         </span>
                         <div className="min-w-0">
                           <Typography as="h3" level="heading" truncate>{project.name}</Typography>
-                          <Typography as="p" level="small" tone="muted" truncate>{project.description || `${services} service${services === 1 ? "" : "s"}`}</Typography>
+                          <Typography as="p" level="small" tone="muted" truncate>{project.description || `${serviceCount} service${serviceCount === 1 ? "" : "s"}`}</Typography>
                         </div>
                       </div>
                     </Link>
@@ -141,7 +138,7 @@ function Projects() {
                   </div>
                   <div className="flex items-center gap-2 border-t border-border px-5 py-3 text-body-sm text-muted-foreground">
                     <TerminalWindow size={16} aria-hidden="true" />
-                    <span>{services} services</span>
+                    <span>{serviceCount} services</span>
                     <span className="ml-auto">Created {formatDate(project.created_at)}</span>
                   </div>
                 </Card>

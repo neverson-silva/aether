@@ -3,6 +3,7 @@ import axios, { AxiosError } from "axios";
 const TOKEN_KEY = "aether_token";
 const REFRESH_KEY = "aether_refresh_token";
 const ORG_KEY = "aether_org";
+let refreshPromise: Promise<string> | null = null;
 
 export function getToken(): string {
   return localStorage.getItem(TOKEN_KEY) || "";
@@ -41,6 +42,19 @@ export function isPublicRoute(): boolean {
   return p === "/login" || p === "/onboarding";
 }
 
+async function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = http.post<{ token: string; refresh_token: string }>("/api/v1/auth/refresh", { refresh_token: getRefreshToken() })
+      .then((response) => {
+        setToken(response.data.token);
+        setRefreshToken(response.data.refresh_token);
+        return response.data.token;
+      })
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -70,10 +84,8 @@ http.interceptors.response.use(
     if (err.response?.status === 401 && config && !config._retry && getRefreshToken() && !config.url?.endsWith("/auth/refresh")) {
       config._retry = true;
       try {
-        const response = await http.post<{ token: string; refresh_token: string }>("/api/v1/auth/refresh", { refresh_token: getRefreshToken() });
-        setToken(response.data.token);
-        setRefreshToken(response.data.refresh_token);
-        config.headers.Authorization = `Bearer ${response.data.token}`;
+        const token = await refreshAccessToken();
+        config.headers.Authorization = `Bearer ${token}`;
         return http.request(config);
       } catch { clearToken(); }
     }

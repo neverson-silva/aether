@@ -12,14 +12,15 @@ import (
 )
 
 const createBackup = `-- name: CreateBackup :one
-INSERT INTO backups (org_id, database_id, app_id, path, size, kind, dest)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, database_id, app_id, path, size, kind, dest, created_at
+INSERT INTO backups (org_id, database_id, service_id, app_id, path, size, kind, dest)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, org_id, database_id, app_id, path, size, kind, dest, created_at, service_id
 `
 
 type CreateBackupParams struct {
 	OrgID      uuid.UUID     `json:"org_id"`
 	DatabaseID uuid.NullUUID `json:"database_id"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
 	AppID      uuid.NullUUID `json:"app_id"`
 	Path       string        `json:"path"`
 	Size       int64         `json:"size"`
@@ -31,6 +32,7 @@ func (q *Queries) CreateBackup(ctx context.Context, arg CreateBackupParams) (Bac
 	row := q.db.QueryRowContext(ctx, createBackup,
 		arg.OrgID,
 		arg.DatabaseID,
+		arg.ServiceID,
 		arg.AppID,
 		arg.Path,
 		arg.Size,
@@ -48,12 +50,13 @@ func (q *Queries) CreateBackup(ctx context.Context, arg CreateBackupParams) (Bac
 		&i.Kind,
 		&i.Dest,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getBackup = `-- name: GetBackup :one
-SELECT id, org_id, database_id, app_id, path, size, kind, dest, created_at
+SELECT id, org_id, database_id, app_id, path, size, kind, dest, created_at, service_id
 FROM backups
 WHERE id = $1
 `
@@ -71,25 +74,26 @@ func (q *Queries) GetBackup(ctx context.Context, id uuid.UUID) (Backup, error) {
 		&i.Kind,
 		&i.Dest,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const listBackupsByDatabase = `-- name: ListBackupsByDatabase :many
-SELECT id, org_id, database_id, app_id, path, size, kind, dest, created_at
+SELECT id, org_id, database_id, app_id, path, size, kind, dest, created_at, service_id
 FROM backups
-WHERE database_id = $1
+WHERE service_id = $1 OR database_id = $1
 ORDER BY created_at DESC
 LIMIT $2
 `
 
 type ListBackupsByDatabaseParams struct {
-	DatabaseID uuid.NullUUID `json:"database_id"`
-	Limit      int32         `json:"limit"`
+	ServiceID uuid.NullUUID `json:"service_id"`
+	Limit     int32         `json:"limit"`
 }
 
 func (q *Queries) ListBackupsByDatabase(ctx context.Context, arg ListBackupsByDatabaseParams) ([]Backup, error) {
-	rows, err := q.db.QueryContext(ctx, listBackupsByDatabase, arg.DatabaseID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listBackupsByDatabase, arg.ServiceID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +111,7 @@ func (q *Queries) ListBackupsByDatabase(ctx context.Context, arg ListBackupsByDa
 			&i.Kind,
 			&i.Dest,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -122,7 +127,7 @@ func (q *Queries) ListBackupsByDatabase(ctx context.Context, arg ListBackupsByDa
 }
 
 const listBackupsByOrg = `-- name: ListBackupsByOrg :many
-SELECT id, org_id, database_id, app_id, path, size, kind, dest, created_at
+SELECT id, org_id, database_id, app_id, path, size, kind, dest, created_at, service_id
 FROM backups
 WHERE org_id = $1
 ORDER BY created_at DESC
@@ -153,6 +158,7 @@ func (q *Queries) ListBackupsByOrg(ctx context.Context, arg ListBackupsByOrgPara
 			&i.Kind,
 			&i.Dest,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}

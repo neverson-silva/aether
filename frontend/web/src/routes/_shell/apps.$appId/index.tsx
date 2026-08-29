@@ -13,41 +13,28 @@ import { Terminal } from "./-components/Terminal";
 import { ComposeTab } from "./-components/ComposeTab";
 import { DomainsPanel } from "../../../components/DomainsPanel";
 import {
-  useAppDetail,
-  useAppDetailSecrets,
-  useAppRebuild,
-  useAppRestart,
-  useAppStart,
-  useAppStates,
-  useAppStop,
-  useDeleteApp,
   useDeleteEnv,
-  useDeploy,
-  useDeployments,
-  useUpdateApp,
+  useUpdateService,
   useDomains,
-  useNetQ,
-  useRollback,
   useSetEnv,
   useSetWebhook,
   useSaveServiceSource,
   useSourceControlConnections,
   useSourceControlRepositories,
   useServiceSource,
-  useStats,
-  useTimeline,
-  useComposeStack,
-  useComposeUp,
-  useComposeDown,
-  useDeleteCompose,
-  useComposeStats,
-  useComposeTimeline,
-  useComposeEnv,
-  useComposeDeployments,
+  useServiceDetails,
+  useServiceAction,
+  useServiceTimeline,
+  useServiceStats,
+  useServiceDeployments,
+  useServiceEnvironment,
+  useServiceConnection,
+  useServiceContainers,
 } from "@/hooks";
 import type { App } from "@/api/types";
 import { EnvEditorModal } from "../../../components/EnvEditorModal";
 import { DeploymentsTab } from "./-components/DeploymentsTab";
+import { BackupTab } from "../databases.$dbId/-components/BackupTab";
 import {
   ArrowSquareOut,
   ArrowsClockwise,
@@ -95,6 +82,13 @@ import {
   useToast,
 } from "@aether/design-system";
 import { isRuntimeLive, mapRuntimeStatus } from "../../../lib/runtime-status";
+import {
+  extractReturnTo,
+  normalizeDetailsSearch,
+  normalizeLegacyKind,
+  readDetailsReturnTo,
+  sanitizeReturnTo,
+} from "./-details-search";
 
 const designIcon = (icon: typeof RocketLaunch) => icon as unknown as DesignIcon;
 const cn = (...classes: Array<string | false | undefined>) =>
@@ -131,6 +125,8 @@ const parseProviderPaths = (value: string) =>
     .map((path) => path.trim())
     .filter(Boolean);
 
+const maskedConnectionString = (value: string) => value.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:••••••••@");
+
 const webhookSchema = z.object({
   secret: z.string().min(1, "Secret is required"),
 });
@@ -145,8 +141,13 @@ const TABS = [
   "settings",
   "cron",
   "terminal",
+  "backup",
 ] as const;
 type Tab = (typeof TABS)[number];
+const detailSearchSchema = z.preprocess(normalizeDetailsSearch, z.object({
+  tab: z.enum(TABS).optional(),
+  returnTo: z.string().optional(),
+}));
 const TAB_ICONS: Record<Tab, typeof Code> = {
   overview: Gauge,
   deployments: RocketLaunch,
@@ -157,6 +158,7 @@ const TAB_ICONS: Record<Tab, typeof Code> = {
   settings: Gear,
   cron: ListChecks,
   terminal: TerminalWindow,
+  backup: Database,
 };
 
 function stateTone(state: string): string {
@@ -170,96 +172,116 @@ function stateTone(state: string): string {
 function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
+  const [connectionVisible, setConnectionVisible] = useState(false);
   const search = Route.useSearch();
-  const isCompose = search.kind === "compose";
-  const serviceAppId = isCompose ? "" : appId;
-  const { data: detail } = useAppDetail(serviceAppId);
-  const { data: composeStack } = useComposeStack(isCompose ? appId : "");
-  const { data: composeStats } = useComposeStats(isCompose ? appId : "");
-  const { data: composeTimeline } = useComposeTimeline(isCompose ? appId : "");
-  const { data: composeEnv } = useComposeEnv(isCompose ? appId : "");
-  const { data: composeDeployments } = useComposeDeployments(isCompose ? appId : "");
-  const composeUp = useComposeUp();
-  const composeDown = useComposeDown();
-  const deleteCompose = useDeleteCompose();
-  const { data: source, isLoading: sourceLoading } = useServiceSource(serviceAppId);
+  const resolvedServiceID = appId;
+  const serviceQuery = useServiceDetails(resolvedServiceID, Boolean(resolvedServiceID));
+  const { data: service } = serviceQuery;
+  const canonicalServiceID = service?.id ?? resolvedServiceID;
+  const runtimeId = service?.spec_id ?? appId;
+  const { data: serviceEnvironment } = useServiceEnvironment(canonicalServiceID, Boolean(service));
+  const { data: serviceConnection } = useServiceConnection(canonicalServiceID, connectionVisible && service?.kind === "database");
+  const serviceDeploy = useServiceAction("deploy");
+  const serviceStart = useServiceAction("start");
+  const serviceStop = useServiceAction("stop");
+  const serviceRestart = useServiceAction("restart");
+  const serviceDelete = useServiceAction("delete");
+  const { data: source, isLoading: sourceLoading } = useServiceSource(canonicalServiceID, service?.capabilities.can_manage_source ?? false);
   const { data: sourceConnections } = useSourceControlConnections();
   const sourceConnection = sourceConnections?.find((connection) => connection.id === source?.connection_id);
   const { data: providerRepositories } = useSourceControlRepositories(sourceConnection?.installation_id);
-  const composeApp: App | undefined = composeStack
+  const composeSource = service?.spec?.compose;
+  const canonicalApp: App | undefined = service
     ? {
-        id: composeStack.id,
-        org_id: composeStack.org_id,
-        project_id: composeStack.project_id,
-        name: composeStack.name,
-        source_type: "image",
-        image: "Compose stack",
-        git_url: "",
-        git_branch: "",
-        dockerfile: "",
-        build_type: "compose",
+        id: service.id,
+        org_id: service.org_id,
+        project_id: service.project_id,
+        name: service.name,
+        source_type: service.kind === "app" ? (service.spec?.source_type === "git" ? "git" : "image") : "image",
+        image: service.spec?.image ?? (service.kind === "compose" ? "Docker Compose stack" : service.spec?.engine ?? service.kind),
+        git_url: service.spec?.git_url ?? "",
+        git_branch: service.spec?.git_branch ?? "",
+        dockerfile: service.spec?.dockerfile ?? "",
+        build_type: service.spec?.build_type ?? service.kind,
         preview_domain: "",
         server_id: "",
         cluster_id: "",
-        environment_id: "",
-        port: 0,
-        storage_mb: 0,
-        resources: { cpus: "0", mem_mb: 0 },
+        environment_id: service.environment_id ?? "",
+        port: service.spec?.port ?? 0,
+        storage_mb: service.spec?.storage_mb ?? 0,
+        resources: { cpus: service.spec?.cpus ?? "0", mem_mb: service.spec?.mem_mb ?? 0 },
+        image_retention: service.spec?.image_retention ?? 0,
         health_check: { enabled: false, path: "/", interval_ms: 0, timeout_ms: 0, retries: 0 },
-        volumes: [],
-        created_at: composeStack.created_at,
-        updated_at: composeStack.created_at,
+        volumes: (service.volumes ?? []).map((volume) => ({ name: volume.name, mount_path: volume.mount_path })),
+        created_at: service.created_at,
+        updated_at: service.updated_at,
       }
     : undefined;
-  const app = detail?.app ?? composeApp;
-  const { data: detailSecrets } = useAppDetailSecrets(serviceAppId, envEditorOpen && !isCompose);
+  const app = canonicalApp;
+  const logsID = service?.id ?? app?.id ?? "";
   const envEditorVars = useMemo(
     () =>
-      (detailSecrets?.env ?? detail?.env ?? (composeEnv?.env as never[]) ?? []).map((e) => ({
+      (serviceEnvironment?.env ?? []).map((e) => ({
         key: e.name,
         value: e.value,
         is_secret: e.secret,
       })),
-    [detailSecrets, detail],
+    [serviceEnvironment],
   );
-  const { data: deployments } = useDeployments(serviceAppId);
-  const runtimeDeployments = isCompose ? composeDeployments : deployments;
-  const { data: domains } = useDomains("apps", serviceAppId);
+  const { data: canonicalDeployments } = useServiceDeployments(canonicalServiceID, Boolean(service));
+  const runtimeDeployments = canonicalDeployments;
+  const { data: domains } = useDomains("services", canonicalServiceID);
   const statsEnabled = Boolean(app);
-  const { data: stats } = useStats(serviceAppId, statsEnabled);
-  const { data: timeline } = useTimeline(serviceAppId);
-  const runtimeStats = isCompose ? composeStats : stats;
-  const runtimeTimeline = isCompose ? composeTimeline : timeline;
-  const { data: states } = useAppStates();
-  const { data: netq } = useNetQ();
-
-  const deploy = useDeploy(appId);
-  const rebuild = useAppRebuild();
-  const restart = useAppRestart();
-  const start = useAppStart();
-  const stop = useAppStop();
-  const rollback = useRollback(appId);
-  const deleteApp = useDeleteApp();
-  const setEnv = useSetEnv(appId);
-  const deleteEnv = useDeleteEnv(appId);
-  const setWebhook = useSetWebhook(appId);
-  const saveSource = useSaveServiceSource(appId);
-  const updateApp = useUpdateApp(appId);
+  const { data: canonicalStats } = useServiceStats(canonicalServiceID, Boolean(service));
+  const { data: serviceContainers } = useServiceContainers(canonicalServiceID, Boolean(service));
+  const { data: canonicalTimeline } = useServiceTimeline(canonicalServiceID, Boolean(service));
+  const runtimeStats = canonicalStats;
+  const runtimeTimeline = canonicalTimeline;
+  const visibleTabs = service
+    ? TABS.filter((item) =>
+        (item !== "compose" || service.kind === "compose") &&
+        (item !== "domains" || service.capabilities.can_manage_domains) &&
+        (item !== "logs" || service.capabilities.can_view_logs) &&
+        (item !== "metrics" || service.capabilities.can_view_metrics) &&
+        (item !== "cron" || service.capabilities.can_manage_schedules) &&
+        (item !== "terminal" || service.capabilities.can_open_terminal) &&
+        (item !== "settings" || service.capabilities.can_build) &&
+        (item !== "backup" || service.capabilities.can_manage_backups),
+      )
+    : TABS;
+  const setEnv = useSetEnv(canonicalServiceID, Boolean(service));
+  const deleteEnv = useDeleteEnv(canonicalServiceID, Boolean(service));
+  const setWebhook = useSetWebhook(canonicalServiceID, Boolean(service));
+  const saveSource = useSaveServiceSource(canonicalServiceID, Boolean(service));
+  const updateService = useUpdateService();
 
   const { add } = useToast();
   const navigate = Route.useNavigate();
-  const returnTo = search.returnTo || "/apps";
-  const tab: Tab = search.tab ?? "overview";
+  const returnTo = readDetailsReturnTo(search.returnTo);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("kind")) return;
+    params.delete("kind");
+    if (returnTo) params.set("returnTo", returnTo);
+    const query = params.toString();
+    const nextURL = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", nextURL);
+  }, [returnTo]);
+
+  const requestedTab: Tab = search.tab ?? "overview";
+  const tab: Tab = visibleTabs.includes(requestedTab) ? requestedTab : "overview";
   const setTab = (nextTab: Tab) => {
     void navigate({
-      search: (previous) => ({ ...previous, tab: nextTab }),
+      search: (previous: typeof search) => ({ ...previous, tab: nextTab }),
     });
   };
-  const [confirmRollback, setConfirmRollback] = useState(false);
   const [webhookModal, setWebhookModal] = useState(false);
   const [providerEditing, setProviderEditing] = useState(false);
   const [providerRepositoryId, setProviderRepositoryId] = useState("");
   const [providerBranch, setProviderBranch] = useState("");
+  const [logContainer, setLogContainer] = useState("");
   const [providerRootDirectory, setProviderRootDirectory] = useState("");
   const [providerWatchPaths, setProviderWatchPaths] = useState("");
   const [providerIgnorePaths, setProviderIgnorePaths] = useState("");
@@ -269,9 +291,10 @@ function AppDetail() {
   const [editName, setEditName] = useState("");
   const [editPort, setEditPort] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [copiedInt, setCopiedInt] = useState(false);
   const [autodeploy, setAutodeploy] = useState(false);
-  const [actionState, setActionState] = useState<string | null>(null);
+  const serviceLogsEndpoint = service
+    ? `/api/v1/services/${service.id}/logs?follow=1${logContainer ? `&container=${encodeURIComponent(logContainer)}` : ""}`
+    : undefined;
   const [viewLogsDep, setViewLogsDep] = useState<string | null>(null);
 
   useEffect(() => {
@@ -286,33 +309,26 @@ function AppDetail() {
       setAutodeploy(source.auto_deploy);
     }
   }, [source]);
-  const latest = deployments?.slice().sort((a, b) => b.number - a.number)[0];
-  const observedState = states?.[appId];
-  useEffect(() => {
-    if (!actionState || !observedState) return;
-    if (actionState === "running" && observedState === "running") {
-      setActionState(null);
-    }
-    if (actionState === "stopped" && observedState !== "running") {
-      setActionState(null);
-    }
-  }, [actionState, observedState]);
-  const state = actionState ?? observedState ?? "unknown";
-  const runtimeStatus = mapRuntimeStatus(state, latest?.status);
-  const running = state === "running";
+  const latest = runtimeDeployments?.slice().sort((a, b) => b.number - a.number)[0];
+  const containerState = canonicalStats?.state && canonicalStats.state !== "unknown"
+    ? canonicalStats.state
+    : serviceContainers?.[0]?.status ?? service?.status ?? "unknown";
+  const activeDeployment = latest && ["queued", "building", "starting", "health_checking"].includes(latest.status) ? latest.status : undefined;
+  const runtimeStatus = mapRuntimeStatus(containerState, activeDeployment);
+  const running = containerState === "running" || containerState === "healthy";
 
   const webhookForm = useForm<z.infer<typeof webhookSchema>>({
     resolver: zodResolver(webhookSchema),
     defaultValues: { secret: "" },
   });
 
-  if (!app) return <Skeleton variant="card" className="min-h-48" />;
+  if (serviceQuery.isLoading) return <Skeleton variant="card" className="min-h-48" />;
+  if (serviceQuery.isError || !service || !app) return <EmptyState title="Service unavailable" description="The requested service could not be loaded." />;
 
   const liveURL = (() => {
     if (domains?.length)
       return `${domains[0].https ? "https" : "http"}://${domains[0].host}`;
-    const probe = (netq ?? []).find((n) => n.app_id === app.id);
-    return probe?.addr ? `http://${probe.addr}` : null;
+    return null;
   })();
 
   const updateAutodeploy = (next: boolean) => {
@@ -460,19 +476,8 @@ function AppDetail() {
   };
 
   const startDeployment = () => {
-    if (isCompose) {
-      composeUp.mutate(appId, {
-        onSuccess: () => add({ title: "Stack deployment started", tone: "success" }),
-        onError: (error) => add({ title: "Could not deploy stack", description: error.message, tone: "error" }),
-      });
-      return;
-    }
-    deploy.mutateAsync(undefined).catch((e) => {
-      add({
-        title: "Operation failed",
-        description: e instanceof Error ? e.message : "Try again later.",
-        tone: "error",
-      });
+    serviceDeploy.mutate(service.id, {
+      onError: (error) => add({ title: "Could not start deployment", description: error.message, tone: "error" }),
     });
   };
 
@@ -501,15 +506,21 @@ function AppDetail() {
             {app.source_type === "image" ? app.image : app.git_url}
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="px-3 py-1 rounded-full bg-surface-container-high border border-outline-variant font-code-md text-[11px] text-on-surface uppercase tracking-wider">
-            {app.source_type === "git" ? app.git_branch || "Git" : "OCI Image"}
-          </span>
+            <div className="flex items-center gap-3 flex-wrap">
+          {service?.kind === "database" && (
+            <Button
+              variant="primary"
+              onClick={() => { window.location.href = `/studio/${runtimeId}`; }}
+            >
+              Open Studio
+            </Button>
+          )}
           <div className="flex gap-2">
             <button
               className="text-on-surface-variant hover:text-primary transition-colors"
               onClick={() => setEditOpen(true)}
-              title="Edit"
+              title="Edit service name"
+              aria-label="Edit service name"
             >
               <PencilSimple size={18} />
             </button>
@@ -525,17 +536,12 @@ function AppDetail() {
                 </button>
               }
               onConfirm={() =>
-                (isCompose ? deleteCompose : deleteApp).mutate(app.id, {
+                serviceDelete.mutate(service.id, {
                   onSuccess: () => {
-                    add({ title: "Application deleted", tone: "success" });
+                    add({ title: "Service deleted", tone: "success" });
                     window.location.href = returnTo;
                   },
-                  onError: (e) =>
-                    add({
-                      title: "Could not delete application",
-                      description: e.message,
-                      tone: "error",
-                    }),
+                  onError: (e) => add({ title: "Could not delete service", description: e.message, tone: "error" }),
                 })
               }
               title="Delete application"
@@ -547,7 +553,7 @@ function AppDetail() {
       </div>
 
       <div className="mb-8 flex max-w-full snap-x gap-6 overflow-x-auto overscroll-x-contain border-b border-outline-variant pb-px" role="tablist" aria-label="Service sections">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t}
             role="tab"
@@ -615,21 +621,23 @@ function AppDetail() {
                 variant="secondary"
                 icon={designIcon(ArrowsClockwise)}
                 onClick={() =>
-                  run(() => rebuild.mutateAsync(app.id), "Rebuild started")
+                  run(
+                    () => serviceRestart.mutateAsync(service.id),
+                    "Service restarted",
+                  )
                 }
               >
-                Rebuild
+                Restart
               </Button>
               {running ? (
                 <Button
                   variant='danger'
                   icon={designIcon(Stop)}
-                  loading={stop.isPending}
+                  loading={serviceStop.isPending}
                   onClick={() =>
                     run(
-                      () => isCompose ? composeDown.mutateAsync(app.id) : stop.mutateAsync(app.id),
+                      () => serviceStop.mutateAsync(service.id),
                       "Service stopped",
-                      () => setActionState("stopped"),
                     )
                   }
                 >
@@ -639,12 +647,11 @@ function AppDetail() {
                 <Button
                   variant="success"
                   icon={designIcon(Play)}
-                  loading={start.isPending}
+                  loading={serviceStart.isPending}
                   onClick={() =>
                     run(
-                      () => isCompose ? composeUp.mutateAsync(app.id) : start.mutateAsync(app.id),
+                      () => serviceStart.mutateAsync(service.id),
                       "Service started",
-                      () => setActionState("running"),
                     )
                   }
                 >
@@ -818,6 +825,15 @@ function AppDetail() {
                       </button>
                     </div>
                   </div>
+                  {service?.kind === "database" && (
+                    <div>
+                      <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">Connection</span>
+                      {!connectionVisible ? <Button variant="ghost" onClick={() => setConnectionVisible(true)}>Show connection</Button> : serviceConnection?.dsn ? <div className="flex items-center justify-between gap-sm p-3 bg-surface-container-low border border-outline-variant rounded-md">
+                        <span className="font-code-md text-code-md text-on-surface truncate">{maskedConnectionString(serviceConnection.dsn)}</span>
+                        <button type="button" onClick={() => navigator.clipboard.writeText(serviceConnection.dsn)} className="text-on-surface-variant hover:text-primary transition-colors" title="Copy connection string"><Copy size={18} /></button>
+                      </div> : <span className="font-body-sm text-body-sm text-on-surface-variant">Loading connection...</span>}
+                    </div>
+                  )}
                   <div>
                     <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">
                       Internal Host
@@ -830,29 +846,9 @@ function AppDetail() {
                     </span>
                     <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant rounded-md group">
                       <span className="font-code-md text-code-md text-on-surface truncate">
-                        {detail?.internal_host ?? "—"}
+                        {"—"}
                       </span>
-                      <button
-                        onClick={() => {
-                          if (!detail?.internal_host) return;
-                          navigator.clipboard
-                            .writeText(detail.internal_host)
-                            .then(() => {
-                              setCopiedInt(true);
-                              setTimeout(() => setCopiedInt(false), 1500);
-                            });
-                        }}
-                        className="text-on-surface-variant group-hover:text-primary transition-colors"
-                        title={copiedInt ? "Copied!" : "Copy"}
-                      >
-                        {copiedInt ? <Check size={18} /> : <Copy size={18} />}
-                      </button>
                     </div>
-                    {detail?.internal_network && (
-                      <p className="font-code-md text-[11px] text-on-surface-variant/60 mt-1">
-                        network: {detail.internal_network}
-                      </p>
-                    )}
                   </div>
                   <div>
                     <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">
@@ -933,6 +929,23 @@ function AppDetail() {
                   )}
                 </div>
               </div>
+
+              {service?.runtime?.containers && service.runtime.containers.length > 0 && (
+                <Card>
+                  <div className="flex items-center justify-between mb-md">
+                    <h3 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Containers</h3>
+                    <span className="font-code-md text-code-md text-on-surface-variant">{service.runtime.containers.length}</span>
+                  </div>
+                  <div className="space-y-sm">
+                    {service.runtime.containers.map((container) => (
+                      <div key={container.id} className="flex items-center justify-between gap-md rounded border border-outline-variant/60 px-sm py-xs">
+                        <span className="min-w-0 truncate font-code-md text-code-md text-on-surface">{container.name || container.id}</span>
+                        <Badge tone={container.status === "running" ? "success" : "neutral"}>{container.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
@@ -1026,31 +1039,40 @@ function AppDetail() {
                 )}
               </div>
 
-              <LiveLogs appId={app.id} enabled endpoint={isCompose ? `/api/v1/compose/${app.id}/logs?follow=1` : undefined} />
+              <LiveLogs serviceId={logsID} enabled={Boolean(serviceContainers?.length)} endpoint={serviceLogsEndpoint} />
             </div>
           </div>
         </>
       )}
 
-      {tab === "compose" && <ComposeTab appID={app.id} initialCompose={composeStack?.compose} />}
+      {tab === "compose" && <ComposeTab appID={app.id} initialCompose={composeSource} canonicalService={Boolean(service)} exportID={service?.kind === "app" ? service.spec_id ?? app.id : undefined} showRuntimeExports={service?.kind !== "compose"} />}
 
       {tab === "deployments" && (
         <DeploymentsTab
           appId={app.id}
+          serviceId={service?.id}
           deployments={(runtimeDeployments ?? []) as never}
-          onRollback={() =>
-            run(() => rollback.mutateAsync(undefined), "Rollback started")
-          }
+          onRollback={() => add({ title: "Rollback is only available for application deployments", tone: "info" })}
         />
       )}
 
       {tab === "logs" && (
         <Card>
-          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-md">
-            Live Logs
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-md">
+            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
+              Live Logs
+            </h2>
+            {service && (serviceContainers?.length ?? 0) > 1 && (
+              <NativeSelect
+                aria-label="Log container"
+                value={logContainer}
+                onChange={(event) => setLogContainer(event.target.value)}
+                options={[{ label: "All containers", value: "" }, ...(serviceContainers ?? []).map((container) => ({ label: container.name, value: container.id }))]}
+              />
+            )}
+          </div>
           <div className="mt-md">
-            <LiveLogs appId={app.id} enabled endpoint={isCompose ? `/api/v1/compose/${app.id}/logs?follow=1` : undefined} />
+            <LiveLogs serviceId={logsID} enabled={Boolean(serviceContainers?.length)} endpoint={serviceLogsEndpoint} />
           </div>
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mt-lg mb-md">
             Event timeline
@@ -1146,16 +1168,16 @@ function AppDetail() {
               min={0.25}
               max={8}
               step={0.25}
-              value={Number.parseFloat(String(detail?.app.resources?.cpus ?? "0.5")) || 0.5}
+              value={Number.parseFloat(String(app.resources?.cpus ?? "0.5")) || 0.5}
               onValueChange={(value) => {
                 const next = Array.isArray(value) ? value[0] : value;
                 if (typeof next === "number") {
-                  updateApp.mutate({ resources: { cpus: next.toString() } as never });
+                  updateService.mutate({ serviceId: service.id, update: { resources: { cpus: next.toString() } } });
                 }
               }}
             />
             <p className="font-code-md text-code-md text-on-surface-variant mb-md">
-              {detail?.app.resources?.cpus ?? "0.5"} CPU allocated
+              {app.resources?.cpus ?? "0.5"} CPU allocated
             </p>
             <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
               Memory
@@ -1164,18 +1186,18 @@ function AppDetail() {
               min={256}
               max={8192}
               step={256}
-              value={Math.min(8192, Math.max(256, detail?.app.resources?.mem_mb || 256))}
+              value={Math.min(8192, Math.max(256, app.resources?.mem_mb || 256))}
               onValueChange={(value) => {
                 const next = Array.isArray(value) ? value[0] : value;
                 if (typeof next === "number") {
-                  updateApp.mutate({ resources: { mem_mb: next } as never });
+                  updateService.mutate({ serviceId: service.id, update: { resources: { mem_mb: next } } });
                 }
               }}
             />
             <p className="font-code-md text-code-md text-on-surface-variant mb-md">
-              {detail?.app.resources?.mem_mb && detail.app.resources.mem_mb % 1024 === 0
-                ? `${detail.app.resources.mem_mb / 1024} GB RAM`
-                : `${detail?.app.resources?.mem_mb ?? 256} MB RAM`}
+              {app.resources?.mem_mb && app.resources.mem_mb % 1024 === 0
+                ? `${app.resources.mem_mb / 1024} GB RAM`
+                : `${app.resources?.mem_mb ?? 256} MB RAM`}
             </p>
             <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
               Storage
@@ -1184,19 +1206,19 @@ function AppDetail() {
               min={0}
               max={102400}
               step={1024}
-              value={Math.min(102400, Math.max(0, detail?.app.storage_mb ?? 0))}
+              value={Math.min(102400, Math.max(0, app.storage_mb ?? 0))}
               onValueChange={(value) => {
                 const next = Array.isArray(value) ? value[0] : value;
                 if (typeof next === "number") {
-                  updateApp.mutate({ resources: { storage_mb: next } as never });
+                  updateService.mutate({ serviceId: service.id, update: { resources: { storage_mb: next } } });
                 }
               }}
             />
             <p className="font-code-md text-code-md text-on-surface-variant mb-md">
-              {detail?.app.storage_mb
-                ? detail.app.storage_mb % 1024 === 0
-                  ? `${detail.app.storage_mb / 1024} GB storage`
-                  : `${detail.app.storage_mb} MB storage`
+              {app.storage_mb
+                ? app.storage_mb % 1024 === 0
+                  ? `${app.storage_mb / 1024} GB storage`
+                  : `${app.storage_mb} MB storage`
                 : "Unlimited storage"}
             </p>
             <p className="font-code-md text-code-md text-on-surface-variant/60">
@@ -1220,10 +1242,10 @@ function AppDetail() {
                 type="number"
                 min={0}
                 placeholder="5"
-                defaultValue={detail?.app.image_retention || 0}
+                defaultValue={app.image_retention || 0}
                 onChange={(e) => {
                   const n = parseInt(e.target.value, 10);
-                  updateApp.mutate({ image_retention: isFinite(n) ? n : 0 });
+                  updateService.mutate({ serviceId: service.id, update: { image_retention: isFinite(n) ? n : 0 } });
                 }}
               />
             </div>
@@ -1247,7 +1269,7 @@ function AppDetail() {
               </Button>
             </div>
             <div className="space-y-sm mb-md">
-              {(detail?.env ?? []).map((e) => (
+              {(serviceEnvironment?.env ?? []).map((e) => (
                 <div
                   key={e.name}
                   className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60"
@@ -1271,7 +1293,7 @@ function AppDetail() {
                   </div>
                 </div>
               ))}
-              {(detail?.env ?? []).length === 0 && (
+              {(serviceEnvironment?.env ?? []).length === 0 && (
                 <p className="font-body-sm text-body-sm text-on-surface-variant">
                   No variables defined.
                 </p>
@@ -1305,8 +1327,8 @@ function AppDetail() {
             }}
           />
 
-          <div className="space-y-lg">
-            <Autopilot appID={app.id} />
+          {(!service || service.capabilities.can_build) && <div className="space-y-lg">
+            <Autopilot appID={service?.kind === "app" ? runtimeId : app.id} />
             <Card>
               <div className="flex items-center justify-between mb-md">
                 <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
@@ -1321,22 +1343,23 @@ function AppDetail() {
               </div>
               <p className="font-body-sm text-body-sm text-on-surface-variant mb-sm">
                 {app.source_type === "git"
-                  ? "POST /api/v1/webhooks/github/{appID} with the X-Hub-Signature-256 header."
+                  ? "POST /api/v1/webhooks/github/{serviceID} with the X-Hub-Signature-256 header."
                   : "Available for applications with a git source."}
               </p>
               {app.source_type === "git" && (
-                <CodeBlock
+                  <CodeBlock
                   code={`POST /api/v1/webhooks/github/${app.id}\nX-Hub-Signature-256: sha256=<hmac>`}
-                />
+                  />
               )}
             </Card>
-          </div>
+          </div>}
         </div>
       )}
 
-      {tab === "cron" && <CronJobs appID={app.id} />}
-      {tab === "terminal" && <Terminal appID={app.id} />}
-      {tab === "domains" && <DomainsPanel kind={isCompose ? "compose" : "apps"} id={app.id} />}
+      {tab === "cron" && (!service || service.capabilities.can_manage_schedules) && <CronJobs appID={app.id} canonicalService={Boolean(service)} />}
+      {tab === "terminal" && <Terminal serviceId={canonicalServiceID} />}
+      {tab === "domains" && <DomainsPanel kind="services" id={app.id} />}
+      {tab === "backup" && service?.kind === "database" && <BackupTab dbId={service.id} dbName={service.name} />}
 
       <Dialog
         open={webhookModal}
@@ -1382,37 +1405,10 @@ function AppDetail() {
 
       <DeploymentLogModal
         appId={app.id}
+        serviceId={service.id}
         deploymentId={viewLogsDep}
         onClose={() => setViewLogsDep(null)}
       />
-      <AlertDialog
-        trigger={
-          <button
-            type="button"
-            className="hidden"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-        open={confirmRollback}
-        onOpenChange={setConfirmRollback}
-        onConfirm={() =>
-          rollback.mutate(undefined, {
-            onSuccess: () =>
-              add({ title: "Rollback started", tone: "success" }),
-            onError: (e) =>
-              add({
-                title: "Could not start rollback",
-                description: e.message,
-                tone: "error",
-              }),
-          })
-        }
-        title="Rollback"
-        description="Restore the previous ready deployment of this application?"
-        confirmLabel="Rollback"
-      />
-
       <Dialog
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -1453,7 +1449,7 @@ function AppDetail() {
                   body.name = editName.trim();
                 if (editPort > 0 && editPort !== app.port) body.port = editPort;
                 if (Object.keys(body).length) {
-                  updateApp.mutate(body as never, {
+                  updateService.mutate({ serviceId: service.id, update: body }, {
                     onSuccess: () => {
                       add({ title: "Service updated", tone: "success" });
                       setEditOpen(false);
@@ -1482,14 +1478,6 @@ function AppDetail() {
 }
 
 export const Route = createFileRoute("/_shell/apps/$appId/")({
-  validateSearch: z.object({
-    tab: z.enum(TABS).optional(),
-    kind: z.preprocess((value) => {
-      const candidate = Array.isArray(value) ? value[0] : value;
-      if (typeof candidate !== "string") return undefined;
-      return candidate.trim().toLowerCase();
-    }, z.string().optional().transform((value) => value === "compose" ? "compose" : "app")),
-    returnTo: z.string().optional(),
-  }),
+  validateSearch: detailSearchSchema,
   component: AppDetail,
 });

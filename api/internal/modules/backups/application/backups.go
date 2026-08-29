@@ -37,7 +37,7 @@ func (b *Backups) CreateDatabase(ctx context.Context, dbID, orgID uuid.UUID) (*d
 		return nil, domain.ErrNotFound
 	}
 	return b.Store.CreateBackup(ctx, &domain.Backup{
-		OrgID: orgID, DatabaseID: &db.ID, Kind: "db", Dest: "local",
+		OrgID: orgID, DatabaseID: &db.ID, ServiceID: db.ServiceID, Kind: "db", Dest: "local",
 		Path: fmt.Sprintf("db-backups/%s/%s-%d.dump", orgID, db.Name, time.Now().Unix()),
 	})
 }

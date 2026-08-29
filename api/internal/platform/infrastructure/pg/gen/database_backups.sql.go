@@ -21,7 +21,7 @@ INSERT INTO backup_configurations (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, database_id, enabled, destination_id, path_prefix, schedule_type,
           schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-          timezone, retention_type, next_run_at, created_at, updated_at
+          timezone, retention_type, next_run_at, created_at, updated_at, service_id
 `
 
 type CreateBackupConfigurationParams struct {
@@ -74,6 +74,7 @@ func (q *Queries) CreateBackupConfiguration(ctx context.Context, arg CreateBacku
 		&i.NextRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -86,7 +87,7 @@ INSERT INTO backup_jobs (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING id, database_id, configuration_id, trigger_type, status, engine,
           engine_version, format, destination_id, storage_key, size_bytes,
-          checksum, error_code, error_message, started_at, completed_at, created_at
+          checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 `
 
 type CreateBackupJobParams struct {
@@ -144,6 +145,7 @@ func (q *Queries) CreateBackupJob(ctx context.Context, arg CreateBackupJobParams
 		&i.StartedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -155,7 +157,7 @@ INSERT INTO restore_jobs (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
           started_at, completed_at, created_at, source_type, source_filename,
-          source_size, source_checksum, source_format, uploaded_bytes
+          source_size, source_checksum, source_format, uploaded_bytes, service_id
 `
 
 type CreateRestoreJobParams struct {
@@ -207,6 +209,7 @@ func (q *Queries) CreateRestoreJob(ctx context.Context, arg CreateRestoreJobPara
 		&i.SourceChecksum,
 		&i.SourceFormat,
 		&i.UploadedBytes,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -236,7 +239,7 @@ func (q *Queries) FailAbandonedUploadRestores(ctx context.Context, createdAt tim
 const getBackupConfiguration = `-- name: GetBackupConfiguration :one
 SELECT id, database_id, enabled, destination_id, path_prefix, schedule_type,
        schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-       timezone, retention_type, next_run_at, created_at, updated_at
+       timezone, retention_type, next_run_at, created_at, updated_at, service_id
 FROM backup_configurations
 WHERE id = $1
 `
@@ -261,6 +264,7 @@ func (q *Queries) GetBackupConfiguration(ctx context.Context, id uuid.UUID) (Bac
 		&i.NextRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -268,7 +272,7 @@ func (q *Queries) GetBackupConfiguration(ctx context.Context, id uuid.UUID) (Bac
 const getBackupJob = `-- name: GetBackupJob :one
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
 WHERE id = $1
 `
@@ -294,6 +298,7 @@ func (q *Queries) GetBackupJob(ctx context.Context, id uuid.UUID) (BackupJob, er
 		&i.StartedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -301,7 +306,7 @@ func (q *Queries) GetBackupJob(ctx context.Context, id uuid.UUID) (BackupJob, er
 const getRestoreJob = `-- name: GetRestoreJob :one
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
        started_at, completed_at, created_at, source_type, source_filename,
-       source_size, source_checksum, source_format, uploaded_bytes
+       source_size, source_checksum, source_format, uploaded_bytes, service_id
 FROM restore_jobs
 WHERE id = $1
 `
@@ -325,6 +330,7 @@ func (q *Queries) GetRestoreJob(ctx context.Context, id uuid.UUID) (RestoreJob, 
 		&i.SourceChecksum,
 		&i.SourceFormat,
 		&i.UploadedBytes,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -332,14 +338,14 @@ func (q *Queries) GetRestoreJob(ctx context.Context, id uuid.UUID) (RestoreJob, 
 const listActiveBackupJobsByDatabase = `-- name: ListActiveBackupJobsByDatabase :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
-WHERE database_id = $1 AND status IN ('queued', 'preparing', 'running', 'uploading', 'verifying', 'cancelling')
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1) AND status IN ('queued', 'preparing', 'running', 'uploading', 'verifying', 'cancelling')
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListActiveBackupJobsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupJob, error) {
-	rows, err := q.db.QueryContext(ctx, listActiveBackupJobsByDatabase, databaseID)
+func (q *Queries) ListActiveBackupJobsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupJob, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveBackupJobsByDatabase, id)
 	if err != nil {
 		return nil, err
 	}
@@ -365,6 +371,7 @@ func (q *Queries) ListActiveBackupJobsByDatabase(ctx context.Context, databaseID
 			&i.StartedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -382,14 +389,14 @@ func (q *Queries) ListActiveBackupJobsByDatabase(ctx context.Context, databaseID
 const listBackupConfigurationsByDatabase = `-- name: ListBackupConfigurationsByDatabase :many
 SELECT id, database_id, enabled, destination_id, path_prefix, schedule_type,
        schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-       timezone, retention_type, next_run_at, created_at, updated_at
+       timezone, retention_type, next_run_at, created_at, updated_at, service_id
 FROM backup_configurations
-WHERE database_id = $1
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListBackupConfigurationsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupConfiguration, error) {
-	rows, err := q.db.QueryContext(ctx, listBackupConfigurationsByDatabase, databaseID)
+func (q *Queries) ListBackupConfigurationsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupConfiguration, error) {
+	rows, err := q.db.QueryContext(ctx, listBackupConfigurationsByDatabase, id)
 	if err != nil {
 		return nil, err
 	}
@@ -414,6 +421,7 @@ func (q *Queries) ListBackupConfigurationsByDatabase(ctx context.Context, databa
 			&i.NextRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -431,20 +439,20 @@ func (q *Queries) ListBackupConfigurationsByDatabase(ctx context.Context, databa
 const listBackupJobsByDatabase = `-- name: ListBackupJobsByDatabase :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
-WHERE database_id = $1
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
 ORDER BY created_at DESC
 LIMIT $2
 `
 
 type ListBackupJobsByDatabaseParams struct {
-	DatabaseID uuid.UUID `json:"database_id"`
-	Limit      int32     `json:"limit"`
+	ID    uuid.UUID `json:"id"`
+	Limit int32     `json:"limit"`
 }
 
 func (q *Queries) ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJobsByDatabaseParams) ([]BackupJob, error) {
-	rows, err := q.db.QueryContext(ctx, listBackupJobsByDatabase, arg.DatabaseID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listBackupJobsByDatabase, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -470,6 +478,7 @@ func (q *Queries) ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJo
 			&i.StartedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -487,7 +496,7 @@ func (q *Queries) ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJo
 const listBackupJobsDue = `-- name: ListBackupJobsDue :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
 WHERE status = 'queued'
 ORDER BY created_at
@@ -521,6 +530,7 @@ func (q *Queries) ListBackupJobsDue(ctx context.Context, limit int32) ([]BackupJ
 			&i.StartedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -614,20 +624,20 @@ func (q *Queries) ListEnabledBackupConfigurations(ctx context.Context) ([]ListEn
 const listRestoreJobsByTarget = `-- name: ListRestoreJobsByTarget :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
        started_at, completed_at, created_at, source_type, source_filename,
-       source_size, source_checksum, source_format, uploaded_bytes
+       source_size, source_checksum, source_format, uploaded_bytes, service_id
 FROM restore_jobs
-WHERE target_database_id = $1
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
 ORDER BY created_at DESC
 LIMIT $2
 `
 
 type ListRestoreJobsByTargetParams struct {
-	TargetDatabaseID uuid.UUID `json:"target_database_id"`
-	Limit            int32     `json:"limit"`
+	ID    uuid.UUID `json:"id"`
+	Limit int32     `json:"limit"`
 }
 
 func (q *Queries) ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJobsByTargetParams) ([]RestoreJob, error) {
-	rows, err := q.db.QueryContext(ctx, listRestoreJobsByTarget, arg.TargetDatabaseID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listRestoreJobsByTarget, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -651,6 +661,7 @@ func (q *Queries) ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJo
 			&i.SourceChecksum,
 			&i.SourceFormat,
 			&i.UploadedBytes,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -668,7 +679,7 @@ func (q *Queries) ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJo
 const listRestoreJobsDue = `-- name: ListRestoreJobsDue :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
        started_at, completed_at, created_at, source_type, source_filename,
-       source_size, source_checksum, source_format, uploaded_bytes
+       source_size, source_checksum, source_format, uploaded_bytes, service_id
 FROM restore_jobs
 WHERE status = 'queued'
 ORDER BY created_at
@@ -700,6 +711,7 @@ func (q *Queries) ListRestoreJobsDue(ctx context.Context, limit int32) ([]Restor
 			&i.SourceChecksum,
 			&i.SourceFormat,
 			&i.UploadedBytes,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -767,7 +779,7 @@ SET enabled = $2, destination_id = $3, path_prefix = $4, schedule_type = $5,
 WHERE id = $1
 RETURNING id, database_id, enabled, destination_id, path_prefix, schedule_type,
           schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-          timezone, retention_type, next_run_at, created_at, updated_at
+          timezone, retention_type, next_run_at, created_at, updated_at, service_id
 `
 
 type UpdateBackupConfigurationParams struct {
@@ -820,6 +832,7 @@ func (q *Queries) UpdateBackupConfiguration(ctx context.Context, arg UpdateBacku
 		&i.NextRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -840,7 +853,7 @@ SET status = $2,
 WHERE id = $1
 RETURNING id, database_id, configuration_id, trigger_type, status, engine,
           engine_version, format, destination_id, storage_key, size_bytes,
-          checksum, error_code, error_message, started_at, completed_at, created_at
+          checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 `
 
 type UpdateBackupJobParams struct {
@@ -892,6 +905,7 @@ func (q *Queries) UpdateBackupJob(ctx context.Context, arg UpdateBackupJobParams
 		&i.StartedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -904,7 +918,7 @@ SET status = $2, error_code = $3, error_message = $4, started_at = $5, completed
 WHERE id = $1
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
           started_at, completed_at, created_at, source_type, source_filename,
-          source_size, source_checksum, source_format, uploaded_bytes
+          source_size, source_checksum, source_format, uploaded_bytes, service_id
 `
 
 type UpdateRestoreJobParams struct {
@@ -952,6 +966,7 @@ func (q *Queries) UpdateRestoreJob(ctx context.Context, arg UpdateRestoreJobPara
 		&i.SourceChecksum,
 		&i.SourceFormat,
 		&i.UploadedBytes,
+		&i.ServiceID,
 	)
 	return i, err
 }

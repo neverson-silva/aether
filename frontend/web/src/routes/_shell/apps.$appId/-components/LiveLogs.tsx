@@ -40,21 +40,21 @@ export function classify(line: string): LogRow {
   return { id: ROW_ID, text, json, ts: tsMatch ? tsMatch[0] : "", level, tag: tagMatch ? tagMatch[1].toLowerCase() : "" };
 }
 
-export function LiveLogs({ appId, enabled = true, endpoint }: { appId: string; enabled?: boolean; endpoint?: string }) {
+export function LiveLogs({ serviceId, enabled = true, endpoint }: { serviceId: string; enabled?: boolean; endpoint?: string }) {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [follow, setFollow] = useState(true);
 
   useEffect(() => {
-    if (!enabled || !appId) return;
+    if (!enabled || !serviceId) return;
     const server = getServer();
-    const es = new EventSource(server + (endpoint ?? "/api/v1/apps/" + appId + "/logs?follow=1"), { withCredentials: true });
+    const es = new EventSource(server + (endpoint ?? "/api/v1/services/" + serviceId + "/logs?follow=1"), { withCredentials: true });
     es.onmessage = (ev) => {
       const chunks = ev.data.split("\n").filter((c: string) => c.trim() !== "");
       const newRows = chunks.map((c: string) => classify(c));
       setRows((prev) => [...prev.slice(-1000), ...newRows].slice(-1500));
     };
     return () => es.close();
-  }, [appId, enabled, endpoint]);
+  }, [serviceId, enabled, endpoint]);
 
   const viewerLines = useMemo<DesignLogLine[]>(
     () => rows.map((row) => ({

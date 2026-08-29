@@ -39,13 +39,18 @@ export function useRealtimeEvent(fn: (ev: EventEnvelope, replay: boolean) => voi
 }
 
 function resourceKeys(ev: EventEnvelope): unknown[][] {
+  const serviceID = ev.service_id || (ev.payload?.service_id as string | undefined);
+  if (serviceID && (ev.type === "app.state" || ev.type === "service.state")) {
+    return [["service", serviceID], ["service-timeline", serviceID], ["service-stats", serviceID], ["service-containers", serviceID], ["services"]];
+  }
   if (ev.type.startsWith("deploy.")) {
     const appId =
       ev.app_id ||
-      (ev.payload?.service_id as string | undefined) ||
       (ev.payload?.app_id as string | undefined);
-    if (!appId) return [["deployments"], ["system-summary"]];
+    const keys = serviceID ? [["service", serviceID], ["service-deployments", serviceID], ["service-timeline", serviceID], ["service-stats", serviceID]] : [];
+    if (!appId) return [...keys, ["deployments"], ["system-summary"]];
     return [
+      ...keys,
       ["app", appId],
       ["deployments", appId],
       ["apps"],
@@ -57,9 +62,36 @@ function resourceKeys(ev: EventEnvelope): unknown[][] {
   }
   if (ev.type.startsWith("backup")) {
     const databaseID = ev.payload?.database_id as string | undefined;
-    return databaseID
-      ? [["database-backups", databaseID], ["database-backup-configs", databaseID], ["databases"], ["backups"]]
-      : [["databases"], ["backups"]];
+    const backupID = ev.payload?.backup_id as string | undefined;
+    const serviceKeys = serviceID
+      ? [["database-backups", "service", serviceID], ["database-backup-configs", "service", serviceID], ["service", serviceID]]
+      : [];
+    const legacyKeys = databaseID
+      ? [["database-backups", databaseID], ["database-backup-configs", databaseID]]
+      : [];
+    return [
+      ...serviceKeys,
+      ...legacyKeys,
+      ...(backupID && serviceID ? [["database-backup", "service", serviceID, backupID]] : []),
+      ["databases"],
+      ["backups"],
+    ];
+  }
+  if (ev.type.startsWith("restore.")) {
+    const databaseID = ev.payload?.database_id as string | undefined;
+    const restoreID = ev.payload?.restore_id as string | undefined;
+    const serviceKeys = serviceID
+      ? [["database-restore-jobs", "service", serviceID], ["service", serviceID]]
+      : [];
+    const legacyKeys = databaseID
+      ? [["database-restore-jobs", databaseID]]
+      : [];
+    return [
+      ...serviceKeys,
+      ...legacyKeys,
+      ...(restoreID && serviceID ? [["database-restore", "service", serviceID, restoreID]] : []),
+      ["databases"],
+    ];
   }
   if (ev.resource_type === "database") {
     return [["databases"]];

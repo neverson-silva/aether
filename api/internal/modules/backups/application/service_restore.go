@@ -43,7 +43,7 @@ func (s *DatabaseBackups) RequestRestore(ctx context.Context, backupID, targetDB
 		return nil, err
 	}
 	job, err := s.Store.CreateRestoreJob(ctx, &domain.RestoreJob{
-		BackupID: &backupID, TargetDatabaseID: targetDBID, Status: domain.RestoreQueued,
+		BackupID: &backupID, TargetDatabaseID: targetDBID, ServiceID: target.ServiceID, Status: domain.RestoreQueued,
 		SourceType: domain.RestoreSourceBackup, SourceSize: backup.SizeBytes,
 		SourceChecksum: backup.Checksum, SourceFormat: backup.Format,
 	})
@@ -68,7 +68,7 @@ func (s *DatabaseBackups) CreateUploadRestore(ctx context.Context, dbID, orgID u
 		return nil, err
 	}
 	job, err := s.Store.CreateRestoreJob(ctx, &domain.RestoreJob{
-		TargetDatabaseID: dbID, Status: domain.RestoreQueued,
+		TargetDatabaseID: dbID, ServiceID: target.ServiceID, Status: domain.RestoreQueued,
 		SourceType: domain.RestoreSourceUpload, SourceFilename: sanitizeSourceFilename(filename),
 	})
 	if err != nil {

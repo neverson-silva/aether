@@ -31,7 +31,7 @@ func (s *Store) Close() error {
 
 func (s *Store) CreateBackup(ctx context.Context, backup *domain.Backup) (*domain.Backup, error) {
 	row, err := s.q.CreateBackup(ctx, gen.CreateBackupParams{
-		OrgID: backup.OrgID, DatabaseID: nullUUID(backup.DatabaseID), AppID: nullUUID(backup.AppID), Path: backup.Path,
+		OrgID: backup.OrgID, DatabaseID: nullUUID(backup.DatabaseID), ServiceID: nullUUIDValue(backup.ServiceID), AppID: nullUUID(backup.AppID), Path: backup.Path,
 		Size: backup.Size, Kind: backup.Kind, Dest: backup.Dest,
 	})
 	if err != nil {
@@ -57,7 +57,7 @@ func (s *Store) ListByOrg(ctx context.Context, orgID uuid.UUID, limit int) ([]do
 }
 
 func (s *Store) ListByDatabase(ctx context.Context, databaseID uuid.UUID, limit int) ([]domain.Backup, error) {
-	rows, err := s.q.ListBackupsByDatabase(ctx, gen.ListBackupsByDatabaseParams{DatabaseID: nullUUID(&databaseID), Limit: int32(limit)})
+	rows, err := s.q.ListBackupsByDatabase(ctx, gen.ListBackupsByDatabaseParams{ServiceID: nullUUID(&databaseID), Limit: int32(limit)})
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -74,7 +74,7 @@ func backupsFromRows(rows []gen.Backup) []domain.Backup {
 
 func backupFromRow(row gen.Backup) *domain.Backup {
 	return &domain.Backup{
-		ID: row.ID, OrgID: row.OrgID, DatabaseID: uuidPtr(row.DatabaseID),
+		ID: row.ID, OrgID: row.OrgID, DatabaseID: uuidPtr(row.DatabaseID), ServiceID: uuidValue(row.ServiceID),
 		Path: row.Path, Size: row.Size, Kind: row.Kind, Dest: row.Dest, CreatedAt: row.CreatedAt,
 	}
 }
@@ -91,6 +91,20 @@ func uuidPtr(v uuid.NullUUID) *uuid.UUID {
 		return nil
 	}
 	return &v.UUID
+}
+
+func nullUUIDValue(v uuid.UUID) uuid.NullUUID {
+	if v == uuid.Nil {
+		return uuid.NullUUID{}
+	}
+	return uuid.NullUUID{UUID: v, Valid: true}
+}
+
+func uuidValue(v uuid.NullUUID) uuid.UUID {
+	if !v.Valid {
+		return uuid.Nil
+	}
+	return v.UUID
 }
 
 func mapErr(err error) error {

@@ -50,6 +50,26 @@ func (s *Store) GetSnapshot(ctx context.Context, id uuid.UUID) (*domain.Snapshot
 	return snapshotFromRow(row), nil
 }
 
+func (s *Store) CreateSnapshotForService(ctx context.Context, snapshot *domain.Snapshot) (*domain.Snapshot, error) {
+	row, err := s.q.CreateSnapshotForService(ctx, gen.CreateSnapshotForServiceParams{OrgID: snapshot.OrgID, ServiceID: nullUUID(snapshot.ServiceID), Volume: snapshot.Volume, Name: snapshot.Name, Size: snapshot.Size, Chunks: int32(snapshot.Chunks), DedupSaved: snapshot.DedupSaved})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return snapshotFromRow(row), nil
+}
+
+func (s *Store) ListSnapshotsByService(ctx context.Context, orgID, serviceID uuid.UUID, limit int) ([]domain.Snapshot, error) {
+	rows, err := s.q.ListSnapshotsByService(ctx, gen.ListSnapshotsByServiceParams{OrgID: orgID, ServiceID: nullUUID(&serviceID), Limit: int32(limit)})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Snapshot, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *snapshotFromRow(row))
+	}
+	return out, nil
+}
+
 func (s *Store) ListSnapshotsByOrg(ctx context.Context, orgID uuid.UUID, limit int) ([]domain.Snapshot, error) {
 	rows, err := s.q.ListSnapshotsByOrg(ctx, gen.ListSnapshotsByOrgParams{OrgID: orgID, Limit: int32(limit)})
 	if err != nil {
@@ -86,6 +106,26 @@ func (s *Store) GetSchedule(ctx context.Context, id uuid.UUID) (*domain.Schedule
 	return scheduleFromRow(row), nil
 }
 
+func (s *Store) CreateScheduleForService(ctx context.Context, schedule *domain.Schedule) (*domain.Schedule, error) {
+	row, err := s.q.CreateSnapshotScheduleForService(ctx, gen.CreateSnapshotScheduleForServiceParams{OrgID: schedule.OrgID, ServiceID: nullUUID(schedule.ServiceID), Volume: schedule.Volume, NamePrefix: schedule.NamePrefix, Cron: schedule.Cron, Retention: int32(schedule.Retention), Enabled: schedule.Enabled})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return scheduleFromRow(row), nil
+}
+
+func (s *Store) ListSchedulesByService(ctx context.Context, orgID, serviceID uuid.UUID) ([]domain.Schedule, error) {
+	rows, err := s.q.ListSchedulesByService(ctx, gen.ListSchedulesByServiceParams{OrgID: orgID, ServiceID: nullUUID(&serviceID)})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Schedule, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *scheduleFromRow(row))
+	}
+	return out, nil
+}
+
 func (s *Store) ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Schedule, error) {
 	rows, err := s.q.ListSchedulesByOrg(ctx, orgID)
 	if err != nil {
@@ -103,7 +143,7 @@ func (s *Store) DeleteSchedule(ctx context.Context, id, orgID uuid.UUID) error {
 }
 
 func (s *Store) ListEnabledSchedules(ctx context.Context) ([]domain.Schedule, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at FROM snapshot_schedules WHERE enabled ORDER BY next_run NULLS FIRST, created_at`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, org_id, app_id, service_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at FROM snapshot_schedules WHERE enabled ORDER BY next_run NULLS FIRST, created_at`)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -111,7 +151,7 @@ func (s *Store) ListEnabledSchedules(ctx context.Context) ([]domain.Schedule, er
 	out := make([]domain.Schedule, 0)
 	for rows.Next() {
 		var schedule domain.Schedule
-		if err := rows.Scan(&schedule.ID, &schedule.OrgID, &schedule.AppID, &schedule.Volume, &schedule.NamePrefix, &schedule.Cron, &schedule.Retention, &schedule.Enabled, &schedule.LastRun, &schedule.NextRun, &schedule.CreatedAt); err != nil {
+		if err := rows.Scan(&schedule.ID, &schedule.OrgID, &schedule.AppID, &schedule.ServiceID, &schedule.Volume, &schedule.NamePrefix, &schedule.Cron, &schedule.Retention, &schedule.Enabled, &schedule.LastRun, &schedule.NextRun, &schedule.CreatedAt); err != nil {
 			return nil, mapErr(err)
 		}
 		out = append(out, schedule)
@@ -127,7 +167,8 @@ func (s *Store) SetScheduleRun(ctx context.Context, id uuid.UUID, last, next tim
 func snapshotFromRow(row gen.Snapshot) *domain.Snapshot {
 	return &domain.Snapshot{
 		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), Volume: row.Volume,
-		Name: row.Name, Size: row.Size, Chunks: int(row.Chunks), DedupSaved: row.DedupSaved,
+		ServiceID: uuidPtr(row.ServiceID),
+		Name:      row.Name, Size: row.Size, Chunks: int(row.Chunks), DedupSaved: row.DedupSaved,
 		CreatedAt: row.CreatedAt,
 	}
 }
@@ -135,6 +176,7 @@ func snapshotFromRow(row gen.Snapshot) *domain.Snapshot {
 func scheduleFromRow(row gen.SnapshotSchedule) *domain.Schedule {
 	return &domain.Schedule{
 		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), Volume: row.Volume,
+		ServiceID:  uuidPtr(row.ServiceID),
 		NamePrefix: row.NamePrefix, Cron: row.Cron, Retention: int(row.Retention),
 		Enabled: row.Enabled, LastRun: nullTimePtr(row.LastRun), NextRun: nullTimePtr(row.NextRun),
 		CreatedAt: row.CreatedAt,

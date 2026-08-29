@@ -1,11 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { apiPatch, apiPost } from "../../../api/client";
 import type { EnvSummary } from "../../../hooks";
 import {
   useProjects,
@@ -14,19 +13,13 @@ import {
   useUpdateEnvironment,
   useDeleteEnvironment,
   useSetDefaultEnvironment,
-  useProjectApps,
-  useDatabases,
-  useComposeStacks,
-  useAppStates,
   useEnvVars,
   useProjectVars,
   useReplaceEnvVars,
   useReplaceProjectVars,
-  useDeleteApp,
-  useDeleteDatabase,
-  useDeleteCompose,
-  useDatabaseDeploy,
-  useComposeUp,
+  useServices,
+  useServiceAction,
+  useUpdateService,
 } from "../../../hooks";
 import { AlertDialog, Badge, BulkActionBar, Button, Card, Dialog, EmptyState, EnvironmentSwitcher, Field, Input, RuntimeStatus, Skeleton, useToast } from "@aether/design-system";
 import type { BadgeProps, Icon as DesignIcon } from "@aether/design-system";
@@ -129,10 +122,6 @@ function ProjectDetail() {
   const update = useUpdateEnvironment(projectId);
   const del = useDeleteEnvironment(projectId);
   const setDefault = useSetDefaultEnvironment(projectId);
-  const { data: apps } = useProjectApps(projectId);
-  const { data: databases } = useDatabases();
-  const { data: composeStacks } = useComposeStacks();
-  const { data: states } = useAppStates();
   const { add } = useToast();
   const queryClient = useQueryClient();
   const validEnvironments = useMemo(
@@ -148,6 +137,8 @@ function ProjectDetail() {
     if (fromStorage) return fromStorage.id;
     return validEnvironments.find((e) => e.is_default)?.id ?? validEnvironments[0].id;
   })();
+  const projectServicesCatalog = useServices(projectId);
+  const servicesCatalog = useServices(projectId, selectedId ?? undefined);
   const envVars = useEnvVars(projectId, selectedId);
   const replaceEnvVars = useReplaceEnvVars(projectId, selectedId ?? "");
   const projectVars = useProjectVars(projectId);
@@ -170,42 +161,37 @@ function ProjectDetail() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const deleteApp = useDeleteApp();
-  const deleteDatabase = useDeleteDatabase();
-  const deleteCompose = useDeleteCompose();
-  const deployApp = useMutation({ mutationFn: (id: string) => apiPost(`/api/v1/apps/${id}/deploy`) });
-  const deployDatabase = useDatabaseDeploy();
-  const deployCompose = useComposeUp();
-  const renameApp = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => apiPatch(`/api/v1/apps/${id}`, { name }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["apps"] });
-      queryClient.invalidateQueries({ queryKey: ["app", variables.id] });
-      queryClient.invalidateQueries({ queryKey: ["apps", "project", projectId] });
-    },
-  });
+  const deployService = useServiceAction("deploy");
+  const deleteService = useServiceAction("delete");
+  const updateService = useUpdateService();
 
   const selected = selectedId;
 
   const activeEnv = validEnvironments.find((e) => e.id === selected) ?? null;
   const defaultEnvId = validEnvironments.find((e) => e.is_default)?.id;
-  const envApps = (apps ?? []).filter((a) =>
-    a.environment_id ? a.environment_id === selected : selected === defaultEnvId
-  );
-  const projDatabases = (databases ?? []).filter((d) => d.project_id === projectId);
-  const projCompose = (composeStacks ?? []).filter((c) => c.project_id === projectId);
-
-  const allServices = [
-    ...envApps.map((a) => {
-      const state = states?.[a.id];
-      return { type: "app", id: a.id, name: a.name, port: a.port, source: a.source_type, image: a.source_type === "image" ? a.image : a.git_url, runtimeStatus: mapRuntimeStatus(state, a.latest_deployment?.status), runtimeLabel: undefined, status: state ?? "" };
-    }),
-    ...projDatabases.map((d) => ({ type: "db", id: d.id, name: d.name, port: d.port, engine: d.engine, version: d.version, status: d.status, runtimeStatus: ["ready", "running", "healthy"].includes(d.status) ? "healthy" as const : d.status === "failed" ? "failed" as const : "unknown" as const, runtimeLabel: ["ready", "running", "healthy"].includes(d.status) ? undefined : "Pending deployment" })),
-    ...projCompose.map((c) => ({ type: "compose", id: c.id, name: c.name, port: 0, source: "compose", image: "Docker Compose", status: c.status, runtimeStatus: mapRuntimeStatus(c.status), runtimeLabel: undefined })),
-  ].sort((a, b) => a.name.localeCompare(b.name));
+  const allServices = (servicesCatalog.data ?? []).map((service) => ({
+        spec: service.spec,
+        type: service.kind === "database" ? "db" : service.kind,
+        id: service.id,
+        serviceId: service.id,
+        name: service.name,
+        port: service.spec?.port ?? 0,
+        source: service.spec?.source_type ?? service.kind,
+        image: service.spec?.image ?? (service.kind === "database" ? "Database" : service.kind === "compose" ? "Docker Compose" : "Application"),
+        engine: service.spec?.engine,
+        version: service.spec?.version,
+        status: service.status,
+        runtimeStatus: mapRuntimeStatus(
+          service.runtime?.containers?.some((container) => container.healthy || ["running", "healthy"].includes(container.status))
+            ? "healthy"
+            : service.runtime?.containers?.[0]?.status ?? service.status,
+          service.status === "deploying" ? service.status : undefined,
+        ),
+        runtimeLabel: service.status === "pending" ? "Pending deployment" : undefined,
+      }));
   const serviceKeys = allServices.map((service) => `${service.type}:${service.id}`).join(",");
   const selectedServices = allServices.filter((service) => selectedServiceKeys.has(`${service.type}:${service.id}`));
-  const canRenameSelected = selectedServices.length === 1 && selectedServices[0].type === "app";
+  const canRenameSelected = selectedServices.length === 1;
   const projectStatuses = allServices.map((service) => service.runtimeStatus);
 
   useEffect(() => {
@@ -234,24 +220,16 @@ function ProjectDetail() {
     await Promise.all(selectedServices.map(async (service) => {
       try {
         if (operation === "delete") {
-          if (service.type === "app") await deleteApp.mutateAsync(service.id);
-          else if (service.type === "db") await deleteDatabase.mutateAsync(service.id);
-          else await deleteCompose.mutateAsync(service.id);
-        } else if (service.type === "app") {
-          await deployApp.mutateAsync(service.id);
-        } else if (service.type === "db") {
-          await deployDatabase.mutateAsync(service.id);
+          await deleteService.mutateAsync(service.serviceId);
         } else {
-          await deployCompose.mutateAsync(service.id);
+          await deployService.mutateAsync(service.serviceId);
         }
       } catch {
         failures.push(service.name);
       }
     }));
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["apps", "project", projectId] }),
-      queryClient.invalidateQueries({ queryKey: ["databases"] }),
-      queryClient.invalidateQueries({ queryKey: ["composes"] }),
+      queryClient.invalidateQueries({ queryKey: ["services"] }),
     ]);
     setBulkBusy(false);
     setBulkDeleteOpen(false);
@@ -261,7 +239,7 @@ function ProjectDetail() {
 
   const openRename = () => {
     const service = selectedServices[0];
-    if (!service || service.type !== "app") return;
+    if (!service) return;
     setRenameTarget({ id: service.id, name: service.name });
     setRenameValue(service.name);
   };
@@ -269,7 +247,7 @@ function ProjectDetail() {
   const submitRename = async () => {
     if (!renameTarget || !renameValue.trim()) return;
     try {
-      await renameApp.mutateAsync({ id: renameTarget.id, name: renameValue.trim() });
+      await updateService.mutateAsync({ serviceId: renameTarget.id, update: { name: renameValue.trim() } });
       setRenameTarget(null);
       setSelectedServiceKeys(new Set());
       add({ title: "Service renamed", tone: "success" });
@@ -325,8 +303,8 @@ function ProjectDetail() {
           </div>
           <EnvironmentSwitcher
             options={validEnvironments.map((environment) => {
-              const environmentApps = (apps ?? []).filter((app) => app.environment_id === environment.id).length;
-              const serviceLabel = `${environmentApps} service${environmentApps === 1 ? "" : "s"}`;
+              const environmentServices = (projectServicesCatalog.data ?? []).filter((service) => service.environment_id === environment.id).length;
+              const serviceLabel = `${environmentServices} service${environmentServices === 1 ? "" : "s"}`;
               return {
               id: environment.id,
               label: environment.name,
@@ -409,11 +387,9 @@ function ProjectDetail() {
               {allServices.map((svc) => {
                 const isDb = svc.type === "db";
                 const isCompose = svc.type === "compose";
-                const target = isCompose ? `/apps/${svc.id}` : isDb ? `/databases/${svc.id}` : `/apps/${svc.id}`;
-                const targetSearch = new URLSearchParams({
-                  ...(isCompose ? { kind: "compose" } : {}),
-                  returnTo: window.location.pathname + window.location.search,
-                }).toString();
+                const target = `/apps/${svc.serviceId}`;
+                const targetURL = new URL(target, window.location.origin);
+                targetURL.searchParams.set("returnTo", window.location.pathname + window.location.search);
                 const sub = isCompose ? "Docker Compose stack" : isDb ? `${(svc as { engine?: string }).engine} ${(svc as { version?: string }).version}` : (svc as { image?: string }).image ?? "";
                 const serviceKey = `${svc.type}:${svc.id}`;
                 return (
@@ -427,7 +403,7 @@ function ProjectDetail() {
                       className="absolute bottom-3 left-3 z-10 size-4 accent-primary"
                     />
                     <a
-                      href={`${target}?${targetSearch}`}
+                      href={`${targetURL.pathname}${targetURL.search}`}
                       className="group flex min-w-0 flex-col items-start gap-sm rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-md pb-10 pt-5 transition-colors hover:border-primary/50 hover:bg-surface-container-high/40"
                       title={`Open ${svc.name}`}
                     >
@@ -457,8 +433,8 @@ function ProjectDetail() {
         submitting={create.isPending || update.isPending}
       />
 
-      <CreateServiceLauncher open={createOpen} onClose={() => setCreateOpen(false)} fixedProjectId={projectId} fixedEnvironmentId={selected ?? undefined} />
-      <DatabaseWizard open={dbCreateOpen} onClose={() => setDbCreateOpen(false)} fixedProjectId={projectId} onCreated={(databaseId) => { window.location.href = `/databases/${databaseId}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`; }} />
+      <CreateServiceLauncher open={createOpen} onClose={() => setCreateOpen(false)} fixedProjectId={projectId} fixedEnvironmentId={selected ?? undefined} onCreated={(serviceId) => { window.location.href = `/apps/${serviceId}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`; }} />
+      <DatabaseWizard open={dbCreateOpen} onClose={() => setDbCreateOpen(false)} fixedProjectId={projectId} fixedEnvironmentId={selectedId ?? undefined} onCreated={(databaseId) => { window.location.href = `/apps/${databaseId}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`; }} />
 
       <Dialog open={renameTarget !== null} trigger={<span />} onOpenChange={(value) => { if (!value) setRenameTarget(null); }} title="Rename service">
         <div className="space-y-5">
@@ -467,7 +443,7 @@ function ProjectDetail() {
           </Field>
           <div className="flex justify-end gap-2 border-t border-border pt-4">
             <Button type="button" variant="ghost" onClick={() => setRenameTarget(null)}>Cancel</Button>
-            <Button type="button" loading={renameApp.isPending} disabled={!renameValue.trim()} onClick={() => void submitRename()}>Rename</Button>
+            <Button type="button" loading={updateService.isPending} disabled={!renameValue.trim()} onClick={() => void submitRename()}>Rename</Button>
           </div>
         </div>
       </Dialog>

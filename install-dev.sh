@@ -99,7 +99,7 @@ DEV_MODE="${DEV_MODE:-false}"
 MODE="${AETHER_MODE:-dev}"
 CRED_FILE="$STATE_DIR/.aether-db"
 HOST_LOG="$STATE_DIR/logs/host-setup.log"
-INSTALL_LOG="${AETHER_INSTALL_LOG:-$STATE_DIR/logs/installer.log}"
+INSTALL_LOG="${AETHER_INSTALL_LOG:-/dev/stderr}"
 FORCE_API_RECREATE=0
 
 is_true() {
@@ -742,6 +742,16 @@ api_exists() {
   $RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$API_CONTAINER"
 }
 
+remove_api_container() {
+  $RUNTIME rm -f "$API_CONTAINER" >/dev/null 2>&1 || true
+  local attempts=0
+  while api_exists; do
+    attempts=$((attempts + 1))
+    [[ "$attempts" -ge 20 ]] && fail "Could not release the API container name '$API_CONTAINER'."
+    sleep 0.25
+  done
+}
+
 api_running() {
   $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$API_CONTAINER"
 }
@@ -767,7 +777,7 @@ start_api() {
   $RUNTIME volume create aether-pack-cache >/dev/null 2>&1 || true
 
   if api_exists; then
-    $RUNTIME rm -f "$API_CONTAINER" >/dev/null 2>&1
+    remove_api_container
   fi
 
   info "Starting API container ($API_CONTAINER) on $AETHER_API_PUBLIC_URL..."
@@ -831,18 +841,34 @@ start_api() {
     warn "  podman socket not mountable on this host — app deployment orchestration will be limited (core platform is unaffected)."
   fi
 
-  if ! $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null 2>&1; then
+  local api_started=0
+  if $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null 2>&1; then
+    api_started=1
+  else
+    remove_api_container
+    sleep 1
+    if $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null 2>&1; then
+      api_started=1
+    fi
+  fi
+  if [[ "$api_started" -eq 0 ]]; then
     if [[ "$sock_mount" -eq 1 ]]; then
       warn "  Could not mount the podman socket — retrying without it."
-      if api_exists; then
-        $RUNTIME rm -f "$API_CONTAINER" >/dev/null 2>&1
-      fi
+      remove_api_container
       local clean_args=()
-      for a in "${args[@]}"; do
-        [[ "$a" == *"podman.sock:ro" ]] && continue
-        [[ "$a" == "CONTAINER_HOST=unix://"* ]] && continue
-        [[ "$a" == "DOCKER_HOST=unix://"* ]] && continue
-        clean_args+=( "$a" )
+      local index=0
+      while [[ "$index" -lt "${#args[@]}" ]]; do
+        local argument="${args[$index]}"
+        if [[ "$argument" == "-v" && "$((index + 1))" -lt "${#args[@]}" && "${args[$((index + 1))]}" == *"podman.sock:ro" ]]; then
+          index=$((index + 2))
+          continue
+        fi
+        if [[ "$argument" == "-e" && "$((index + 1))" -lt "${#args[@]}" && ( "${args[$((index + 1))]}" == "CONTAINER_HOST=unix://"* || "${args[$((index + 1))]}" == "DOCKER_HOST=unix://"* ) ]]; then
+          index=$((index + 2))
+          continue
+        fi
+        clean_args+=( "$argument" )
+        index=$((index + 1))
       done
       $RUNTIME "${clean_args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start the API container."
     else
@@ -1158,9 +1184,6 @@ main() {
   banner
   progress_start
   PROGRESS_TOTAL=7
-  if [[ "${1:-install}" == "update" && -z "${AETHER_INSTALL_LOG:-}" ]]; then
-    INSTALL_LOG="$STATE_DIR/logs/updater.log"
-  fi
   export AETHER_PUBLIC_HOST="$(resolve_public_host)"
   export AETHER_PUBLIC_URL="$(resolve_public_url)"
   export AETHER_API_PUBLIC_URL="http://$AETHER_PUBLIC_HOST:$API_PORT"

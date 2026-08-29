@@ -65,7 +65,7 @@ func (s *Store) ListCronJobsByOrg(ctx context.Context, orgID uuid.UUID) ([]domai
 }
 
 func (s *Store) ListEnabledCronJobs(ctx context.Context) ([]domain.CronJob, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id, a.org_id, c.app_id, c.name, c.schedule, c.command, c.enabled, c.last_run, c.next_run, c.created_at FROM cron_jobs c JOIN apps a ON a.id = c.app_id WHERE c.enabled ORDER BY c.next_run NULLS FIRST, c.created_at`)
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id, s.org_id, c.app_id, c.service_id, c.name, c.schedule, c.command, c.enabled, c.last_run, c.next_run, c.created_at FROM cron_jobs c JOIN services s ON s.id = c.service_id WHERE c.enabled ORDER BY c.next_run NULLS FIRST, c.created_at`)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -73,7 +73,7 @@ func (s *Store) ListEnabledCronJobs(ctx context.Context) ([]domain.CronJob, erro
 	jobs := make([]domain.CronJob, 0)
 	for rows.Next() {
 		var job domain.CronJob
-		if err := rows.Scan(&job.ID, &job.OrgID, &job.AppID, &job.Name, &job.Schedule, &job.Command, &job.Enabled, &job.LastRun, &job.NextRun, &job.CreatedAt); err != nil {
+		if err := rows.Scan(&job.ID, &job.OrgID, &job.AppID, &job.ServiceID, &job.Name, &job.Schedule, &job.Command, &job.Enabled, &job.LastRun, &job.NextRun, &job.CreatedAt); err != nil {
 			return nil, mapErr(err)
 		}
 		jobs = append(jobs, job)
@@ -88,7 +88,7 @@ func (s *Store) SetCronRun(ctx context.Context, id uuid.UUID, last, next time.Ti
 
 func (s *Store) UpdateCronJob(ctx context.Context, job *domain.CronJob) (*domain.CronJob, error) {
 	row, err := s.q.UpdateCronJob(ctx, gen.UpdateCronJobParams{
-		ID: job.ID, AppID: job.AppID, Schedule: job.Schedule, Command: job.Command, Enabled: job.Enabled,
+		ID: job.ID, ID_2: job.AppID, Schedule: job.Schedule, Command: job.Command, Enabled: job.Enabled,
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -132,7 +132,7 @@ func (s *Store) ListWorkersByApp(ctx context.Context, appID uuid.UUID) ([]domain
 }
 
 func (s *Store) SetWorkerState(ctx context.Context, id, appID uuid.UUID, status, containerID string) error {
-	return mapErr(s.q.SetWorkerState(ctx, gen.SetWorkerStateParams{ID: id, AppID: appID, Status: status, ContainerID: containerID}))
+	return mapErr(s.q.SetWorkerState(ctx, gen.SetWorkerStateParams{ID: id, ID_2: appID, Status: status, ContainerID: containerID}))
 }
 
 func (s *Store) DeleteWorker(ctx context.Context, id uuid.UUID) error {
@@ -164,14 +164,14 @@ func (s *Store) CreateAutopilotEvent(ctx context.Context, appID uuid.UUID, actio
 }
 
 func (s *Store) ListAutopilotEvents(ctx context.Context, appID uuid.UUID, limit int) ([]domain.AutopilotEvent, error) {
-	rows, err := s.q.ListAutopilotEvents(ctx, gen.ListAutopilotEventsParams{AppID: appID, Limit: int32(limit)})
+	rows, err := s.q.ListAutopilotEvents(ctx, gen.ListAutopilotEventsParams{ID: appID, Limit: int32(limit)})
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	out := make([]domain.AutopilotEvent, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, domain.AutopilotEvent{
-			ID: r.ID, AppID: r.AppID, Action: r.Action, Detail: r.Detail, CreatedAt: r.CreatedAt,
+			ID: r.ID, AppID: r.AppID, ServiceID: r.ServiceID.UUID, Action: r.Action, Detail: r.Detail, CreatedAt: r.CreatedAt,
 		})
 	}
 	return out, nil
@@ -187,7 +187,7 @@ func cronsFromRows(rows []gen.CronJob) []domain.CronJob {
 
 func cronFromRow(row gen.CronJob) *domain.CronJob {
 	return &domain.CronJob{
-		ID: row.ID, AppID: row.AppID, Name: row.Name, Schedule: row.Schedule,
+		ID: row.ID, AppID: row.AppID, ServiceID: row.ServiceID.UUID, Name: row.Name, Schedule: row.Schedule,
 		Command: row.Command, Enabled: row.Enabled, LastRun: nullTimePtr(row.LastRun),
 		NextRun: nullTimePtr(row.NextRun), CreatedAt: row.CreatedAt,
 	}
@@ -195,7 +195,7 @@ func cronFromRow(row gen.CronJob) *domain.CronJob {
 
 func workerFromRow(row gen.Worker) *domain.Worker {
 	return &domain.Worker{
-		ID: row.ID, AppID: row.AppID, Name: row.Name, Command: row.Command,
+		ID: row.ID, AppID: row.AppID, ServiceID: row.ServiceID.UUID, Name: row.Name, Command: row.Command,
 		Replicas: int(row.Replicas), Enabled: row.Enabled, Status: row.Status,
 		ContainerID: row.ContainerID, CreatedAt: row.CreatedAt,
 	}
@@ -203,7 +203,7 @@ func workerFromRow(row gen.Worker) *domain.Worker {
 
 func policyFromRow(row gen.AppPolicy) *domain.Policy {
 	return &domain.Policy{
-		AppID: row.AppID, Enabled: row.Enabled, CPUMin: float64(row.CpuMin), CPUMax: float64(row.CpuMax),
+		AppID: row.AppID, ServiceID: row.ServiceID.UUID, Enabled: row.Enabled, CPUMin: float64(row.CpuMin), CPUMax: float64(row.CpuMax),
 		MemMinMB: int(row.MemMinMb), MemMaxMB: int(row.MemMaxMb), ScaleUpPct: int(row.ScaleUpPct),
 		ScaleDownPct: int(row.ScaleDownPct), CooldownMin: int(row.CooldownMin), UpdatedAt: row.UpdatedAt,
 	}

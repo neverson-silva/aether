@@ -20,9 +20,9 @@ SELECT service_sources.id, service_sources.service_id, service_sources.connectio
        service_sources.updated_at
 FROM service_sources
 JOIN scm_connections ON scm_connections.id = service_sources.connection_id
-JOIN apps ON apps.id = service_sources.service_id
+JOIN services ON services.id = service_sources.service_id
 WHERE service_sources.service_id = $1
-  AND apps.org_id = $2
+  AND services.org_id = $2
   AND scm_connections.organization_id = $2;
 
 -- name: UpsertServiceSource :one
@@ -32,7 +32,7 @@ INSERT INTO service_sources (
     watch_paths, ignore_paths, watch_root_files
 )
 SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-WHERE EXISTS (SELECT 1 FROM apps WHERE apps.id = $1 AND apps.org_id = $14)
+WHERE EXISTS (SELECT 1 FROM services WHERE services.id = $1 AND services.org_id = $14)
   AND EXISTS (SELECT 1 FROM scm_connections WHERE scm_connections.id = $2 AND scm_connections.organization_id = $14)
 ON CONFLICT (service_id) DO UPDATE
 SET connection_id = EXCLUDED.connection_id,
@@ -55,7 +55,7 @@ RETURNING id, service_id, connection_id, repository_id, repository_owner, reposi
 -- name: DeleteServiceSource :exec
 DELETE FROM service_sources
 WHERE service_id = $1
-  AND EXISTS (SELECT 1 FROM apps WHERE apps.id = $1 AND apps.org_id = $2);
+  AND EXISTS (SELECT 1 FROM services WHERE services.id = service_sources.service_id AND services.org_id = $2);
 
 -- name: UpsertSCMConnection :one
 INSERT INTO scm_connections (organization_id, provider, external_account_id, external_account_name, installation_id, status, metadata, credentials_enc)

@@ -32,7 +32,7 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine, onCreated }: { open: boolean; onClose: () => void; fixedProjectId?: string; initialEngine?: string; onCreated?: (databaseId: string) => void }) {
+export function DatabaseWizard({ open, onClose, fixedProjectId, fixedEnvironmentId, initialEngine, onCreated }: { open: boolean; onClose: () => void; fixedProjectId?: string; fixedEnvironmentId?: string; initialEngine?: string; onCreated?: (serviceId: string) => void }) {
   const { data: projects } = useProjects();
   const createDb = useCreateDatabase();
   const { add } = useToast();
@@ -58,6 +58,7 @@ export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine, o
     try {
       const database = await createDb.mutateAsync({
         project_id: values.project_id,
+        environment_id: fixedEnvironmentId,
         name: values.name,
         engine: values.engine,
         version: values.version || undefined,
@@ -67,7 +68,7 @@ export function DatabaseWizard({ open, onClose, fixedProjectId, initialEngine, o
         storage_mb: storageMB,
       });
       add({ title: "Database created", tone: "success" });
-      onCreated?.(database.id);
+      onCreated?.(database.service_id ?? database.id);
       onClose();
       reset();
     } catch (err) {

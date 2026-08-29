@@ -117,6 +117,9 @@ func (c *Client) wants(ev domain.Event) bool {
 	if ev.AppID != "" && c.scopes["app:"+ev.AppID] {
 		return true
 	}
+	if ev.ServiceID != "" && c.scopes["service:"+ev.ServiceID] {
+		return true
+	}
 	if ev.ResourceType != "" && ev.ResourceID != "" && c.scopes[ev.ResourceType+":"+ev.ResourceID] {
 		return true
 	}

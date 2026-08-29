@@ -348,7 +348,7 @@ function Notifications() {
                 } catch {
                   payload = {};
                 }
-                const target = payload.app_id || payload.service_id;
+                const target = payload.service_id || payload.app_id;
                 return (
                   <Card
                     key={notification.id}

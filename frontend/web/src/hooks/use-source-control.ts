@@ -145,19 +145,20 @@ export function useSourceControlBranches(repositoryID: string | undefined, insta
   });
 }
 
-export function useSourceControlFile(repositoryID: string | undefined, installationID: string | undefined, path: string, ref: string) {
+export function useSourceControlFile(repositoryID: string | undefined, installationID: string | undefined, path: string, ref: string, enabled = true) {
   return useQuery({
     queryKey: ["source-control", "file", repositoryID, installationID, path, ref],
     queryFn: () => apiGet<{ path: string; ref: string; content: string }>(`/api/v1/source-control/github/repositories/${encodeURIComponent(repositoryID ?? "")}/file?installation_id=${encodeURIComponent(installationID ?? "")}&path=${encodeURIComponent(path)}&ref=${encodeURIComponent(ref)}`),
-    enabled: !!repositoryID && !!installationID && !!path && !!ref,
+    enabled: enabled && !!repositoryID && !!installationID && !!path && !!ref,
   });
 }
 
-export function useServiceSource(appID: string) {
+export function useServiceSource(appID: string, canonical = false) {
+  const endpoint = canonical ? `/api/v1/services/${appID}/source` : `/api/v1/apps/${appID}/source`;
   return useQuery({
-    queryKey: ["service-source", appID],
+    queryKey: ["service-source", canonical ? "canonical" : "legacy", appID],
     queryFn: async () => {
-      const source = normalizeServiceSource(await apiGet<ServiceSourceResponse>(`/api/v1/apps/${appID}/source`));
+      const source = normalizeServiceSource(await apiGet<ServiceSourceResponse>(endpoint));
       return {
         ...source,
         watch_paths: source.watch_paths ?? [],
@@ -169,17 +170,18 @@ export function useServiceSource(appID: string) {
   });
 }
 
-export function useSaveServiceSource(appID: string) {
+export function useSaveServiceSource(appID: string, canonical = false) {
   const queryClient = useQueryClient();
+  const endpoint = canonical ? `/api/v1/services/${appID}/source` : `/api/v1/apps/${appID}/source`;
   return useMutation({
     mutationFn: async (body: ServiceSourceInput) => {
       const saved = normalizeServiceSource(
-        await apiPut<ServiceSourceResponse>(`/api/v1/apps/${appID}/source`, body),
+        await apiPut<ServiceSourceResponse>(endpoint, body),
       );
       return { ...saved, ...body };
     },
     onSuccess: (source) => {
-      queryClient.setQueryData(["service-source", appID], source);
+      queryClient.setQueryData(["service-source", canonical ? "canonical" : "legacy", appID], source);
     },
   });
 }

@@ -108,9 +108,9 @@ function Marketplace() {
       await install.mutateAsync({ id: target!.id, project_id: values.project_id });
       add({ title: "Template installed", description: `Template "${target!.name}" installed as a compose stack.`, tone: "success" });
       setTarget(null);
-      const stacks = await apiGet<{ id: string; name: string }[]>("/api/v1/compose");
-      const byName = stacks.find((s) => s.name === target!.name) ?? stacks[0];
-      if (byName) navigate({ to: "/apps/$appId", params: { appId: byName.id }, search: { kind: "compose" } });
+      const services = await apiGet<{ id: string; name: string; kind: string }[]>(`/api/v1/services?project_id=${encodeURIComponent(values.project_id)}`);
+      const service = services.find((item) => item.name === target!.name && item.kind === "compose");
+      if (service) navigate({ to: "/apps/$appId", params: { appId: service.id } });
     } catch (err) {
       add({ title: "Installation failed", description: err instanceof Error ? err.message : "Unable to install template.", tone: "error" });
     }

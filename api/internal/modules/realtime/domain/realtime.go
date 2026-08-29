@@ -24,6 +24,7 @@ type Event struct {
 	OrgID         string          `json:"org_id,omitempty"`
 	ProjectID     string          `json:"project_id,omitempty"`
 	AppID         string          `json:"app_id,omitempty"`
+	ServiceID     string          `json:"service_id,omitempty"`
 	ResourceType  string          `json:"resource_type,omitempty"`
 	ResourceID    string          `json:"resource_id,omitempty"`
 	CorrelationID string          `json:"correlation_id,omitempty"`
@@ -39,13 +40,13 @@ func ParseEvent(data []byte) Event {
 }
 
 type Metrics struct {
-	Backend       string         `json:"backend"`
-	CacheHits     int64          `json:"cache_hits"`
-	CacheMisses   int64          `json:"cache_misses"`
-	CacheSets     int64          `json:"cache_sets"`
-	CacheErrors   int64          `json:"cache_errors"`
-	Subscribers   map[string]int `json:"subscribers"`
-	TotalChannels int            `json:"total_channels"`
+	Backend       string                   `json:"backend"`
+	CacheHits     int64                    `json:"cache_hits"`
+	CacheMisses   int64                    `json:"cache_misses"`
+	CacheSets     int64                    `json:"cache_sets"`
+	CacheErrors   int64                    `json:"cache_errors"`
+	Subscribers   map[string]int           `json:"subscribers"`
+	TotalChannels int                      `json:"total_channels"`
 	Queues        map[string]queue.Metrics `json:"queues,omitempty"`
 }
 
@@ -57,12 +58,13 @@ type NetSample struct {
 }
 
 type NetAppStat struct {
-	AppID   string      `json:"app_id"`
-	Name    string      `json:"name"`
-	Addr    string      `json:"addr"`
-	Samples []NetSample `json:"samples"`
-	P50     float64     `json:"p50_ms"`
-	P95     float64     `json:"p95_ms"`
-	Uptime  float64     `json:"uptime_pct"`
-	H3      bool        `json:"http3"`
+	ServiceID string      `json:"service_id"`
+	AppID     string      `json:"app_id,omitempty"`
+	Name      string      `json:"name"`
+	Addr      string      `json:"addr"`
+	Samples   []NetSample `json:"samples"`
+	P50       float64     `json:"p50_ms"`
+	P95       float64     `json:"p95_ms"`
+	Uptime    float64     `json:"uptime_pct"`
+	H3        bool        `json:"http3"`
 }

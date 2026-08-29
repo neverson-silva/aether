@@ -13,24 +13,26 @@ import (
 )
 
 const createPipeline = `-- name: CreatePipeline :one
-INSERT INTO pipelines (org_id, app_id, name, trigger, stages, enabled)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, org_id, app_id, name, trigger, stages, enabled, created_at
+INSERT INTO pipelines (org_id, app_id, service_id, name, trigger, stages, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, app_id, name, trigger, stages, enabled, created_at, service_id
 `
 
 type CreatePipelineParams struct {
-	OrgID   uuid.UUID       `json:"org_id"`
-	AppID   uuid.NullUUID   `json:"app_id"`
-	Name    string          `json:"name"`
-	Trigger string          `json:"trigger"`
-	Stages  json.RawMessage `json:"stages"`
-	Enabled bool            `json:"enabled"`
+	OrgID     uuid.UUID       `json:"org_id"`
+	AppID     uuid.NullUUID   `json:"app_id"`
+	ServiceID uuid.NullUUID   `json:"service_id"`
+	Name      string          `json:"name"`
+	Trigger   string          `json:"trigger"`
+	Stages    json.RawMessage `json:"stages"`
+	Enabled   bool            `json:"enabled"`
 }
 
 func (q *Queries) CreatePipeline(ctx context.Context, arg CreatePipelineParams) (Pipeline, error) {
 	row := q.db.QueryRowContext(ctx, createPipeline,
 		arg.OrgID,
 		arg.AppID,
+		arg.ServiceID,
 		arg.Name,
 		arg.Trigger,
 		arg.Stages,
@@ -46,6 +48,7 @@ func (q *Queries) CreatePipeline(ctx context.Context, arg CreatePipelineParams) 
 		&i.Stages,
 		&i.Enabled,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -110,7 +113,7 @@ func (q *Queries) FinishPipelineRun(ctx context.Context, arg FinishPipelineRunPa
 }
 
 const getPipeline = `-- name: GetPipeline :one
-SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at
+SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at, service_id
 FROM pipelines
 WHERE id = $1
 `
@@ -127,6 +130,7 @@ func (q *Queries) GetPipeline(ctx context.Context, id uuid.UUID) (Pipeline, erro
 		&i.Stages,
 		&i.Enabled,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -176,7 +180,7 @@ func (q *Queries) ListPipelineRuns(ctx context.Context, arg ListPipelineRunsPara
 }
 
 const listPipelinesByOrg = `-- name: ListPipelinesByOrg :many
-SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at
+SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at, service_id
 FROM pipelines
 WHERE org_id = $1
 ORDER BY name
@@ -200,6 +204,7 @@ func (q *Queries) ListPipelinesByOrg(ctx context.Context, orgID uuid.UUID) ([]Pi
 			&i.Stages,
 			&i.Enabled,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}

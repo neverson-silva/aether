@@ -38,7 +38,7 @@ func (s *DatabaseBackups) StartManualBackup(ctx context.Context, dbID, orgID uui
 		return nil, domain.ErrConflict
 	}
 	job, err := s.Store.CreateJob(ctx, &domain.BackupJob{
-		DatabaseID: dbID, Configuration: &cfg.ID, DestinationID: cfg.DestinationID,
+		DatabaseID: dbID, ServiceID: db.ServiceID, Configuration: &cfg.ID, DestinationID: cfg.DestinationID,
 		Trigger: domain.TriggerManual, Status: domain.BackupQueued, Engine: string(db.Engine),
 	})
 	if err != nil {

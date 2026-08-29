@@ -13,13 +13,24 @@ import (
 )
 
 type Pipelines struct {
-	Store domain.Store
-	Apps  AppStore
+	Store    domain.Store
+	Apps     AppStore
+	Services ServiceStore
 	StageRunner
 }
 
 type AppStore interface {
 	GetApp(ctx context.Context, id, orgID uuid.UUID) (*appsdomain.App, error)
+}
+
+type ServiceStore interface {
+	GetService(ctx context.Context, id, orgID uuid.UUID) error
+}
+
+type ServiceStoreFunc func(context.Context, uuid.UUID, uuid.UUID) error
+
+func (f ServiceStoreFunc) GetService(ctx context.Context, id, orgID uuid.UUID) error {
+	return f(ctx, id, orgID)
 }
 
 type StageRunner interface {
@@ -36,6 +47,20 @@ func (PodmanStageRunner) RunStage(ctx context.Context, image string, commands []
 }
 
 func (p *Pipelines) Create(ctx context.Context, orgID uuid.UUID, appID *uuid.UUID, name, trigger string, stages []domain.Stage) (*domain.Pipeline, error) {
+	return p.create(ctx, orgID, appID, nil, name, trigger, stages)
+}
+
+func (p *Pipelines) CreateForService(ctx context.Context, orgID, serviceID uuid.UUID, name, trigger string, stages []domain.Stage) (*domain.Pipeline, error) {
+	if p.Services == nil {
+		return nil, domain.ErrValidation
+	}
+	if err := p.Services.GetService(ctx, serviceID, orgID); err != nil {
+		return nil, err
+	}
+	return p.create(ctx, orgID, nil, &serviceID, name, trigger, stages)
+}
+
+func (p *Pipelines) create(ctx context.Context, orgID uuid.UUID, appID, serviceID *uuid.UUID, name, trigger string, stages []domain.Stage) (*domain.Pipeline, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(stages) == 0 {
 		return nil, domain.ErrValidation
@@ -52,7 +77,7 @@ func (p *Pipelines) Create(ctx context.Context, orgID uuid.UUID, appID *uuid.UUI
 		return nil, domain.ErrValidation
 	}
 	return p.Store.CreatePipeline(ctx, &domain.Pipeline{
-		OrgID: orgID, AppID: appID, Name: name, Trigger: trigger, Stages: stages, Enabled: true,
+		OrgID: orgID, AppID: appID, ServiceID: serviceID, Name: name, Trigger: trigger, Stages: stages, Enabled: true,
 	})
 }
 
@@ -89,7 +114,7 @@ func (p *Pipelines) Run(ctx context.Context, pipelineID, orgID uuid.UUID, trigge
 			log.WriteString("\n")
 		}
 		if stageErr != nil {
-			fmt.Fprintf(&log, "stage %s falhou: %v\n", stage.Name, stageErr)
+			fmt.Fprintf(&log, "stage %s failed: %v\n", stage.Name, stageErr)
 			status = "failed"
 			break
 		}

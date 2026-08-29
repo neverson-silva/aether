@@ -119,6 +119,10 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		}
 		db.Port = hostPort
 	}
+	serviceID := db.ServiceID
+	if serviceID == uuid.Nil {
+		serviceID = db.ID
+	}
 	spec := worker.RunSpec{
 		Name:          "db-" + db.Name,
 		Image:         image,
@@ -131,7 +135,7 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		Labels: map[string]string{
 			"aether.owner":        "user",
 			"aether.service-type": "database",
-			"aether.service-id":   db.ID.String(),
+			"aether.service-id":   serviceID.String(),
 			"aether.service-name": db.Name,
 			"aether.project-id":   db.ProjectID.String(),
 			"aether.database-id":  db.ID.String(),
@@ -148,6 +152,13 @@ func hostPortFree(port int) bool {
 	if port <= 0 {
 		return false
 	}
+	for _, host := range []string{"host.containers.internal", "127.0.0.1"} {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 300*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return false
+		}
+	}
 	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return false
@@ -160,15 +171,18 @@ const databaseHealthTimeout = 120 * time.Second
 
 func (d *Databases) waitHealthy(ctx context.Context, port int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	for {
-		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-		if err == nil {
-			conn.Close()
-			return nil
+		var lastErr error
+		for _, host := range []string{"host.containers.internal", "127.0.0.1"} {
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 2*time.Second)
+			if err == nil {
+				conn.Close()
+				return nil
+			}
+			lastErr = err
 		}
 		if time.Now().After(deadline) {
-			return err
+			return lastErr
 		}
 		select {
 		case <-ctx.Done():
@@ -209,6 +223,9 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 		return nil, err
 	}
 	dep := d.recordDeployment(ctx, db, trigger, deploydomain.StatusStarting, "", "")
+	if dep != nil && d.Notifier != nil {
+		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(deploydomain.StatusStarting), Detail: "Database deployment started"})
+	}
 	if dep != nil {
 		d.appendDeployLog(dep.ID, "Deploying database '"+db.Name+"' ("+string(db.Engine)+")")
 		d.appendDeployLog(dep.ID, "Pulling image "+dbImage(db.Engine, db.Version))
@@ -218,6 +235,7 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 		if dep != nil {
 			d.appendDeployLog(dep.ID, "Deploy failed: "+err.Error())
 			d.finishDeployment(ctx, dep.ID, deploydomain.StatusFailed, "", err.Error())
+			d.notifyDeployment(ctx, dep, deploydomain.StatusFailed, err.Error())
 		}
 		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", db.ContainerID)
 		return nil, err
@@ -231,6 +249,7 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 		if dep != nil {
 			d.appendDeployLog(dep.ID, "Health check failed: "+err.Error())
 			d.finishDeployment(ctx, dep.ID, deploydomain.StatusFailed, containerID, err.Error())
+			d.notifyDeployment(ctx, dep, deploydomain.StatusFailed, err.Error())
 		}
 		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", containerID)
 		return nil, fmt.Errorf("database did not become healthy: %w", err)
@@ -238,11 +257,18 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 	if dep != nil {
 		d.appendDeployLog(dep.ID, "Database is healthy on port "+strconv.Itoa(db.Port))
 		d.finishDeployment(ctx, dep.ID, deploydomain.StatusReady, containerID, "")
+		d.notifyDeployment(ctx, dep, deploydomain.StatusReady, "Database is healthy")
 	}
 	if err := d.Store.UpdateDatabaseStatus(ctx, id, "running", containerID); err != nil {
 		return nil, err
 	}
 	return d.Get(ctx, id, orgID)
+}
+
+func (d *Databases) notifyDeployment(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status, detail string) {
+	if d.Notifier != nil {
+		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(status), Detail: detail})
+	}
 }
 
 func (d *Databases) recordDeployment(ctx context.Context, db *domain.Database, trigger string, status deploydomain.Status, containerID, errMsg string) *deploydomain.Deployment {
@@ -254,7 +280,7 @@ func (d *Databases) recordDeployment(ctx context.Context, db *domain.Database, t
 		return nil
 	}
 	dep := &deploydomain.Deployment{
-		AppID: db.ID, Number: number, Status: status, Trigger: trigger,
+		AppID: db.ID, ServiceID: db.ServiceID, Number: number, Status: status, Trigger: trigger,
 		ContainerID: containerID, Error: errMsg,
 	}
 	created, err := d.Deployments.CreateDeployment(ctx, dep)

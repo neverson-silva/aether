@@ -26,7 +26,7 @@ export function AppsInline() {
         <div className="bg-surface-container-low border border-outline-variant rounded-lg">
           <DataTable
             columns={[
-              { id: "name", header: "Name", accessor: (app) => <Link to="/apps/$appId" params={{ appId: app.id }} className="text-primary hover:underline">{app.name}</Link> },
+              { id: "name", header: "Name", accessor: (app) => <Link to="/apps/$appId" params={{ appId: app.service_id ?? app.id }} className="text-primary hover:underline">{app.name}</Link> },
               { id: "source", header: "Source", accessor: (app) => <Badge tone="neutral">{app.source_type}</Badge> },
               { id: "image", header: "Image / Repository", accessor: (app) => app.source_type === "image" ? app.image : app.git_url },
               { id: "port", header: "Port", accessor: (app) => `:${app.port}` },

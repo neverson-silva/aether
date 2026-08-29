@@ -67,6 +67,9 @@ func TestDomainLifecycle(t *testing.T) {
 	if d.Host != "api.example.com" || !d.HTTPS {
 		t.Fatalf("host deveria ser minúsculo: %+v", d)
 	}
+	if d.ServiceID == uuid.Nil {
+		t.Fatalf("domain service identity was not persisted")
+	}
 
 	if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: "api.example.com"}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("host duplicado deveria falhar: %v", err)
@@ -175,6 +178,9 @@ func TestPreviewLifecycle(t *testing.T) {
 	}
 	if p.Status != "active" || p.Domain != "api-feature-foo.previews.example.com" {
 		t.Fatalf("preview inesperado: %+v", p)
+	}
+	if p.ServiceID == uuid.Nil {
+		t.Fatalf("preview service identity was not persisted")
 	}
 
 	if _, err := e.svc.CreatePreview(e.ctx, e.appID, e.orgID, "feature/foo"); !errors.Is(err, domain.ErrConflict) {

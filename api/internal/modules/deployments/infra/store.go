@@ -45,7 +45,7 @@ func (s *Store) CreateDeployment(ctx context.Context, dep *domain.Deployment) (*
 		spec = pqtype.NullRawMessage{RawMessage: dep.DeploySpec, Valid: true}
 	}
 	row, err := s.q.CreateDeployment(ctx, gen.CreateDeploymentParams{
-		AppID: dep.AppID, Number: int32(dep.Number), Status: string(dep.Status),
+		AppID: nullUUIDPtr(dep.AppID), Column2: dep.ServiceID, Number: int32(dep.Number), Status: string(dep.Status),
 		Trigger: dep.Trigger, TriggeredBy: dep.TriggeredBy, CommitSha: dep.CommitSHA,
 		ImageRef: dep.ImageRef, ServerID: dep.ServerID, Error: dep.Error,
 		EnvSnapshot: snapshot, ComposeYaml: dep.ComposeYAML, DeploySpec: spec,
@@ -73,14 +73,14 @@ func (s *Store) CreateDeploymentAndOutbox(ctx context.Context, dep *domain.Deplo
 		spec = pqtype.NullRawMessage{RawMessage: dep.DeploySpec, Valid: true}
 	}
 	row, err := q.CreateDeployment(ctx, gen.CreateDeploymentParams{
-		AppID: dep.AppID, Number: int32(dep.Number), Status: string(dep.Status), Trigger: dep.Trigger,
+		AppID: nullUUIDPtr(dep.AppID), Column2: dep.ServiceID, Number: int32(dep.Number), Status: string(dep.Status), Trigger: dep.Trigger,
 		TriggeredBy: dep.TriggeredBy, CommitSha: dep.CommitSHA, ImageRef: dep.ImageRef, ServerID: dep.ServerID,
 		Error: dep.Error, EnvSnapshot: snapshot, ComposeYaml: dep.ComposeYAML, DeploySpec: spec, ComposeHash: dep.ComposeHash,
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	job, err := json.Marshal(queue.Job{ID: row.ID.String(), DeploymentID: row.ID.String(), AppID: row.AppID.String(), OrgID: orgID.String()})
+	job, err := json.Marshal(queue.Job{ID: row.ID.String(), DeploymentID: row.ID.String(), AppID: uuidValue(row.AppID).String(), OrgID: orgID.String()})
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (s *Store) GetDeployment(ctx context.Context, id uuid.UUID) (*domain.Deploy
 }
 
 func (s *Store) GetByApp(ctx context.Context, appID uuid.UUID, number int) (*domain.Deployment, error) {
-	row, err := s.q.GetDeploymentByApp(ctx, gen.GetDeploymentByAppParams{AppID: appID, Number: int32(number)})
+	row, err := s.q.GetDeploymentByApp(ctx, gen.GetDeploymentByAppParams{AppID: nullUUIDPtr(appID), Number: int32(number)})
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -114,7 +114,7 @@ func (s *Store) GetByApp(ctx context.Context, appID uuid.UUID, number int) (*dom
 }
 
 func (s *Store) ListByApp(ctx context.Context, appID uuid.UUID, limit int) ([]domain.Deployment, error) {
-	rows, err := s.q.ListDeployments(ctx, gen.ListDeploymentsParams{AppID: appID, Limit: int32(limit)})
+	rows, err := s.q.ListDeployments(ctx, gen.ListDeploymentsParams{AppID: nullUUIDPtr(appID), Limit: int32(limit)})
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -132,7 +132,7 @@ func (s *Store) LatestByApps(ctx context.Context, appIDs []uuid.UUID) (map[uuid.
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT ON (app_id) id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = ANY($1)
 ORDER BY app_id, number DESC`, appIDs)
@@ -146,7 +146,7 @@ ORDER BY app_id, number DESC`, appIDs)
 			&i.ID, &i.AppID, &i.Number, &i.Status, &i.Trigger, &i.TriggeredBy,
 			&i.CommitSha, &i.ImageRef, &i.ContainerID, &i.ServerID, &i.Error,
 			&i.EnvSnapshot, &i.ComposeYaml, &i.DeploySpec, &i.ComposeHash,
-			&i.CreatedAt, &i.StartedAt, &i.FinishedAt,
+			&i.CreatedAt, &i.StartedAt, &i.FinishedAt, &i.ServiceID,
 		); err != nil {
 			return nil, mapErr(err)
 		}
@@ -186,7 +186,7 @@ func (s *Store) RecoverInterrupted(ctx context.Context, startedAt time.Time) err
 func (s *Store) ListReady(ctx context.Context) ([]domain.Deployment, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT ON (app_id) id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE status = 'ready'
 ORDER BY app_id, number DESC
@@ -202,7 +202,7 @@ LIMIT 500`)
 			&i.ID, &i.AppID, &i.Number, &i.Status, &i.Trigger, &i.TriggeredBy,
 			&i.CommitSha, &i.ImageRef, &i.ContainerID, &i.ServerID, &i.Error,
 			&i.EnvSnapshot, &i.ComposeYaml, &i.DeploySpec, &i.ComposeHash,
-			&i.CreatedAt, &i.StartedAt, &i.FinishedAt,
+			&i.CreatedAt, &i.StartedAt, &i.FinishedAt, &i.ServiceID,
 		); err != nil {
 			return nil, mapErr(err)
 		}
@@ -215,7 +215,7 @@ LIMIT 500`)
 }
 
 func (s *Store) NextNumber(ctx context.Context, appID uuid.UUID) (int, error) {
-	n, err := s.q.NextDeploymentNumber(ctx, appID)
+	n, err := s.q.NextDeploymentNumber(ctx, nullUUIDPtr(appID))
 	if err != nil {
 		return 0, mapErr(err)
 	}
@@ -223,7 +223,7 @@ func (s *Store) NextNumber(ctx context.Context, appID uuid.UUID) (int, error) {
 }
 
 func (s *Store) LastReady(ctx context.Context, appID uuid.UUID) (*domain.Deployment, error) {
-	row, err := s.q.LastReadyDeployment(ctx, appID)
+	row, err := s.q.LastReadyDeployment(ctx, nullUUIDPtr(appID))
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -257,7 +257,7 @@ func (s *Store) CreateRollback(ctx context.Context, newDep *domain.Deployment, r
 		spec = pqtype.NullRawMessage{RawMessage: newDep.DeploySpec, Valid: true}
 	}
 	row, err := q.CreateDeployment(ctx, gen.CreateDeploymentParams{
-		AppID: newDep.AppID, Number: int32(newDep.Number), Status: string(newDep.Status),
+		AppID: nullUUIDPtr(newDep.AppID), Column2: newDep.ServiceID, Number: int32(newDep.Number), Status: string(newDep.Status),
 		Trigger: newDep.Trigger, TriggeredBy: newDep.TriggeredBy, CommitSha: newDep.CommitSHA,
 		ImageRef: newDep.ImageRef, ServerID: newDep.ServerID, Error: newDep.Error,
 		EnvSnapshot: snapshot, ComposeYaml: newDep.ComposeYAML, DeploySpec: spec,
@@ -279,7 +279,7 @@ func deploymentFromRow(row gen.Deployment) *domain.Deployment {
 	started := nullTimePtr(row.StartedAt)
 	finished := nullTimePtr(row.FinishedAt)
 	return &domain.Deployment{
-		ID: row.ID, AppID: row.AppID, Number: int(row.Number), Status: domain.Status(row.Status),
+		ID: row.ID, AppID: uuidValue(row.AppID), ServiceID: uuidValue(row.ServiceID), Number: int(row.Number), Status: domain.Status(row.Status),
 		Trigger: row.Trigger, TriggeredBy: row.TriggeredBy, CommitSHA: row.CommitSha,
 		ImageRef: row.ImageRef, ContainerID: row.ContainerID, ServerID: row.ServerID,
 		Error: row.Error, EnvSnapshot: compactJSON(row.EnvSnapshot), ComposeYAML: row.ComposeYaml,
@@ -300,6 +300,20 @@ func timePtr(t *time.Time) sql.NullTime {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func nullUUIDPtr(id uuid.UUID) uuid.NullUUID {
+	if id == uuid.Nil {
+		return uuid.NullUUID{}
+	}
+	return uuid.NullUUID{UUID: id, Valid: true}
+}
+
+func uuidValue(value uuid.NullUUID) uuid.UUID {
+	if !value.Valid {
+		return uuid.Nil
+	}
+	return value.UUID
 }
 
 func compactJSON(raw []byte) []byte {

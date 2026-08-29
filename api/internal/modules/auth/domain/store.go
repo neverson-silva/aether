@@ -49,6 +49,7 @@ type AuditStore interface {
 type TokenSigner interface {
 	Sign(ctx context.Context, subject, orgID uuid.UUID, role Role, global string, ttl time.Duration) (string, error)
 	SignRefresh(ctx context.Context, subject, orgID uuid.UUID, role Role, global string, ttl time.Duration) (string, error)
+	SignRefreshUntil(ctx context.Context, subject, orgID uuid.UUID, role Role, global string, expiresAt time.Time) (string, error)
 	Verify(ctx context.Context, token string) (*AuthToken, error)
 }
 

@@ -41,6 +41,7 @@ type ComposeApp struct {
 	OrgID         uuid.UUID
 	ProjectID     uuid.UUID
 	EnvironmentID *uuid.UUID
+	ServiceID     uuid.UUID
 	Name          string
 	Compose       string
 	Status        string

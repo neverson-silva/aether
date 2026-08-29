@@ -19,6 +19,7 @@ type Backup struct {
 	ID         uuid.UUID
 	OrgID      uuid.UUID
 	DatabaseID *uuid.UUID
+	ServiceID  uuid.UUID
 	AppID      *uuid.UUID
 	Path       string
 	Size       int64

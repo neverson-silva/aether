@@ -50,19 +50,19 @@ func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 		return
 	}
 	if !d.HTTPS {
-		_ = w.Store.UpdateDomainProvision(ctx, d.ID, d.AppID, string(domain.DomainActive), "active", "", nil, 0)
+		_ = w.Store.UpdateDomainProvision(ctx, d.ID, domainOwnerID(d, d.AppID), string(domain.DomainActive), "active", "", nil, 0)
 		return
 	}
 	if w.Provisioner.VerifyCertificate(d.Host) {
 		_ = w.Provisioner.WriteDomainConfig(d, alias, true)
-		_ = w.Store.UpdateDomainProvision(ctx, d.ID, d.AppID, string(domain.DomainActive), "active", "", nil, 0)
+		_ = w.Store.UpdateDomainProvision(ctx, d.ID, domainOwnerID(d, d.AppID), string(domain.DomainActive), "active", "", nil, 0)
 		return
 	}
-	_ = w.Store.UpdateDomainProvision(ctx, d.ID, d.AppID, string(domain.DomainActive), "pending", "", retryIn(d.RetryCount), d.RetryCount+1)
+	_ = w.Store.UpdateDomainProvision(ctx, d.ID, domainOwnerID(d, d.AppID), string(domain.DomainActive), "pending", "", retryIn(d.RetryCount), d.RetryCount+1)
 }
 
 func (w *ProvisionWorker) scheduleRetry(ctx context.Context, d *domain.Domain, err error) {
-	_ = w.Store.UpdateDomainProvision(ctx, d.ID, d.AppID, string(domain.DomainError), d.CertStatus, err.Error(), retryIn(d.RetryCount), d.RetryCount+1)
+	_ = w.Store.UpdateDomainProvision(ctx, d.ID, domainOwnerID(d, d.AppID), string(domain.DomainError), d.CertStatus, err.Error(), retryIn(d.RetryCount), d.RetryCount+1)
 }
 
 func retryIn(retries int) *time.Time {

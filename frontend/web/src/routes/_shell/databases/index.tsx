@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Archive, Database as DatabaseIcon, Eye, Plus, Trash } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
@@ -13,42 +13,47 @@ import {
   Typography,
   useToast,
 } from "@aether/design-system";
-import { useBackupDatabase, useDatabases, useDeleteDatabase } from "../../../hooks";
-import { getServer } from "../../../api/client";
+import { useServiceAction, useServiceConnection, useServices, useStartServiceDatabaseBackup } from "../../../hooks";
+import type { ServiceSummary } from "../../../api/types";
 import { DatabaseWizard } from "../../../components/DatabaseWizard";
 
-type Database = NonNullable<ReturnType<typeof useDatabases>["data"]>[number];
 const designIcon = (icon: typeof Plus) => icon as unknown as DesignIcon;
 
-function statusFor(status: string) {
-  if (["creating", "starting"].includes(status)) return { status: "deploying" as const, label: "Provisioning" };
-  if (status === "ready") return { status: "healthy" as const, label: "Healthy" };
+function statusFor(status: ServiceSummary["status"]) {
+  if (status === "running") return { status: "healthy" as const, label: "Healthy" };
+  if (status === "pending" || status === "deploying") return { status: "deploying" as const, label: "Provisioning" };
+  if (status === "stopped") return { status: "paused" as const, label: "Stopped" };
   if (status === "failed") return { status: "failed" as const, label: "Failed" };
-  return { status: "unknown" as const, label: status };
+  return { status: "unknown" as const, label: "Unknown" };
 }
 
 function DatabasesPage() {
-  const { data: databases, isLoading } = useDatabases();
-  const deleteDatabase = useDeleteDatabase();
-  const backupDatabase = useBackupDatabase();
+  const { data: services, isLoading } = useServices();
+  const databases = (services ?? []).filter((service) => service.kind === "database");
+  const deleteService = useServiceAction("delete");
+  const backupDatabase = useStartServiceDatabaseBackup();
   const { add } = useToast();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [dsn, setDsn] = useState<string | null>(null);
+  const [dsnOpen, setDsnOpen] = useState(false);
+  const connection = useServiceConnection(databases[0]?.id ?? "", dsnOpen);
 
   const loadDsn = async () => {
-    const database = databases?.[0];
+    const database = databases[0];
     if (!database) return;
-    const response = await fetch(`${getServer()}/api/v1/databases/${database.id}`, { credentials: "include" });
-    const data = await response.json() as { dsn?: string };
-    if (data.dsn) setDsn(data.dsn);
+    setDsnOpen(true);
   };
 
+  useEffect(() => {
+    if (connection.data?.dsn) setDsn(connection.data.dsn);
+  }, [connection.data?.dsn]);
+
   const columns = [
-    { id: "name", header: "Name", accessor: (database: Database) => <Link to="/databases/$dbId" params={{ dbId: database.id }} className="font-medium text-foreground hover:text-primary">{database.name}</Link>, sortValue: (database: Database) => database.name },
-    { id: "engine", header: "Engine", accessor: (database: Database) => <span className="font-mono text-body-sm text-muted-foreground">{database.engine}</span>, sortValue: (database: Database) => database.engine },
-    { id: "version", header: "Version", accessor: (database: Database) => database.version || "Default" },
-    { id: "status", header: "Status", accessor: (database: Database) => { const state = statusFor(database.status); return <RuntimeStatus status={state.status} label={state.label} live={state.status === "healthy" || state.status === "deploying"} />; } },
-    { id: "actions", header: "", accessor: (database: Database) => (
+    { id: "name", header: "Name", accessor: (database: ServiceSummary) => <Link to="/apps/$appId" params={{ appId: database.id }} search={{ returnTo: "/databases" }} className="font-medium text-foreground hover:text-primary">{database.name}</Link>, sortValue: (database: ServiceSummary) => database.name },
+    { id: "engine", header: "Engine", accessor: (database: ServiceSummary) => <span className="font-mono text-body-sm text-muted-foreground">{database.spec?.engine ?? "Database"}</span>, sortValue: (database: ServiceSummary) => database.spec?.engine ?? "" },
+    { id: "version", header: "Version", accessor: (database: ServiceSummary) => database.spec?.version || "Default" },
+    { id: "status", header: "Status", accessor: (database: ServiceSummary) => { const state = statusFor(database.status); return <RuntimeStatus status={state.status} label={state.label} live={state.status === "healthy" || state.status === "deploying"} />; } },
+    { id: "actions", header: "", accessor: (database: ServiceSummary) => (
       <div className="flex justify-end gap-2">
         <Button variant="ghost" size="sm" icon={designIcon(Archive)} loading={backupDatabase.isPending} onClick={() => backupDatabase.mutate(database.id, { onError: (error) => add({ title: "Backup failed", description: error.message, tone: "error" }), onSuccess: () => add({ title: "Backup started", tone: "success" }) })}>Backup</Button>
         <AlertDialog
@@ -56,7 +61,7 @@ function DatabasesPage() {
           title="Delete database"
           description={`The container and volume for ${database.name} will be removed. This action cannot be undone.`}
           confirmLabel="Delete database"
-          onConfirm={() => deleteDatabase.mutate(database.id, { onError: (error) => add({ title: "Delete failed", description: error.message, tone: "error" }), onSuccess: () => add({ title: "Database deleted", tone: "success" }) })}
+          onConfirm={() => deleteService.mutate(database.id, { onError: (error) => add({ title: "Delete failed", description: error.message, tone: "error" }), onSuccess: () => add({ title: "Database deleted", tone: "success" }) })}
         />
       </div>
     ) },

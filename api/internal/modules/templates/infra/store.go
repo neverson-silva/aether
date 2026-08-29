@@ -64,7 +64,7 @@ func (s *Store) CreateComposeApp(ctx context.Context, app *domain.ComposeApp) (*
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return composeFromRow(gen.CreateComposeAppRow(row)), nil
+	return composeFromRow(row), nil
 }
 
 func (s *Store) GetComposeApp(ctx context.Context, id uuid.UUID) (*domain.ComposeApp, error) {
@@ -72,7 +72,15 @@ func (s *Store) GetComposeApp(ctx context.Context, id uuid.UUID) (*domain.Compos
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return composeFromRow(gen.CreateComposeAppRow(row)), nil
+	return composeFromRow(row), nil
+}
+
+func (s *Store) GetServiceID(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
+	var serviceID uuid.UUID
+	if err := s.db.QueryRowContext(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
+		return uuid.Nil, mapErr(err)
+	}
+	return serviceID, nil
 }
 
 func (s *Store) ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.ComposeApp, error) {
@@ -82,7 +90,7 @@ func (s *Store) ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]do
 	}
 	out := make([]domain.ComposeApp, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *composeFromRow(gen.CreateComposeAppRow(r)))
+		out = append(out, *composeFromRow(r))
 	}
 	return out, nil
 }
@@ -105,14 +113,14 @@ func templateFromRow(row gen.GetTemplateRow) *domain.Template {
 	}
 }
 
-func composeFromRow(row gen.CreateComposeAppRow) *domain.ComposeApp {
+func composeFromRow(row gen.ComposeApp) *domain.ComposeApp {
 	var envID *uuid.UUID
 	if row.EnvironmentID.Valid {
 		id := row.EnvironmentID.UUID
 		envID = &id
 	}
 	return &domain.ComposeApp{
-		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: envID,
+		ID: row.ID, ServiceID: row.ServiceID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: envID,
 		Name: row.Name, Compose: row.Compose, Status: row.Status, CreatedAt: row.CreatedAt,
 	}
 }

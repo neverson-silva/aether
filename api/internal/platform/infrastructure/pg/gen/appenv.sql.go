@@ -11,39 +11,46 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteAppEnv = `-- name: DeleteAppEnv :exec
+const deleteServiceEnv = `-- name: DeleteServiceEnv :exec
 DELETE FROM app_env
-WHERE app_id = $1 AND name = $2
+WHERE service_id = $1 AND name = $2
 `
 
-type DeleteAppEnvParams struct {
-	AppID uuid.UUID `json:"app_id"`
-	Name  string    `json:"name"`
+type DeleteServiceEnvParams struct {
+	ServiceID uuid.NullUUID `json:"service_id"`
+	Name      string        `json:"name"`
 }
 
-func (q *Queries) DeleteAppEnv(ctx context.Context, arg DeleteAppEnvParams) error {
-	_, err := q.db.ExecContext(ctx, deleteAppEnv, arg.AppID, arg.Name)
+func (q *Queries) DeleteServiceEnv(ctx context.Context, arg DeleteServiceEnvParams) error {
+	_, err := q.db.ExecContext(ctx, deleteServiceEnv, arg.ServiceID, arg.Name)
 	return err
 }
 
-const listAppEnv = `-- name: ListAppEnv :many
-SELECT app_id, name, value, secret
+const listServiceEnv = `-- name: ListServiceEnv :many
+SELECT service_id, name, value, secret
 FROM app_env
-WHERE app_id = $1
+WHERE service_id = $1
 ORDER BY name
 `
 
-func (q *Queries) ListAppEnv(ctx context.Context, appID uuid.UUID) ([]AppEnv, error) {
-	rows, err := q.db.QueryContext(ctx, listAppEnv, appID)
+type ListServiceEnvRow struct {
+	ServiceID uuid.NullUUID `json:"service_id"`
+	Name      string        `json:"name"`
+	Value     string        `json:"value"`
+	Secret    bool          `json:"secret"`
+}
+
+func (q *Queries) ListServiceEnv(ctx context.Context, serviceID uuid.NullUUID) ([]ListServiceEnvRow, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceEnv, serviceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AppEnv{}
+	items := []ListServiceEnvRow{}
 	for rows.Next() {
-		var i AppEnv
+		var i ListServiceEnvRow
 		if err := rows.Scan(
-			&i.AppID,
+			&i.ServiceID,
 			&i.Name,
 			&i.Value,
 			&i.Secret,
@@ -61,22 +68,22 @@ func (q *Queries) ListAppEnv(ctx context.Context, appID uuid.UUID) ([]AppEnv, er
 	return items, nil
 }
 
-const upsertAppEnv = `-- name: UpsertAppEnv :exec
-INSERT INTO app_env (app_id, name, value, secret)
+const upsertServiceEnv = `-- name: UpsertServiceEnv :exec
+INSERT INTO app_env (service_id, name, value, secret)
 VALUES ($1, $2, $3, $4)
-ON CONFLICT (app_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret
+ON CONFLICT (service_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret
 `
 
-type UpsertAppEnvParams struct {
-	AppID  uuid.UUID `json:"app_id"`
-	Name   string    `json:"name"`
-	Value  string    `json:"value"`
-	Secret bool      `json:"secret"`
+type UpsertServiceEnvParams struct {
+	ServiceID uuid.NullUUID `json:"service_id"`
+	Name      string        `json:"name"`
+	Value     string        `json:"value"`
+	Secret    bool          `json:"secret"`
 }
 
-func (q *Queries) UpsertAppEnv(ctx context.Context, arg UpsertAppEnvParams) error {
-	_, err := q.db.ExecContext(ctx, upsertAppEnv,
-		arg.AppID,
+func (q *Queries) UpsertServiceEnv(ctx context.Context, arg UpsertServiceEnvParams) error {
+	_, err := q.db.ExecContext(ctx, upsertServiceEnv,
+		arg.ServiceID,
 		arg.Name,
 		arg.Value,
 		arg.Secret,

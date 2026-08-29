@@ -1,15 +1,15 @@
 -- name: CreateDatabase :one
-INSERT INTO databases (org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at;
+INSERT INTO databases (org_id, project_id, environment_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id;
 
 -- name: GetDatabase :one
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at
+SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE id = $1;
 
 -- name: ListDatabasesByOrg :many
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at
+SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE org_id = $1
 ORDER BY name;

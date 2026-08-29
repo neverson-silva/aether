@@ -14,13 +14,14 @@ import (
 )
 
 const createDomain = `-- name: CreateDomain :one
-INSERT INTO domains (app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+INSERT INTO domains (app_id, service_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
 `
 
 type CreateDomainParams struct {
-	AppID         uuid.UUID     `json:"app_id"`
+	AppID         uuid.NullUUID `json:"app_id"`
+	ServiceID     uuid.NullUUID `json:"service_id"`
 	ServerID      uuid.NullUUID `json:"server_id"`
 	ServiceType   string        `json:"service_type"`
 	Host          string        `json:"host"`
@@ -33,29 +34,10 @@ type CreateDomainParams struct {
 	CertStatus    string        `json:"cert_status"`
 }
 
-type CreateDomainRow struct {
-	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.UUID     `json:"app_id"`
-	ServerID      uuid.NullUUID `json:"server_id"`
-	ServiceType   string        `json:"service_type"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	ContainerPort int32         `json:"container_port"`
-	Status        string        `json:"status"`
-	CertStatus    string        `json:"cert_status"`
-	RetryCount    int32         `json:"retry_count"`
-	LastError     string        `json:"last_error"`
-	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-}
-
-func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (CreateDomainRow, error) {
+func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error) {
 	row := q.db.QueryRowContext(ctx, createDomain,
 		arg.AppID,
+		arg.ServiceID,
 		arg.ServerID,
 		arg.ServiceType,
 		arg.Host,
@@ -67,37 +49,39 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Cre
 		arg.Status,
 		arg.CertStatus,
 	)
-	var i CreateDomainRow
+	var i Domain
 	err := row.Scan(
 		&i.ID,
 		&i.AppID,
-		&i.ServerID,
-		&i.ServiceType,
 		&i.Host,
 		&i.Https,
+		&i.CertStatus,
+		&i.CreatedAt,
+		&i.ServerID,
+		&i.ContainerPort,
 		&i.Path,
 		&i.InternalPath,
 		&i.StripPath,
-		&i.ContainerPort,
 		&i.Status,
-		&i.CertStatus,
+		&i.UpdatedAt,
 		&i.RetryCount,
 		&i.LastError,
 		&i.NextRetryAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.ServiceType,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const createPreview = `-- name: CreatePreview :one
-INSERT INTO previews (app_id, branch, deployment_id, domain)
-VALUES ($1, $2, $3, $4)
-RETURNING id, app_id, branch, deployment_id, container_id, domain, status, created_at
+INSERT INTO previews (app_id, service_id, branch, deployment_id, domain)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, app_id, branch, deployment_id, container_id, domain, status, created_at, service_id
 `
 
 type CreatePreviewParams struct {
 	AppID        uuid.UUID     `json:"app_id"`
+	ServiceID    uuid.NullUUID `json:"service_id"`
 	Branch       string        `json:"branch"`
 	DeploymentID uuid.NullUUID `json:"deployment_id"`
 	Domain       string        `json:"domain"`
@@ -106,6 +90,7 @@ type CreatePreviewParams struct {
 func (q *Queries) CreatePreview(ctx context.Context, arg CreatePreviewParams) (Preview, error) {
 	row := q.db.QueryRowContext(ctx, createPreview,
 		arg.AppID,
+		arg.ServiceID,
 		arg.Branch,
 		arg.DeploymentID,
 		arg.Domain,
@@ -120,160 +105,123 @@ func (q *Queries) CreatePreview(ctx context.Context, arg CreatePreviewParams) (P
 		&i.Domain,
 		&i.Status,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const deleteDomain = `-- name: DeleteDomain :exec
 DELETE FROM domains
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type DeleteDomainParams struct {
-	ID    uuid.UUID `json:"id"`
-	AppID uuid.UUID `json:"app_id"`
+	ID        uuid.UUID     `json:"id"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 func (q *Queries) DeleteDomain(ctx context.Context, arg DeleteDomainParams) error {
-	_, err := q.db.ExecContext(ctx, deleteDomain, arg.ID, arg.AppID)
+	_, err := q.db.ExecContext(ctx, deleteDomain, arg.ID, arg.ServiceID)
 	return err
 }
 
 const deletePreview = `-- name: DeletePreview :exec
 DELETE FROM previews
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type DeletePreviewParams struct {
-	ID    uuid.UUID `json:"id"`
-	AppID uuid.UUID `json:"app_id"`
+	ID        uuid.UUID     `json:"id"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 func (q *Queries) DeletePreview(ctx context.Context, arg DeletePreviewParams) error {
-	_, err := q.db.ExecContext(ctx, deletePreview, arg.ID, arg.AppID)
+	_, err := q.db.ExecContext(ctx, deletePreview, arg.ID, arg.ServiceID)
 	return err
 }
 
 const getDomainByHost = `-- name: GetDomainByHost :one
-SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
 FROM domains
-WHERE app_id = $1 AND host = $2
+WHERE (service_id = $1 OR app_id = $1) AND host = $2
 `
 
 type GetDomainByHostParams struct {
-	AppID uuid.UUID `json:"app_id"`
-	Host  string    `json:"host"`
+	ServiceID uuid.NullUUID `json:"service_id"`
+	Host      string        `json:"host"`
 }
 
-type GetDomainByHostRow struct {
-	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.UUID     `json:"app_id"`
-	ServerID      uuid.NullUUID `json:"server_id"`
-	ServiceType   string        `json:"service_type"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	ContainerPort int32         `json:"container_port"`
-	Status        string        `json:"status"`
-	CertStatus    string        `json:"cert_status"`
-	RetryCount    int32         `json:"retry_count"`
-	LastError     string        `json:"last_error"`
-	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-}
-
-func (q *Queries) GetDomainByHost(ctx context.Context, arg GetDomainByHostParams) (GetDomainByHostRow, error) {
-	row := q.db.QueryRowContext(ctx, getDomainByHost, arg.AppID, arg.Host)
-	var i GetDomainByHostRow
+func (q *Queries) GetDomainByHost(ctx context.Context, arg GetDomainByHostParams) (Domain, error) {
+	row := q.db.QueryRowContext(ctx, getDomainByHost, arg.ServiceID, arg.Host)
+	var i Domain
 	err := row.Scan(
 		&i.ID,
 		&i.AppID,
-		&i.ServerID,
-		&i.ServiceType,
 		&i.Host,
 		&i.Https,
+		&i.CertStatus,
+		&i.CreatedAt,
+		&i.ServerID,
+		&i.ContainerPort,
 		&i.Path,
 		&i.InternalPath,
 		&i.StripPath,
-		&i.ContainerPort,
 		&i.Status,
-		&i.CertStatus,
+		&i.UpdatedAt,
 		&i.RetryCount,
 		&i.LastError,
 		&i.NextRetryAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.ServiceType,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getDomainByID = `-- name: GetDomainByID :one
-SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
 FROM domains
 WHERE id = $1
 `
 
-type GetDomainByIDRow struct {
-	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.UUID     `json:"app_id"`
-	ServerID      uuid.NullUUID `json:"server_id"`
-	ServiceType   string        `json:"service_type"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	ContainerPort int32         `json:"container_port"`
-	Status        string        `json:"status"`
-	CertStatus    string        `json:"cert_status"`
-	RetryCount    int32         `json:"retry_count"`
-	LastError     string        `json:"last_error"`
-	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-}
-
-func (q *Queries) GetDomainByID(ctx context.Context, id uuid.UUID) (GetDomainByIDRow, error) {
+func (q *Queries) GetDomainByID(ctx context.Context, id uuid.UUID) (Domain, error) {
 	row := q.db.QueryRowContext(ctx, getDomainByID, id)
-	var i GetDomainByIDRow
+	var i Domain
 	err := row.Scan(
 		&i.ID,
 		&i.AppID,
-		&i.ServerID,
-		&i.ServiceType,
 		&i.Host,
 		&i.Https,
+		&i.CertStatus,
+		&i.CreatedAt,
+		&i.ServerID,
+		&i.ContainerPort,
 		&i.Path,
 		&i.InternalPath,
 		&i.StripPath,
-		&i.ContainerPort,
 		&i.Status,
-		&i.CertStatus,
+		&i.UpdatedAt,
 		&i.RetryCount,
 		&i.LastError,
 		&i.NextRetryAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.ServiceType,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getPreview = `-- name: GetPreview :one
-SELECT id, app_id, branch, deployment_id, container_id, domain, status, created_at
+SELECT id, app_id, branch, deployment_id, container_id, domain, status, created_at, service_id
 FROM previews
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type GetPreviewParams struct {
-	ID    uuid.UUID `json:"id"`
-	AppID uuid.UUID `json:"app_id"`
+	ID        uuid.UUID     `json:"id"`
+	ServiceID uuid.NullUUID `json:"service_id"`
 }
 
 func (q *Queries) GetPreview(ctx context.Context, arg GetPreviewParams) (Preview, error) {
-	row := q.db.QueryRowContext(ctx, getPreview, arg.ID, arg.AppID)
+	row := q.db.QueryRowContext(ctx, getPreview, arg.ID, arg.ServiceID)
 	var i Preview
 	err := row.Scan(
 		&i.ID,
@@ -284,12 +232,13 @@ func (q *Queries) GetPreview(ctx context.Context, arg GetPreviewParams) (Preview
 		&i.Domain,
 		&i.Status,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getPreviewByID = `-- name: GetPreviewByID :one
-SELECT id, app_id, branch, deployment_id, container_id, domain, status, created_at
+SELECT id, app_id, branch, deployment_id, container_id, domain, status, created_at, service_id
 FROM previews
 WHERE id = $1
 `
@@ -306,27 +255,28 @@ func (q *Queries) GetPreviewByID(ctx context.Context, id uuid.UUID) (Preview, er
 		&i.Domain,
 		&i.Status,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const listCertificatesByOrg = `-- name: ListCertificatesByOrg :many
-SELECT d.id, d.app_id, a.name AS app_name, d.host, d.https, d.cert_status, d.created_at
+SELECT d.id, d.app_id, d.service_id, s.name AS app_name, d.host, d.https, d.cert_status, d.created_at
 FROM domains d
-JOIN apps a ON a.id = d.app_id
-JOIN projects p ON p.id = a.project_id
-WHERE p.org_id = $1
+JOIN services s ON s.id = d.service_id
+WHERE s.org_id = $1 AND s.deleted_at IS NULL
 ORDER BY d.host
 `
 
 type ListCertificatesByOrgRow struct {
-	ID         uuid.UUID `json:"id"`
-	AppID      uuid.UUID `json:"app_id"`
-	AppName    string    `json:"app_name"`
-	Host       string    `json:"host"`
-	Https      bool      `json:"https"`
-	CertStatus string    `json:"cert_status"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         uuid.UUID     `json:"id"`
+	AppID      uuid.NullUUID `json:"app_id"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
+	AppName    string        `json:"app_name"`
+	Host       string        `json:"host"`
+	Https      bool          `json:"https"`
+	CertStatus string        `json:"cert_status"`
+	CreatedAt  time.Time     `json:"created_at"`
 }
 
 func (q *Queries) ListCertificatesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListCertificatesByOrgRow, error) {
@@ -341,6 +291,7 @@ func (q *Queries) ListCertificatesByOrg(ctx context.Context, orgID uuid.UUID) ([
 		if err := rows.Scan(
 			&i.ID,
 			&i.AppID,
+			&i.ServiceID,
 			&i.AppName,
 			&i.Host,
 			&i.Https,
@@ -361,59 +312,40 @@ func (q *Queries) ListCertificatesByOrg(ctx context.Context, orgID uuid.UUID) ([
 }
 
 const listDomains = `-- name: ListDomains :many
-SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
 FROM domains
-WHERE app_id = $1
+WHERE service_id = $1 OR app_id = $1
 ORDER BY host
 `
 
-type ListDomainsRow struct {
-	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.UUID     `json:"app_id"`
-	ServerID      uuid.NullUUID `json:"server_id"`
-	ServiceType   string        `json:"service_type"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	ContainerPort int32         `json:"container_port"`
-	Status        string        `json:"status"`
-	CertStatus    string        `json:"cert_status"`
-	RetryCount    int32         `json:"retry_count"`
-	LastError     string        `json:"last_error"`
-	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-}
-
-func (q *Queries) ListDomains(ctx context.Context, appID uuid.UUID) ([]ListDomainsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listDomains, appID)
+func (q *Queries) ListDomains(ctx context.Context, serviceID uuid.NullUUID) ([]Domain, error) {
+	rows, err := q.db.QueryContext(ctx, listDomains, serviceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListDomainsRow{}
+	items := []Domain{}
 	for rows.Next() {
-		var i ListDomainsRow
+		var i Domain
 		if err := rows.Scan(
 			&i.ID,
 			&i.AppID,
-			&i.ServerID,
-			&i.ServiceType,
 			&i.Host,
 			&i.Https,
+			&i.CertStatus,
+			&i.CreatedAt,
+			&i.ServerID,
+			&i.ContainerPort,
 			&i.Path,
 			&i.InternalPath,
 			&i.StripPath,
-			&i.ContainerPort,
 			&i.Status,
-			&i.CertStatus,
+			&i.UpdatedAt,
 			&i.RetryCount,
 			&i.LastError,
 			&i.NextRetryAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.ServiceType,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -429,14 +361,14 @@ func (q *Queries) ListDomains(ctx context.Context, appID uuid.UUID) ([]ListDomai
 }
 
 const listPreviews = `-- name: ListPreviews :many
-SELECT id, app_id, branch, deployment_id, container_id, domain, status, created_at
+SELECT id, app_id, branch, deployment_id, container_id, domain, status, created_at, service_id
 FROM previews
-WHERE app_id = $1
+WHERE service_id = $1 OR app_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListPreviews(ctx context.Context, appID uuid.UUID) ([]Preview, error) {
-	rows, err := q.db.QueryContext(ctx, listPreviews, appID)
+func (q *Queries) ListPreviews(ctx context.Context, serviceID uuid.NullUUID) ([]Preview, error) {
+	rows, err := q.db.QueryContext(ctx, listPreviews, serviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -453,6 +385,7 @@ func (q *Queries) ListPreviews(ctx context.Context, appID uuid.UUID) ([]Preview,
 			&i.Domain,
 			&i.Status,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -468,7 +401,7 @@ func (q *Queries) ListPreviews(ctx context.Context, appID uuid.UUID) ([]Preview,
 }
 
 const listProvisioningDomains = `-- name: ListProvisioningDomains :many
-SELECT id, app_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, retry_count, last_error, next_retry_at, created_at, updated_at
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
 FROM domains
 WHERE status IN ('PENDING', 'PROVISIONING', 'ERROR')
   AND retry_count < $1
@@ -481,53 +414,34 @@ type ListProvisioningDomainsParams struct {
 	NextRetryAt sql.NullTime `json:"next_retry_at"`
 }
 
-type ListProvisioningDomainsRow struct {
-	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.UUID     `json:"app_id"`
-	ServerID      uuid.NullUUID `json:"server_id"`
-	ServiceType   string        `json:"service_type"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	ContainerPort int32         `json:"container_port"`
-	Status        string        `json:"status"`
-	CertStatus    string        `json:"cert_status"`
-	RetryCount    int32         `json:"retry_count"`
-	LastError     string        `json:"last_error"`
-	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-}
-
-func (q *Queries) ListProvisioningDomains(ctx context.Context, arg ListProvisioningDomainsParams) ([]ListProvisioningDomainsRow, error) {
+func (q *Queries) ListProvisioningDomains(ctx context.Context, arg ListProvisioningDomainsParams) ([]Domain, error) {
 	rows, err := q.db.QueryContext(ctx, listProvisioningDomains, arg.RetryCount, arg.NextRetryAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListProvisioningDomainsRow{}
+	items := []Domain{}
 	for rows.Next() {
-		var i ListProvisioningDomainsRow
+		var i Domain
 		if err := rows.Scan(
 			&i.ID,
 			&i.AppID,
-			&i.ServerID,
-			&i.ServiceType,
 			&i.Host,
 			&i.Https,
+			&i.CertStatus,
+			&i.CreatedAt,
+			&i.ServerID,
+			&i.ContainerPort,
 			&i.Path,
 			&i.InternalPath,
 			&i.StripPath,
-			&i.ContainerPort,
 			&i.Status,
-			&i.CertStatus,
+			&i.UpdatedAt,
 			&i.RetryCount,
 			&i.LastError,
 			&i.NextRetryAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.ServiceType,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -555,24 +469,24 @@ SET host = $3,
     last_error = '',
     next_retry_at = NULL,
     updated_at = now()
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type UpdateDomainFieldsParams struct {
-	ID            uuid.UUID `json:"id"`
-	AppID         uuid.UUID `json:"app_id"`
-	Host          string    `json:"host"`
-	Https         bool      `json:"https"`
-	Path          string    `json:"path"`
-	InternalPath  string    `json:"internal_path"`
-	StripPath     bool      `json:"strip_path"`
-	ContainerPort int32     `json:"container_port"`
+	ID            uuid.UUID     `json:"id"`
+	ServiceID     uuid.NullUUID `json:"service_id"`
+	Host          string        `json:"host"`
+	Https         bool          `json:"https"`
+	Path          string        `json:"path"`
+	InternalPath  string        `json:"internal_path"`
+	StripPath     bool          `json:"strip_path"`
+	ContainerPort int32         `json:"container_port"`
 }
 
 func (q *Queries) UpdateDomainFields(ctx context.Context, arg UpdateDomainFieldsParams) error {
 	_, err := q.db.ExecContext(ctx, updateDomainFields,
 		arg.ID,
-		arg.AppID,
+		arg.ServiceID,
 		arg.Host,
 		arg.Https,
 		arg.Path,
@@ -591,23 +505,23 @@ SET status = $3,
     next_retry_at = $6,
     retry_count = $7,
     updated_at = now()
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type UpdateDomainProvisionParams struct {
-	ID          uuid.UUID    `json:"id"`
-	AppID       uuid.UUID    `json:"app_id"`
-	Status      string       `json:"status"`
-	CertStatus  string       `json:"cert_status"`
-	LastError   string       `json:"last_error"`
-	NextRetryAt sql.NullTime `json:"next_retry_at"`
-	RetryCount  int32        `json:"retry_count"`
+	ID          uuid.UUID     `json:"id"`
+	ServiceID   uuid.NullUUID `json:"service_id"`
+	Status      string        `json:"status"`
+	CertStatus  string        `json:"cert_status"`
+	LastError   string        `json:"last_error"`
+	NextRetryAt sql.NullTime  `json:"next_retry_at"`
+	RetryCount  int32         `json:"retry_count"`
 }
 
 func (q *Queries) UpdateDomainProvision(ctx context.Context, arg UpdateDomainProvisionParams) error {
 	_, err := q.db.ExecContext(ctx, updateDomainProvision,
 		arg.ID,
-		arg.AppID,
+		arg.ServiceID,
 		arg.Status,
 		arg.CertStatus,
 		arg.LastError,
@@ -622,20 +536,20 @@ UPDATE domains
 SET status = $3,
     cert_status = $4,
     updated_at = now()
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type UpdateDomainStatusParams struct {
-	ID         uuid.UUID `json:"id"`
-	AppID      uuid.UUID `json:"app_id"`
-	Status     string    `json:"status"`
-	CertStatus string    `json:"cert_status"`
+	ID         uuid.UUID     `json:"id"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
+	Status     string        `json:"status"`
+	CertStatus string        `json:"cert_status"`
 }
 
 func (q *Queries) UpdateDomainStatus(ctx context.Context, arg UpdateDomainStatusParams) error {
 	_, err := q.db.ExecContext(ctx, updateDomainStatus,
 		arg.ID,
-		arg.AppID,
+		arg.ServiceID,
 		arg.Status,
 		arg.CertStatus,
 	)
@@ -647,12 +561,12 @@ UPDATE previews
 SET deployment_id = $3,
     container_id = $4,
     status = $5
-WHERE id = $1 AND app_id = $2
+WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type UpdatePreviewResultParams struct {
 	ID           uuid.UUID     `json:"id"`
-	AppID        uuid.UUID     `json:"app_id"`
+	ServiceID    uuid.NullUUID `json:"service_id"`
 	DeploymentID uuid.NullUUID `json:"deployment_id"`
 	ContainerID  string        `json:"container_id"`
 	Status       string        `json:"status"`
@@ -661,7 +575,7 @@ type UpdatePreviewResultParams struct {
 func (q *Queries) UpdatePreviewResult(ctx context.Context, arg UpdatePreviewResultParams) error {
 	_, err := q.db.ExecContext(ctx, updatePreviewResult,
 		arg.ID,
-		arg.AppID,
+		arg.ServiceID,
 		arg.DeploymentID,
 		arg.ContainerID,
 		arg.Status,

@@ -14,12 +14,12 @@ import (
 )
 
 func (h *Handler) Terminal(c *gin.Context) {
-	appID, err := uuid.Parse(c.Param("appID"))
+	serviceID, err := uuid.Parse(c.Param("serviceID"))
 	if err != nil {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	containerID, err := h.realtime.ReadyContainer(c.Request.Context(), appID, orgID(c))
+	containerID, err := h.realtime.ReadyContainerForService(c.Request.Context(), serviceID, orgID(c), c.Query("container"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no active container"})
 		return

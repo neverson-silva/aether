@@ -18,8 +18,8 @@ const THEME = {
   colors: { "editor.background": "#0d0d0d" },
 };
 
-export function ComposeTab({ appID, initialCompose }: { appID: string; initialCompose?: string }) {
-  const { data, isLoading, error } = useAppCompose(appID, !initialCompose);
+export function ComposeTab({ appID, initialCompose, canonicalService = false, exportID, showRuntimeExports = true }: { appID: string; initialCompose?: string; canonicalService?: boolean; exportID?: string; showRuntimeExports?: boolean }) {
+  const { data, isLoading, error } = useAppCompose(appID, !initialCompose && !canonicalService);
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [wrap, setWrap] = useState(false);
@@ -78,14 +78,18 @@ export function ComposeTab({ appID, initialCompose }: { appID: string; initialCo
             <DownloadSimple size={14} />
             Download
           </button>
-          <button onClick={() => window.open(`/api/v1/apps/${appID}/export?runtime=kubernetes`, "_blank")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Kubernetes manifest">
-            <Export size={14} />
-            Kubernetes
-          </button>
-          <button onClick={() => window.open(`/api/v1/apps/${appID}/export?runtime=nomad`, "_blank")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Nomad job">
-            <TerminalWindow size={14} />
-            Nomad
-          </button>
+          {showRuntimeExports && exportID && (
+            <>
+              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=kubernetes`, "_blank")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Kubernetes manifest">
+                <Export size={14} />
+                Kubernetes
+              </button>
+              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=nomad`, "_blank")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Nomad job">
+                <TerminalWindow size={14} />
+                Nomad
+              </button>
+            </>
+          )}
           <Button variant="ghost" size="sm" icon={(fullscreen ? ArrowsIn : ArrowsOut) as unknown as DesignIcon} onClick={() => setFullscreen((v) => !v)}>
             {fullscreen ? "Exit" : "Fullscreen"}
           </Button>

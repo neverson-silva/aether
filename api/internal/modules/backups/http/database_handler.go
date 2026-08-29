@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	authhttp "aether/internal/modules/auth/http"
 	"aether/internal/modules/backups/application"
 	"aether/internal/modules/backups/domain"
+	databasedomain "aether/internal/modules/databases/domain"
 )
 
 type DBBackupHandler struct {
@@ -30,6 +32,29 @@ func (h *DBBackupHandler) dbID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func (h *DBBackupHandler) ResolveServiceDatabase(c *gin.Context) {
+	serviceID, err := uuid.Parse(c.Param("serviceID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	resolver, ok := h.svc.Databases.(interface {
+		GetByServiceID(context.Context, uuid.UUID, uuid.UUID) (*databasedomain.Database, error)
+	})
+	if !ok {
+		abort(c, domain.ErrNotFound)
+		return
+	}
+	database, err := resolver.GetByServiceID(c.Request.Context(), serviceID, orgID(c))
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.Set("aether.database_spec_id", database.ID)
+	c.Params = append(c.Params, gin.Param{Key: "dbID", Value: database.ID.String()})
+	c.Next()
 }
 
 func (h *DBBackupHandler) manage(c *gin.Context) bool {
@@ -66,6 +91,7 @@ type backupConfigReq struct {
 type backupConfigDTO struct {
 	ID            string       `json:"id"`
 	DatabaseID    string       `json:"database_id"`
+	ServiceID     string       `json:"service_id"`
 	Enabled       bool         `json:"enabled"`
 	DestinationID string       `json:"destination_id"`
 	PathPrefix    string       `json:"path_prefix"`
@@ -288,8 +314,16 @@ func (h *DBBackupHandler) PreflightRestore(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	targetID, err := uuid.Parse(c.Query("target_database_id"))
-	if err != nil {
+	targetID := uuid.Nil
+	if rawTarget := c.Query("target_database_id"); rawTarget != "" {
+		targetID, err = uuid.Parse(rawTarget)
+		if err != nil {
+			abort(c, domain.ErrValidation)
+			return
+		}
+	} else if resolved, ok := c.Get("aether.database_spec_id"); ok {
+		targetID, _ = resolved.(uuid.UUID)
+	} else {
 		abort(c, domain.ErrValidation)
 		return
 	}
@@ -319,10 +353,15 @@ func (h *DBBackupHandler) RequestRestore(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	targetID, err := uuid.Parse(req.TargetDatabaseID)
-	if err != nil {
-		abort(c, domain.ErrValidation)
-		return
+	targetID := uuid.Nil
+	if resolved, ok := c.Get("aether.database_spec_id"); ok {
+		targetID, _ = resolved.(uuid.UUID)
+	} else {
+		targetID, err = uuid.Parse(req.TargetDatabaseID)
+		if err != nil {
+			abort(c, domain.ErrValidation)
+			return
+		}
 	}
 	job, err := h.svc.RequestRestore(c.Request.Context(), backupID, targetID, orgID(c))
 	if err != nil {
@@ -526,7 +565,7 @@ func configToDTO(cfg *domain.BackupConfiguration) backupConfigDTO {
 		next = &s
 	}
 	return backupConfigDTO{
-		ID: cfg.ID.String(), DatabaseID: cfg.DatabaseID.String(), Enabled: cfg.Enabled,
+		ID: cfg.ID.String(), DatabaseID: cfg.DatabaseID.String(), ServiceID: cfg.ServiceID.String(), Enabled: cfg.Enabled,
 		DestinationID: cfg.DestinationID.String(), PathPrefix: cfg.PathPrefix, NextRunAt: next,
 		Schedule: scheduleDTO{
 			Type: string(cfg.Schedule.Type), Minute: cfg.Schedule.Minute, At: cfg.Schedule.At,
@@ -540,6 +579,7 @@ func configToDTO(cfg *domain.BackupConfiguration) backupConfigDTO {
 type backupJobDTO struct {
 	ID            string  `json:"id"`
 	DatabaseID    string  `json:"database_id"`
+	ServiceID     string  `json:"service_id"`
 	Status        string  `json:"status"`
 	Trigger       string  `json:"trigger"`
 	Engine        string  `json:"engine"`
@@ -556,7 +596,7 @@ type backupJobDTO struct {
 
 func backupJobDTOFrom(j domain.BackupJob) backupJobDTO {
 	return backupJobDTO{
-		ID: j.ID.String(), DatabaseID: j.DatabaseID.String(), Status: string(j.Status),
+		ID: j.ID.String(), DatabaseID: j.DatabaseID.String(), ServiceID: j.ServiceID.String(), Status: string(j.Status),
 		Trigger: string(j.Trigger), Engine: j.Engine, EngineVersion: j.EngineVersion,
 		Format: j.Format, SizeBytes: j.SizeBytes, Checksum: j.Checksum, StorageKey: j.StorageKey,
 		ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage,
@@ -568,6 +608,7 @@ type restoreJobDTO struct {
 	ID               string  `json:"id"`
 	BackupID         string  `json:"backup_id"`
 	TargetDatabaseID string  `json:"target_database_id"`
+	ServiceID        string  `json:"service_id"`
 	Status           string  `json:"status"`
 	ErrorCode        string  `json:"error_code"`
 	ErrorMessage     string  `json:"error_message"`
@@ -587,7 +628,7 @@ func restoreJobDTOFrom(j domain.RestoreJob) restoreJobDTO {
 		backupID = j.BackupID.String()
 	}
 	return restoreJobDTO{
-		ID: j.ID.String(), BackupID: backupID, TargetDatabaseID: j.TargetDatabaseID.String(),
+		ID: j.ID.String(), BackupID: backupID, TargetDatabaseID: j.TargetDatabaseID.String(), ServiceID: j.ServiceID.String(),
 		Status: string(j.Status), ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage,
 		StartedAt: timePtrStr(j.StartedAt), CompletedAt: timePtrStr(j.CompletedAt),
 		SourceType: string(j.SourceType), SourceFilename: j.SourceFilename,

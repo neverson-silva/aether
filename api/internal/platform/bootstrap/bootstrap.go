@@ -64,6 +64,7 @@ import (
 	realtimeDomain "aether/internal/modules/realtime/domain"
 	realtimehttp "aether/internal/modules/realtime/http"
 	realtimeInfra "aether/internal/modules/realtime/infra"
+	serviceshttp "aether/internal/modules/services/http"
 	settingsApp "aether/internal/modules/settings/application"
 	settingshttp "aether/internal/modules/settings/http"
 	settingsInfra "aether/internal/modules/settings/infra"
@@ -123,6 +124,13 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	appOps := &deployApp.AppOps{Deployments: deploySvc, Runtime: deployWorkerRuntime}
 
 	appsSvc := &appsApp.Apps{Store: appsStore, Secrets: appsSecrets, Containers: appOps}
+	appsSvc.ServiceIdentity = func(ctx context.Context, appID uuid.UUID) (uuid.UUID, error) {
+		var serviceID uuid.UUID
+		if err := pool.QueryRow(ctx, `SELECT service_id FROM apps WHERE id = $1`, appID).Scan(&serviceID); err != nil {
+			return uuid.Nil, err
+		}
+		return serviceID, nil
+	}
 	appsSvc.LatestDeployments = func(ctx context.Context, appIDs []uuid.UUID) (map[uuid.UUID]string, error) {
 		latest, err := deployStore.LatestByApps(ctx, appIDs)
 		if err != nil {
@@ -172,7 +180,13 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	templatesStore := templatesInfra.NewStore(pool)
 	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore}
 	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
-	appsHandler.WithCompose(composeSvc)
+	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
+		var serviceID uuid.UUID
+		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
+			return uuid.Nil, err
+		}
+		return serviceID, nil
+	}
 	deployHandler.WithCompose(composeSvc)
 	domainsSvc.Compose = composeSvc
 	templatesHandler := templateshttp.New(templatesSvc, composeSvc)
@@ -196,7 +210,13 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	clustersHandler := clustershttp.New(clustersSvc)
 
 	pipelinesStore := pipelinesInfra.NewStore(pool)
-	pipelinesSvc := &pipelinesApp.Pipelines{Store: pipelinesStore, Apps: appsStore, StageRunner: pipelinesApp.PodmanStageRunner{}}
+	pipelinesSvc := &pipelinesApp.Pipelines{
+		Store: pipelinesStore, Apps: appsStore, StageRunner: pipelinesApp.PodmanStageRunner{},
+		Services: pipelinesApp.ServiceStoreFunc(func(ctx context.Context, serviceID, orgID uuid.UUID) error {
+			var found uuid.UUID
+			return pool.QueryRow(ctx, `SELECT id FROM services WHERE id = $1 AND org_id = $2`, serviceID, orgID).Scan(&found)
+		}),
+	}
 	pipelinesHandler := pipelineshttp.New(pipelinesSvc)
 
 	settingsStore := settingsInfra.NewStore(pool)
@@ -228,7 +248,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	volumesStore := volumesInfra.NewStore(pool)
 	volumesSvc := &volumesApp.Volumes{Store: volumesStore, Apps: appsStore, Destinations: settingsStore}
-	volumesHandler := volumeshttp.New(volumesSvc)
+	volumesHandler := volumeshttp.New(volumesSvc, pool)
 
 	orgsStore := orgsInfra.NewStore(pool)
 	orgsSvc := &orgsApp.Organizations{Store: orgsStore, Apps: appsStore, Databases: databasesStore, Domains: domainsStore}
@@ -252,6 +272,12 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	statsSvc := &statsApp.Stats{Apps: appsStore, Deployments: deployStore, Databases: databasesStore, Runtime: deployWorkerRuntime}
 	statsHandler := statshttp.New(statsSvc)
+	servicesHandler := serviceshttp.New(pool)
+	servicesHandler.WithRuntimes(deploySvc, appOps, composeSvc, composeSvc, databasesSvc)
+	servicesHandler.WithAppWebhook(appsSvc)
+	servicesHandler.WithDomains(domainsSvc)
+	servicesHandler.WithEnvironment(appsSvc)
+	servicesHandler.WithDeploymentLogs(cfg.LogsDir)
 
 	runtimeConfig := druntime.Config{
 		Backend:  cfg.RuntimeBackend,
@@ -282,6 +308,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		slog.Error("runtime realtime", "err", err)
 		os.Exit(1)
 	}
+	servicesHandler.WithDeploymentQueue(rtRuntime.Queue)
 	var eventLog realtimeApp.EventLog
 	if sharedNATS != nil {
 		eventLog, err = realtimeInfra.NewNATSEventLogWithConn(sharedNATS)
@@ -292,11 +319,13 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	composeSvc.Events = eventLog
 	realtimeSvc := &realtimeApp.Realtime{
+		DB:       pool,
 		Presence: rtRuntime.Presence, PubSub: rtRuntime.PubSub,
 		Queue: rtRuntime.Queue,
-		Apps:  appsStore, Compose: composeSvc, Deployments: deployStore, Ports: deployWorkerRuntime,
+		Apps:  appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
 		Log: eventLog, Notifications: notificationsSvc,
 	}
+	databasesSvc.Notifier = realtimeSvc
 	databasesStudio.Cache = rtRuntime.Cache
 	databasesStudio.CatalogTTL = time.Duration(cfg.StudioCacheTTLSeconds) * time.Second
 	deploySvc.Queue = rtRuntime.Queue
@@ -362,8 +391,8 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		PublicURL: cfg.PublicURL, APIURL: cfg.GitHubAPIURL,
 	}
 	sourceService := &sourcecontrolApp.Service{
-		Sources: sourceStore, Deliveries: sourceStore, Deploy: webhookDeployer{svc: deploySvc},
-		Templates: sourceConnections, Apps: appsSvc,
+		Sources: sourceStore, Deliveries: sourceStore, Deploy: webhookDeployer{svc: deploySvc}, ServiceDeploy: servicesHandler,
+		Templates: sourceConnections, Apps: servicesHandler,
 	}
 	sourceHandler := sourcecontrolhttp.New(sourceService, sourceConnections, githubProvider, cfg.GitHubAppSlug)
 
@@ -372,7 +401,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		CORSOrigins:     []string{"*"},
 		RequestTimeout:  60 * time.Second,
 		AuthRateLimiter: apihttp.NewRateLimiter(2, 5),
-	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler)
+	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler, servicesHandler)
 	router.WithDatabaseBackups(dbBackupsHandler)
 	router.WithSourceControl(sourceHandler)
 	router.SetReadiness(func(ctx context.Context) error {

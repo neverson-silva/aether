@@ -15,14 +15,14 @@ RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id;
+    created_at, updated_at, upload_id, service_id;
 
 -- name: GetApp :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE id = $1 AND org_id = $2;
 
@@ -31,7 +31,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE org_id = $1 AND lower(name) = lower($2);
 
@@ -40,7 +40,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE id = $1;
 
@@ -49,7 +49,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE org_id = $1 AND project_id = $2
 ORDER BY name;
@@ -59,7 +59,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE org_id = $1
 ORDER BY name;
@@ -78,7 +78,7 @@ RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id;
+    created_at, updated_at, upload_id, service_id;
 
 -- name: DeleteApp :exec
 DELETE FROM apps
@@ -88,4 +88,3 @@ WHERE id = $1 AND org_id = $2;
 UPDATE apps
 SET webhook_secret = $3, updated_at = now()
 WHERE id = $1 AND org_id = $2;
-

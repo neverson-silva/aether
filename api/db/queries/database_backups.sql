@@ -1,16 +1,16 @@
 -- name: GetBackupConfiguration :one
 SELECT id, database_id, enabled, destination_id, path_prefix, schedule_type,
        schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-       timezone, retention_type, next_run_at, created_at, updated_at
+       timezone, retention_type, next_run_at, created_at, updated_at, service_id
 FROM backup_configurations
 WHERE id = $1;
 
 -- name: ListBackupConfigurationsByDatabase :many
 SELECT id, database_id, enabled, destination_id, path_prefix, schedule_type,
        schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-       timezone, retention_type, next_run_at, created_at, updated_at
+       timezone, retention_type, next_run_at, created_at, updated_at, service_id
 FROM backup_configurations
-WHERE database_id = $1
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
 ORDER BY created_at DESC;
 
 -- name: CreateBackupConfiguration :one
@@ -21,7 +21,7 @@ INSERT INTO backup_configurations (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, database_id, enabled, destination_id, path_prefix, schedule_type,
           schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-          timezone, retention_type, next_run_at, created_at, updated_at;
+          timezone, retention_type, next_run_at, created_at, updated_at, service_id;
 
 -- name: UpdateBackupConfiguration :one
 UPDATE backup_configurations
@@ -32,7 +32,7 @@ SET enabled = $2, destination_id = $3, path_prefix = $4, schedule_type = $5,
 WHERE id = $1
 RETURNING id, database_id, enabled, destination_id, path_prefix, schedule_type,
           schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
-          timezone, retention_type, next_run_at, created_at, updated_at;
+          timezone, retention_type, next_run_at, created_at, updated_at, service_id;
 
 -- name: DeleteBackupConfiguration :exec
 DELETE FROM backup_configurations WHERE id = $1;
@@ -64,12 +64,12 @@ INSERT INTO backup_jobs (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING id, database_id, configuration_id, trigger_type, status, engine,
           engine_version, format, destination_id, storage_key, size_bytes,
-          checksum, error_code, error_message, started_at, completed_at, created_at;
+          checksum, error_code, error_message, started_at, completed_at, created_at, service_id;
 
 -- name: GetBackupJob :one
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
 WHERE id = $1;
 
@@ -89,29 +89,29 @@ SET status = $2,
 WHERE id = $1
 RETURNING id, database_id, configuration_id, trigger_type, status, engine,
           engine_version, format, destination_id, storage_key, size_bytes,
-          checksum, error_code, error_message, started_at, completed_at, created_at;
+          checksum, error_code, error_message, started_at, completed_at, created_at, service_id;
 
 -- name: ListBackupJobsByDatabase :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
-WHERE database_id = $1
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
 ORDER BY created_at DESC
 LIMIT $2;
 
 -- name: ListActiveBackupJobsByDatabase :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
-WHERE database_id = $1 AND status IN ('queued', 'preparing', 'running', 'uploading', 'verifying', 'cancelling')
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1) AND status IN ('queued', 'preparing', 'running', 'uploading', 'verifying', 'cancelling')
 ORDER BY created_at DESC;
 
 -- name: ListBackupJobsDue :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,
        engine_version, format, destination_id, storage_key, size_bytes,
-       checksum, error_code, error_message, started_at, completed_at, created_at
+       checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
 WHERE status = 'queued'
 ORDER BY created_at
@@ -124,12 +124,12 @@ INSERT INTO restore_jobs (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
           started_at, completed_at, created_at, source_type, source_filename,
-          source_size, source_checksum, source_format, uploaded_bytes;
+          source_size, source_checksum, source_format, uploaded_bytes, service_id;
 
 -- name: GetRestoreJob :one
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
        started_at, completed_at, created_at, source_type, source_filename,
-       source_size, source_checksum, source_format, uploaded_bytes
+       source_size, source_checksum, source_format, uploaded_bytes, service_id
 FROM restore_jobs
 WHERE id = $1;
 
@@ -141,21 +141,21 @@ SET status = $2, error_code = $3, error_message = $4, started_at = $5, completed
 WHERE id = $1
 RETURNING id, backup_id, target_database_id, status, error_code, error_message,
           started_at, completed_at, created_at, source_type, source_filename,
-          source_size, source_checksum, source_format, uploaded_bytes;
+          source_size, source_checksum, source_format, uploaded_bytes, service_id;
 
 -- name: ListRestoreJobsByTarget :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
        started_at, completed_at, created_at, source_type, source_filename,
-       source_size, source_checksum, source_format, uploaded_bytes
+       source_size, source_checksum, source_format, uploaded_bytes, service_id
 FROM restore_jobs
-WHERE target_database_id = $1
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
 ORDER BY created_at DESC
 LIMIT $2;
 
 -- name: ListRestoreJobsDue :many
 SELECT id, backup_id, target_database_id, status, error_code, error_message,
        started_at, completed_at, created_at, source_type, source_filename,
-       source_size, source_checksum, source_format, uploaded_bytes
+       source_size, source_checksum, source_format, uploaded_bytes, service_id
 FROM restore_jobs
 WHERE status = 'queued'
 ORDER BY created_at

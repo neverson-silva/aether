@@ -89,7 +89,15 @@ type payload struct {
 	Kind string `json:"kind"`
 }
 
+const (
+	accessTokenMaxTTL  = 10 * time.Minute
+	refreshTokenMaxTTL = 20 * time.Minute
+)
+
 func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	if ttl > accessTokenMaxTTL {
+		ttl = accessTokenMaxTTL
+	}
 	body, err := json.Marshal(payload{
 		Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global,
 		Exp:  time.Now().Add(ttl).Unix(),
@@ -106,7 +114,18 @@ func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain
 }
 
 func (s *Signer) SignRefresh(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
-	body, err := json.Marshal(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: time.Now().Add(ttl).Unix(), Kind: "refresh"})
+	if ttl > refreshTokenMaxTTL {
+		ttl = refreshTokenMaxTTL
+	}
+	return s.SignRefreshUntil(ctx, subject, orgID, role, global, time.Now().Add(ttl))
+}
+
+func (s *Signer) SignRefreshUntil(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, expiresAt time.Time) (string, error) {
+	maxExpiry := time.Now().Add(refreshTokenMaxTTL)
+	if expiresAt.After(maxExpiry) {
+		expiresAt = maxExpiry
+	}
+	body, err := json.Marshal(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: "refresh"})
 	if err != nil {
 		return "", err
 	}

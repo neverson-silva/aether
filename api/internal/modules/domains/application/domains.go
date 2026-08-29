@@ -32,6 +32,10 @@ type AppStore interface {
 	GetApp(ctx context.Context, id, orgID uuid.UUID) (*appsdomain.App, error)
 }
 
+type AppServiceIDStore interface {
+	GetServiceID(ctx context.Context, appID uuid.UUID) (uuid.UUID, error)
+}
+
 type DBStore interface {
 	GetDatabase(ctx context.Context, id uuid.UUID) (*databasesdomain.Database, error)
 }
@@ -41,9 +45,10 @@ type ComposeStore interface {
 }
 
 type serviceRef struct {
-	alias string
-	name  string
-	port  int
+	alias     string
+	name      string
+	port      int
+	serviceID uuid.UUID
 }
 
 type AddDomainInput struct {
@@ -65,7 +70,15 @@ func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, servi
 		if err != nil {
 			return nil, err
 		}
-		return &serviceRef{alias: d.Provisioner.Alias(serviceID, serviceType), name: compose.Name}, nil
+		canonicalID := serviceID
+		if resolver, ok := d.Compose.(interface {
+			GetServiceID(context.Context, uuid.UUID) (uuid.UUID, error)
+		}); ok {
+			if resolved, resolveErr := resolver.GetServiceID(ctx, serviceID); resolveErr == nil {
+				canonicalID = resolved
+			}
+		}
+		return &serviceRef{alias: d.Provisioner.Alias(canonicalID, serviceType), name: compose.Name, serviceID: canonicalID}, nil
 	}
 	if serviceType == ServiceTypeDB {
 		db, err := d.DBs.GetDatabase(ctx, serviceID)
@@ -75,7 +88,11 @@ func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, servi
 		if db.OrgID != orgID {
 			return nil, domain.ErrNotFound
 		}
-		return &serviceRef{alias: d.Provisioner.Alias(serviceID, serviceType), name: db.Name, port: db.Port}, nil
+		canonicalID := db.ServiceID
+		if canonicalID == uuid.Nil {
+			canonicalID = serviceID
+		}
+		return &serviceRef{alias: d.Provisioner.Alias(canonicalID, serviceType), name: db.Name, port: db.Port, serviceID: canonicalID}, nil
 	}
 	app, err := d.Apps.GetApp(ctx, serviceID, orgID)
 	if err != nil {
@@ -85,7 +102,13 @@ func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, servi
 	if app.BuildType == "custom" {
 		port = 80
 	}
-	return &serviceRef{alias: d.Provisioner.Alias(serviceID, ServiceTypeApp), name: app.Name, port: port}, nil
+	canonicalID := serviceID
+	if resolver, ok := d.Apps.(AppServiceIDStore); ok {
+		if resolved, resolveErr := resolver.GetServiceID(ctx, serviceID); resolveErr == nil {
+			canonicalID = resolved
+		}
+	}
+	return &serviceRef{alias: d.Provisioner.Alias(canonicalID, ServiceTypeApp), name: app.Name, port: port, serviceID: canonicalID}, nil
 }
 
 func (d *Domains) Add(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, in AddDomainInput) (*domain.Domain, error) {
@@ -101,7 +124,7 @@ func (d *Domains) Add(ctx context.Context, serviceID, orgID uuid.UUID, serviceTy
 		in.ContainerPort = ref.port
 	}
 	dom, err := d.Store.CreateDomain(ctx, &domain.Domain{
-		AppID: serviceID, ServiceType: serviceType, ServerID: in.ServerID, Host: in.Host, HTTPS: in.HTTPS,
+		AppID: serviceID, ServiceID: ref.serviceID, ServiceType: serviceType, ServerID: in.ServerID, Host: in.Host, HTTPS: in.HTTPS,
 		Path: orDefault(in.Path, "/"), InternalPath: orDefault(in.InternalPath, "/"),
 		StripPath: in.StripPath, ContainerPort: in.ContainerPort,
 		Status: string(domain.DomainProvisioning),
@@ -125,26 +148,28 @@ func (d *Domains) GenerateFreeDomain(ctx context.Context, serviceID, orgID uuid.
 }
 
 func (d *Domains) List(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string) ([]domain.Domain, error) {
-	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
+	ref, err := d.resolveService(ctx, serviceID, serviceType, orgID)
+	if err != nil {
 		return nil, err
 	}
-	return d.Store.ListDomains(ctx, serviceID)
+	return d.Store.ListDomains(ctx, ref.serviceID)
 }
 
 func (d *Domains) Remove(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, host string) error {
-	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
-		return err
-	}
-	dom, err := d.Store.GetDomainByHost(ctx, serviceID, strings.ToLower(host))
+	ref, err := d.resolveService(ctx, serviceID, serviceType, orgID)
 	if err != nil {
 		return err
 	}
-	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, serviceID, string(domain.DomainRemoving), dom.CertStatus)
+	dom, err := d.Store.GetDomainByHost(ctx, ref.serviceID, strings.ToLower(host))
+	if err != nil {
+		return err
+	}
+	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, ref.serviceID, string(domain.DomainRemoving), dom.CertStatus)
 	if err := d.Provisioner.RemoveDomainConfig(dom); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, serviceID, string(domain.DomainRemoved), dom.CertStatus)
-	return d.Store.DeleteDomain(ctx, dom.ID, serviceID)
+	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, ref.serviceID, string(domain.DomainRemoved), dom.CertStatus)
+	return d.Store.DeleteDomain(ctx, dom.ID, ref.serviceID)
 }
 
 func (d *Domains) Reprovision(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, domainID uuid.UUID) error {
@@ -152,7 +177,7 @@ func (d *Domains) Reprovision(ctx context.Context, serviceID, orgID uuid.UUID, s
 	if err != nil {
 		return err
 	}
-	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, serviceID, string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
+	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, domainOwnerID(dom, serviceID), string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
 	return nil
 }
 
@@ -168,7 +193,7 @@ func (d *Domains) UpdateDomain(ctx context.Context, serviceID, orgID uuid.UUID, 
 	if in.ContainerPort <= 0 {
 		in.ContainerPort = dom.ContainerPort
 	}
-	_ = d.Store.UpdateDomainFields(ctx, dom.ID, serviceID, in.Host, in.HTTPS,
+	_ = d.Store.UpdateDomainFields(ctx, dom.ID, domainOwnerID(dom, serviceID), in.Host, in.HTTPS,
 		orDefault(in.Path, "/"), orDefault(in.InternalPath, "/"), in.StripPath, in.ContainerPort)
 	return nil
 }
@@ -182,8 +207,15 @@ func (d *Domains) Verify(ctx context.Context, serviceID, orgID uuid.UUID, servic
 	if err != nil {
 		return err
 	}
-	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, serviceID, string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
+	_ = d.Store.UpdateDomainProvision(ctx, dom.ID, domainOwnerID(dom, serviceID), string(domain.DomainProvisioning), dom.CertStatus, "", nil, 0)
 	return nil
+}
+
+func domainOwnerID(dom *domain.Domain, fallback uuid.UUID) uuid.UUID {
+	if dom.ServiceID != uuid.Nil {
+		return dom.ServiceID
+	}
+	return fallback
 }
 
 func (d *Domains) getServiceDomain(ctx context.Context, serviceID, orgID, domainID uuid.UUID, serviceType string) (*domain.Domain, error) {
@@ -194,7 +226,7 @@ func (d *Domains) getServiceDomain(ctx context.Context, serviceID, orgID, domain
 	if err != nil {
 		return nil, err
 	}
-	if dom.AppID != serviceID {
+	if dom.ServiceID != serviceID && dom.AppID != serviceID {
 		return nil, domain.ErrNotFound
 	}
 	return dom, nil
@@ -211,13 +243,19 @@ func (d *Domains) CreatePreview(ctx context.Context, appID, orgID uuid.UUID, bra
 	if branch == "" {
 		branch = "preview"
 	}
+	serviceID := appID
+	if resolver, ok := d.Apps.(AppServiceIDStore); ok {
+		if resolved, resolveErr := resolver.GetServiceID(ctx, appID); resolveErr == nil {
+			serviceID = resolved
+		}
+	}
 	branch = sanitizeBranch(branch)
 	previewDomain := app.PreviewDomain
 	if previewDomain == "" {
 		previewDomain = "preview.aether.local"
 	}
 	return d.Store.CreatePreview(ctx, &domain.Preview{
-		AppID: appID, Branch: branch, Status: "active",
+		AppID: appID, ServiceID: serviceID, Branch: branch, Status: "active",
 		Domain: fmt.Sprintf("%s-%s.%s", app.Name, branch, previewDomain),
 	})
 }
@@ -226,7 +264,13 @@ func (d *Domains) ListPreviews(ctx context.Context, appID, orgID uuid.UUID) ([]d
 	if _, err := d.Apps.GetApp(ctx, appID, orgID); err != nil {
 		return nil, err
 	}
-	return d.Store.ListPreviews(ctx, appID)
+	serviceID := appID
+	if resolver, ok := d.Apps.(AppServiceIDStore); ok {
+		if resolved, resolveErr := resolver.GetServiceID(ctx, appID); resolveErr == nil {
+			serviceID = resolved
+		}
+	}
+	return d.Store.ListPreviews(ctx, serviceID)
 }
 
 func (d *Domains) DeletePreview(ctx context.Context, previewID, orgID uuid.UUID) error {
@@ -237,7 +281,7 @@ func (d *Domains) DeletePreview(ctx context.Context, previewID, orgID uuid.UUID)
 	if _, err := d.Apps.GetApp(ctx, preview.AppID, orgID); err != nil {
 		return err
 	}
-	return d.Store.DeletePreview(ctx, preview.ID, preview.AppID)
+	return d.Store.DeletePreview(ctx, preview.ID, domainOwnerID(&domain.Domain{ServiceID: preview.ServiceID}, preview.AppID))
 }
 
 func (d *Domains) Certificates(ctx context.Context, orgID uuid.UUID) ([]domain.Certificate, error) {

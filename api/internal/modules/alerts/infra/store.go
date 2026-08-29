@@ -166,13 +166,13 @@ func ruleFromRow(row gen.AlertRule) *domain.AlertRule {
 	return &domain.AlertRule{
 		ID: row.ID, OrgID: row.OrgID, Name: row.Name, Metric: row.Metric,
 		Threshold: float64(row.Threshold), WindowS: int(row.WindowS), Severity: row.Severity,
-		Enabled: row.Enabled, TargetApp: uuidPtr(row.TargetApp), CreatedAt: row.CreatedAt,
+		Enabled: row.Enabled, TargetApp: uuidPtr(row.TargetApp), ServiceID: uuidPtr(row.ServiceID), CreatedAt: row.CreatedAt,
 	}
 }
 
 func eventFromRow(row gen.AlertEvent) *domain.AlertEvent {
 	return &domain.AlertEvent{
-		ID: row.ID, OrgID: row.OrgID, RuleID: uuidPtr(row.RuleID), AppID: uuidPtr(row.AppID),
+		ID: row.ID, OrgID: row.OrgID, RuleID: uuidPtr(row.RuleID), AppID: uuidPtr(row.AppID), ServiceID: uuidPtr(row.ServiceID),
 		AppName: row.AppName, Severity: row.Severity, Message: row.Message,
 		Value: float64(row.Value), Threshold: float64(row.Threshold), Metric: row.Metric,
 		CreatedAt: row.CreatedAt, ResolvedAt: nullTimePtr(row.ResolvedAt),

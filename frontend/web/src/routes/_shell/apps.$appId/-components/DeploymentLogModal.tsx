@@ -1,9 +1,11 @@
 import { Dialog, LogViewer } from "@aether/design-system";
-import { useDeploymentLog } from "../../../../hooks";
+import { useDeploymentLog, useServiceDeploymentLog } from "../../../../hooks";
 import { toDeploymentLogLines } from "../../../../lib/deployment-log-lines";
 
-export function DeploymentLogModal({ appId, deploymentId, onClose }: { appId: string; deploymentId: string | null; onClose: () => void }) {
-  const log = useDeploymentLog(appId, deploymentId);
+export function DeploymentLogModal({ appId, serviceId, deploymentId, onClose }: { appId: string; serviceId?: string; deploymentId: string | null; onClose: () => void }) {
+  const legacyLog = useDeploymentLog(appId, serviceId ? null : deploymentId);
+  const serviceLog = useServiceDeploymentLog(serviceId ?? "", serviceId ? deploymentId : null);
+  const log = serviceId ? serviceLog : legacyLog;
   const lines = log.data ? toDeploymentLogLines(log.data.content, log.data.error) : [];
 
   return (

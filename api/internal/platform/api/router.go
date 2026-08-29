@@ -27,6 +27,7 @@ import (
 	orgshttp "aether/internal/modules/orgs/http"
 	pipelineshttp "aether/internal/modules/pipelines/http"
 	realtimehttp "aether/internal/modules/realtime/http"
+	serviceshttp "aether/internal/modules/services/http"
 	settingshttp "aether/internal/modules/settings/http"
 	snapshotshttp "aether/internal/modules/snapshots/http"
 	sourcecontrolhttp "aether/internal/modules/sourcecontrol/http"
@@ -72,6 +73,7 @@ type Router struct {
 	stats       *statshttp.Handler
 	realtime    *realtimehttp.Handler
 	monitoring  *monitoringhttp.Handler
+	services    *serviceshttp.Handler
 	ready       func(context.Context) error
 	authLimiter *RateLimiter
 }
@@ -80,7 +82,7 @@ func (r *Router) WithDatabaseBackups(h *backupshttp.DBBackupHandler) *Router {
 	r.dbBackups = h
 	authed := r.engine.Group("/api/v1")
 	authed.Use(r.auth.Middleware())
-	r.registerDatabaseBackupRoutes(authed)
+	r.registerServiceDatabaseBackupRoutes(authed)
 	return r
 }
 
@@ -102,13 +104,17 @@ func (r *Router) WithSourceControl(h *sourcecontrolhttp.Handler) *Router {
 		authed.PUT("/apps/:appID/source", h.SaveServiceSource)
 		authed.POST("/apps/:appID/source/import-template", h.ImportServiceTemplate)
 		authed.DELETE("/apps/:appID/source", h.DeleteServiceSource)
+		authed.GET("/services/:serviceID/source", h.GetServiceSource)
+		authed.PUT("/services/:serviceID/source", h.SaveServiceSource)
+		authed.POST("/services/:serviceID/source/import-template", h.ImportServiceTemplate)
+		authed.DELETE("/services/:serviceID/source", h.DeleteServiceSource)
 		api.GET("/source-control/github/manifest/callback", h.CompleteGitHubManifest)
 		api.GET("/source-control/github/install-callback", h.CompleteGitHubInstallation)
 	}
 	return r
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler, monitoring *monitoringhttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler, monitoring *monitoringhttp.Handler, services *serviceshttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -123,7 +129,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, dbBackups: nil, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, dbBackups: nil, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, services: services, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -202,6 +208,30 @@ func (r *Router) routes() {
 		authed.GET("/projects/:projectID/apps", r.apps.ListApps)
 		authed.POST("/projects/:projectID/apps", r.apps.CreateApp)
 		authed.GET("/apps", r.apps.ListApps)
+		authed.GET("/services", r.services.List)
+		authed.GET("/services/:serviceID", r.services.Get)
+		authed.PATCH("/services/:serviceID", r.services.Update)
+		authed.POST("/services/:serviceID/:action", r.services.Action)
+		authed.GET("/services/:serviceID/timeline", r.services.Timeline)
+		authed.GET("/services/:serviceID/logs", r.services.Logs)
+		authed.GET("/services/:serviceID/containers", r.services.Containers)
+		authed.GET("/services/:serviceID/stats", r.services.Stats)
+		authed.GET("/services/:serviceID/deployments", r.services.Deployments)
+		authed.POST("/services/:serviceID/deployments/:deploymentID/cancel", r.services.CancelDeployment)
+		authed.GET("/services/:serviceID/deployments/:deploymentID/log", r.services.DeploymentLog)
+		authed.GET("/services/:serviceID/domains", r.services.Domains)
+		authed.GET("/services/:serviceID/environment", r.services.Environment)
+		authed.GET("/services/:serviceID/volumes", r.services.Volumes)
+		authed.GET("/services/:serviceID/connection", r.services.Connection)
+		authed.GET("/services/:serviceID/cron-jobs", r.services.CronJobs)
+		authed.POST("/services/:serviceID/cron-jobs", r.services.CreateCronJob)
+		authed.DELETE("/services/:serviceID/cron-jobs/:jobID", r.services.DeleteCronJob)
+		authed.PUT("/services/:serviceID/webhook", r.services.SetWebhook)
+		authed.POST("/services/:serviceID/domains", r.services.AddDomain)
+		authed.POST("/services/:serviceID/domains/generate", r.services.GenerateDomain)
+		authed.PUT("/services/:serviceID/environment", r.services.SetEnvironment)
+		authed.DELETE("/services/:serviceID/environment/:name", r.services.DeleteEnvironment)
+		authed.DELETE("/services/:serviceID/domains/:host", r.services.RemoveDomain)
 		authed.GET("/apps/:appID", r.apps.GetApp)
 		authed.PATCH("/apps/:appID", r.apps.UpdateApp)
 		authed.DELETE("/apps/:appID", r.apps.DeleteApp)
@@ -276,9 +306,6 @@ func (r *Router) routes() {
 		authed.GET("/databases/:dbID/deployments", r.databases.ListDeployments)
 		authed.POST("/databases/:dbID/start", r.databases.Start)
 		authed.POST("/databases/:dbID/stop", r.databases.Stop)
-		authed.POST("/databases/:dbID/backup", r.backups.CreateDatabaseBackup)
-		authed.POST("/databases/:dbID/restore", r.backups.RestoreDatabase)
-		r.registerDatabaseBackupRoutes(authed)
 		authed.GET("/ws/db-terminal/:dbID", r.databases.DbTerminal)
 
 		authed.GET("/databases/:dbID/studio/meta", r.databases.StudioMeta)
@@ -312,6 +339,7 @@ func (r *Router) routes() {
 		authed.GET("/compose/:composeID/env", r.templates.ComposeEnv)
 		authed.GET("/compose/:composeID/timeline", r.templates.ComposeTimeline)
 		authed.GET("/compose/:composeID/logs/history", r.templates.ComposeLogs)
+		authed.GET("/compose/:composeID/logs", r.templates.ComposeLogs)
 		authed.GET("/compose/:composeID/stats", r.templates.ComposeStats)
 		authed.POST("/compose/validate", r.templates.Validate)
 		authed.GET("/apps/:appID/compose", r.templates.AppCompose)
@@ -346,6 +374,10 @@ func (r *Router) routes() {
 		authed.GET("/snapshots/schedules", r.snapshots.ListSchedules)
 		authed.POST("/snapshots/schedules", r.snapshots.CreateSchedule)
 		authed.DELETE("/snapshots/schedules/:scheduleID", r.snapshots.DeleteSchedule)
+		authed.GET("/services/:serviceID/snapshots", r.snapshots.ListForService)
+		authed.POST("/services/:serviceID/snapshots", r.snapshots.CreateForService)
+		authed.GET("/services/:serviceID/snapshot-schedules", r.snapshots.ListSchedulesForService)
+		authed.POST("/services/:serviceID/snapshot-schedules", r.snapshots.CreateScheduleForService)
 
 		authed.GET("/clusters", r.clusters.ListClusters)
 		authed.POST("/clusters", r.clusters.CreateCluster)
@@ -395,6 +427,7 @@ func (r *Router) routes() {
 
 		authed.POST("/apps/:appID/volumes/:name/backup", r.volumes.BackupVolume)
 		authed.GET("/apps/:appID/volumes", r.volumes.List)
+		authed.POST("/services/:serviceID/volumes/:name/backup", r.volumes.BackupServiceVolume)
 
 		authed.GET("/certificates", r.domains.Certificates)
 
@@ -467,35 +500,37 @@ func (r *Router) routes() {
 		authed.GET("/network/quality", r.realtime.NetworkQuality)
 		authed.GET("/events", r.realtime.Events)
 		authed.GET("/events/stream", r.realtime.EventsStream)
-		authed.GET("/ws/terminal/:appID", r.realtime.Terminal)
+		authed.GET("/ws/terminal/:serviceID", r.realtime.Terminal)
 		authed.GET("/ws/realtime", r.realtime.RealtimeWS)
 	}
 }
 
-func (r *Router) registerDatabaseBackupRoutes(authed *gin.RouterGroup) {
+func (r *Router) registerServiceDatabaseBackupRoutes(authed *gin.RouterGroup) {
 	if r.dbBackups == nil {
 		return
 	}
-	authed.GET("/databases/:dbID/backup/configurations", r.dbBackups.ListConfigurations)
-	authed.GET("/databases/:dbID/backup/configurations/:configID", r.dbBackups.GetConfiguration)
-	authed.POST("/databases/:dbID/backup/configurations", r.dbBackups.CreateConfiguration)
-	authed.PATCH("/databases/:dbID/backup/configurations/:configID", r.dbBackups.UpdateConfiguration)
-	authed.DELETE("/databases/:dbID/backup/configurations/:configID", r.dbBackups.DeleteConfiguration)
-	authed.GET("/databases/:dbID/backup/configuration", r.dbBackups.ListConfigurations)
-	authed.POST("/databases/:dbID/backup/configuration", r.dbBackups.CreateConfiguration)
-	authed.POST("/databases/:dbID/backups", r.dbBackups.CreateBackup)
-	authed.GET("/databases/:dbID/backups", r.dbBackups.ListBackups)
-	authed.GET("/databases/:dbID/backups/:backupID", r.dbBackups.GetBackup)
-	authed.POST("/databases/:dbID/backups/:backupID/cancel", r.dbBackups.CancelBackup)
-	authed.POST("/databases/:dbID/backups/:backupID/restore", r.dbBackups.RequestRestore)
-	authed.GET("/databases/:dbID/backups/:backupID/preflight", r.dbBackups.PreflightRestore)
-	authed.GET("/databases/:dbID/backups/:backupID/restore-jobs", r.dbBackups.ListRestoreJobs)
-	authed.POST("/databases/:dbID/restores", r.dbBackups.CreateRestore)
-	authed.POST("/databases/:dbID/restores/:restoreID/upload", r.dbBackups.UploadRestoreFile)
-	authed.POST("/databases/:dbID/restores/:restoreID/validate", r.dbBackups.ValidateUpload)
-	authed.POST("/databases/:dbID/restores/:restoreID/start", r.dbBackups.StartUploadRestore)
-	authed.GET("/databases/:dbID/restores/:restoreID", r.dbBackups.GetRestore)
-	authed.DELETE("/databases/:dbID/restores/:restoreID", r.dbBackups.DeleteRestore)
+	services := authed.Group("/services/:serviceID")
+	services.Use(r.dbBackups.ResolveServiceDatabase)
+	services.GET("/backup/configurations", r.dbBackups.ListConfigurations)
+	services.GET("/backup/configurations/:configID", r.dbBackups.GetConfiguration)
+	services.POST("/backup/configurations", r.dbBackups.CreateConfiguration)
+	services.PATCH("/backup/configurations/:configID", r.dbBackups.UpdateConfiguration)
+	services.DELETE("/backup/configurations/:configID", r.dbBackups.DeleteConfiguration)
+	services.GET("/backup/configuration", r.dbBackups.ListConfigurations)
+	services.POST("/backup/configuration", r.dbBackups.CreateConfiguration)
+	services.POST("/backups", r.dbBackups.CreateBackup)
+	services.GET("/backups", r.dbBackups.ListBackups)
+	services.GET("/backups/:backupID", r.dbBackups.GetBackup)
+	services.POST("/backups/:backupID/cancel", r.dbBackups.CancelBackup)
+	services.POST("/backups/:backupID/restore", r.dbBackups.RequestRestore)
+	services.GET("/backups/:backupID/preflight", r.dbBackups.PreflightRestore)
+	services.GET("/backups/:backupID/restore-jobs", r.dbBackups.ListRestoreJobs)
+	services.POST("/restores", r.dbBackups.CreateRestore)
+	services.POST("/restores/:restoreID/upload", r.dbBackups.UploadRestoreFile)
+	services.POST("/restores/:restoreID/validate", r.dbBackups.ValidateUpload)
+	services.POST("/restores/:restoreID/start", r.dbBackups.StartUploadRestore)
+	services.GET("/restores/:restoreID", r.dbBackups.GetRestore)
+	services.DELETE("/restores/:restoreID", r.dbBackups.DeleteRestore)
 }
 
 func (r *Router) Handler() http.Handler {

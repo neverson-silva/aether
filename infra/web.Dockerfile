@@ -4,7 +4,7 @@ COPY frontend/aether_ds/package.json frontend/aether_ds/package-lock.json /aethe
 RUN npm --prefix /aether_ds ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY frontend/aether_ds /aether_ds
 COPY frontend/web/package.json frontend/web/package-lock.json ./
-RUN npm ci --include=dev --no-audit --no-fund
+RUN npm install -f --include=dev --no-audit --no-fund
 COPY frontend/web/ ./
 RUN npm run build
 

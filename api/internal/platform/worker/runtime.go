@@ -383,18 +383,25 @@ func (podmanRuntime) RemoveByLabel(ctx context.Context, label string) error {
 
 func (podmanRuntime) HealthCheck(ctx context.Context, hostPort, path string) error {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := "http://127.0.0.1:" + hostPort + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
+	var lastErr error
+	for _, host := range []string{"host.containers.internal", "127.0.0.1"} {
+		url := "http://" + host + ":" + hostPort + path
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("health status %d", resp.StatusCode)
+			continue
+		}
+		return nil
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 500 {
-		return fmt.Errorf("health status %d", resp.StatusCode)
-	}
-	return nil
+	return lastErr
 }

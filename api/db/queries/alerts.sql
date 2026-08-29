@@ -1,18 +1,18 @@
 -- name: ListAlertRules :many
-SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at
+SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at, service_id
 FROM alert_rules
 WHERE org_id = $1
 ORDER BY name;
 
 -- name: GetAlertRule :one
-SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at
+SELECT id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at, service_id
 FROM alert_rules
 WHERE id = $1;
 
 -- name: CreateAlertRule :one
-INSERT INTO alert_rules (org_id, name, metric, threshold, window_s, severity, target_app)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at;
+INSERT INTO alert_rules (org_id, name, metric, threshold, window_s, severity, target_app, service_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE((SELECT a.service_id FROM apps AS a WHERE a.id = $7), (SELECT s.id FROM services AS s WHERE s.id = $7)))
+RETURNING id, org_id, name, metric, threshold, window_s, severity, enabled, target_app, created_at, service_id;
 
 -- name: SetAlertRuleEnabled :exec
 UPDATE alert_rules
@@ -24,12 +24,12 @@ DELETE FROM alert_rules
 WHERE id = $1 AND org_id = $2;
 
 -- name: CreateAlertEvent :one
-INSERT INTO alert_events (org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at;
+INSERT INTO alert_events (org_id, rule_id, app_id, service_id, app_name, severity, message, value, threshold, metric)
+VALUES ($1, $2, $3, COALESCE((SELECT a.service_id FROM apps AS a WHERE a.id = $3), (SELECT c.service_id FROM compose_apps AS c WHERE c.id = $3), (SELECT d.service_id FROM databases AS d WHERE d.id = $3), (SELECT s.id FROM services AS s WHERE s.id = $3)), $4, $5, $6, $7, $8, $9)
+RETURNING id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at, service_id;
 
 -- name: ListAlertEventsByOrg :many
-SELECT id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at
+SELECT id, org_id, rule_id, app_id, app_name, severity, message, value, threshold, metric, created_at, resolved_at, service_id
 FROM alert_events
 WHERE org_id = $1
 ORDER BY created_at DESC

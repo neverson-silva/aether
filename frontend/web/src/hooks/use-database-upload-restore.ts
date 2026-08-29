@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../api/client";
 import type { RestoreJob } from "../api/types";
 
-export function useDatabaseUploadRestore(dbId: string) {
+export function useDatabaseUploadRestore(serviceId: string) {
+  const prefix = `/api/v1/services/${serviceId}`;
   const queryClient = useQueryClient();
 
   const createRestore = useMutation({
     mutationFn: (filename: string) =>
-      apiPost<RestoreJob>(`/api/v1/databases/${dbId}/restores`, { filename }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", dbId] }),
+      apiPost<RestoreJob>(`${prefix}/restores`, { filename }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", "service", serviceId] }),
   });
 
   const uploadRestore = useMutation({
@@ -20,36 +21,35 @@ export function useDatabaseUploadRestore(dbId: string) {
       restoreId: string;
       file: File;
       onProgress?: (loaded: number, total: number) => void;
-    }) => apiUpload<RestoreJob>(`/api/v1/databases/${dbId}/restores/${restoreId}/upload`, file, onProgress),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", dbId] }),
+    }) => apiUpload<RestoreJob>(`${prefix}/restores/${restoreId}/upload`, file, onProgress),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", "service", serviceId] }),
   });
 
   const validateRestore = useMutation({
     mutationFn: (restoreId: string) =>
-      apiPost<RestoreJob>(`/api/v1/databases/${dbId}/restores/${restoreId}/validate`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", dbId] }),
+      apiPost<RestoreJob>(`${prefix}/restores/${restoreId}/validate`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", "service", serviceId] }),
   });
 
   const startRestore = useMutation({
     mutationFn: (restoreId: string) =>
-      apiPost<RestoreJob>(`/api/v1/databases/${dbId}/restores/${restoreId}/start`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", dbId] }),
+      apiPost<RestoreJob>(`${prefix}/restores/${restoreId}/start`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", "service", serviceId] }),
   });
 
   const cancelRestore = useMutation({
     mutationFn: (restoreId: string) =>
-      apiDelete<{ ok: boolean }>(`/api/v1/databases/${dbId}/restores/${restoreId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", dbId] }),
+      apiDelete<{ ok: boolean }>(`${prefix}/restores/${restoreId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", "service", serviceId] }),
   });
 
   return { createRestore, uploadRestore, validateRestore, startRestore, cancelRestore };
 }
 
-export function useRestoreJob(dbId: string, restoreId: string | null) {
+export function useRestoreJob(serviceId: string, restoreId: string | null) {
   return useQuery({
-    queryKey: ["database-restore", dbId, restoreId],
-    queryFn: () => apiGet<RestoreJob>(`/api/v1/databases/${dbId}/restores/${restoreId as string}`),
+    queryKey: ["database-restore", "service", serviceId, restoreId],
+    queryFn: () => apiGet<RestoreJob>(`/api/v1/services/${serviceId}/restores/${restoreId as string}`),
     enabled: restoreId !== null,
-    refetchInterval: 1500,
   });
 }

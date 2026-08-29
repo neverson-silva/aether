@@ -19,30 +19,17 @@ import {
   Typography,
 } from "@aether/design-system";
 import type { Icon as DesignIcon } from "@aether/design-system";
-import { useAppStates, useApps, useDatabases } from "../../../hooks";
+import { useServices } from "../../../hooks";
+import type { ServiceKind, ServiceStatus } from "../../../api/types";
 import { CreateServiceLauncher } from "../../../components/CreateServiceLauncher";
-
-type ServiceStatus = "healthy" | "deploying" | "paused" | "failed" | "unknown";
 
 const designIcon = (icon: typeof RocketLaunch) => icon as unknown as DesignIcon;
 
-function getDatabaseStatus(status: string): ServiceStatus {
-  if (status === "ready") return "healthy";
-  if (status === "creating") return "unknown";
-  if (status === "starting") return "deploying";
+function displayStatus(status: ServiceStatus): "healthy" | "deploying" | "paused" | "failed" | "unknown" {
+  if (status === "running") return "healthy";
+  if (status === "deploying" || status === "pending") return "deploying";
+  if (status === "stopped") return "paused";
   if (status === "failed") return "failed";
-  return "unknown";
-}
-
-function getAppStatus(state: string | undefined, deploymentStatus: string | undefined): ServiceStatus {
-  if (deploymentStatus && ["queued", "building", "starting", "health_checking"].includes(deploymentStatus)) {
-    return "deploying";
-  }
-  if (state === "running") return "healthy";
-  if (state === "paused") return "paused";
-  if (["error", "dead"].includes(state ?? "") || ["failed", "cancelled", "rolled_back"].includes(deploymentStatus ?? "")) {
-    return "failed";
-  }
   return "unknown";
 }
 
@@ -63,7 +50,7 @@ function ServiceCard({
   memory?: string;
   status: ServiceStatus;
   label?: string;
-  kind: "app" | "database";
+  kind: ServiceKind;
 }) {
   const Icon = kind === "database" ? Database : Cube;
   return (
@@ -74,7 +61,7 @@ function ServiceCard({
             <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Icon size={22} weight="duotone" aria-hidden="true" />
             </span>
-            <RuntimeStatus status={status} label={label} live={status === "healthy" || status === "deploying"} />
+            <RuntimeStatus status={displayStatus(status)} label={label} live={status === "running" || status === "deploying"} />
           </div>
           <div className="min-w-0 flex-1">
             <Typography as="h3" level="heading" truncate>{name}</Typography>
@@ -82,8 +69,7 @@ function ServiceCard({
           </div>
           <div className="flex items-center gap-3 border-t border-border pt-3 text-body-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <ArrowSquareOut size={15} aria-hidden="true" />
-              :{port}
+              {port > 0 ? <><ArrowSquareOut size={15} aria-hidden="true" />:{port}</> : null}
             </span>
             {memory ? (
               <span className="inline-flex items-center gap-1.5">
@@ -100,12 +86,9 @@ function ServiceCard({
 }
 
 function Services() {
-  const { data: apps, isLoading: appsLoading } = useApps();
-  const { data: states } = useAppStates();
-  const { data: databases, isLoading: databasesLoading } = useDatabases();
+  const { data: services, isLoading } = useServices();
   const [launcherOpen, setLauncherOpen] = useState(false);
-  const isLoading = appsLoading || databasesLoading;
-  const hasServices = Boolean(apps?.length || databases?.length);
+  const hasServices = Boolean(services?.length);
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 p-6 lg:p-8">
@@ -140,31 +123,20 @@ function Services() {
               <Typography as="h2" id="services-heading" level="heading">Your services</Typography>
               <Typography as="p" level="small" tone="muted">Live resources in the selected workspace.</Typography>
             </div>
-            <Badge tone="neutral" size="md" icon={designIcon(HardDrives)}>{(apps?.length ?? 0) + (databases?.length ?? 0)} resources</Badge>
+            <Badge tone="neutral" size="md" icon={designIcon(HardDrives)}>{services?.length ?? 0} services</Badge>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {(databases ?? []).map((database) => (
+            {(services ?? []).map((service) => (
               <ServiceCard
-                key={`database-${database.id}`}
-                href={`/databases/${database.id}`}
-                name={database.name}
-                detail={`${database.engine} ${database.version}`}
-                port={database.port}
-                status={getDatabaseStatus(database.status)}
-                label={database.status === "creating" ? "Pending deployment" : undefined}
-                kind="database"
-              />
-            ))}
-            {(apps ?? []).map((app) => (
-              <ServiceCard
-                key={app.id}
-                href={`/apps/${app.id}`}
-                name={app.name}
-                detail={app.source_type === "image" ? app.image : app.git_url}
-                port={app.port}
-                memory={app.resources.mem_mb ? `${app.resources.mem_mb >= 1024 ? app.resources.mem_mb / 1024 : app.resources.mem_mb} ${app.resources.mem_mb >= 1024 ? "GB" : "MB"}` : undefined}
-                status={getAppStatus(states?.[app.id], app.latest_deployment?.status)}
-                kind="app"
+                key={service.id}
+                href={`/apps/${service.id}`}
+                name={service.name}
+                detail={service.kind === "database" ? `${service.spec?.engine ?? "Database"} ${service.spec?.version ?? ""}` : service.kind === "compose" ? "Docker Compose stack" : service.spec?.source_type === "git" ? service.spec.git_url ?? "Git source" : service.spec?.image ?? "Application"}
+                port={service.spec?.port ?? 0}
+                memory={service.spec?.mem_mb ? `${service.spec.mem_mb >= 1024 ? service.spec.mem_mb / 1024 : service.spec.mem_mb} ${service.spec.mem_mb >= 1024 ? "GB" : "MB"}` : undefined}
+                status={service.status}
+                label={service.status === "pending" ? "Pending deployment" : undefined}
+                kind={service.kind}
               />
             ))}
           </div>

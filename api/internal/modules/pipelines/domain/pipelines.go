@@ -25,6 +25,7 @@ type Pipeline struct {
 	ID        uuid.UUID
 	OrgID     uuid.UUID
 	AppID     *uuid.UUID
+	ServiceID *uuid.UUID
 	Name      string
 	Trigger   string
 	Stages    []Stage

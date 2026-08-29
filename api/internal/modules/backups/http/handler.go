@@ -66,6 +66,7 @@ func (h *Handler) RestoreDatabase(c *gin.Context) {
 	}
 	c.JSON(http.StatusAccepted, gin.H{
 		"id": job.ID, "backup_id": job.BackupID, "target_database_id": job.TargetDatabaseID,
+		"service_id": job.ServiceID,
 		"status": job.Status, "error_code": job.ErrorCode, "error_message": job.ErrorMessage,
 	})
 }
@@ -120,7 +121,7 @@ func backupDTO(b *domain.Backup) gin.H {
 	}
 	return gin.H{
 		"id": b.ID, "path": b.Path, "size": b.Size, "created_at": b.CreatedAt,
-		"kind": b.Kind, "dest": b.Dest, "app_id": appID,
+		"kind": b.Kind, "dest": b.Dest, "app_id": appID, "service_id": b.ServiceID,
 	}
 }
 

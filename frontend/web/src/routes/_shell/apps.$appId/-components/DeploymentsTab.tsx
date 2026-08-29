@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AppDetail } from "../../../../api/types";
 import type { Deployment } from "../../../../api/types";
-import { useCancelDeployment, useDeployCompare } from "../../../../hooks";
+import { useCancelDeployment, useDeployCompare, useServiceCancelDeployment } from "../../../../hooks";
 import { ArrowsClockwise, ArrowUUpLeft, X } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
 import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Skeleton, useToast } from "@aether/design-system";
@@ -40,14 +40,16 @@ export function suggestFix(error: string): { level: "error" | "warning"; title: 
   return null;
 }
 
-export function DeploymentsTab({ appId, deployments, onRollback }: { appId: string; deployments: DeploymentRow[]; onRollback: () => void }) {
+export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { appId: string; serviceId?: string; deployments: DeploymentRow[]; onRollback: () => void }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [comparePair, setComparePair] = useState<{ a: string; b: string } | null>(null);
   const [logDep, setLogDep] = useState<string | null>(null);
   const [cancellingDep, setCancellingDep] = useState<string | null>(null);
   const { add } = useToast();
-  const compare = useDeployCompare(appId, comparePair?.a ?? null, comparePair?.b ?? null);
-  const cancelDeployment = useCancelDeployment(appId);
+  const compare = useDeployCompare(serviceId ? "" : appId, serviceId ? null : comparePair?.a ?? null, serviceId ? null : comparePair?.b ?? null);
+  const legacyCancelDeployment = useCancelDeployment(serviceId ? "" : appId);
+  const serviceCancelDeployment = useServiceCancelDeployment(serviceId ?? "");
+  const cancelDeployment = serviceId ? serviceCancelDeployment : legacyCancelDeployment;
 
   const toggle = (id: string) => {
     setSel((prev) => {
@@ -74,10 +76,10 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
         <div className="flex items-center justify-between mb-md">
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Deployments</h2>
           <div className="flex items-center gap-sm">
-            {sel.size === 2 && (
+            {!serviceId && sel.size === 2 && (
               <Button variant="secondary" icon={ArrowsClockwise as unknown as DesignIcon} onClick={() => { const [a, b] = [...sel]; setComparePair({ a, b }); }}>Compare</Button>
             )}
-            <Button variant="ghost" icon={ArrowUUpLeft as unknown as DesignIcon} onClick={onRollback}>Rollback</Button>
+            {!serviceId && <Button variant="ghost" icon={ArrowUUpLeft as unknown as DesignIcon} onClick={onRollback}>Rollback</Button>}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -153,7 +155,6 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
                             event.stopPropagation();
                             setCancellingDep(d.id);
                             cancelDeployment.mutate(d.id, {
-                              onSuccess: () => add({ title: "Deployment cancelled", tone: "success" }),
                               onError: (error) => add({ title: "Could not cancel deployment", description: error.message, tone: "error" }),
                               onSettled: () => setCancellingDep(null),
                             });
@@ -217,7 +218,7 @@ export function DeploymentsTab({ appId, deployments, onRollback }: { appId: stri
         )}
       </Dialog>
 
-      <DeploymentLogModal appId={appId} deploymentId={logDep} onClose={() => setLogDep(null)} />
+      <DeploymentLogModal appId={appId} serviceId={serviceId} deploymentId={logDep} onClose={() => setLogDep(null)} />
     </>
   );
 }

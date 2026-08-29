@@ -165,7 +165,7 @@ func deploymentDTO(d *deploydomain.Deployment) gin.H {
 		deploySpec = string(d.DeploySpec)
 	}
 	return gin.H{
-		"id": d.ID, "app_id": d.AppID, "number": d.Number, "status": d.Status,
+		"id": d.ID, "app_id": d.AppID, "service_id": d.ServiceID, "number": d.Number, "status": d.Status,
 		"trigger": d.Trigger, "triggered_by": d.TriggeredBy,
 		"env_snapshot": string(d.EnvSnapshot),
 		"commit":       d.CommitSHA, "image_ref": d.ImageRef, "container_id": d.ContainerID,

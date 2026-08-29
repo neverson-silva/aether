@@ -28,7 +28,7 @@ RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 `
 
 type CreateAppParams struct {
@@ -127,6 +127,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UploadID,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -151,7 +152,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE id = $1 AND org_id = $2
 `
@@ -197,6 +198,7 @@ func (q *Queries) GetApp(ctx context.Context, arg GetAppParams) (App, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UploadID,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -206,7 +208,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE id = $1
 `
@@ -247,6 +249,7 @@ func (q *Queries) GetAppByID(ctx context.Context, id uuid.UUID) (App, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UploadID,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -256,7 +259,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE org_id = $1 AND lower(name) = lower($2)
 `
@@ -302,6 +305,7 @@ func (q *Queries) GetAppByName(ctx context.Context, arg GetAppByNameParams) (App
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UploadID,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -311,7 +315,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE org_id = $1
 ORDER BY name
@@ -359,6 +363,7 @@ func (q *Queries) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]App, er
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UploadID,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -378,7 +383,7 @@ SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 FROM apps
 WHERE org_id = $1 AND project_id = $2
 ORDER BY name
@@ -431,6 +436,7 @@ func (q *Queries) ListAppsByProject(ctx context.Context, arg ListAppsByProjectPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UploadID,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -476,7 +482,7 @@ RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_
     dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
-    created_at, updated_at, upload_id
+    created_at, updated_at, upload_id, service_id
 `
 
 type UpdateAppParams struct {
@@ -573,6 +579,7 @@ func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UploadID,
+		&i.ServiceID,
 	)
 	return i, err
 }

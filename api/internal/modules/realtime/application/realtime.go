@@ -17,12 +17,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	alertsdomain "aether/internal/modules/alerts/domain"
 	appsdomain "aether/internal/modules/apps/domain"
 	deploydomain "aether/internal/modules/deployments/domain"
 	"aether/internal/modules/realtime/domain"
-	templatesdomain "aether/internal/modules/templates/domain"
 	"aether/internal/platform/druntime/presence"
 	"aether/internal/platform/druntime/pubsub"
 	"aether/internal/platform/druntime/queue"
@@ -31,10 +31,10 @@ import (
 )
 
 type Realtime struct {
+	DB            *pgxpool.Pool
 	Presence      presence.Presence
 	PubSub        pubsub.PubSub
 	Apps          AppStore
-	Compose       ComposeReader
 	Deployments   DeploymentStore
 	Ports         PortReader
 	Log           EventLog
@@ -66,12 +66,14 @@ type DeploymentStore interface {
 	GetDeployment(ctx context.Context, id uuid.UUID) (*deploydomain.Deployment, error)
 }
 
-type ComposeReader interface {
-	Get(ctx context.Context, id, orgID uuid.UUID) (*templatesdomain.ComposeApp, error)
-}
-
 type PortReader interface {
 	Port(ctx context.Context, containerID string) (hostPort string, err error)
+}
+
+type realtimeServiceIdentity struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+	Name  string
 }
 
 func (r *Realtime) Metrics(ctx context.Context) domain.Metrics {
@@ -124,26 +126,27 @@ func (r *Realtime) Count(ctx context.Context, scope string) (int64, []string, er
 }
 
 func (r *Realtime) NotifyDeploy(ctx context.Context, event deploydomain.DeployEvent) {
-	app, err := r.Apps.GetAppByID(ctx, event.AppID)
+	identity, err := r.resolveServiceIdentity(ctx, event.ServiceID, event.AppID)
 	if err != nil {
 		return
 	}
 	payload, _ := json.Marshal(event)
-	msg := deployMessage(app.Name, event)
-	if err := r.PublishEvent(ctx, app.OrgID, domain.Event{
+	msg := deployMessage(identity.Name, event)
+	if err := r.PublishEvent(ctx, identity.OrgID, domain.Event{
 		Type: "deploy." + event.Status, Aggregate: "deployment",
 		AppID:         event.AppID.String(),
+		ServiceID:     identity.ID.String(),
 		ResourceType:  "deployment",
 		ResourceID:    event.DepID.String(),
 		CorrelationID: event.DepID.String(),
 		Message:       msg,
 		Payload:       payload,
 	}); err != nil {
-		slog.Error("publish deployment realtime event", "org_id", app.OrgID, "deployment_id", event.DepID, "status", event.Status, "err", err)
+		slog.Error("publish deployment realtime event", "org_id", identity.OrgID, "deployment_id", event.DepID, "status", event.Status, "err", err)
 	}
 	if r.Notifications != nil && notifiableDeployStatus(event.Status) {
 		_, _ = r.Notifications.Create(ctx, &alertsdomain.Notification{
-			OrgID:   app.OrgID,
+			OrgID:   identity.OrgID,
 			Type:    "deploy." + event.Status,
 			Message: msg,
 			Payload: string(payload),
@@ -160,7 +163,15 @@ func notifiableDeployStatus(status string) bool {
 }
 
 func (r *Realtime) NotifyDeployLog(ctx context.Context, appID, depID uuid.UUID, line string) {
-	app, err := r.Apps.GetAppByID(ctx, appID)
+	r.notifyDeployLog(ctx, uuid.Nil, appID, depID, line)
+}
+
+func (r *Realtime) NotifyServiceDeployLog(ctx context.Context, serviceID, appID, depID uuid.UUID, line string) {
+	r.notifyDeployLog(ctx, serviceID, appID, depID, line)
+}
+
+func (r *Realtime) notifyDeployLog(ctx context.Context, serviceID, appID, depID uuid.UUID, line string) {
+	identity, err := r.resolveServiceIdentity(ctx, serviceID, appID)
 	if err != nil {
 		return
 	}
@@ -168,11 +179,35 @@ func (r *Realtime) NotifyDeployLog(ctx context.Context, appID, depID uuid.UUID, 
 		"line": line,
 		"ts":   time.Now().UTC().Format(time.RFC3339),
 	})
-	_ = r.PublishEvent(ctx, app.OrgID, domain.Event{
+	_ = r.PublishEvent(ctx, identity.OrgID, domain.Event{
 		Type: "deploy.build.log", Aggregate: "deployment",
-		AppID: appID.String(), ResourceType: "deployment", ResourceID: depID.String(),
+		AppID: appID.String(), ServiceID: identity.ID.String(), ResourceType: "deployment", ResourceID: depID.String(),
 		CorrelationID: depID.String(), Message: line, Payload: payload, Ephemeral: true,
 	})
+}
+
+func (r *Realtime) resolveServiceIdentity(ctx context.Context, serviceID, appID uuid.UUID) (realtimeServiceIdentity, error) {
+	if serviceID != uuid.Nil && r.DB != nil {
+		var identity realtimeServiceIdentity
+		if err := r.DB.QueryRow(ctx, `SELECT id, org_id, name FROM services WHERE id = $1 AND deleted_at IS NULL`, serviceID).Scan(&identity.ID, &identity.OrgID, &identity.Name); err == nil {
+			return identity, nil
+		}
+	}
+	if r.Apps == nil {
+		return realtimeServiceIdentity{}, errors.New("service not found")
+	}
+	app, err := r.Apps.GetAppByID(ctx, appID)
+	if err != nil {
+		return realtimeServiceIdentity{}, err
+	}
+	resolvedServiceID := serviceID
+	if resolvedServiceID == uuid.Nil {
+		resolvedServiceID, err = uuid.Parse(r.serviceIDForApp(ctx, appID))
+		if err != nil {
+			resolvedServiceID = appID
+		}
+	}
+	return realtimeServiceIdentity{ID: resolvedServiceID, OrgID: app.OrgID, Name: app.Name}, nil
 }
 
 func (r *Realtime) NotifyAppState(ctx context.Context, appID uuid.UUID, state string) {
@@ -180,49 +215,78 @@ func (r *Realtime) NotifyAppState(ctx context.Context, appID uuid.UUID, state st
 	if err != nil {
 		return
 	}
-	payload, _ := json.Marshal(map[string]string{"app_id": appID.String(), "state": state})
+	serviceID := r.serviceIDForApp(ctx, appID)
+	payload, _ := json.Marshal(map[string]string{"app_id": appID.String(), "service_id": serviceID, "state": state})
 	_ = r.PublishEvent(ctx, app.OrgID, domain.Event{
-		Type: "app.state", Aggregate: "app",
-		AppID: appID.String(), ResourceType: "app", ResourceID: appID.String(),
+		Type: "app.state", Aggregate: "service",
+		AppID: appID.String(), ServiceID: serviceID, ResourceType: "service", ResourceID: serviceID,
 		Payload: payload, Ephemeral: true,
 	})
 }
 
+func (r *Realtime) serviceIDForApp(ctx context.Context, appID uuid.UUID) string {
+	if r.DB == nil {
+		return appID.String()
+	}
+	var serviceID uuid.UUID
+	if err := r.DB.QueryRow(ctx, `SELECT service_id FROM apps WHERE id = $1`, appID).Scan(&serviceID); err != nil {
+		return appID.String()
+	}
+	return serviceID.String()
+}
+
 func (r *Realtime) NotifyBackup(ctx context.Context, orgID, databaseID, backupID uuid.UUID, status string) {
+	serviceID := r.serviceIDForDatabase(ctx, databaseID)
 	payload, _ := json.Marshal(map[string]string{
 		"database_id": databaseID.String(),
+		"service_id":  serviceID,
 		"backup_id":   backupID.String(),
 		"status":      status,
 	})
 	_ = r.PublishEvent(ctx, orgID, domain.Event{
-		Type: "backup." + status, Aggregate: "backup", ResourceType: "database", ResourceID: databaseID.String(),
+		Type: "backup." + status, Aggregate: "backup", ServiceID: serviceID, ResourceType: "database", ResourceID: databaseID.String(),
 		CorrelationID: backupID.String(), Message: backupMessage(status), Payload: payload,
 	})
 }
 
 func (r *Realtime) NotifyRestore(ctx context.Context, orgID, targetDBID, restoreID uuid.UUID, status string) {
+	serviceID := r.serviceIDForDatabase(ctx, targetDBID)
 	payload, _ := json.Marshal(map[string]string{
 		"database_id": targetDBID.String(),
+		"service_id":  serviceID,
 		"restore_id":  restoreID.String(),
 		"status":      status,
 	})
 	_ = r.PublishEvent(ctx, orgID, domain.Event{
-		Type: "restore." + status, Aggregate: "restore", ResourceType: "database", ResourceID: targetDBID.String(),
+		Type: "restore." + status, Aggregate: "restore", ServiceID: serviceID, ResourceType: "database", ResourceID: targetDBID.String(),
 		CorrelationID: restoreID.String(), Message: "Restore " + status, Payload: payload,
 	})
 }
 
 func (r *Realtime) NotifyRestoreProgress(ctx context.Context, orgID, dbID, restoreID uuid.UUID, uploaded, total int64) {
+	serviceID := r.serviceIDForDatabase(ctx, dbID)
 	payload, _ := json.Marshal(map[string]any{
 		"database_id":    dbID.String(),
+		"service_id":     serviceID,
 		"restore_id":     restoreID.String(),
 		"uploaded_bytes": uploaded,
 		"total_bytes":    total,
 	})
 	_ = r.PublishEvent(ctx, orgID, domain.Event{
-		Type: "restore.upload.progress", Aggregate: "restore", ResourceType: "database", ResourceID: dbID.String(),
+		Type: "restore.upload.progress", Aggregate: "restore", ServiceID: serviceID, ResourceType: "database", ResourceID: dbID.String(),
 		CorrelationID: restoreID.String(), Payload: payload, Ephemeral: true,
 	})
+}
+
+func (r *Realtime) serviceIDForDatabase(ctx context.Context, databaseID uuid.UUID) string {
+	if r.DB == nil {
+		return databaseID.String()
+	}
+	var serviceID uuid.UUID
+	if err := r.DB.QueryRow(ctx, `SELECT service_id FROM databases WHERE id = $1`, databaseID).Scan(&serviceID); err != nil {
+		return databaseID.String()
+	}
+	return serviceID.String()
 }
 
 func backupMessage(status string) string {
@@ -313,6 +377,16 @@ func (r *Realtime) Authorize(ctx context.Context, scope string, orgID uuid.UUID)
 	switch {
 	case scope == "org":
 		return nil
+	case strings.HasPrefix(scope, "service:"):
+		id, err := uuid.Parse(strings.TrimPrefix(scope, "service:"))
+		if err != nil || r.DB == nil {
+			return domain.ErrForbidden
+		}
+		var exists bool
+		if err := r.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM services WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL)`, id, orgID).Scan(&exists); err != nil || !exists {
+			return domain.ErrForbidden
+		}
+		return nil
 	case strings.HasPrefix(scope, "app:"):
 		appScope := strings.TrimPrefix(scope, "app:")
 		idPart := appScope
@@ -329,6 +403,12 @@ func (r *Realtime) Authorize(ctx context.Context, scope string, orgID uuid.UUID)
 		id, err := uuid.Parse(strings.TrimPrefix(scope, "deployment:"))
 		if err != nil {
 			return domain.ErrForbidden
+		}
+		if r.DB != nil {
+			var belongsToOrg bool
+			if err := r.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM deployments d JOIN services s ON s.id = d.service_id WHERE d.id = $1 AND s.org_id = $2 AND s.deleted_at IS NULL)`, id, orgID).Scan(&belongsToOrg); err == nil && belongsToOrg {
+				return nil
+			}
 		}
 		dep, err := r.Deployments.GetDeployment(ctx, id)
 		if err != nil {
@@ -350,9 +430,21 @@ func (r *Realtime) SubscribeEvents(ctx context.Context, orgID uuid.UUID, handler
 	}, pubsub.WithBuffer(256))
 }
 
-func (r *Realtime) ReadyContainer(ctx context.Context, appID, orgID uuid.UUID) (string, error) {
-	if _, err := r.Apps.GetApp(ctx, appID, orgID); err == nil {
-		deployments, err := r.Deployments.ListByApp(ctx, appID, 1)
+func (r *Realtime) ReadyContainer(ctx context.Context, serviceID, orgID uuid.UUID) (string, error) {
+	return r.ReadyContainerForService(ctx, serviceID, orgID, "")
+}
+
+func (r *Realtime) ReadyContainerForService(ctx context.Context, serviceID, orgID uuid.UUID, preferred string) (string, error) {
+	if r.DB == nil {
+		return "", errors.New("service not found")
+	}
+	var kind string
+	var specID uuid.UUID
+	if err := r.DB.QueryRow(ctx, `SELECT kind, CASE kind WHEN 'app' THEN (SELECT id FROM apps WHERE service_id = services.id) WHEN 'compose' THEN (SELECT id FROM compose_apps WHERE service_id = services.id) WHEN 'database' THEN (SELECT id FROM databases WHERE service_id = services.id) END FROM services WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`, serviceID, orgID).Scan(&kind, &specID); err != nil {
+		return "", errors.New("service not found")
+	}
+	if kind == "app" {
+		deployments, err := r.Deployments.ListByApp(ctx, specID, 1)
 		if err != nil {
 			return "", err
 		}
@@ -363,21 +455,29 @@ func (r *Realtime) ReadyContainer(ctx context.Context, appID, orgID uuid.UUID) (
 		}
 		return "", errors.New("no active container")
 	}
-	if r.Compose == nil {
-		return "", errors.New("service not found")
+	return r.readyLabeledContainer(ctx, serviceID, specID, preferred)
+}
+
+func (r *Realtime) readyLabeledContainer(ctx context.Context, serviceID, specID uuid.UUID, preferred string) (string, error) {
+	values := []uuid.UUID{serviceID}
+	if specID != serviceID {
+		values = append(values, specID)
 	}
-	if _, err := r.Compose.Get(ctx, appID, orgID); err != nil {
-		return "", err
+	for _, value := range values {
+		args := []string{"ps", "-q", "--filter", "label=aether.service-id=" + value.String(), "--filter", "status=running"}
+		if strings.TrimSpace(preferred) != "" {
+			args = append(args, "--filter", "name=^"+strings.TrimSpace(preferred)+"$")
+		}
+		containerID, err := exec.CommandContext(ctx, "podman", args...).Output()
+		if err != nil {
+			return "", fmt.Errorf("resolve service container: %w", err)
+		}
+		containerID = bytes.TrimSpace(containerID)
+		if len(containerID) > 0 {
+			return strings.Split(string(containerID), "\n")[0], nil
+		}
 	}
-	containerID, err := exec.CommandContext(ctx, "podman", "ps", "-q", "--filter", "label=aether.service-id="+appID.String(), "--filter", "status=running").Output()
-	if err != nil {
-		return "", fmt.Errorf("resolve compose container: %w", err)
-	}
-	containerID = bytes.TrimSpace(containerID)
-	if len(containerID) == 0 {
-		return "", errors.New("no active container")
-	}
-	return strings.Split(string(containerID), "\n")[0], nil
+	return "", errors.New("no active container")
 }
 
 func (r *Realtime) Probe(ctx context.Context, orgID uuid.UUID) []domain.NetAppStat {
@@ -416,6 +516,7 @@ func (r *Realtime) probeApp(ctx context.Context, app *appsdomain.App) {
 	if err != nil || hostPort == "" {
 		return
 	}
+	serviceID := r.serviceIDForApp(ctx, app.ID)
 	host, port := splitHostPort(hostPort)
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	start := time.Now()
@@ -432,10 +533,10 @@ func (r *Realtime) probeApp(ctx context.Context, app *appsdomain.App) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	st, ok := r.stats[app.ID.String()]
+	st, ok := r.stats[serviceID]
 	if !ok {
-		st = &domain.NetAppStat{AppID: app.ID.String(), Name: app.Name, Addr: addr}
-		r.stats[app.ID.String()] = st
+		st = &domain.NetAppStat{ServiceID: serviceID, AppID: app.ID.String(), Name: app.Name, Addr: addr}
+		r.stats[serviceID] = st
 	}
 	st.Samples = append(st.Samples, sample)
 	if len(st.Samples) > 120 {

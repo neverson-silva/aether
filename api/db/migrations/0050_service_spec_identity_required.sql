@@ -1,0 +1,3 @@
+ALTER TABLE apps ALTER COLUMN service_id SET NOT NULL;
+ALTER TABLE compose_apps ALTER COLUMN service_id SET NOT NULL;
+ALTER TABLE databases ALTER COLUMN service_id SET NOT NULL;

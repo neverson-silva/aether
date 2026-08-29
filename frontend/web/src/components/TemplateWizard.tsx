@@ -148,7 +148,7 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
       });
       add({ title: "Deploy it manually from the service page", tone: "info" });
       onClose();
-      navigate({ to: "/apps/$appId", params: { appId: app.id } } as never);
+      navigate({ to: "/apps/$appId", params: { appId: app.service_id ?? app.id } } as never);
     } catch (err) {
       add({ title: err instanceof Error ? err.message : "Failed to create service", tone: "error" });
     } finally {

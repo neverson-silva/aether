@@ -1,34 +1,38 @@
 -- name: CreateDeployment :one
 INSERT INTO deployments (
-    app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
+    app_id, service_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash
 )
 VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11, $12, $13
+    $1, COALESCE(NULLIF($2::uuid, '00000000-0000-0000-0000-000000000000'),
+        (SELECT service_id FROM apps WHERE id = $1),
+        (SELECT service_id FROM compose_apps WHERE id = $1),
+        (SELECT service_id FROM databases WHERE id = $1)
+    ), $3, $4, $5, $6, $7, $8,
+    $9, $10, $11, $12, $13, $14
 )
 RETURNING id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at;
+    created_at, started_at, finished_at, service_id;
 
 -- name: GetDeployment :one
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE id = $1;
 
 -- name: GetDeploymentByApp :one
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = $1 AND number = $2;
 
 -- name: ListDeployments :many
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = $1
 ORDER BY number DESC
@@ -42,7 +46,7 @@ WHERE app_id = $1;
 -- name: LastReadyDeployment :one
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = $1 AND status = 'ready'
 ORDER BY number DESC
@@ -67,7 +71,7 @@ WHERE id = $1
 -- name: ListQueuedDeployments :many
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE status = 'queued'
 ORDER BY created_at ASC

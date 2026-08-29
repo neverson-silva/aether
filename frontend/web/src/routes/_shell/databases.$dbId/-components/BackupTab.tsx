@@ -35,7 +35,7 @@ function backupTone(status: string): { status: string; pulse?: boolean } {
 export function BackupTab({ dbId, dbName }: { dbId: string; dbName?: string }) {
   const { add } = useToast();
   const { data: configs } = useDatabaseBackupConfig(dbId);
-  const { data: backups } = useDatabaseBackups(dbId);
+  const { data: backups } = useDatabaseBackups(dbId, 50);
   const { data: destinations } = useS3Destinations();
   const backupNow = useDatabaseBackupNow(dbId);
   const cancel = useDatabaseBackupCancel(dbId);

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,7 +96,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) erro
 		if err != nil {
 			return err
 		}
-		if migrationMaterialized(ctx, pool) {
+		if migrationMaterialized(ctx, pool) && legacyMigration(version) {
 			if err := recordMigration(ctx, pool, version); err != nil {
 				return err
 			}
@@ -118,6 +119,15 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) erro
 		}
 	}
 	return nil
+}
+
+func legacyMigration(version string) bool {
+	separator := strings.IndexByte(version, '_')
+	if separator <= 0 {
+		return false
+	}
+	sequence, err := strconv.Atoi(version[:separator])
+	return err == nil && sequence <= 27
 }
 
 func migrationID(version string, intCol bool) int64 {

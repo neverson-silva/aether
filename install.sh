@@ -6,7 +6,7 @@ readonly REPOSITORY_REF="${AETHER_REPOSITORY_REF:-main}"
 readonly INSTALL_DIR="${AETHER_INSTALL_DIR:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/opt/aether'; else printf '%s/.local/share/aether' "$HOME"; fi)}"
 readonly DEFAULT_STATE_DIR="${AETHER_STATE:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/var/lib/aether'; else printf '%s/.aether' "$HOME"; fi)}"
 readonly ENV_FILE="${AETHER_ENV_FILE:-$DEFAULT_STATE_DIR/.env}"
-INSTALL_LOG="${AETHER_INSTALL_LOG:-$DEFAULT_STATE_DIR/logs/installer.log}"
+INSTALL_LOG="${AETHER_INSTALL_LOG:-/dev/stderr}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -185,9 +185,6 @@ main() {
       ;;
   esac
 
-  if [[ "$command" == "update" && -z "${AETHER_INSTALL_LOG:-}" ]]; then
-    INSTALL_LOG="$DEFAULT_STATE_DIR/logs/updater.log"
-  fi
 
   validate_host
   install_bootstrap_dependencies

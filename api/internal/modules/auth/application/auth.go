@@ -105,7 +105,7 @@ func (a *Auth) Refresh(ctx context.Context, raw string) (string, string, error) 
 	if err != nil {
 		return "", "", err
 	}
-	refresh, err := a.Tokens.SignRefresh(ctx, token.Subject, token.OrgID, token.Role, token.Global, 20*time.Minute)
+	refresh, err := a.Tokens.SignRefreshUntil(ctx, token.Subject, token.OrgID, token.Role, token.Global, token.Expires)
 	return access, refresh, err
 }
 

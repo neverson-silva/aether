@@ -55,6 +55,7 @@ type Worker struct {
 	CnbBuilder        string
 	Queue             queue.Queue
 	QueueConcurrency  int
+	ServiceDeploy     func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) error
 	Metrics           *observability.Metrics
 	deploymentTimeout time.Duration
 
@@ -83,6 +84,10 @@ type DeployNotifier interface {
 
 type LogNotifier interface {
 	NotifyDeployLog(ctx context.Context, appID, depID uuid.UUID, line string)
+}
+
+type ServiceLogNotifier interface {
+	NotifyServiceDeployLog(ctx context.Context, serviceID, appID, depID uuid.UUID, line string)
 }
 
 func (w *Worker) Run(ctx context.Context, interval time.Duration) {
@@ -158,6 +163,41 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				return
 			}
 			w.log(ctx, "queue next", err)
+			continue
+		}
+		if job.Type == "service-deploy" {
+			stopProgress := queue.StartProgress(ctx, consumer, job)
+			if w.ServiceDeploy == nil {
+				stopProgress()
+				_ = consumer.Ack(ctx, job)
+				continue
+			}
+			var payload struct {
+				Kind      string `json:"kind"`
+				ServiceID string `json:"service_id"`
+				SpecID    string `json:"spec_id"`
+				OrgID     string `json:"org_id"`
+			}
+			if json.Unmarshal(job.Payload, &payload) != nil {
+				stopProgress()
+				_ = consumer.Ack(ctx, job)
+				continue
+			}
+			serviceID, serviceErr := uuid.Parse(payload.ServiceID)
+			specID, specErr := uuid.Parse(payload.SpecID)
+			orgID, orgErr := uuid.Parse(payload.OrgID)
+			if serviceErr != nil || specErr != nil || orgErr != nil {
+				stopProgress()
+				_ = consumer.Ack(ctx, job)
+				continue
+			}
+			if err := w.ServiceDeploy(ctx, payload.Kind, serviceID, specID, orgID); err != nil {
+				stopProgress()
+				_ = consumer.Nack(ctx, job)
+			} else {
+				stopProgress()
+				_ = consumer.Ack(ctx, job)
+			}
 			continue
 		}
 		depID, err := uuid.Parse(job.DeploymentID)
@@ -332,10 +372,19 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
 		containerPort = spec.Port
 	}
 	w.removeOldContainers(ctx, dep.AppID, dep.ID)
+	serviceID := dep.AppID
+	if provider, ok := w.Apps.(interface {
+		GetServiceID(context.Context, uuid.UUID) (uuid.UUID, error)
+	}); ok {
+		if resolved, resolveErr := provider.GetServiceID(ctx, dep.AppID); resolveErr == nil && resolved != uuid.Nil {
+			serviceID = resolved
+		}
+	}
 	labels := map[string]string{
 		"aether.owner":        "user",
 		"aether.service-type": "app",
-		"aether.service-id":   dep.AppID.String(),
+		"aether.service-id":   serviceID.String(),
+		"aether.spec-id":      dep.AppID.String(),
 	}
 	if w.Apps != nil {
 		if app, err := w.Apps.GetAppByID(ctx, dep.AppID); err == nil {
@@ -492,7 +541,7 @@ func (w *Worker) streamCmd(ctx context.Context, dep *deploydomain.Deployment, cm
 }
 
 func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
-	img := "aether/" + dep.AppID.String()[:8]
+	img := "aether/" + dep.ID.String()[:8]
 	builder := w.CnbBuilder
 	if builder == "" {
 		builder = "127.0.0.1:5000/builder:node-spa"
@@ -516,9 +565,18 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}
-	cmd := exec.CommandContext(ctx, "pack", args...)
-	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "CONTAINER_HOST="+dockerHost, "DOCKER_API_VERSION=1.40", "PACK_VOLUME_KEY=aether-"+dep.AppID.String()[:8])
-	out, err := w.streamCmd(ctx, dep, cmd)
+	var out string
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		cmd := exec.CommandContext(ctx, "pack", args...)
+		cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "CONTAINER_HOST="+dockerHost, "DOCKER_API_VERSION=1.40", "PACK_VOLUME_KEY=aether-"+dep.ID.String()[:8])
+		out, err = w.streamCmd(ctx, dep, cmd)
+		if err == nil || !isTransientCNBError(out) || attempt == 1 {
+			break
+		}
+		w.appendLog(dep, "cnb: build runtime connection interrupted; retrying export")
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		if strings.Contains(out, "No buildpack groups passed detection") {
 			w.appendLog(dep, "cnb: no buildpack detected the application. Manual configuration required: provide a Dockerfile in the source or use build_type custom (install/build/start).")
@@ -531,6 +589,13 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 		return "", err
 	}
 	return tag, nil
+}
+
+func isTransientCNBError(output string) bool {
+	value := strings.ToLower(output)
+	return strings.Contains(value, "connection reset by peer") ||
+		strings.Contains(value, "proxy already running") ||
+		strings.Contains(value, "payload does not match any of the supported image formats")
 }
 
 func cnbDockerHost() string {
@@ -742,7 +807,7 @@ func (w *Worker) notify(ctx context.Context, dep *deploydomain.Deployment, statu
 		return
 	}
 	w.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{
-		AppID: dep.AppID, DepID: dep.ID, Status: string(status), Detail: dep.Error,
+		AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(status), Detail: dep.Error,
 	})
 }
 
@@ -773,7 +838,11 @@ func (w *Worker) fail(ctx context.Context, dep *deploydomain.Deployment, contain
 func (w *Worker) appendLog(dep *deploydomain.Deployment, line string) {
 	if line != "" && w.LogNotifier != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		w.LogNotifier.NotifyDeployLog(ctx, dep.AppID, dep.ID, line)
+		if notifier, ok := w.LogNotifier.(ServiceLogNotifier); ok && dep.ServiceID != uuid.Nil {
+			notifier.NotifyServiceDeployLog(ctx, dep.ServiceID, dep.AppID, dep.ID, line)
+		} else {
+			w.LogNotifier.NotifyDeployLog(ctx, dep.AppID, dep.ID, line)
+		}
 		cancel()
 	}
 	if w.LogsDir == "" {

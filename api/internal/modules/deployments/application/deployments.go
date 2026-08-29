@@ -47,6 +47,7 @@ type AppStore interface {
 }
 
 type DeployOpts struct {
+	ServiceID   uuid.UUID
 	Trigger     string
 	TriggeredBy string
 	CommitSHA   string
@@ -82,7 +83,7 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 	var dep *deploydomain.Deployment
 	if err == nil {
 		candidate := &deploydomain.Deployment{
-			AppID: appID, Number: number, Status: deploydomain.StatusQueued,
+			AppID: appID, ServiceID: opts.ServiceID, Number: number, Status: deploydomain.StatusQueued,
 			Trigger: opts.Trigger, TriggeredBy: opts.TriggeredBy, CommitSHA: opts.CommitSHA,
 			ImageRef: opts.ImageRef, EnvSnapshot: snapshot, DeploySpec: spec,
 		}
@@ -122,7 +123,7 @@ func (d *Deployments) enqueue(ctx context.Context, dep *deploydomain.Deployment,
 
 func (d *Deployments) notify(ctx context.Context, dep *deploydomain.Deployment) {
 	if d.Notifier != nil {
-		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, DepID: dep.ID, Status: string(deploydomain.StatusQueued)})
+		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(deploydomain.StatusQueued)})
 	}
 }
 
@@ -176,7 +177,7 @@ func (d *Deployments) Cancel(ctx context.Context, appID, orgID, depID uuid.UUID)
 	}
 	if d.Notifier != nil {
 		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{
-			AppID: dep.AppID, DepID: dep.ID, Status: string(dep.Status), Detail: dep.Error,
+			AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(dep.Status), Detail: dep.Error,
 		})
 	}
 	return dep, nil

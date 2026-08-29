@@ -34,7 +34,7 @@ func (s *Store) Close() error {
 func (s *Store) CreatePipeline(ctx context.Context, pipeline *domain.Pipeline) (*domain.Pipeline, error) {
 	stages, _ := json.Marshal(pipeline.Stages)
 	row, err := s.q.CreatePipeline(ctx, gen.CreatePipelineParams{
-		OrgID: pipeline.OrgID, AppID: nullUUID(pipeline.AppID), Name: pipeline.Name,
+		OrgID: pipeline.OrgID, AppID: nullUUID(pipeline.AppID), ServiceID: nullUUID(pipeline.ServiceID), Name: pipeline.Name,
 		Trigger: pipeline.Trigger, Stages: stages, Enabled: pipeline.Enabled,
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func pipelineFromRow(row gen.Pipeline) *domain.Pipeline {
 		stages = []domain.Stage{}
 	}
 	return &domain.Pipeline{
-		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), Name: row.Name,
+		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), ServiceID: uuidPtr(row.ServiceID), Name: row.Name,
 		Trigger: row.Trigger, Stages: stages, Enabled: row.Enabled, CreatedAt: row.CreatedAt,
 	}
 }

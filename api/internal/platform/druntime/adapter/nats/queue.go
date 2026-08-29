@@ -43,10 +43,10 @@ func (q *Queue) NewConsumer(ctx context.Context, stream, group, consumerID strin
 		Durable:       group,
 		FilterSubject: jobSubject(stream),
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		AckWait:       30 * time.Minute,
+		AckWait:       30 * time.Second,
 		MaxDeliver:    maxJobDeliveries,
 		BackOff:       []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute},
-		MaxAckPending: 16,
+		MaxAckPending: 1,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		ReplayPolicy:  jetstream.ReplayInstantPolicy,
 	})

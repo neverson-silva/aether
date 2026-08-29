@@ -18,6 +18,7 @@ var (
 type Domain struct {
 	ID            uuid.UUID
 	AppID         uuid.UUID
+	ServiceID     uuid.UUID
 	ServiceType   string
 	ServerID      uuid.UUID
 	Host          string
@@ -49,6 +50,7 @@ const (
 type Preview struct {
 	ID           uuid.UUID
 	AppID        uuid.UUID
+	ServiceID    uuid.UUID
 	Branch       string
 	DeploymentID *uuid.UUID
 	ContainerID  string
@@ -60,6 +62,7 @@ type Preview struct {
 type Certificate struct {
 	DomainID  uuid.UUID
 	AppID     uuid.UUID
+	ServiceID uuid.UUID
 	AppName   string
 	Host      string
 	HTTPS     bool

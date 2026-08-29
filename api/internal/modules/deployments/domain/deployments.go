@@ -73,6 +73,7 @@ func (s Status) Terminal() bool {
 type Deployment struct {
 	ID          uuid.UUID
 	AppID       uuid.UUID
+	ServiceID   uuid.UUID
 	Number      int
 	Status      Status
 	Trigger     string
@@ -92,10 +93,11 @@ type Deployment struct {
 }
 
 type DeployEvent struct {
-	AppID  uuid.UUID `json:"app_id"`
-	DepID  uuid.UUID `json:"deployment_id"`
-	Status string    `json:"status"`
-	Detail string    `json:"detail"`
+	AppID     uuid.UUID `json:"app_id"`
+	ServiceID uuid.UUID `json:"service_id"`
+	DepID     uuid.UUID `json:"deployment_id"`
+	Status    string    `json:"status"`
+	Detail    string    `json:"detail"`
 }
 
 func (d *Deployment) Transition(to Status) error {

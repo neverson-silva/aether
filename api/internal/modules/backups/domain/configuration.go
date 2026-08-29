@@ -40,6 +40,7 @@ type Retention struct {
 type BackupConfiguration struct {
 	ID            uuid.UUID
 	DatabaseID    uuid.UUID
+	ServiceID     uuid.UUID
 	OrgID         uuid.UUID
 	Enabled       bool
 	DestinationID uuid.UUID

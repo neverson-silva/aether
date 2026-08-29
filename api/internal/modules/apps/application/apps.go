@@ -12,13 +12,21 @@ import (
 )
 
 type Apps struct {
-	Store      domain.Store
-	Secrets    domain.SecretCipher
-	Containers ContainerRemover
-	Databases  DatabaseNameStore
+	Store           domain.Store
+	Secrets         domain.SecretCipher
+	Containers      ContainerRemover
+	Databases       DatabaseNameStore
+	ServiceIdentity func(context.Context, uuid.UUID) (uuid.UUID, error)
 	// LatestDeployments returns the status of the most recent deployment per
 	// app. When nil, the apps list is served without deployment status.
 	LatestDeployments func(ctx context.Context, appIDs []uuid.UUID) (map[uuid.UUID]string, error)
+}
+
+func (a *Apps) GetServiceID(ctx context.Context, appID uuid.UUID) (uuid.UUID, error) {
+	if a.ServiceIdentity == nil {
+		return appID, nil
+	}
+	return a.ServiceIdentity(ctx, appID)
 }
 
 type ContainerRemover interface {
@@ -77,6 +85,10 @@ func (a *Apps) GetEnvironment(ctx context.Context, id, projectID uuid.UUID) (*do
 
 func (a *Apps) ListEnvironments(ctx context.Context, projectID uuid.UUID) ([]domain.Environment, error) {
 	return a.Store.ListEnvironments(ctx, projectID)
+}
+
+func (a *Apps) DefaultEnvironment(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	return a.Store.DefaultEnvironment(ctx, projectID)
 }
 
 func (a *Apps) UpdateEnvironment(ctx context.Context, id, projectID uuid.UUID, name, description, color string) (*domain.Environment, error) {

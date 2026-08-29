@@ -16,21 +16,24 @@ var (
 )
 
 type CronJob struct {
-	ID        uuid.UUID
-	OrgID     uuid.UUID
-	AppID     uuid.UUID
-	Name      string
-	Schedule  string
-	Command   string
-	Enabled   bool
-	LastRun   *time.Time
-	NextRun   *time.Time
-	CreatedAt time.Time
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	AppID       uuid.UUID
+	ServiceID   uuid.UUID
+	ServiceName string
+	Name        string
+	Schedule    string
+	Command     string
+	Enabled     bool
+	LastRun     *time.Time
+	NextRun     *time.Time
+	CreatedAt   time.Time
 }
 
 type Worker struct {
 	ID          uuid.UUID
 	AppID       uuid.UUID
+	ServiceID   uuid.UUID
 	Name        string
 	Command     string
 	Replicas    int
@@ -42,6 +45,7 @@ type Worker struct {
 
 type Policy struct {
 	AppID        uuid.UUID
+	ServiceID    uuid.UUID
 	Enabled      bool
 	CPUMin       float64
 	CPUMax       float64
@@ -56,6 +60,7 @@ type Policy struct {
 type AutopilotEvent struct {
 	ID        uuid.UUID
 	AppID     uuid.UUID
+	ServiceID uuid.UUID
 	Action    string
 	Detail    string
 	CreatedAt time.Time

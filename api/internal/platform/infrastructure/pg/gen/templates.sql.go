@@ -16,7 +16,7 @@ import (
 const createComposeApp = `-- name: CreateComposeApp :one
 INSERT INTO compose_apps (org_id, project_id, environment_id, name, compose, status)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, org_id, project_id, environment_id, name, compose, status, created_at
+RETURNING id, org_id, project_id, name, compose, status, created_at, environment_id, service_id
 `
 
 type CreateComposeAppParams struct {
@@ -28,18 +28,7 @@ type CreateComposeAppParams struct {
 	Status        string        `json:"status"`
 }
 
-type CreateComposeAppRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
-	Name          string        `json:"name"`
-	Compose       string        `json:"compose"`
-	Status        string        `json:"status"`
-	CreatedAt     time.Time     `json:"created_at"`
-}
-
-func (q *Queries) CreateComposeApp(ctx context.Context, arg CreateComposeAppParams) (CreateComposeAppRow, error) {
+func (q *Queries) CreateComposeApp(ctx context.Context, arg CreateComposeAppParams) (ComposeApp, error) {
 	row := q.db.QueryRowContext(ctx, createComposeApp,
 		arg.OrgID,
 		arg.ProjectID,
@@ -48,16 +37,17 @@ func (q *Queries) CreateComposeApp(ctx context.Context, arg CreateComposeAppPara
 		arg.Compose,
 		arg.Status,
 	)
-	var i CreateComposeAppRow
+	var i ComposeApp
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
 		&i.ProjectID,
-		&i.EnvironmentID,
 		&i.Name,
 		&i.Compose,
 		&i.Status,
 		&i.CreatedAt,
+		&i.EnvironmentID,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -78,34 +68,24 @@ func (q *Queries) DeleteComposeApp(ctx context.Context, arg DeleteComposeAppPara
 }
 
 const getComposeApp = `-- name: GetComposeApp :one
-SELECT id, org_id, project_id, environment_id, name, compose, status, created_at
+SELECT id, org_id, project_id, name, compose, status, created_at, environment_id, service_id
 FROM compose_apps
 WHERE id = $1
 `
 
-type GetComposeAppRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
-	Name          string        `json:"name"`
-	Compose       string        `json:"compose"`
-	Status        string        `json:"status"`
-	CreatedAt     time.Time     `json:"created_at"`
-}
-
-func (q *Queries) GetComposeApp(ctx context.Context, id uuid.UUID) (GetComposeAppRow, error) {
+func (q *Queries) GetComposeApp(ctx context.Context, id uuid.UUID) (ComposeApp, error) {
 	row := q.db.QueryRowContext(ctx, getComposeApp, id)
-	var i GetComposeAppRow
+	var i ComposeApp
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
 		&i.ProjectID,
-		&i.EnvironmentID,
 		&i.Name,
 		&i.Compose,
 		&i.Status,
 		&i.CreatedAt,
+		&i.EnvironmentID,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -176,41 +156,31 @@ func (q *Queries) IncrementTemplateInstalls(ctx context.Context, id uuid.UUID) e
 }
 
 const listComposeAppsByOrg = `-- name: ListComposeAppsByOrg :many
-SELECT id, org_id, project_id, environment_id, name, compose, status, created_at
+SELECT id, org_id, project_id, name, compose, status, created_at, environment_id, service_id
 FROM compose_apps
 WHERE org_id = $1
 ORDER BY name
 `
 
-type ListComposeAppsByOrgRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
-	Name          string        `json:"name"`
-	Compose       string        `json:"compose"`
-	Status        string        `json:"status"`
-	CreatedAt     time.Time     `json:"created_at"`
-}
-
-func (q *Queries) ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListComposeAppsByOrgRow, error) {
+func (q *Queries) ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ComposeApp, error) {
 	rows, err := q.db.QueryContext(ctx, listComposeAppsByOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListComposeAppsByOrgRow{}
+	items := []ComposeApp{}
 	for rows.Next() {
-		var i ListComposeAppsByOrgRow
+		var i ComposeApp
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
 			&i.ProjectID,
-			&i.EnvironmentID,
 			&i.Name,
 			&i.Compose,
 			&i.Status,
 			&i.CreatedAt,
+			&i.EnvironmentID,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}

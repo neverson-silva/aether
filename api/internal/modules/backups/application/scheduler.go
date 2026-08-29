@@ -102,7 +102,7 @@ func (s *DatabaseBackups) RunScheduled(ctx context.Context, payload []byte) erro
 		return err
 	}
 	if len(active) == 0 {
-		job, err := s.Store.CreateJob(ctx, &domain.BackupJob{DatabaseID: cfg.DatabaseID, Configuration: &cfg.ID, Trigger: domain.TriggerScheduled, Status: domain.BackupQueued, DestinationID: cfg.DestinationID})
+		job, err := s.Store.CreateJob(ctx, &domain.BackupJob{DatabaseID: cfg.DatabaseID, ServiceID: cfg.ServiceID, Configuration: &cfg.ID, Trigger: domain.TriggerScheduled, Status: domain.BackupQueued, DestinationID: cfg.DestinationID})
 		if err != nil {
 			return err
 		}

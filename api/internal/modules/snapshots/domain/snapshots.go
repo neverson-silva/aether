@@ -19,6 +19,7 @@ type Snapshot struct {
 	ID         uuid.UUID
 	OrgID      uuid.UUID
 	AppID      *uuid.UUID
+	ServiceID  *uuid.UUID
 	Volume     string
 	Name       string
 	Size       int64
@@ -31,6 +32,7 @@ type Schedule struct {
 	ID         uuid.UUID
 	OrgID      uuid.UUID
 	AppID      *uuid.UUID
+	ServiceID  *uuid.UUID
 	Volume     string
 	NamePrefix string
 	Cron       string
@@ -46,9 +48,13 @@ type Store interface {
 	GetSnapshot(ctx context.Context, id uuid.UUID) (*Snapshot, error)
 	ListSnapshotsByOrg(ctx context.Context, orgID uuid.UUID, limit int) ([]Snapshot, error)
 	DeleteSnapshot(ctx context.Context, id, orgID uuid.UUID) error
+	CreateSnapshotForService(ctx context.Context, snapshot *Snapshot) (*Snapshot, error)
+	ListSnapshotsByService(ctx context.Context, orgID, serviceID uuid.UUID, limit int) ([]Snapshot, error)
 
 	CreateSchedule(ctx context.Context, schedule *Schedule) (*Schedule, error)
 	GetSchedule(ctx context.Context, id uuid.UUID) (*Schedule, error)
 	ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]Schedule, error)
 	DeleteSchedule(ctx context.Context, id, orgID uuid.UUID) error
+	CreateScheduleForService(ctx context.Context, schedule *Schedule) (*Schedule, error)
+	ListSchedulesByService(ctx context.Context, orgID, serviceID uuid.UUID) ([]Schedule, error)
 }

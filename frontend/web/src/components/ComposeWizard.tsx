@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check, Code, NotePencil } from "@phosphor-icons/react";
+import { apiGet, apiPut } from "../api/client";
 import { useCreateCompose, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
 import { ComposeEditor } from "./ComposeEditor";
 import { Button, Input, Modal, Select, SelectSearch, Skeleton, useToast } from "@aether/design-system";
@@ -11,7 +12,7 @@ const DEFAULT_COMPOSE = `services:
       - "80:80"
     restart: unless-stopped`;
 
-export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean; onClose: () => void; fixedProjectId?: string }) {
+export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentId, onCreated }: { open: boolean; onClose: () => void; fixedProjectId?: string; fixedEnvironmentId?: string; onCreated?: (serviceId: string) => void }) {
   const { data: projects } = useProjects();
   const createCompose = useCreateCompose();
   const { data: connections } = useSourceControlConnections();
@@ -39,9 +40,59 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
     }
     setCreating(true);
     try {
-      await createCompose.mutateAsync({ project_id: projectId, name, compose: content });
+      let compose = content;
+      if (sourceMode === "git") {
+        if (!repositoryID || !githubConnection?.installation_id || !branch.trim() || !composePath.trim()) {
+          add({ title: "Select a repository, branch and Compose file", tone: "error" });
+          return;
+        }
+        try {
+          const file = await apiGet<{ content: string }>(`/api/v1/source-control/github/repositories/${encodeURIComponent(repositoryID)}/file?installation_id=${encodeURIComponent(githubConnection.installation_id)}&path=${encodeURIComponent(composePath)}&ref=${encodeURIComponent(branch)}`);
+          compose = file.content;
+        } catch {
+          add({ title: "Could not load the selected Compose file", tone: "error" });
+          return;
+        }
+      }
+      if (!compose.trim()) {
+        add({ title: "The Compose file is empty", tone: "error" });
+        return;
+      }
+      const created = await createCompose.mutateAsync({ project_id: projectId, environment_id: fixedEnvironmentId, name, compose });
+      let service: { id: string; spec_id?: string; name: string; kind: string } | undefined;
+      try {
+        const services = await apiGet<Array<{ id: string; spec_id?: string; name: string; kind: string }>>(`/api/v1/services?project_id=${encodeURIComponent(projectId)}`);
+        service = services.find((item) => item.spec_id === created.id || (item.name === name.trim() && item.kind === "compose"));
+      } catch {
+        service = undefined;
+      }
+      if (sourceMode === "git" && repositoryID && githubConnection && service) {
+        const repository = repositories?.find((item) => item.id === repositoryID);
+        if (service && repository) {
+          try {
+            await apiPut(`/api/v1/services/${service.id}/source`, {
+              connection_id: githubConnection.id,
+              repository_id: repository.id,
+              repository_owner: repository.owner,
+              repository_name: repository.name,
+              repository_full_name: repository.full_name,
+              default_branch: repository.default_branch,
+              branch,
+              auto_deploy: false,
+              root_directory: ".",
+              environment_template_path: ".env.example",
+              watch_paths: [],
+              ignore_paths: [],
+              watch_root_files: false,
+            });
+          } catch {
+            add({ title: "Stack created, but Git settings could not be saved", tone: "warning" });
+          }
+        }
+      }
       add({ title: "Stack created", tone: "success" });
-      onClose();
+      if (service && onCreated) onCreated(service.id);
+      else onClose();
     } catch (err) {
       add({ title: err instanceof Error ? err.message : "Failed to create stack", tone: "error" });
     } finally {

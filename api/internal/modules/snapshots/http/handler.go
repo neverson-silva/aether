@@ -74,6 +74,52 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+func (h *Handler) ListForService(c *gin.Context) {
+	serviceID, err := parseServiceID(c)
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	limit := 50
+	if value := c.Query("limit"); value != "" {
+		if parsed, parseErr := strconv.Atoi(value); parseErr == nil {
+			limit = parsed
+		}
+	}
+	snapshots, err := h.snapshots.ListForService(c.Request.Context(), orgID(c), serviceID, limit)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(snapshots))
+	for index := range snapshots {
+		out = append(out, snapshotDTO(&snapshots[index]))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) CreateForService(c *gin.Context) {
+	serviceID, err := parseServiceID(c)
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	var req struct {
+		Volume string `json:"volume"`
+		Name   string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	snapshot, err := h.snapshots.CreateForService(c.Request.Context(), serviceID, orgID(c), req.Volume, req.Name)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, snapshotDTO(snapshot))
+}
+
 func (h *Handler) Restore(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("snapshotID"))
 	if err != nil {
@@ -111,6 +157,53 @@ func (h *Handler) ListSchedules(c *gin.Context) {
 		out = append(out, scheduleDTO(&schedules[i]))
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) ListSchedulesForService(c *gin.Context) {
+	serviceID, err := parseServiceID(c)
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	schedules, err := h.snapshots.ListSchedulesForService(c.Request.Context(), orgID(c), serviceID)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(schedules))
+	for index := range schedules {
+		out = append(out, scheduleDTO(&schedules[index]))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) CreateScheduleForService(c *gin.Context) {
+	serviceID, err := parseServiceID(c)
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	var req struct {
+		Volume     string `json:"volume"`
+		NamePrefix string `json:"name_prefix"`
+		Cron       string `json:"cron"`
+		Retention  *int   `json:"retention"`
+		Enabled    bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	retention := 7
+	if req.Retention != nil {
+		retention = *req.Retention
+	}
+	schedule, err := h.snapshots.CreateScheduleForService(c.Request.Context(), serviceID, orgID(c), req.Volume, req.NamePrefix, req.Cron, retention, req.Enabled)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, scheduleDTO(schedule))
 }
 
 func (h *Handler) CreateSchedule(c *gin.Context) {
@@ -151,7 +244,7 @@ func (h *Handler) DeleteSchedule(c *gin.Context) {
 
 func snapshotDTO(s *domain.Snapshot) gin.H {
 	return gin.H{
-		"id": s.ID, "org_id": s.OrgID, "app_id": s.AppID, "volume": s.Volume,
+		"id": s.ID, "org_id": s.OrgID, "app_id": s.AppID, "service_id": s.ServiceID, "volume": s.Volume,
 		"name": s.Name, "size": s.Size, "chunks": s.Chunks, "dedup_saved": s.DedupSaved,
 		"created_at": s.CreatedAt,
 	}
@@ -159,7 +252,7 @@ func snapshotDTO(s *domain.Snapshot) gin.H {
 
 func scheduleDTO(s *domain.Schedule) gin.H {
 	return gin.H{
-		"id": s.ID, "org_id": s.OrgID, "app_id": s.AppID, "volume": s.Volume,
+		"id": s.ID, "org_id": s.OrgID, "app_id": s.AppID, "service_id": s.ServiceID, "volume": s.Volume,
 		"name_prefix": s.NamePrefix, "cron": s.Cron, "retention": s.Retention,
 		"enabled": s.Enabled, "last_run": s.LastRun, "next_run": s.NextRun, "created_at": s.CreatedAt,
 	}
@@ -174,6 +267,10 @@ func parseOptional(raw string) (*uuid.UUID, error) {
 		return nil, err
 	}
 	return &id, nil
+}
+
+func parseServiceID(c *gin.Context) (uuid.UUID, error) {
+	return uuid.Parse(c.Param("serviceID"))
 }
 
 func orgID(c *gin.Context) uuid.UUID {

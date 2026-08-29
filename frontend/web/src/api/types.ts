@@ -83,6 +83,72 @@ export interface Project {
   created_at: string;
 }
 
+export type ServiceKind = "app" | "compose" | "database";
+export type ServiceStatus = "pending" | "deploying" | "running" | "degraded" | "stopped" | "failed" | "unknown";
+
+export interface ServiceCapabilities {
+  can_deploy: boolean;
+  can_restart: boolean;
+  can_stop: boolean;
+  can_start: boolean;
+  can_open_terminal: boolean;
+  can_view_logs: boolean;
+  can_view_metrics: boolean;
+  can_manage_domains: boolean;
+  can_manage_environment: boolean;
+  can_build: boolean;
+  can_edit_compose: boolean;
+  can_manage_backups: boolean;
+  can_restore: boolean;
+  can_manage_schedules: boolean;
+  can_manage_source: boolean;
+}
+
+export interface ServiceSummary {
+  id: string;
+  spec_id: string | null;
+  org_id: string;
+  project_id: string;
+  environment_id: string | null;
+  name: string;
+  kind: ServiceKind;
+  status: ServiceStatus;
+  capabilities: ServiceCapabilities;
+  created_at: string;
+  updated_at: string;
+  spec?: ServiceSpec;
+  runtime?: {
+    containers: ServiceRuntimeContainer[];
+  };
+  volumes?: Array<Volume & { id?: string; service_id?: string }>;
+}
+
+export interface ServiceRuntimeContainer {
+  id: string;
+  name: string;
+  status: string;
+  healthy?: boolean;
+}
+
+export type ServiceSpec = {
+  source_type?: string;
+  image?: string;
+  git_url?: string;
+  git_branch?: string;
+  dockerfile?: string;
+  build_type?: string;
+  cpus?: string;
+  port?: number;
+  storage_mb?: number;
+  mem_mb?: number;
+  image_retention?: number;
+  compose?: string;
+  engine?: string;
+  version?: string;
+  database_name?: string;
+  user?: string;
+};
+
 export interface Resources {
   cpus: string;
   mem_mb: number;
@@ -105,6 +171,7 @@ export interface Volume {
 export interface App {
   image_retention?: number;
   id: string;
+  service_id?: string;
   org_id: string;
   project_id: string;
   name: string;
@@ -153,6 +220,7 @@ export interface ResolvedVariable {
 
 export interface Deployment {
   id: string;
+  service_id?: string;
   app_id: string;
   number: number;
   status: string;
@@ -175,11 +243,13 @@ export interface ContainerStats {
 export interface Stats {
   state: string;
   stats: ContainerStats;
+  containers?: Array<ContainerStats & { id: string; name: string }>;
 }
 
 export interface Domain {
   id: string;
-  app_id: string;
+  app_id?: string;
+  service_id?: string;
   service_type: string;
   server_id: string;
   host: string;
@@ -227,8 +297,10 @@ export interface LoginResponse {
 
 export interface Database {
   id: string;
+  service_id?: string;
   org_id: string;
   project_id: string;
+  environment_id?: string;
   name: string;
   engine: string;
   version: string;
@@ -245,6 +317,7 @@ export interface Database {
 export interface CronJob {
   id: string;
   app_id: string;
+  service_id?: string;
   name: string;
   schedule: string;
   command: string;

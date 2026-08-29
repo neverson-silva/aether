@@ -12,7 +12,7 @@ type Pending =
   | { kind: "compose" }
   | { kind: "templates" };
 
-export function CreateServiceLauncher({ open, onClose, fixedProjectId, fixedEnvironmentId }: { open: boolean; onClose: () => void; fixedProjectId?: string; fixedEnvironmentId?: string }) {
+export function CreateServiceLauncher({ open, onClose, fixedProjectId, fixedEnvironmentId, onCreated }: { open: boolean; onClose: () => void; fixedProjectId?: string; fixedEnvironmentId?: string; onCreated?: (serviceId: string) => void }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const select = (choice: Pending) => {
     setPending(choice);
@@ -33,7 +33,7 @@ export function CreateServiceLauncher({ open, onClose, fixedProjectId, fixedEnvi
   };
 
   if (pending?.kind === "db") return <DatabaseWizard open onClose={finishWizard} fixedProjectId={fixedProjectId} initialEngine={pending.engine} />;
-  if (pending?.kind === "compose") return <ComposeWizard open onClose={finishWizard} fixedProjectId={fixedProjectId} />;
+  if (pending?.kind === "compose") return <ComposeWizard open onClose={finishWizard} fixedProjectId={fixedProjectId} fixedEnvironmentId={fixedEnvironmentId} onCreated={onCreated} />;
   if (pending?.kind === "templates") return <TemplateWizard open onClose={finishWizard} />;
   if (pending?.kind === "app") return <ApplicationWizard open onClose={finishWizard} fixedProjectId={fixedProjectId} fixedEnvironmentId={fixedEnvironmentId} kind={pending.kind2 ?? "web"} />;
 

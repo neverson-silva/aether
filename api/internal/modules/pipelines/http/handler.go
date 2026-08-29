@@ -21,10 +21,11 @@ func New(pipelines *application.Pipelines) *Handler {
 }
 
 type createReq struct {
-	AppID   string         `json:"app_id"`
-	Name    string         `json:"name"`
-	Trigger string         `json:"trigger"`
-	Stages  []domain.Stage `json:"stages"`
+	AppID     string         `json:"app_id"`
+	ServiceID string         `json:"service_id"`
+	Name      string         `json:"name"`
+	Trigger   string         `json:"trigger"`
+	Stages    []domain.Stage `json:"stages"`
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -47,6 +48,15 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	var appID *uuid.UUID
+	var serviceID *uuid.UUID
+	if req.ServiceID != "" {
+		id, err := uuid.Parse(req.ServiceID)
+		if err != nil {
+			abort(c, domain.ErrValidation)
+			return
+		}
+		serviceID = &id
+	}
 	if req.AppID != "" {
 		id, err := uuid.Parse(req.AppID)
 		if err != nil {
@@ -55,7 +65,13 @@ func (h *Handler) Create(c *gin.Context) {
 		}
 		appID = &id
 	}
-	pipeline, err := h.pipelines.Create(c.Request.Context(), orgID(c), appID, req.Name, req.Trigger, req.Stages)
+	var pipeline *domain.Pipeline
+	var err error
+	if serviceID != nil {
+		pipeline, err = h.pipelines.CreateForService(c.Request.Context(), orgID(c), *serviceID, req.Name, req.Trigger, req.Stages)
+	} else {
+		pipeline, err = h.pipelines.Create(c.Request.Context(), orgID(c), appID, req.Name, req.Trigger, req.Stages)
+	}
 	if err != nil {
 		abort(c, err)
 		return
@@ -110,7 +126,7 @@ func (h *Handler) ListRuns(c *gin.Context) {
 
 func pipelineDTO(p *domain.Pipeline) gin.H {
 	return gin.H{
-		"id": p.ID, "org_id": p.OrgID, "app_id": p.AppID, "name": p.Name,
+		"id": p.ID, "org_id": p.OrgID, "app_id": p.AppID, "service_id": p.ServiceID, "name": p.Name,
 		"trigger": p.Trigger, "stages": p.Stages, "enabled": p.Enabled, "created_at": p.CreatedAt,
 	}
 }

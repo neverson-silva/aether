@@ -30,11 +30,11 @@ type Querier interface {
 	CreateBackupJob(ctx context.Context, arg CreateBackupJobParams) (BackupJob, error)
 	CreateChannel(ctx context.Context, arg CreateChannelParams) (NotificationChannel, error)
 	CreateCluster(ctx context.Context, arg CreateClusterParams) (Cluster, error)
-	CreateComposeApp(ctx context.Context, arg CreateComposeAppParams) (CreateComposeAppRow, error)
+	CreateComposeApp(ctx context.Context, arg CreateComposeAppParams) (ComposeApp, error)
 	CreateCronJob(ctx context.Context, arg CreateCronJobParams) (CronJob, error)
 	CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (Database, error)
 	CreateDeployment(ctx context.Context, arg CreateDeploymentParams) (Deployment, error)
-	CreateDomain(ctx context.Context, arg CreateDomainParams) (CreateDomainRow, error)
+	CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error)
 	CreateEnvironment(ctx context.Context, arg CreateEnvironmentParams) (Environment, error)
 	CreateGitOps(ctx context.Context, arg CreateGitOpsParams) (Gitop, error)
 	CreateMember(ctx context.Context, arg CreateMemberParams) error
@@ -52,7 +52,9 @@ type Querier interface {
 	CreateSCMManifestState(ctx context.Context, arg CreateSCMManifestStateParams) error
 	CreateServerToken(ctx context.Context, tokenHash string) error
 	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error)
+	CreateSnapshotForService(ctx context.Context, arg CreateSnapshotForServiceParams) (Snapshot, error)
 	CreateSnapshotSchedule(ctx context.Context, arg CreateSnapshotScheduleParams) (SnapshotSchedule, error)
+	CreateSnapshotScheduleForService(ctx context.Context, arg CreateSnapshotScheduleForServiceParams) (SnapshotSchedule, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	CreateVolume(ctx context.Context, arg CreateVolumeParams) (AppVolume, error)
 	CreateWorker(ctx context.Context, arg CreateWorkerParams) (Worker, error)
@@ -60,7 +62,6 @@ type Querier interface {
 	DeleteAPIKey(ctx context.Context, arg DeleteAPIKeyParams) error
 	DeleteAlertRule(ctx context.Context, arg DeleteAlertRuleParams) error
 	DeleteApp(ctx context.Context, arg DeleteAppParams) error
-	DeleteAppEnv(ctx context.Context, arg DeleteAppEnvParams) error
 	DeleteBackupConfiguration(ctx context.Context, id uuid.UUID) error
 	DeleteChannel(ctx context.Context, arg DeleteChannelParams) error
 	DeleteCluster(ctx context.Context, arg DeleteClusterParams) error
@@ -83,6 +84,7 @@ type Querier interface {
 	DeleteS3Destination(ctx context.Context, arg DeleteS3DestinationParams) error
 	DeleteSCMConnection(ctx context.Context, arg DeleteSCMConnectionParams) error
 	DeleteServer(ctx context.Context, id uuid.UUID) error
+	DeleteServiceEnv(ctx context.Context, arg DeleteServiceEnvParams) error
 	DeleteServiceSource(ctx context.Context, arg DeleteServiceSourceParams) error
 	DeleteSnapshot(ctx context.Context, arg DeleteSnapshotParams) error
 	DeleteSnapshotSchedule(ctx context.Context, arg DeleteSnapshotScheduleParams) error
@@ -95,20 +97,20 @@ type Querier interface {
 	GetApp(ctx context.Context, arg GetAppParams) (App, error)
 	GetAppByID(ctx context.Context, id uuid.UUID) (App, error)
 	GetAppByName(ctx context.Context, arg GetAppByNameParams) (App, error)
-	GetAppPolicy(ctx context.Context, appID uuid.UUID) (AppPolicy, error)
+	GetAppPolicy(ctx context.Context, id uuid.UUID) (AppPolicy, error)
 	GetBackup(ctx context.Context, id uuid.UUID) (Backup, error)
 	GetBackupConfiguration(ctx context.Context, id uuid.UUID) (BackupConfiguration, error)
 	GetBackupJob(ctx context.Context, id uuid.UUID) (BackupJob, error)
 	GetBranding(ctx context.Context, orgID uuid.UUID) (Branding, error)
 	GetCluster(ctx context.Context, id uuid.UUID) (Cluster, error)
-	GetComposeApp(ctx context.Context, id uuid.UUID) (GetComposeAppRow, error)
+	GetComposeApp(ctx context.Context, id uuid.UUID) (ComposeApp, error)
 	GetCronJob(ctx context.Context, id uuid.UUID) (CronJob, error)
 	GetDatabase(ctx context.Context, id uuid.UUID) (Database, error)
 	GetDeployment(ctx context.Context, id uuid.UUID) (Deployment, error)
 	GetDeploymentByApp(ctx context.Context, arg GetDeploymentByAppParams) (Deployment, error)
 	GetDeploymentCompose(ctx context.Context, id uuid.UUID) (string, error)
-	GetDomainByHost(ctx context.Context, arg GetDomainByHostParams) (GetDomainByHostRow, error)
-	GetDomainByID(ctx context.Context, id uuid.UUID) (GetDomainByIDRow, error)
+	GetDomainByHost(ctx context.Context, arg GetDomainByHostParams) (Domain, error)
+	GetDomainByID(ctx context.Context, id uuid.UUID) (Domain, error)
 	GetEnvironment(ctx context.Context, arg GetEnvironmentParams) (Environment, error)
 	GetGitOps(ctx context.Context, id uuid.UUID) (Gitop, error)
 	GetMember(ctx context.Context, arg GetMemberParams) (Member, error)
@@ -141,17 +143,16 @@ type Querier interface {
 	IncrementTemplateInstalls(ctx context.Context, id uuid.UUID) error
 	InsertMonitoringResourceSample(ctx context.Context, arg InsertMonitoringResourceSampleParams) error
 	InsertMonitoringSample(ctx context.Context, arg InsertMonitoringSampleParams) error
-	LastReadyDeployment(ctx context.Context, appID uuid.UUID) (Deployment, error)
+	LastReadyDeployment(ctx context.Context, appID uuid.NullUUID) (Deployment, error)
 	ListAPIKeysByOrg(ctx context.Context, orgID uuid.UUID) ([]ListAPIKeysByOrgRow, error)
-	ListActiveBackupJobsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupJob, error)
+	ListActiveBackupJobsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupJob, error)
 	ListAlertEventsByOrg(ctx context.Context, arg ListAlertEventsByOrgParams) ([]AlertEvent, error)
 	ListAlertRules(ctx context.Context, orgID uuid.UUID) ([]AlertRule, error)
-	ListAppEnv(ctx context.Context, appID uuid.UUID) ([]AppEnv, error)
 	ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]App, error)
 	ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]App, error)
 	ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrgParams) ([]AuditLog, error)
 	ListAutopilotEvents(ctx context.Context, arg ListAutopilotEventsParams) ([]AutopilotEvent, error)
-	ListBackupConfigurationsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupConfiguration, error)
+	ListBackupConfigurationsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupConfiguration, error)
 	ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJobsByDatabaseParams) ([]BackupJob, error)
 	ListBackupJobsDue(ctx context.Context, limit int32) ([]BackupJob, error)
 	ListBackupsByDatabase(ctx context.Context, arg ListBackupsByDatabaseParams) ([]Backup, error)
@@ -159,12 +160,12 @@ type Querier interface {
 	ListCertificatesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListCertificatesByOrgRow, error)
 	ListChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]NotificationChannel, error)
 	ListClustersByOrg(ctx context.Context, orgID uuid.UUID) ([]Cluster, error)
-	ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListComposeAppsByOrgRow, error)
-	ListCronJobsByApp(ctx context.Context, appID uuid.UUID) ([]CronJob, error)
+	ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ComposeApp, error)
+	ListCronJobsByApp(ctx context.Context, id uuid.UUID) ([]CronJob, error)
 	ListCronJobsByOrg(ctx context.Context, orgID uuid.UUID) ([]CronJob, error)
 	ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Database, error)
 	ListDeployments(ctx context.Context, arg ListDeploymentsParams) ([]Deployment, error)
-	ListDomains(ctx context.Context, appID uuid.UUID) ([]ListDomainsRow, error)
+	ListDomains(ctx context.Context, serviceID uuid.NullUUID) ([]Domain, error)
 	ListEnabledBackupConfigurations(ctx context.Context) ([]ListEnabledBackupConfigurationsRow, error)
 	ListEnabledOIDCProviders(ctx context.Context) ([]OidcProvider, error)
 	ListEnabledWebhooksByEvent(ctx context.Context, dollar_1 string) ([]OutWebhook, error)
@@ -181,29 +182,32 @@ type Querier interface {
 	ListOutWebhooksByOrg(ctx context.Context, orgID uuid.UUID) ([]OutWebhook, error)
 	ListPipelineRuns(ctx context.Context, arg ListPipelineRunsParams) ([]PipelineRun, error)
 	ListPipelinesByOrg(ctx context.Context, orgID uuid.UUID) ([]Pipeline, error)
-	ListPreviews(ctx context.Context, appID uuid.UUID) ([]Preview, error)
+	ListPreviews(ctx context.Context, serviceID uuid.NullUUID) ([]Preview, error)
 	ListProjectAssignments(ctx context.Context, orgID uuid.UUID) ([]ProjectAssignment, error)
 	ListProjectVariables(ctx context.Context, projectID uuid.UUID) ([]EnvVariable, error)
 	ListProjects(ctx context.Context, orgID uuid.UUID) ([]ListProjectsRow, error)
-	ListProvisioningDomains(ctx context.Context, arg ListProvisioningDomainsParams) ([]ListProvisioningDomainsRow, error)
+	ListProvisioningDomains(ctx context.Context, arg ListProvisioningDomainsParams) ([]Domain, error)
 	ListQueuedDeployments(ctx context.Context) ([]Deployment, error)
 	ListRestoreJobsByTarget(ctx context.Context, arg ListRestoreJobsByTargetParams) ([]RestoreJob, error)
 	ListRestoreJobsDue(ctx context.Context, limit int32) ([]RestoreJob, error)
 	ListS3Destinations(ctx context.Context, orgID uuid.UUID) ([]ListS3DestinationsRow, error)
 	ListSCMConnectionsByOrganization(ctx context.Context, arg ListSCMConnectionsByOrganizationParams) ([]ListSCMConnectionsByOrganizationRow, error)
 	ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]SnapshotSchedule, error)
+	ListSchedulesByService(ctx context.Context, arg ListSchedulesByServiceParams) ([]SnapshotSchedule, error)
 	ListServers(ctx context.Context) ([]Server, error)
+	ListServiceEnv(ctx context.Context, serviceID uuid.NullUUID) ([]ListServiceEnvRow, error)
 	ListServiceSourcesByRepository(ctx context.Context, arg ListServiceSourcesByRepositoryParams) ([]ListServiceSourcesByRepositoryRow, error)
 	ListSnapshotsByOrg(ctx context.Context, arg ListSnapshotsByOrgParams) ([]Snapshot, error)
+	ListSnapshotsByService(ctx context.Context, arg ListSnapshotsByServiceParams) ([]Snapshot, error)
 	ListTemplates(ctx context.Context, arg ListTemplatesParams) ([]ListTemplatesRow, error)
 	ListUsersByOrg(ctx context.Context, orgID uuid.UUID) ([]ListUsersByOrgRow, error)
 	ListVariableAudit(ctx context.Context, arg ListVariableAuditParams) ([]VariableAudit, error)
-	ListVolumesByApp(ctx context.Context, appID uuid.UUID) ([]AppVolume, error)
-	ListWorkersByApp(ctx context.Context, appID uuid.UUID) ([]Worker, error)
+	ListVolumesByApp(ctx context.Context, id uuid.UUID) ([]AppVolume, error)
+	ListWorkersByApp(ctx context.Context, id uuid.UUID) ([]Worker, error)
 	MarkAllNotificationsRead(ctx context.Context, orgID uuid.UUID) error
 	MarkDeploymentRolledBack(ctx context.Context, id uuid.UUID) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error
-	NextDeploymentNumber(ctx context.Context, appID uuid.UUID) (int32, error)
+	NextDeploymentNumber(ctx context.Context, appID uuid.NullUUID) (int32, error)
 	PurgeMonitoringResourceSamples(ctx context.Context, ts time.Time) error
 	PurgeMonitoringSamples(ctx context.Context, ts time.Time) error
 	RecordVariableAudit(ctx context.Context, arg RecordVariableAuditParams) error
@@ -243,13 +247,13 @@ type Querier interface {
 	UpdateS3Destination(ctx context.Context, arg UpdateS3DestinationParams) (UpdateS3DestinationRow, error)
 	UpdateS3DestinationOAuth(ctx context.Context, arg UpdateS3DestinationOAuthParams) error
 	UpdateWorker(ctx context.Context, arg UpdateWorkerParams) (Worker, error)
-	UpsertAppEnv(ctx context.Context, arg UpsertAppEnvParams) error
 	UpsertAppPolicy(ctx context.Context, arg UpsertAppPolicyParams) (AppPolicy, error)
 	UpsertBranding(ctx context.Context, arg UpsertBrandingParams) (Branding, error)
 	UpsertEnvVariable(ctx context.Context, arg UpsertEnvVariableParams) (EnvVariable, error)
 	UpsertProjectVariable(ctx context.Context, arg UpsertProjectVariableParams) (EnvVariable, error)
 	UpsertRegistrySettings(ctx context.Context, enabled bool) (RegistrySetting, error)
 	UpsertSCMConnection(ctx context.Context, arg UpsertSCMConnectionParams) (UpsertSCMConnectionRow, error)
+	UpsertServiceEnv(ctx context.Context, arg UpsertServiceEnvParams) error
 	UpsertServiceSource(ctx context.Context, arg UpsertServiceSourceParams) (UpsertServiceSourceRow, error)
 }
 

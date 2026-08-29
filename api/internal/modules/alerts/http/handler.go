@@ -233,13 +233,13 @@ func ruleDTO(r *domain.AlertRule) gin.H {
 	return gin.H{
 		"id": r.ID, "org_id": r.OrgID, "name": r.Name, "metric": r.Metric,
 		"threshold": r.Threshold, "window_s": r.WindowS, "severity": r.Severity,
-		"enabled": r.Enabled, "target_app": r.TargetApp, "created_at": r.CreatedAt,
+		"enabled": r.Enabled, "target_app": r.TargetApp, "service_id": r.ServiceID, "created_at": r.CreatedAt,
 	}
 }
 
 func eventDTO(e *domain.AlertEvent) gin.H {
 	return gin.H{
-		"id": e.ID, "org_id": e.OrgID, "rule_id": e.RuleID, "app_id": e.AppID,
+		"id": e.ID, "org_id": e.OrgID, "rule_id": e.RuleID, "app_id": e.AppID, "service_id": e.ServiceID,
 		"app_name": e.AppName, "severity": e.Severity, "message": e.Message,
 		"value": e.Value, "threshold": e.Threshold, "metric": e.Metric,
 		"created_at": e.CreatedAt, "resolved_at": e.ResolvedAt,

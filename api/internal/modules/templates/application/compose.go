@@ -22,12 +22,20 @@ import (
 )
 
 type Compose struct {
-	Store       domain.Store
-	Apps        AppStore
-	Deployments DeploymentStore
-	DataDir     string
-	ProjectVars ProjectVarStore
-	Events      EventLog
+	Store           domain.Store
+	Apps            AppStore
+	Deployments     DeploymentStore
+	ServiceIdentity func(context.Context, uuid.UUID) (uuid.UUID, error)
+	DataDir         string
+	ProjectVars     ProjectVarStore
+	Events          EventLog
+}
+
+func (c *Compose) GetServiceID(ctx context.Context, appID uuid.UUID) (uuid.UUID, error) {
+	if c.ServiceIdentity == nil {
+		return appID, nil
+	}
+	return c.ServiceIdentity(ctx, appID)
 }
 
 type EventLog interface {
@@ -66,7 +74,7 @@ func (c *Compose) Create(ctx context.Context, orgID, projectID uuid.UUID, name, 
 		return nil, domain.ErrValidation
 	}
 	return c.Store.CreateComposeApp(ctx, &domain.ComposeApp{
-		OrgID: orgID, ProjectID: projectID, EnvironmentID: environmentID, Name: name, Compose: content, Status: "stopped",
+		OrgID: orgID, ProjectID: projectID, EnvironmentID: environmentID, Name: name, Compose: content, Status: "pending",
 	})
 }
 
@@ -86,7 +94,11 @@ func (c *Compose) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	if err := c.Store.SetComposeStatus(ctx, id, "deploying"); err != nil {
+		return err
+	}
 	if err := c.runCompose(ctx, app, "up", "-d"); err != nil {
+		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
 	if err := c.Store.SetComposeStatus(ctx, id, "running"); err != nil {
@@ -101,7 +113,13 @@ func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	_ = c.runCompose(ctx, app, "down")
+	if err := c.Store.SetComposeStatus(ctx, id, "deploying"); err != nil {
+		return err
+	}
+	if err := c.runCompose(ctx, app, "down"); err != nil {
+		_ = c.Store.SetComposeStatus(ctx, id, "error")
+		return err
+	}
 	if err := c.Store.SetComposeStatus(ctx, id, "stopped"); err != nil {
 		return err
 	}
@@ -109,13 +127,28 @@ func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
 	return nil
 }
 
+func (c *Compose) Delete(ctx context.Context, id, orgID uuid.UUID) error {
+	app, err := c.Get(ctx, id, orgID)
+	if err != nil {
+		return err
+	}
+	if err := c.runCompose(ctx, app, "down"); err != nil {
+		return err
+	}
+	return c.Store.DeleteComposeApp(ctx, id, orgID)
+}
+
 func (c *Compose) recordEvent(ctx context.Context, app *domain.ComposeApp, eventType string) {
 	if c.Events == nil {
 		return
 	}
+	serviceID, err := c.GetServiceID(ctx, app.ID)
+	if err != nil {
+		serviceID = app.ID
+	}
 	_, _ = c.Events.Append(ctx, app.OrgID, realtimedomain.Event{
-		Type: eventType, Aggregate: "compose", OrgID: app.OrgID.String(), ProjectID: app.ProjectID.String(),
-		ResourceType: "compose", ResourceID: app.ID.String(), AppID: app.ID.String(), TS: time.Now().UTC(),
+		Type: eventType, Aggregate: "service", OrgID: app.OrgID.String(), ProjectID: app.ProjectID.String(),
+		ResourceType: "service", ResourceID: serviceID.String(), AppID: app.ID.String(), ServiceID: serviceID.String(), TS: time.Now().UTC(),
 	})
 }
 
@@ -126,13 +159,17 @@ func (c *Compose) Timeline(ctx context.Context, id, orgID uuid.UUID) ([]realtime
 	if c.Events == nil {
 		return []realtimedomain.Event{}, nil
 	}
+	serviceID, err := c.GetServiceID(ctx, id)
+	if err != nil {
+		serviceID = id
+	}
 	events, err := c.Events.Recent(ctx, orgID, 200)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]realtimedomain.Event, 0, len(events))
 	for _, event := range events {
-		if event.ResourceID == id.String() {
+		if event.ResourceID == id.String() || event.ResourceID == serviceID.String() || event.ServiceID == serviceID.String() {
 			out = append(out, event)
 		}
 	}
@@ -143,15 +180,25 @@ func (c *Compose) ContainerID(ctx context.Context, id, orgID uuid.UUID) (string,
 	if _, err := c.Get(ctx, id, orgID); err != nil {
 		return "", err
 	}
-	out, err := exec.CommandContext(ctx, "podman", "ps", "-q", "--filter", "label=aether.service-id="+id.String(), "--filter", "status=running").Output()
+	serviceID, err := c.GetServiceID(ctx, id)
 	if err != nil {
-		return "", fmt.Errorf("resolve compose container: %w", err)
+		serviceID = id
 	}
-	containerID := strings.TrimSpace(string(out))
-	if containerID == "" {
-		return "", errors.New("no active container")
+	values := []uuid.UUID{serviceID}
+	if id != serviceID {
+		values = append(values, id)
 	}
-	return strings.Split(containerID, "\n")[0], nil
+	for _, value := range values {
+		out, queryErr := exec.CommandContext(ctx, "podman", "ps", "-q", "--filter", "label=aether.service-id="+value.String(), "--filter", "status=running").Output()
+		if queryErr != nil {
+			return "", fmt.Errorf("resolve compose container: %w", queryErr)
+		}
+		containerID := strings.TrimSpace(string(out))
+		if containerID != "" {
+			return strings.Split(containerID, "\n")[0], nil
+		}
+	}
+	return "", errors.New("no active container")
 }
 
 type ComposeValidation struct {
@@ -298,10 +345,15 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 	file := filepath.Join(dir, "docker-compose.yml")
 	content := app.Compose
 	if len(args) > 0 && args[0] == "up" {
+		serviceID, err := c.GetServiceID(ctx, app.ID)
+		if err != nil {
+			serviceID = app.ID
+		}
 		if injected, err := injectComposeLabels(content, map[string]string{
 			"aether.owner":        "user",
 			"aether.service-type": "compose",
-			"aether.service-id":   app.ID.String(),
+			"aether.service-id":   serviceID.String(),
+			"aether.spec-id":      app.ID.String(),
 			"aether.project-id":   app.ProjectID.String(),
 			"aether.service-name": app.Name,
 		}); err == nil {

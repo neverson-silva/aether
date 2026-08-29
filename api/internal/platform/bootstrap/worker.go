@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	natsgo "github.com/nats-io/nats.go"
 
@@ -31,6 +32,8 @@ import (
 	settingsInfra "aether/internal/modules/settings/infra"
 	snapshotsApp "aether/internal/modules/snapshots/application"
 	snapshotsInfra "aether/internal/modules/snapshots/infra"
+	templatesApp "aether/internal/modules/templates/application"
+	templatesInfra "aether/internal/modules/templates/infra"
 	variablesApp "aether/internal/modules/variables/application"
 	variablesInfra "aether/internal/modules/variables/infra"
 	"aether/internal/platform/config"
@@ -120,7 +123,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		LogsDir: cfg.LogsDir, BuildsDir: cfg.BuildsDir, UploadsDir: cfg.UploadsDir,
 		IngressNetwork: cfg.IngressNetwork, CnbBuilder: cfg.CnbBuilder,
 		Logger: slog.Default(), Queue: rtRuntime.Queue,
-		Metrics: metrics, QueueConcurrency: 4,
+		Metrics: metrics, QueueConcurrency: 1,
 		Notifier: realtimeSvc, LogNotifier: realtimeSvc,
 	}
 	deployWatcher := &worker.Watcher{Store: deployStore, Runtime: deployRuntime, Notifier: realtimeSvc, Logger: slog.Default()}
@@ -131,6 +134,18 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		return err
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
+	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
+	deployWorker.ServiceDeploy = func(ctx context.Context, kind string, serviceID, specID, orgID uuid.UUID) error {
+		switch kind {
+		case "compose":
+			return composeSvc.Up(ctx, specID, orgID)
+		case "database":
+			_, err := databasesSvc.Deploy(ctx, specID, orgID)
+			return err
+		default:
+			return fmt.Errorf("unsupported service deployment kind %q", kind)
+		}
+	}
 	settingsStore := settingsInfra.NewStore(pool)
 	settingsSvc := &settingsApp.Settings{Store: settingsStore, Passwords: dbCipher, PublicURL: cfg.PublicURL, OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL), GoogleRedirectURI: cfg.GoogleOAuthRedirectURI}
 	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)

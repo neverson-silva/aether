@@ -1,15 +1,15 @@
 -- name: CreatePipeline :one
-INSERT INTO pipelines (org_id, app_id, name, trigger, stages, enabled)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, org_id, app_id, name, trigger, stages, enabled, created_at;
+INSERT INTO pipelines (org_id, app_id, service_id, name, trigger, stages, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, app_id, name, trigger, stages, enabled, created_at, service_id;
 
 -- name: GetPipeline :one
-SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at
+SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at, service_id
 FROM pipelines
 WHERE id = $1;
 
 -- name: ListPipelinesByOrg :many
-SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at
+SELECT id, org_id, app_id, name, trigger, stages, enabled, created_at, service_id
 FROM pipelines
 WHERE org_id = $1
 ORDER BY name;

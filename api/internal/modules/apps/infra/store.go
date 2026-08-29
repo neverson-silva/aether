@@ -171,6 +171,14 @@ func (s *Store) GetAppByID(ctx context.Context, id uuid.UUID) (*domain.App, erro
 	return appFromRow(row), nil
 }
 
+func (s *Store) GetServiceID(ctx context.Context, appID uuid.UUID) (uuid.UUID, error) {
+	var serviceID uuid.UUID
+	if err := s.db.QueryRowContext(ctx, `SELECT service_id FROM apps WHERE id = $1`, appID).Scan(&serviceID); err != nil {
+		return uuid.Nil, mapErr(err)
+	}
+	return serviceID, nil
+}
+
 func (s *Store) ListAppsByProject(ctx context.Context, orgID, projectID uuid.UUID) ([]domain.App, error) {
 	rows, err := s.q.ListAppsByProject(ctx, gen.ListAppsByProjectParams{OrgID: orgID, ProjectID: projectID})
 	if err != nil {
@@ -223,16 +231,25 @@ func (s *Store) UpsertEnvVar(ctx context.Context, appID uuid.UUID, name, value s
 		}
 		stored = enc
 	}
-	return mapErr(s.q.UpsertAppEnv(ctx, gen.UpsertAppEnvParams{AppID: appID, Name: name, Value: stored, Secret: secret}))
+	serviceID, err := s.serviceIDForApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO app_env (app_id, service_id, name, value, secret) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (service_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret`, appID, serviceID, name, stored, secret)
+	return mapErr(err)
 }
 
 func (s *Store) InsertMissingEnvVars(ctx context.Context, appID uuid.UUID, names []string) (int, error) {
 	if len(names) == 0 {
 		return 0, nil
 	}
+	serviceID, err := s.serviceIDForApp(ctx, appID)
+	if err != nil {
+		return 0, err
+	}
 	inserted := 0
 	for _, name := range names {
-		result, err := s.db.ExecContext(ctx, "INSERT INTO app_env (app_id, name, value, secret) VALUES ($1, $2, '', false) ON CONFLICT (app_id, name) DO NOTHING", appID, name)
+		result, err := s.db.ExecContext(ctx, "INSERT INTO app_env (app_id, service_id, name, value, secret) VALUES ($1, $2, $3, '', false) ON CONFLICT (service_id, name) DO NOTHING", appID, serviceID, name)
 		if err != nil {
 			return inserted, mapErr(err)
 		}
@@ -246,17 +263,40 @@ func (s *Store) InsertMissingEnvVars(ctx context.Context, appID uuid.UUID, names
 }
 
 func (s *Store) ListEnvVars(ctx context.Context, appID uuid.UUID) ([]domain.EnvVar, error) {
-	rows, err := s.q.ListAppEnv(ctx, appID)
+	serviceID, err := s.serviceIDForApp(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT name, value, secret FROM app_env WHERE service_id = $1 ORDER BY name`, serviceID)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	out := make([]domain.EnvVar, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, domain.EnvVar{Name: r.Name, Value: r.Value, Secret: r.Secret})
+	defer rows.Close()
+	out := make([]domain.EnvVar, 0)
+	for rows.Next() {
+		var name, value string
+		var secret bool
+		if err := rows.Scan(&name, &value, &secret); err != nil {
+			return nil, mapErr(err)
+		}
+		out = append(out, domain.EnvVar{Name: name, Value: value, Secret: secret})
 	}
-	return out, nil
+	return out, mapErr(rows.Err())
 }
 
 func (s *Store) DeleteEnvVar(ctx context.Context, appID uuid.UUID, name string) error {
-	return mapErr(s.q.DeleteAppEnv(ctx, gen.DeleteAppEnvParams{AppID: appID, Name: name}))
+	serviceID, err := s.serviceIDForApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM app_env WHERE service_id = $1 AND name = $2`, serviceID, name)
+	return mapErr(err)
+}
+
+func (s *Store) serviceIDForApp(ctx context.Context, appID uuid.UUID) (uuid.UUID, error) {
+	var serviceID uuid.UUID
+	if err := s.db.QueryRowContext(ctx, `SELECT service_id FROM apps WHERE id = $1`, appID).Scan(&serviceID); err != nil {
+		return uuid.Nil, mapErr(err)
+	}
+	return serviceID, nil
 }

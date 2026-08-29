@@ -12,10 +12,10 @@ const schema = z.object({
   command: z.string().min(1, "Command is required"),
 });
 
-export function CronJobs({ appID }: { appID: string }) {
-  const { data: jobs } = useCronJobs(appID);
-  const createJob = useCreateCronJob(appID);
-  const deleteJob = useDeleteCronJob(appID);
+export function CronJobs({ appID, canonicalService = false }: { appID: string; canonicalService?: boolean }) {
+  const { data: jobs } = useCronJobs(appID, canonicalService);
+  const createJob = useCreateCronJob(appID, canonicalService);
+  const deleteJob = useDeleteCronJob(appID, canonicalService);
   const { add } = useToast();
   const [open, setOpen] = useState(false);
   const {

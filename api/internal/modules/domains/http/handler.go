@@ -253,7 +253,7 @@ func (h *Handler) Certificates(c *gin.Context) {
 	out := make([]gin.H, 0, len(certs))
 	for i := range certs {
 		out = append(out, gin.H{
-			"id": certs[i].DomainID, "app_id": certs[i].AppID, "app_name": certs[i].AppName,
+			"id": certs[i].DomainID, "app_id": certs[i].AppID, "service_id": certs[i].ServiceID, "app_name": certs[i].AppName,
 			"host": certs[i].Host, "https": certs[i].HTTPS, "cert_status": certs[i].CertState,
 			"created_at": certs[i].CreatedAt,
 		})
@@ -263,7 +263,7 @@ func (h *Handler) Certificates(c *gin.Context) {
 
 func domainDTO(d *domain.Domain) gin.H {
 	return gin.H{
-		"id": d.ID, "app_id": d.AppID, "service_type": d.ServiceType, "server_id": d.ServerID, "host": d.Host, "https": d.HTTPS,
+		"id": d.ID, "app_id": d.AppID, "service_id": d.ServiceID, "service_type": d.ServiceType, "server_id": d.ServerID, "host": d.Host, "https": d.HTTPS,
 		"path": d.Path, "internal_path": d.InternalPath, "strip_path": d.StripPath,
 		"container_port": d.ContainerPort, "status": d.Status, "cert_status": d.CertStatus,
 		"created_at": d.CreatedAt, "updated_at": d.UpdatedAt,
@@ -281,7 +281,7 @@ func resourceID(c *gin.Context) (uuid.UUID, string, error) {
 
 func previewDTO(p *domain.Preview) gin.H {
 	return gin.H{
-		"id": p.ID, "app_id": p.AppID, "branch": p.Branch, "deployment_id": p.DeploymentID,
+		"id": p.ID, "app_id": p.AppID, "service_id": p.ServiceID, "branch": p.Branch, "deployment_id": p.DeploymentID,
 		"container_id": p.ContainerID, "domain": p.Domain, "status": p.Status,
 		"created_at": p.CreatedAt,
 	}

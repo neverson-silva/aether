@@ -12,8 +12,8 @@ import (
 )
 
 const createAutopilotEvent = `-- name: CreateAutopilotEvent :exec
-INSERT INTO autopilot_events (app_id, action, detail)
-VALUES ($1, $2, $3)
+INSERT INTO autopilot_events (app_id, service_id, action, detail)
+SELECT $1, apps.service_id, $2, $3 FROM apps WHERE apps.id = $1
 `
 
 type CreateAutopilotEventParams struct {
@@ -28,9 +28,9 @@ func (q *Queries) CreateAutopilotEvent(ctx context.Context, arg CreateAutopilotE
 }
 
 const createCronJob = `-- name: CreateCronJob :one
-INSERT INTO cron_jobs (app_id, name, schedule, command, enabled)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, app_id, name, schedule, command, enabled, last_run, next_run, created_at
+INSERT INTO cron_jobs (app_id, service_id, name, schedule, command, enabled)
+SELECT $1, apps.service_id, $2, $3, $4, $5 FROM apps WHERE apps.id = $1
+RETURNING id, app_id, name, schedule, command, enabled, last_run, next_run, created_at, service_id
 `
 
 type CreateCronJobParams struct {
@@ -60,14 +60,15 @@ func (q *Queries) CreateCronJob(ctx context.Context, arg CreateCronJobParams) (C
 		&i.LastRun,
 		&i.NextRun,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const createWorker = `-- name: CreateWorker :one
-INSERT INTO workers (app_id, name, command, replicas, enabled)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, app_id, name, command, replicas, enabled, status, container_id, created_at
+INSERT INTO workers (app_id, service_id, name, command, replicas, enabled)
+SELECT $1, apps.service_id, $2, $3, $4, $5 FROM apps WHERE apps.id = $1
+RETURNING id, app_id, name, command, replicas, enabled, status, container_id, created_at, service_id
 `
 
 type CreateWorkerParams struct {
@@ -97,6 +98,7 @@ func (q *Queries) CreateWorker(ctx context.Context, arg CreateWorkerParams) (Wor
 		&i.Status,
 		&i.ContainerID,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -122,13 +124,13 @@ func (q *Queries) DeleteWorker(ctx context.Context, id uuid.UUID) error {
 }
 
 const getAppPolicy = `-- name: GetAppPolicy :one
-SELECT app_id, enabled, cpu_min, cpu_max, mem_min_mb, mem_max_mb, scale_up_pct, scale_down_pct, cooldown_min, updated_at
+SELECT app_id, enabled, cpu_min, cpu_max, mem_min_mb, mem_max_mb, scale_up_pct, scale_down_pct, cooldown_min, updated_at, service_id
 FROM app_policies
-WHERE app_id = $1
+WHERE service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $1)
 `
 
-func (q *Queries) GetAppPolicy(ctx context.Context, appID uuid.UUID) (AppPolicy, error) {
-	row := q.db.QueryRowContext(ctx, getAppPolicy, appID)
+func (q *Queries) GetAppPolicy(ctx context.Context, id uuid.UUID) (AppPolicy, error) {
+	row := q.db.QueryRowContext(ctx, getAppPolicy, id)
 	var i AppPolicy
 	err := row.Scan(
 		&i.AppID,
@@ -141,12 +143,13 @@ func (q *Queries) GetAppPolicy(ctx context.Context, appID uuid.UUID) (AppPolicy,
 		&i.ScaleDownPct,
 		&i.CooldownMin,
 		&i.UpdatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getCronJob = `-- name: GetCronJob :one
-SELECT id, app_id, name, schedule, command, enabled, last_run, next_run, created_at
+SELECT id, app_id, name, schedule, command, enabled, last_run, next_run, created_at, service_id
 FROM cron_jobs
 WHERE id = $1
 `
@@ -164,12 +167,13 @@ func (q *Queries) GetCronJob(ctx context.Context, id uuid.UUID) (CronJob, error)
 		&i.LastRun,
 		&i.NextRun,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getWorker = `-- name: GetWorker :one
-SELECT id, app_id, name, command, replicas, enabled, status, container_id, created_at
+SELECT id, app_id, name, command, replicas, enabled, status, container_id, created_at, service_id
 FROM workers
 WHERE id = $1
 `
@@ -187,25 +191,26 @@ func (q *Queries) GetWorker(ctx context.Context, id uuid.UUID) (Worker, error) {
 		&i.Status,
 		&i.ContainerID,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const listAutopilotEvents = `-- name: ListAutopilotEvents :many
-SELECT id, app_id, action, detail, created_at
+SELECT id, app_id, action, detail, created_at, service_id
 FROM autopilot_events
-WHERE app_id = $1
+WHERE service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $1)
 ORDER BY created_at DESC
 LIMIT $2
 `
 
 type ListAutopilotEventsParams struct {
-	AppID uuid.UUID `json:"app_id"`
+	ID    uuid.UUID `json:"id"`
 	Limit int32     `json:"limit"`
 }
 
 func (q *Queries) ListAutopilotEvents(ctx context.Context, arg ListAutopilotEventsParams) ([]AutopilotEvent, error) {
-	rows, err := q.db.QueryContext(ctx, listAutopilotEvents, arg.AppID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listAutopilotEvents, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -219,6 +224,7 @@ func (q *Queries) ListAutopilotEvents(ctx context.Context, arg ListAutopilotEven
 			&i.Action,
 			&i.Detail,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -234,14 +240,14 @@ func (q *Queries) ListAutopilotEvents(ctx context.Context, arg ListAutopilotEven
 }
 
 const listCronJobsByApp = `-- name: ListCronJobsByApp :many
-SELECT id, app_id, name, schedule, command, enabled, last_run, next_run, created_at
+SELECT id, app_id, name, schedule, command, enabled, last_run, next_run, created_at, service_id
 FROM cron_jobs
-WHERE app_id = $1
+WHERE service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $1)
 ORDER BY name
 `
 
-func (q *Queries) ListCronJobsByApp(ctx context.Context, appID uuid.UUID) ([]CronJob, error) {
-	rows, err := q.db.QueryContext(ctx, listCronJobsByApp, appID)
+func (q *Queries) ListCronJobsByApp(ctx context.Context, id uuid.UUID) ([]CronJob, error) {
+	rows, err := q.db.QueryContext(ctx, listCronJobsByApp, id)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +265,7 @@ func (q *Queries) ListCronJobsByApp(ctx context.Context, appID uuid.UUID) ([]Cro
 			&i.LastRun,
 			&i.NextRun,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -274,10 +281,10 @@ func (q *Queries) ListCronJobsByApp(ctx context.Context, appID uuid.UUID) ([]Cro
 }
 
 const listCronJobsByOrg = `-- name: ListCronJobsByOrg :many
-SELECT c.id, c.app_id, c.name, c.schedule, c.command, c.enabled, c.last_run, c.next_run, c.created_at
+SELECT c.id, c.app_id, c.name, c.schedule, c.command, c.enabled, c.last_run, c.next_run, c.created_at, c.service_id
 FROM cron_jobs c
-JOIN apps a ON a.id = c.app_id
-WHERE a.org_id = $1
+JOIN services s ON s.id = c.service_id
+WHERE s.org_id = $1
 ORDER BY c.name
 `
 
@@ -300,6 +307,7 @@ func (q *Queries) ListCronJobsByOrg(ctx context.Context, orgID uuid.UUID) ([]Cro
 			&i.LastRun,
 			&i.NextRun,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -315,14 +323,14 @@ func (q *Queries) ListCronJobsByOrg(ctx context.Context, orgID uuid.UUID) ([]Cro
 }
 
 const listWorkersByApp = `-- name: ListWorkersByApp :many
-SELECT id, app_id, name, command, replicas, enabled, status, container_id, created_at
+SELECT id, app_id, name, command, replicas, enabled, status, container_id, created_at, service_id
 FROM workers
-WHERE app_id = $1
+WHERE service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $1)
 ORDER BY name
 `
 
-func (q *Queries) ListWorkersByApp(ctx context.Context, appID uuid.UUID) ([]Worker, error) {
-	rows, err := q.db.QueryContext(ctx, listWorkersByApp, appID)
+func (q *Queries) ListWorkersByApp(ctx context.Context, id uuid.UUID) ([]Worker, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkersByApp, id)
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +348,7 @@ func (q *Queries) ListWorkersByApp(ctx context.Context, appID uuid.UUID) ([]Work
 			&i.Status,
 			&i.ContainerID,
 			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -357,12 +366,12 @@ func (q *Queries) ListWorkersByApp(ctx context.Context, appID uuid.UUID) ([]Work
 const setWorkerState = `-- name: SetWorkerState :exec
 UPDATE workers
 SET status = $3, container_id = $4
-WHERE id = $1 AND app_id = $2
+WHERE workers.id = $1 AND workers.service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $2)
 `
 
 type SetWorkerStateParams struct {
 	ID          uuid.UUID `json:"id"`
-	AppID       uuid.UUID `json:"app_id"`
+	ID_2        uuid.UUID `json:"id_2"`
 	Status      string    `json:"status"`
 	ContainerID string    `json:"container_id"`
 }
@@ -370,7 +379,7 @@ type SetWorkerStateParams struct {
 func (q *Queries) SetWorkerState(ctx context.Context, arg SetWorkerStateParams) error {
 	_, err := q.db.ExecContext(ctx, setWorkerState,
 		arg.ID,
-		arg.AppID,
+		arg.ID_2,
 		arg.Status,
 		arg.ContainerID,
 	)
@@ -380,13 +389,13 @@ func (q *Queries) SetWorkerState(ctx context.Context, arg SetWorkerStateParams) 
 const updateCronJob = `-- name: UpdateCronJob :one
 UPDATE cron_jobs
 SET schedule = $3, command = $4, enabled = $5
-WHERE id = $1 AND app_id = $2
-RETURNING id, app_id, name, schedule, command, enabled, last_run, next_run, created_at
+WHERE cron_jobs.id = $1 AND cron_jobs.service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $2)
+RETURNING id, app_id, name, schedule, command, enabled, last_run, next_run, created_at, service_id
 `
 
 type UpdateCronJobParams struct {
 	ID       uuid.UUID `json:"id"`
-	AppID    uuid.UUID `json:"app_id"`
+	ID_2     uuid.UUID `json:"id_2"`
 	Schedule string    `json:"schedule"`
 	Command  string    `json:"command"`
 	Enabled  bool      `json:"enabled"`
@@ -395,7 +404,7 @@ type UpdateCronJobParams struct {
 func (q *Queries) UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (CronJob, error) {
 	row := q.db.QueryRowContext(ctx, updateCronJob,
 		arg.ID,
-		arg.AppID,
+		arg.ID_2,
 		arg.Schedule,
 		arg.Command,
 		arg.Enabled,
@@ -411,6 +420,7 @@ func (q *Queries) UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (C
 		&i.LastRun,
 		&i.NextRun,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -418,13 +428,13 @@ func (q *Queries) UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (C
 const updateWorker = `-- name: UpdateWorker :one
 UPDATE workers
 SET name = $3, command = $4, replicas = $5, enabled = $6
-WHERE id = $1 AND app_id = $2
-RETURNING id, app_id, name, command, replicas, enabled, status, container_id, created_at
+WHERE workers.id = $1 AND workers.service_id = (SELECT apps.service_id FROM apps WHERE apps.id = $2)
+RETURNING id, app_id, name, command, replicas, enabled, status, container_id, created_at, service_id
 `
 
 type UpdateWorkerParams struct {
 	ID       uuid.UUID `json:"id"`
-	AppID    uuid.UUID `json:"app_id"`
+	ID_2     uuid.UUID `json:"id_2"`
 	Name     string    `json:"name"`
 	Command  string    `json:"command"`
 	Replicas int32     `json:"replicas"`
@@ -434,7 +444,7 @@ type UpdateWorkerParams struct {
 func (q *Queries) UpdateWorker(ctx context.Context, arg UpdateWorkerParams) (Worker, error) {
 	row := q.db.QueryRowContext(ctx, updateWorker,
 		arg.ID,
-		arg.AppID,
+		arg.ID_2,
 		arg.Name,
 		arg.Command,
 		arg.Replicas,
@@ -451,14 +461,16 @@ func (q *Queries) UpdateWorker(ctx context.Context, arg UpdateWorkerParams) (Wor
 		&i.Status,
 		&i.ContainerID,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const upsertAppPolicy = `-- name: UpsertAppPolicy :one
-INSERT INTO app_policies (app_id, enabled, cpu_min, cpu_max, mem_min_mb, mem_max_mb, scale_up_pct, scale_down_pct, cooldown_min)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO app_policies (app_id, service_id, enabled, cpu_min, cpu_max, mem_min_mb, mem_max_mb, scale_up_pct, scale_down_pct, cooldown_min)
+SELECT $1, apps.service_id, $2, $3, $4, $5, $6, $7, $8, $9 FROM apps WHERE apps.id = $1
 ON CONFLICT (app_id) DO UPDATE SET
+    service_id = EXCLUDED.service_id,
     enabled = EXCLUDED.enabled,
     cpu_min = EXCLUDED.cpu_min,
     cpu_max = EXCLUDED.cpu_max,
@@ -468,7 +480,7 @@ ON CONFLICT (app_id) DO UPDATE SET
     scale_down_pct = EXCLUDED.scale_down_pct,
     cooldown_min = EXCLUDED.cooldown_min,
     updated_at = now()
-RETURNING app_id, enabled, cpu_min, cpu_max, mem_min_mb, mem_max_mb, scale_up_pct, scale_down_pct, cooldown_min, updated_at
+RETURNING app_id, enabled, cpu_min, cpu_max, mem_min_mb, mem_max_mb, scale_up_pct, scale_down_pct, cooldown_min, updated_at, service_id
 `
 
 type UpsertAppPolicyParams struct {
@@ -507,6 +519,7 @@ func (q *Queries) UpsertAppPolicy(ctx context.Context, arg UpsertAppPolicyParams
 		&i.ScaleDownPct,
 		&i.CooldownMin,
 		&i.UpdatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }

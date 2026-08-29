@@ -24,14 +24,15 @@ func New(databases *application.Databases, studio *application.Studio) *Handler 
 }
 
 type createDBReq struct {
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
-	Engine    string `json:"engine"`
-	Version   string `json:"version"`
-	User      string `json:"user"`
-	Password  string `json:"password"`
-	MemMB     *int   `json:"mem_mb"`
-	StorageMB *int   `json:"storage_mb"`
+	ProjectID     string `json:"project_id"`
+	EnvironmentID string `json:"environment_id"`
+	Name          string `json:"name"`
+	Engine        string `json:"engine"`
+	Version       string `json:"version"`
+	User          string `json:"user"`
+	Password      string `json:"password"`
+	MemMB         *int   `json:"mem_mb"`
+	StorageMB     *int   `json:"storage_mb"`
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -52,12 +53,22 @@ func (h *Handler) Create(c *gin.Context) {
 	if req.StorageMB != nil {
 		storageMB = *req.StorageMB
 	}
-	db, err := h.databases.Create(c.Request.Context(), orgID(c), projectID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, memMB, storageMB)
+	var database *domain.Database
+	if req.EnvironmentID == "" {
+		database, err = h.databases.Create(c.Request.Context(), orgID(c), projectID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, memMB, storageMB)
+	} else {
+		environmentID, parseErr := uuid.Parse(req.EnvironmentID)
+		if parseErr != nil {
+			abort(c, domain.ErrValidation)
+			return
+		}
+		database, err = h.databases.CreateInEnvironment(c.Request.Context(), orgID(c), projectID, environmentID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, memMB, storageMB)
+	}
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, databaseDTO(db))
+	c.JSON(http.StatusCreated, databaseDTO(database))
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -220,7 +231,7 @@ func (h *Handler) DeploymentLog(c *gin.Context) {
 
 func databaseDTO(db *domain.Database) gin.H {
 	return gin.H{
-		"id": db.ID, "org_id": db.OrgID, "project_id": db.ProjectID, "name": db.Name,
+		"id": db.ID, "service_id": db.ServiceID, "org_id": db.OrgID, "project_id": db.ProjectID, "environment_id": db.EnvironmentID, "name": db.Name,
 		"engine": db.Engine, "version": db.Version, "port": db.Port, "db_name": db.DBName,
 		"user": db.User, "mem_mb": db.MemMB, "storage_mb": db.StorageMB, "status": db.Status,
 		"container_id": db.ContainerID, "created_at": db.CreatedAt,

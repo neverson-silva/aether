@@ -31,7 +31,9 @@ func (s *DatabaseStore) GetConfiguration(ctx context.Context, id uuid.UUID) (*do
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return configFromRow(row), nil
+	cfg := configFromRow(row)
+	cfg.ServiceID = s.serviceID(ctx, "backup_configurations", id)
+	return cfg, nil
 }
 
 func (s *DatabaseStore) ListConfigurationsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]domain.BackupConfiguration, error) {
@@ -41,7 +43,9 @@ func (s *DatabaseStore) ListConfigurationsByDatabase(ctx context.Context, databa
 	}
 	out := make([]domain.BackupConfiguration, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *configFromRow(row))
+		cfg := configFromRow(row)
+		cfg.ServiceID = s.serviceID(ctx, "backup_configurations", cfg.ID)
+		out = append(out, *cfg)
 	}
 	return out, nil
 }
@@ -65,7 +69,9 @@ func (s *DatabaseStore) CreateConfiguration(ctx context.Context, cfg *domain.Bac
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return configFromRow(row), nil
+	savedCfg := configFromRow(row)
+	savedCfg.ServiceID = s.serviceID(ctx, "backup_configurations", savedCfg.ID)
+	return savedCfg, nil
 }
 
 func (s *DatabaseStore) UpdateConfiguration(ctx context.Context, cfg *domain.BackupConfiguration) (*domain.BackupConfiguration, error) {
@@ -78,7 +84,9 @@ func (s *DatabaseStore) UpdateConfiguration(ctx context.Context, cfg *domain.Bac
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return configFromRow(row), nil
+	savedCfg := configFromRow(row)
+	savedCfg.ServiceID = s.serviceID(ctx, "backup_configurations", savedCfg.ID)
+	return savedCfg, nil
 }
 
 func (s *DatabaseStore) DeleteConfiguration(ctx context.Context, id uuid.UUID) error {
@@ -92,7 +100,9 @@ func (s *DatabaseStore) ListEnabledConfigurations(ctx context.Context) ([]domain
 	}
 	out := make([]domain.BackupConfiguration, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, configFromEnabledRow(r))
+		cfg := configFromEnabledRow(r)
+		cfg.ServiceID = s.serviceID(ctx, "backup_configurations", cfg.ID)
+		out = append(out, cfg)
 	}
 	return out, nil
 }
@@ -122,7 +132,9 @@ func (s *DatabaseStore) CreateJob(ctx context.Context, job *domain.BackupJob) (*
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return jobFromRow(row), nil
+	savedJob := jobFromRow(row)
+	savedJob.ServiceID = s.serviceID(ctx, "backup_jobs", savedJob.ID)
+	return savedJob, nil
 }
 
 func (s *DatabaseStore) GetJob(ctx context.Context, id uuid.UUID) (*domain.BackupJob, error) {
@@ -130,7 +142,9 @@ func (s *DatabaseStore) GetJob(ctx context.Context, id uuid.UUID) (*domain.Backu
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return jobFromRow(row), nil
+	savedJob := jobFromRow(row)
+	savedJob.ServiceID = s.serviceID(ctx, "backup_jobs", savedJob.ID)
+	return savedJob, nil
 }
 
 func (s *DatabaseStore) UpdateJob(ctx context.Context, job *domain.BackupJob) (*domain.BackupJob, error) {
@@ -151,15 +165,21 @@ func (s *DatabaseStore) UpdateJob(ctx context.Context, job *domain.BackupJob) (*
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return jobFromRow(row), nil
+	savedJob := jobFromRow(row)
+	savedJob.ServiceID = s.serviceID(ctx, "backup_jobs", savedJob.ID)
+	return savedJob, nil
 }
 
 func (s *DatabaseStore) ListJobsByDatabase(ctx context.Context, databaseID uuid.UUID, limit int) ([]domain.BackupJob, error) {
-	rows, err := s.q.ListBackupJobsByDatabase(ctx, gen.ListBackupJobsByDatabaseParams{DatabaseID: databaseID, Limit: int32(limit)})
+	rows, err := s.q.ListBackupJobsByDatabase(ctx, gen.ListBackupJobsByDatabaseParams{ID: databaseID, Limit: int32(limit)})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return jobsFromRows(rows), nil
+	out := jobsFromRows(rows)
+	for i := range out {
+		out[i].ServiceID = s.serviceID(ctx, "backup_jobs", out[i].ID)
+	}
+	return out, nil
 }
 
 func (s *DatabaseStore) ListActiveJobsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]domain.BackupJob, error) {
@@ -167,7 +187,11 @@ func (s *DatabaseStore) ListActiveJobsByDatabase(ctx context.Context, databaseID
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return jobsFromRows(rows), nil
+	out := jobsFromRows(rows)
+	for i := range out {
+		out[i].ServiceID = s.serviceID(ctx, "backup_jobs", out[i].ID)
+	}
+	return out, nil
 }
 
 func (s *DatabaseStore) ListQueuedJobs(ctx context.Context, limit int) ([]domain.BackupJob, error) {
@@ -175,7 +199,11 @@ func (s *DatabaseStore) ListQueuedJobs(ctx context.Context, limit int) ([]domain
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return jobsFromRows(rows), nil
+	out := jobsFromRows(rows)
+	for i := range out {
+		out[i].ServiceID = s.serviceID(ctx, "backup_jobs", out[i].ID)
+	}
+	return out, nil
 }
 
 func (s *DatabaseStore) RecoverInterrupted(ctx context.Context, startedAt time.Time) ([]queue.Job, error) {
@@ -228,7 +256,9 @@ func (s *DatabaseStore) CreateRestoreJob(ctx context.Context, job *domain.Restor
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return restoreFromRow(row), nil
+	savedJob := restoreFromRow(row)
+	savedJob.ServiceID = s.serviceID(ctx, "restore_jobs", savedJob.ID)
+	return savedJob, nil
 }
 
 func (s *DatabaseStore) GetRestoreJob(ctx context.Context, id uuid.UUID) (*domain.RestoreJob, error) {
@@ -236,7 +266,9 @@ func (s *DatabaseStore) GetRestoreJob(ctx context.Context, id uuid.UUID) (*domai
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return restoreFromRow(row), nil
+	savedJob := restoreFromRow(row)
+	savedJob.ServiceID = s.serviceID(ctx, "restore_jobs", savedJob.ID)
+	return savedJob, nil
 }
 
 func (s *DatabaseStore) UpdateRestoreJob(ctx context.Context, job *domain.RestoreJob) (*domain.RestoreJob, error) {
@@ -256,7 +288,9 @@ func (s *DatabaseStore) UpdateRestoreJob(ctx context.Context, job *domain.Restor
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return restoreFromRow(row), nil
+	savedJob := restoreFromRow(row)
+	savedJob.ServiceID = s.serviceID(ctx, "restore_jobs", savedJob.ID)
+	return savedJob, nil
 }
 
 func (s *DatabaseStore) FailAbandonedUploads(ctx context.Context, olderThan time.Time) error {
@@ -264,13 +298,15 @@ func (s *DatabaseStore) FailAbandonedUploads(ctx context.Context, olderThan time
 }
 
 func (s *DatabaseStore) ListRestoreJobsByTarget(ctx context.Context, targetID uuid.UUID, limit int) ([]domain.RestoreJob, error) {
-	rows, err := s.q.ListRestoreJobsByTarget(ctx, gen.ListRestoreJobsByTargetParams{TargetDatabaseID: targetID, Limit: int32(limit)})
+	rows, err := s.q.ListRestoreJobsByTarget(ctx, gen.ListRestoreJobsByTargetParams{ID: targetID, Limit: int32(limit)})
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	out := make([]domain.RestoreJob, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *restoreFromRow(r))
+		job := restoreFromRow(r)
+		job.ServiceID = s.serviceID(ctx, "restore_jobs", job.ID)
+		out = append(out, *job)
 	}
 	return out, nil
 }
@@ -282,9 +318,20 @@ func (s *DatabaseStore) ListQueuedRestoreJobs(ctx context.Context, limit int) ([
 	}
 	out := make([]domain.RestoreJob, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *restoreFromRow(r))
+		job := restoreFromRow(r)
+		job.ServiceID = s.serviceID(ctx, "restore_jobs", job.ID)
+		out = append(out, *job)
 	}
 	return out, nil
+}
+
+func (s *DatabaseStore) serviceID(ctx context.Context, table string, id uuid.UUID) uuid.UUID {
+	query := "SELECT service_id FROM " + table + " WHERE id = $1"
+	var serviceID uuid.UUID
+	if err := s.db.QueryRowContext(ctx, query, id).Scan(&serviceID); err != nil {
+		return uuid.Nil
+	}
+	return serviceID
 }
 
 func configFromEnabledRow(r gen.ListEnabledBackupConfigurationsRow) domain.BackupConfiguration {

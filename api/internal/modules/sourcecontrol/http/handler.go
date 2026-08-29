@@ -230,9 +230,9 @@ func (h *Handler) CompleteGitHubInstallation(c *gin.Context) {
 }
 
 func (h *Handler) GetServiceSource(c *gin.Context) {
-	serviceID, err := uuid.Parse(c.Param("appID"))
+	serviceID, err := parseServiceID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
 	source, err := h.Service.GetSource(c.Request.Context(), serviceID, orgID(c))
@@ -248,9 +248,9 @@ func (h *Handler) GetServiceSource(c *gin.Context) {
 }
 
 func (h *Handler) SaveServiceSource(c *gin.Context) {
-	serviceID, err := uuid.Parse(c.Param("appID"))
+	serviceID, err := parseServiceID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
 	var request struct {
@@ -295,9 +295,9 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 }
 
 func (h *Handler) ImportServiceTemplate(c *gin.Context) {
-	serviceID, err := uuid.Parse(c.Param("appID"))
+	serviceID, err := parseServiceID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
 	source, err := h.Service.GetSource(c.Request.Context(), serviceID, orgID(c))
@@ -318,9 +318,9 @@ func (h *Handler) ImportServiceTemplate(c *gin.Context) {
 }
 
 func (h *Handler) DeleteServiceSource(c *gin.Context) {
-	serviceID, err := uuid.Parse(c.Param("appID"))
+	serviceID, err := parseServiceID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid app id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
 	if err := h.Service.DeleteSource(c.Request.Context(), serviceID, orgID(c)); err != nil {
@@ -328,6 +328,14 @@ func (h *Handler) DeleteServiceSource(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func parseServiceID(c *gin.Context) (uuid.UUID, error) {
+	value := c.Param("serviceID")
+	if value == "" {
+		value = c.Param("appID")
+	}
+	return uuid.Parse(value)
 }
 
 func (h *Handler) GitHubPush(c *gin.Context) {

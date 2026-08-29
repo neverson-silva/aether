@@ -24,7 +24,7 @@ import {
 } from "@phosphor-icons/react";
 import { createElement, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { useAppDetail, useBranding, useMe, useProjects } from "../hooks";
+import { useBranding, useMe, useProjects, useServiceDetails } from "../hooks";
 import { clearToken } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { CommandPalette, usePalette } from "./command-palette";
@@ -71,7 +71,7 @@ export function Shell() {
   const navigate = useNavigate();
   const appMatch = location.pathname.match(/^\/apps\/([^/]+)/);
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
-  const { data: appDetail } = useAppDetail(appMatch?.[1] ?? "");
+  const { data: serviceDetail } = useServiceDetails(appMatch?.[1] ?? "");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [mobileOpen, setMobileOpen] = useState(() => window.innerWidth >= 768);
@@ -94,11 +94,11 @@ export function Shell() {
       ? "/projects"
       : location.pathname;
   const currentProject = useMemo(() => {
-    const projectId = appDetail?.app?.project_id ?? projectMatch?.[1];
+    const projectId = serviceDetail?.project_id ?? projectMatch?.[1];
     return projectId
       ? projects?.find((project) => project.id === projectId)?.name
       : undefined;
-  }, [appDetail, projectMatch, projects]);
+  }, [projectMatch, projects, serviceDetail]);
   const brandVars = branding?.primary_color
     ? ({ "--color-primary": branding.primary_color } as React.CSSProperties)
     : undefined;

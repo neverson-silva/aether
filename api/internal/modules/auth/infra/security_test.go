@@ -55,6 +55,57 @@ func TestSignerRejectsExpired(t *testing.T) {
 	}
 }
 
+func TestSignerCapsTokenLifetimes(t *testing.T) {
+	s := NewSigner("unit-test-secret-0123456789abcdef0123456789abcdef")
+	ctx := context.Background()
+	access, err := s.Sign(ctx, uuid.New(), uuid.New(), domain.RoleMember, "", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accessToken, err := s.Verify(ctx, access)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accessToken.Expires.After(time.Now().Add(11 * time.Minute)) {
+		t.Fatalf("access token exceeded maximum lifetime: %s", accessToken.Expires)
+	}
+	refresh, err := s.SignRefresh(ctx, uuid.New(), uuid.New(), domain.RoleMember, "", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshToken, err := s.Verify(ctx, refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshToken.Expires.After(time.Now().Add(21 * time.Minute)) {
+		t.Fatalf("refresh token exceeded maximum lifetime: %s", refreshToken.Expires)
+	}
+}
+
+func TestRefreshRotationPreservesAbsoluteExpiry(t *testing.T) {
+	s := NewSigner("unit-test-secret-0123456789abcdef0123456789abcdef")
+	ctx := context.Background()
+	original, err := s.SignRefresh(ctx, uuid.New(), uuid.New(), domain.RoleMember, "", 20*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := s.Verify(ctx, original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := s.SignRefreshUntil(ctx, verified.Subject, verified.OrgID, verified.Role, verified.Global, verified.Expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotatedToken, err := s.Verify(ctx, rotated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotatedToken.Expires.Unix() != verified.Expires.Unix() {
+		t.Fatalf("refresh rotation changed absolute expiry: original=%s rotated=%s", verified.Expires, rotatedToken.Expires)
+	}
+}
+
 func TestHasher(t *testing.T) {
 	h := NewHasher()
 	ctx := context.Background()

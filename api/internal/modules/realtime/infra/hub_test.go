@@ -103,7 +103,9 @@ func TestHubFanoutScoped(t *testing.T) {
 
 func TestClientWants(t *testing.T) {
 	appA := uuid.New()
+	serviceA := uuid.New()
 	evApp := domain.Event{AppID: appA.String(), ResourceType: "deployment", ResourceID: "dep1"}
+	evService := domain.Event{ServiceID: serviceA.String(), ResourceType: "deployment", ResourceID: "dep2"}
 	evRes := domain.Event{ResourceType: "database", ResourceID: "db1"}
 
 	cases := []struct {
@@ -115,6 +117,8 @@ func TestClientWants(t *testing.T) {
 		{"org pega tudo", []string{"org"}, evApp, true},
 		{"app coincide", []string{"app:" + appA.String()}, evApp, true},
 		{"app diferente", []string{"app:zzz"}, evApp, false},
+		{"service coincide", []string{"service:" + serviceA.String()}, evService, true},
+		{"service diferente", []string{"service:zzz"}, evService, false},
 		{"recurso coincide", []string{"database:db1"}, evRes, true},
 		{"recurso diferente", []string{"database:db9"}, evRes, false},
 	}

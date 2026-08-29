@@ -25,6 +25,7 @@ type AlertRule struct {
 	Severity  string
 	Enabled   bool
 	TargetApp *uuid.UUID
+	ServiceID *uuid.UUID
 	CreatedAt time.Time
 }
 
@@ -33,6 +34,7 @@ type AlertEvent struct {
 	OrgID      uuid.UUID
 	RuleID     *uuid.UUID
 	AppID      *uuid.UUID
+	ServiceID  *uuid.UUID
 	AppName    string
 	Severity   string
 	Message    string

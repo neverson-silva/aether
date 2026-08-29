@@ -1,7 +1,7 @@
-import { AppDomains } from "./-components/AppDomains";
+import { ServiceDomains } from "./-components/ServiceDomains";
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { useApps, useNetQ } from "../../../hooks";
+import { useNetQ, useServices } from "../../../hooks";
 import { Badge, Card, EmptyState } from "@aether/design-system";
 import { Gauge, ShareNetwork } from "@phosphor-icons/react";
 
@@ -31,11 +31,11 @@ function useNetQView() {
 }
 
 function Networking() {
-  const { data: apps } = useApps();
+  const { data: services } = useServices();
 
   return (
     <div className="space-y-lg">
-      <header><h1 className="text-headline-sm font-semibold text-foreground">Networking</h1><p className="mt-1 text-body-md text-muted-foreground">Domains, HTTPS and certificates per application. The proxy is dynamically configured in memory.</p></header>
+      <header><h1 className="text-headline-sm font-semibold text-foreground">Networking</h1><p className="mt-1 text-body-md text-muted-foreground">Domains, HTTPS and certificates per service. The proxy is dynamically configured in memory.</p></header>
 
       <Card>
         <div className="flex items-center justify-between mb-md">
@@ -48,8 +48,8 @@ function Networking() {
         <div className="bg-surface-container-low border border-outline-variant rounded-lg">
           <table className="w-full text-left"><thead><tr className="text-label-caps text-muted-foreground"><th className="px-2 py-2">App</th><th className="px-2 py-2">Address</th><th className="px-2 py-2">p50 / p95</th><th className="px-2 py-2">Uptime</th><th className="px-2 py-2">HTTP/3</th></tr></thead><tbody>
             {useNetQView().map((n) => (
-              <tr key={n.app_id} className="hover:bg-surface-container-high transition-colors">
-                <td className="px-sm py-2 font-body-md text-body-md text-on-surface">{n.name}</td>
+              <tr key={n.service_id} className="hover:bg-surface-container-high transition-colors">
+                <td className="px-sm py-2 font-body-md text-body-md text-on-surface"><Link to="/apps/$appId" params={{ appId: n.service_id }}>{n.name}</Link></td>
                 <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant">{n.addr}</td>
                 <td className="px-sm py-2"><LatencyBar p50={n.p50_ms} p95={n.p95_ms} /></td>
                 <td className="px-sm py-2">
@@ -78,14 +78,14 @@ function Networking() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-lg">
         <Card>
           <div className="flex items-center justify-between mb-md">
-            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Domains per application</h2>
+          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Domains per service</h2>
             <ShareNetwork size={18} className="text-primary" />
           </div>
           <div className="space-y-sm">
-            {(apps ?? []).length === 0 && (
-              <p className="font-body-sm text-body-sm text-on-surface-variant">No applications with domains.</p>
+            {(services ?? []).length === 0 && (
+              <p className="font-body-sm text-body-sm text-on-surface-variant">No services with domains.</p>
             )}
-            {(apps ?? []).map((app) => <AppDomains key={app.id} appId={app.id} appName={app.name} />)}
+            {(services ?? []).map((service) => <ServiceDomains key={service.id} serviceId={service.id} serviceName={service.name} />)}
           </div>
         </Card>
 
@@ -97,7 +97,7 @@ function Networking() {
               <Badge tone="success">Traefik</Badge>
             </div>
             <div className="flex items-center justify-between p-sm rounded border border-outline-variant/60">
-              <span className="font-body-sm text-body-sm text-on-surface">Certificados</span>
+              <span className="font-body-sm text-body-sm text-on-surface">Certificates</span>
               <Badge tone="success">Let's Encrypt</Badge>
             </div>
             <div className="flex items-center justify-between p-sm rounded border border-outline-variant/60">

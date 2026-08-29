@@ -30,7 +30,18 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) GetVolumeByApp(ctx context.Context, appID uuid.UUID, name string) (*domain.Volume, error) {
-	row, err := s.q.GetVolumeByApp(ctx, gen.GetVolumeByAppParams{AppID: appID, Name: name})
+	row, err := s.q.GetVolumeByApp(ctx, gen.GetVolumeByAppParams{ID: appID, Name: name})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return volumeFromRow(row), nil
+}
+
+func (s *Store) GetVolumeByService(ctx context.Context, serviceID uuid.UUID, name string) (*domain.Volume, error) {
+	var row gen.AppVolume
+	err := s.db.QueryRowContext(ctx, `SELECT id, app_id, service_id, name, mount_path FROM app_volumes WHERE service_id = $1 AND name = $2`, serviceID, name).Scan(
+		&row.ID, &row.AppID, &row.ServiceID, &row.Name, &row.MountPath,
+	)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -49,6 +60,26 @@ func (s *Store) ListVolumesByApp(ctx context.Context, appID uuid.UUID) ([]domain
 	return out, nil
 }
 
+func (s *Store) ListVolumesByService(ctx context.Context, serviceID uuid.UUID) ([]domain.Volume, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, app_id, service_id, name, mount_path FROM app_volumes WHERE service_id = $1 ORDER BY name`, serviceID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	out := make([]domain.Volume, 0)
+	for rows.Next() {
+		var row gen.AppVolume
+		if err := rows.Scan(&row.ID, &row.AppID, &row.ServiceID, &row.Name, &row.MountPath); err != nil {
+			return nil, mapErr(err)
+		}
+		out = append(out, *volumeFromRow(row))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapErr(err)
+	}
+	return out, nil
+}
+
 func (s *Store) CreateVolume(ctx context.Context, volume *domain.Volume) (*domain.Volume, error) {
 	row, err := s.q.CreateVolume(ctx, gen.CreateVolumeParams{
 		AppID: volume.AppID, Name: volume.Name, MountPath: volume.MountPath,
@@ -61,21 +92,21 @@ func (s *Store) CreateVolume(ctx context.Context, volume *domain.Volume) (*domai
 
 func (s *Store) CreateBackup(ctx context.Context, backup *domain.Backup) (*domain.Backup, error) {
 	row, err := s.q.CreateBackup(ctx, gen.CreateBackupParams{
-		OrgID: backup.OrgID, AppID: nullUUID(backup.AppID), Path: backup.Path,
+		OrgID: backup.OrgID, ServiceID: nullUUID(backup.ServiceID), AppID: nullUUID(backup.AppID), Path: backup.Path,
 		Size: backup.Size, Kind: backup.Kind, Dest: backup.Dest,
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	return &domain.Backup{
-		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), Path: row.Path,
+		ID: row.ID, OrgID: row.OrgID, AppID: uuidPtr(row.AppID), ServiceID: uuidPtr(row.ServiceID), Path: row.Path,
 		Size: row.Size, Kind: row.Kind, Dest: row.Dest, CreatedAt: row.CreatedAt,
 	}, nil
 }
 
 func volumeFromRow(row gen.AppVolume) *domain.Volume {
 	return &domain.Volume{
-		ID: row.ID, AppID: row.AppID, Name: row.Name, MountPath: row.MountPath,
+		ID: row.ID, AppID: row.AppID, ServiceID: uuidPtr(row.ServiceID), Name: row.Name, MountPath: row.MountPath,
 	}
 }
 

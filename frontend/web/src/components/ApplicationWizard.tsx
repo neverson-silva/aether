@@ -282,7 +282,7 @@ export function ApplicationWizard({
         } as never,
       });
       if (selectedRepository && githubConnection) {
-        await apiPut(`/api/v1/apps/${app.id}/source`, {
+        await apiPut(`/api/v1/services/${app.service_id ?? app.id}/source`, {
           connection_id: githubConnection.id,
           repository_id: selectedRepository.id,
           repository_owner: selectedRepository.owner,
@@ -300,7 +300,7 @@ export function ApplicationWizard({
       }
       add({ title: "Deploy it manually from the service page", tone: "info" });
         onClose();
-        navigate({ to: "/apps/$appId", params: { appId: app.id } } as never);
+        navigate({ to: "/apps/$appId", params: { appId: app.service_id ?? app.id } } as never);
     } catch (err) {
       add({ title: err instanceof Error ? err.message : "Failed to create service", tone: "error" });
     } finally {

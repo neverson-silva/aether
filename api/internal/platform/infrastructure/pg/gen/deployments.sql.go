@@ -16,20 +16,25 @@ import (
 
 const createDeployment = `-- name: CreateDeployment :one
 INSERT INTO deployments (
-    app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
+    app_id, service_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash
 )
 VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11, $12, $13
+    $1, COALESCE(NULLIF($2::uuid, '00000000-0000-0000-0000-000000000000'),
+        (SELECT service_id FROM apps WHERE id = $1),
+        (SELECT service_id FROM compose_apps WHERE id = $1),
+        (SELECT service_id FROM databases WHERE id = $1)
+    ), $3, $4, $5, $6, $7, $8,
+    $9, $10, $11, $12, $13, $14
 )
 RETURNING id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 `
 
 type CreateDeploymentParams struct {
-	AppID       uuid.UUID             `json:"app_id"`
+	AppID       uuid.NullUUID         `json:"app_id"`
+	Column2     uuid.UUID             `json:"column_2"`
 	Number      int32                 `json:"number"`
 	Status      string                `json:"status"`
 	Trigger     string                `json:"trigger"`
@@ -47,6 +52,7 @@ type CreateDeploymentParams struct {
 func (q *Queries) CreateDeployment(ctx context.Context, arg CreateDeploymentParams) (Deployment, error) {
 	row := q.db.QueryRowContext(ctx, createDeployment,
 		arg.AppID,
+		arg.Column2,
 		arg.Number,
 		arg.Status,
 		arg.Trigger,
@@ -80,6 +86,7 @@ func (q *Queries) CreateDeployment(ctx context.Context, arg CreateDeploymentPara
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -87,7 +94,7 @@ func (q *Queries) CreateDeployment(ctx context.Context, arg CreateDeploymentPara
 const getDeployment = `-- name: GetDeployment :one
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE id = $1
 `
@@ -114,6 +121,7 @@ func (q *Queries) GetDeployment(ctx context.Context, id uuid.UUID) (Deployment, 
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -121,14 +129,14 @@ func (q *Queries) GetDeployment(ctx context.Context, id uuid.UUID) (Deployment, 
 const getDeploymentByApp = `-- name: GetDeploymentByApp :one
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = $1 AND number = $2
 `
 
 type GetDeploymentByAppParams struct {
-	AppID  uuid.UUID `json:"app_id"`
-	Number int32     `json:"number"`
+	AppID  uuid.NullUUID `json:"app_id"`
+	Number int32         `json:"number"`
 }
 
 func (q *Queries) GetDeploymentByApp(ctx context.Context, arg GetDeploymentByAppParams) (Deployment, error) {
@@ -153,6 +161,7 @@ func (q *Queries) GetDeploymentByApp(ctx context.Context, arg GetDeploymentByApp
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -173,14 +182,14 @@ func (q *Queries) GetDeploymentCompose(ctx context.Context, id uuid.UUID) (strin
 const lastReadyDeployment = `-- name: LastReadyDeployment :one
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = $1 AND status = 'ready'
 ORDER BY number DESC
 LIMIT 1
 `
 
-func (q *Queries) LastReadyDeployment(ctx context.Context, appID uuid.UUID) (Deployment, error) {
+func (q *Queries) LastReadyDeployment(ctx context.Context, appID uuid.NullUUID) (Deployment, error) {
 	row := q.db.QueryRowContext(ctx, lastReadyDeployment, appID)
 	var i Deployment
 	err := row.Scan(
@@ -202,6 +211,7 @@ func (q *Queries) LastReadyDeployment(ctx context.Context, appID uuid.UUID) (Dep
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -209,7 +219,7 @@ func (q *Queries) LastReadyDeployment(ctx context.Context, appID uuid.UUID) (Dep
 const listDeployments = `-- name: ListDeployments :many
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE app_id = $1
 ORDER BY number DESC
@@ -217,8 +227,8 @@ LIMIT $2
 `
 
 type ListDeploymentsParams struct {
-	AppID uuid.UUID `json:"app_id"`
-	Limit int32     `json:"limit"`
+	AppID uuid.NullUUID `json:"app_id"`
+	Limit int32         `json:"limit"`
 }
 
 func (q *Queries) ListDeployments(ctx context.Context, arg ListDeploymentsParams) ([]Deployment, error) {
@@ -249,6 +259,7 @@ func (q *Queries) ListDeployments(ctx context.Context, arg ListDeploymentsParams
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -266,7 +277,7 @@ func (q *Queries) ListDeployments(ctx context.Context, arg ListDeploymentsParams
 const listQueuedDeployments = `-- name: ListQueuedDeployments :many
 SELECT id, app_id, number, status, trigger, triggered_by, commit_sha, image_ref,
     container_id, server_id, error, env_snapshot, compose_yaml, deploy_spec, compose_hash,
-    created_at, started_at, finished_at
+    created_at, started_at, finished_at, service_id
 FROM deployments
 WHERE status = 'queued'
 ORDER BY created_at ASC
@@ -301,6 +312,7 @@ func (q *Queries) ListQueuedDeployments(ctx context.Context) ([]Deployment, erro
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -332,7 +344,7 @@ FROM deployments
 WHERE app_id = $1
 `
 
-func (q *Queries) NextDeploymentNumber(ctx context.Context, appID uuid.UUID) (int32, error) {
+func (q *Queries) NextDeploymentNumber(ctx context.Context, appID uuid.NullUUID) (int32, error) {
 	row := q.db.QueryRowContext(ctx, nextDeploymentNumber, appID)
 	var column_1 int32
 	err := row.Scan(&column_1)

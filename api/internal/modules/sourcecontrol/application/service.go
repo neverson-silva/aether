@@ -40,12 +40,15 @@ func (s *Service) DeleteSource(ctx context.Context, serviceID, organizationID uu
 }
 
 type Service struct {
-	Sources    ports.SourceStore
-	Deliveries ports.DeliveryStore
-	Files      ports.ChangedFilesResolver
-	Deploy     ports.DeploymentTrigger
-	Templates  ports.TemplateFileReader
-	Apps       ServiceVariableImporter
+	Sources       ports.SourceStore
+	Deliveries    ports.DeliveryStore
+	Files         ports.ChangedFilesResolver
+	Deploy        ports.DeploymentTrigger
+	ServiceDeploy interface {
+		DeployService(context.Context, uuid.UUID, uuid.UUID, string, string) (any, error)
+	}
+	Templates ports.TemplateFileReader
+	Apps      ServiceVariableImporter
 }
 
 func (s *Service) HandlePush(ctx context.Context, event domain.PushEvent) error {
@@ -93,11 +96,17 @@ func (s *Service) processPush(ctx context.Context, event domain.PushEvent, files
 		if !decision.Trigger {
 			continue
 		}
-		if s.Deploy == nil {
+		if s.ServiceDeploy == nil && s.Deploy == nil {
 			return fmt.Errorf("deployment trigger is not configured")
 		}
-		if _, err := s.Deploy.Deploy(ctx, source.ServiceID, source.OrganizationID, "webhook", event.AfterSHA); err != nil {
-			return err
+		var deployErr error
+		if s.ServiceDeploy != nil {
+			_, deployErr = s.ServiceDeploy.DeployService(ctx, source.ServiceID, source.OrganizationID, "webhook", event.AfterSHA)
+		} else {
+			_, deployErr = s.Deploy.Deploy(ctx, source.ServiceID, source.OrganizationID, "webhook", event.AfterSHA)
+		}
+		if deployErr != nil {
+			return deployErr
 		}
 	}
 	return nil

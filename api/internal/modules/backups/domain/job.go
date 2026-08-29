@@ -30,6 +30,7 @@ const (
 type BackupJob struct {
 	ID            uuid.UUID
 	DatabaseID    uuid.UUID
+	ServiceID     uuid.UUID
 	Configuration *uuid.UUID
 	Trigger       TriggerType
 	Status        BackupStatus
@@ -106,6 +107,7 @@ type RestoreJob struct {
 	ID               uuid.UUID
 	BackupID         *uuid.UUID
 	TargetDatabaseID uuid.UUID
+	ServiceID        uuid.UUID
 	Status           RestoreStatus
 	ErrorCode        string
 	ErrorMessage     string

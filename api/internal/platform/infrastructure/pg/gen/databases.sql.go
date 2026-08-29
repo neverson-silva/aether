@@ -12,29 +12,31 @@ import (
 )
 
 const createDatabase = `-- name: CreateDatabase :one
-INSERT INTO databases (org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at
+INSERT INTO databases (org_id, project_id, environment_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 `
 
 type CreateDatabaseParams struct {
-	OrgID     uuid.UUID `json:"org_id"`
-	ProjectID uuid.UUID `json:"project_id"`
-	Name      string    `json:"name"`
-	Engine    string    `json:"engine"`
-	Version   string    `json:"version"`
-	Port      int32     `json:"port"`
-	DbName    string    `json:"db_name"`
-	DbUser    string    `json:"db_user"`
-	PassEnc   string    `json:"pass_enc"`
-	MemMb     int32     `json:"mem_mb"`
-	StorageMb int32     `json:"storage_mb"`
+	OrgID         uuid.UUID     `json:"org_id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	Name          string        `json:"name"`
+	Engine        string        `json:"engine"`
+	Version       string        `json:"version"`
+	Port          int32         `json:"port"`
+	DbName        string        `json:"db_name"`
+	DbUser        string        `json:"db_user"`
+	PassEnc       string        `json:"pass_enc"`
+	MemMb         int32         `json:"mem_mb"`
+	StorageMb     int32         `json:"storage_mb"`
 }
 
 func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (Database, error) {
 	row := q.db.QueryRowContext(ctx, createDatabase,
 		arg.OrgID,
 		arg.ProjectID,
+		arg.EnvironmentID,
 		arg.Name,
 		arg.Engine,
 		arg.Version,
@@ -62,6 +64,8 @@ func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) 
 		&i.Status,
 		&i.ContainerID,
 		&i.CreatedAt,
+		&i.ServiceID,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -82,7 +86,7 @@ func (q *Queries) DeleteDatabase(ctx context.Context, arg DeleteDatabaseParams) 
 }
 
 const getDatabase = `-- name: GetDatabase :one
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at
+SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE id = $1
 `
@@ -106,12 +110,14 @@ func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (Database, erro
 		&i.Status,
 		&i.ContainerID,
 		&i.CreatedAt,
+		&i.ServiceID,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
 
 const listDatabasesByOrg = `-- name: ListDatabasesByOrg :many
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at
+SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE org_id = $1
 ORDER BY name
@@ -142,6 +148,8 @@ func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Da
 			&i.Status,
 			&i.ContainerID,
 			&i.CreatedAt,
+			&i.ServiceID,
+			&i.EnvironmentID,
 		); err != nil {
 			return nil, err
 		}

@@ -12,9 +12,9 @@ import (
 )
 
 const createSnapshot = `-- name: CreateSnapshot :one
-INSERT INTO snapshots (org_id, app_id, volume, name, size, chunks, dedup_saved)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at
+INSERT INTO snapshots (org_id, app_id, service_id, volume, name, size, chunks, dedup_saved)
+VALUES ($1, $2, (SELECT apps.service_id FROM apps WHERE apps.id = $2), $3, $4, $5, $6, $7)
+RETURNING id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at, service_id
 `
 
 type CreateSnapshotParams struct {
@@ -48,14 +48,57 @@ func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) 
 		&i.Chunks,
 		&i.DedupSaved,
 		&i.CreatedAt,
+		&i.ServiceID,
+	)
+	return i, err
+}
+
+const createSnapshotForService = `-- name: CreateSnapshotForService :one
+INSERT INTO snapshots (org_id, service_id, volume, name, size, chunks, dedup_saved)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at, service_id
+`
+
+type CreateSnapshotForServiceParams struct {
+	OrgID      uuid.UUID     `json:"org_id"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
+	Volume     string        `json:"volume"`
+	Name       string        `json:"name"`
+	Size       int64         `json:"size"`
+	Chunks     int32         `json:"chunks"`
+	DedupSaved int64         `json:"dedup_saved"`
+}
+
+func (q *Queries) CreateSnapshotForService(ctx context.Context, arg CreateSnapshotForServiceParams) (Snapshot, error) {
+	row := q.db.QueryRowContext(ctx, createSnapshotForService,
+		arg.OrgID,
+		arg.ServiceID,
+		arg.Volume,
+		arg.Name,
+		arg.Size,
+		arg.Chunks,
+		arg.DedupSaved,
+	)
+	var i Snapshot
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AppID,
+		&i.Volume,
+		&i.Name,
+		&i.Size,
+		&i.Chunks,
+		&i.DedupSaved,
+		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const createSnapshotSchedule = `-- name: CreateSnapshotSchedule :one
-INSERT INTO snapshot_schedules (org_id, app_id, volume, name_prefix, cron, retention, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at
+INSERT INTO snapshot_schedules (org_id, app_id, service_id, volume, name_prefix, cron, retention, enabled)
+VALUES ($1, $2, (SELECT apps.service_id FROM apps WHERE apps.id = $2), $3, $4, $5, $6, $7)
+RETURNING id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at, service_id
 `
 
 type CreateSnapshotScheduleParams struct {
@@ -91,6 +134,51 @@ func (q *Queries) CreateSnapshotSchedule(ctx context.Context, arg CreateSnapshot
 		&i.LastRun,
 		&i.NextRun,
 		&i.CreatedAt,
+		&i.ServiceID,
+	)
+	return i, err
+}
+
+const createSnapshotScheduleForService = `-- name: CreateSnapshotScheduleForService :one
+INSERT INTO snapshot_schedules (org_id, service_id, volume, name_prefix, cron, retention, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at, service_id
+`
+
+type CreateSnapshotScheduleForServiceParams struct {
+	OrgID      uuid.UUID     `json:"org_id"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
+	Volume     string        `json:"volume"`
+	NamePrefix string        `json:"name_prefix"`
+	Cron       string        `json:"cron"`
+	Retention  int32         `json:"retention"`
+	Enabled    bool          `json:"enabled"`
+}
+
+func (q *Queries) CreateSnapshotScheduleForService(ctx context.Context, arg CreateSnapshotScheduleForServiceParams) (SnapshotSchedule, error) {
+	row := q.db.QueryRowContext(ctx, createSnapshotScheduleForService,
+		arg.OrgID,
+		arg.ServiceID,
+		arg.Volume,
+		arg.NamePrefix,
+		arg.Cron,
+		arg.Retention,
+		arg.Enabled,
+	)
+	var i SnapshotSchedule
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AppID,
+		&i.Volume,
+		&i.NamePrefix,
+		&i.Cron,
+		&i.Retention,
+		&i.Enabled,
+		&i.LastRun,
+		&i.NextRun,
+		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
@@ -126,7 +214,7 @@ func (q *Queries) DeleteSnapshotSchedule(ctx context.Context, arg DeleteSnapshot
 }
 
 const getSnapshot = `-- name: GetSnapshot :one
-SELECT id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at
+SELECT id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at, service_id
 FROM snapshots
 WHERE id = $1
 `
@@ -144,12 +232,13 @@ func (q *Queries) GetSnapshot(ctx context.Context, id uuid.UUID) (Snapshot, erro
 		&i.Chunks,
 		&i.DedupSaved,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const getSnapshotSchedule = `-- name: GetSnapshotSchedule :one
-SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at
+SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at, service_id
 FROM snapshot_schedules
 WHERE id = $1
 `
@@ -169,12 +258,13 @@ func (q *Queries) GetSnapshotSchedule(ctx context.Context, id uuid.UUID) (Snapsh
 		&i.LastRun,
 		&i.NextRun,
 		&i.CreatedAt,
+		&i.ServiceID,
 	)
 	return i, err
 }
 
 const listSchedulesByOrg = `-- name: ListSchedulesByOrg :many
-SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at
+SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at, service_id
 FROM snapshot_schedules
 WHERE org_id = $1
 ORDER BY name_prefix
@@ -201,6 +291,55 @@ func (q *Queries) ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]Sn
 			&i.LastRun,
 			&i.NextRun,
 			&i.CreatedAt,
+			&i.ServiceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSchedulesByService = `-- name: ListSchedulesByService :many
+SELECT id, org_id, app_id, volume, name_prefix, cron, retention, enabled, last_run, next_run, created_at, service_id
+FROM snapshot_schedules
+WHERE org_id = $1 AND service_id = $2
+ORDER BY name_prefix
+`
+
+type ListSchedulesByServiceParams struct {
+	OrgID     uuid.UUID     `json:"org_id"`
+	ServiceID uuid.NullUUID `json:"service_id"`
+}
+
+func (q *Queries) ListSchedulesByService(ctx context.Context, arg ListSchedulesByServiceParams) ([]SnapshotSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listSchedulesByService, arg.OrgID, arg.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SnapshotSchedule{}
+	for rows.Next() {
+		var i SnapshotSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AppID,
+			&i.Volume,
+			&i.NamePrefix,
+			&i.Cron,
+			&i.Retention,
+			&i.Enabled,
+			&i.LastRun,
+			&i.NextRun,
+			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}
@@ -216,7 +355,7 @@ func (q *Queries) ListSchedulesByOrg(ctx context.Context, orgID uuid.UUID) ([]Sn
 }
 
 const listSnapshotsByOrg = `-- name: ListSnapshotsByOrg :many
-SELECT id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at
+SELECT id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at, service_id
 FROM snapshots
 WHERE org_id = $1
 ORDER BY created_at DESC
@@ -247,6 +386,55 @@ func (q *Queries) ListSnapshotsByOrg(ctx context.Context, arg ListSnapshotsByOrg
 			&i.Chunks,
 			&i.DedupSaved,
 			&i.CreatedAt,
+			&i.ServiceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSnapshotsByService = `-- name: ListSnapshotsByService :many
+SELECT id, org_id, app_id, volume, name, size, chunks, dedup_saved, created_at, service_id
+FROM snapshots
+WHERE org_id = $1 AND service_id = $2
+ORDER BY created_at DESC
+LIMIT $3
+`
+
+type ListSnapshotsByServiceParams struct {
+	OrgID     uuid.UUID     `json:"org_id"`
+	ServiceID uuid.NullUUID `json:"service_id"`
+	Limit     int32         `json:"limit"`
+}
+
+func (q *Queries) ListSnapshotsByService(ctx context.Context, arg ListSnapshotsByServiceParams) ([]Snapshot, error) {
+	rows, err := q.db.QueryContext(ctx, listSnapshotsByService, arg.OrgID, arg.ServiceID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Snapshot{}
+	for rows.Next() {
+		var i Snapshot
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AppID,
+			&i.Volume,
+			&i.Name,
+			&i.Size,
+			&i.Chunks,
+			&i.DedupSaved,
+			&i.CreatedAt,
+			&i.ServiceID,
 		); err != nil {
 			return nil, err
 		}

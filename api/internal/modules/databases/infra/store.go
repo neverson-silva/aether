@@ -21,6 +21,20 @@ type Store struct {
 	db *sql.DB
 }
 
+func nullableUUID(value *uuid.UUID) uuid.NullUUID {
+	if value == nil {
+		return uuid.NullUUID{}
+	}
+	return uuid.NullUUID{UUID: *value, Valid: true}
+}
+
+func nullableUUIDPointer(value uuid.NullUUID) *uuid.UUID {
+	if !value.Valid {
+		return nil
+	}
+	return &value.UUID
+}
+
 func NewStore(pool *pgxpool.Pool) *Store {
 	db := stdlib.OpenDBFromPool(pool)
 	return &Store{q: gen.New(db), db: db}
@@ -32,7 +46,7 @@ func (s *Store) Close() error {
 
 func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domain.Database, error) {
 	row, err := s.q.CreateDatabase(ctx, gen.CreateDatabaseParams{
-		OrgID: db.OrgID, ProjectID: db.ProjectID, Name: db.Name, Engine: string(db.Engine),
+		OrgID: db.OrgID, ProjectID: db.ProjectID, EnvironmentID: nullableUUID(db.EnvironmentID), Name: db.Name, Engine: string(db.Engine),
 		Version: db.Version, Port: int32(db.Port), DbName: db.DBName, DbUser: db.User,
 		PassEnc: db.PassEnc, MemMb: int32(db.MemMB), StorageMb: int32(db.StorageMB),
 	})
@@ -89,7 +103,7 @@ func (s *Store) DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error {
 
 func databaseFromRow(row gen.Database) *domain.Database {
 	return &domain.Database{
-		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name,
+		ID: row.ID, ServiceID: row.ServiceID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: nullableUUIDPointer(row.EnvironmentID), Name: row.Name,
 		Engine: domain.Engine(row.Engine), Version: row.Version, Port: int(row.Port),
 		DBName: row.DbName, User: row.DbUser, PassEnc: row.PassEnc, MemMB: int(row.MemMb),
 		StorageMB: int(row.StorageMb), Status: row.Status, ContainerID: row.ContainerID,

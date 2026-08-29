@@ -75,7 +75,8 @@ export interface RegistryMirror {
 }
 
 export interface NetQStat {
-  app_id: string;
+  service_id: string;
+  app_id?: string;
   name: string;
   addr: string;
   samples: { at: string; ms: number; ok: boolean; h3: boolean }[];
@@ -86,9 +87,10 @@ export interface NetQStat {
 }
 
 export interface Snapshot {
-  id: string;
-  org_id: string;
-  app_id: string;
+	id: string;
+	org_id: string;
+	app_id: string;
+	service_id?: string;
   volume: string;
   name: string;
   size: number;
@@ -297,6 +299,8 @@ export interface SystemSummary {
 export interface AllCronJob {
   id: string;
   app_id: string;
+  service_id?: string;
+  service_name: string;
   app_name: string;
   name: string;
   schedule: string;
@@ -380,6 +384,7 @@ export interface EventEnvelope {
   org_id?: string;
   project_id?: string;
   app_id?: string;
+  service_id?: string;
   resource_type?: string;
   resource_id?: string;
   correlation_id?: string;
@@ -476,9 +481,10 @@ export interface AlertEvent {
 }
 
 export interface SnapshotSchedule {
-  id: string;
-  org_id: string;
-  app_id: string;
+	id: string;
+	org_id: string;
+	app_id: string;
+	service_id?: string;
   volume: string;
   name_prefix: string;
   cron: string;
@@ -493,6 +499,7 @@ export interface ComposeStack {
   id: string;
   org_id: string;
   project_id: string;
+  service_id?: string;
   name: string;
   compose: string;
   status: string;

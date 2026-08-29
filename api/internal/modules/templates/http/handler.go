@@ -109,7 +109,7 @@ func (h *Handler) ListCompose(c *gin.Context) {
 	out := make([]gin.H, 0, len(apps))
 	for i := range apps {
 		out = append(out, gin.H{
-			"id": apps[i].ID, "project_id": apps[i].ProjectID, "name": apps[i].Name,
+			"id": apps[i].ID, "service_id": apps[i].ServiceID, "project_id": apps[i].ProjectID, "name": apps[i].Name,
 			"status": apps[i].Status, "created_at": apps[i].CreatedAt,
 		})
 	}

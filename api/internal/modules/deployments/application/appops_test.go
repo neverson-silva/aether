@@ -14,6 +14,7 @@ import (
 type fakeOpsRuntime struct {
 	state string
 	err   error
+	label string
 }
 
 func (f fakeOpsRuntime) ContainerState(ctx context.Context, containerID string) (string, error) {
@@ -27,7 +28,10 @@ func (f fakeOpsRuntime) Restart(ctx context.Context, containerID string) error {
 
 func (f fakeOpsRuntime) Remove(ctx context.Context, containerID string) error { return nil }
 
-func (f fakeOpsRuntime) RemoveByLabel(ctx context.Context, label string) error { return nil }
+func (f fakeOpsRuntime) RemoveByLabel(ctx context.Context, label string) error {
+	f.label = label
+	return nil
+}
 
 type fakeOpsAppStore struct {
 	app *appsdomain.App
@@ -114,4 +118,41 @@ func TestAppOpsState(t *testing.T) {
 	if state, _ := unknown.State(context.Background(), appID, orgID); state != "unknown" {
 		t.Fatalf("erro runtime deveria ser unknown: %s", state)
 	}
+}
+
+func TestAppOpsDeleteServiceUsesCanonicalServiceLabel(t *testing.T) {
+	appID := uuid.New()
+	serviceID := uuid.New()
+	orgID := uuid.New()
+	runtime := &recordingOpsRuntime{state: "running"}
+	ops := &AppOps{
+		Deployments: &Deployments{
+			Apps:  fakeOpsAppStore{app: &appsdomain.App{ID: appID, OrgID: orgID}},
+			Store: fakeOpsDeployStore{deps: []deploydomain.Deployment{{AppID: appID, ContainerID: "c1"}}},
+		},
+		Runtime: runtime,
+	}
+	if err := ops.DeleteService(context.Background(), appID, serviceID, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.label != "aether.service-id="+serviceID.String() {
+		t.Fatalf("unexpected service label: %s", runtime.label)
+	}
+}
+
+type recordingOpsRuntime struct {
+	state string
+	label string
+}
+
+func (r *recordingOpsRuntime) ContainerState(ctx context.Context, containerID string) (string, error) {
+	return r.state, nil
+}
+func (r *recordingOpsRuntime) Start(ctx context.Context, containerID string) error   { return nil }
+func (r *recordingOpsRuntime) Stop(ctx context.Context, containerID string) error    { return nil }
+func (r *recordingOpsRuntime) Restart(ctx context.Context, containerID string) error { return nil }
+func (r *recordingOpsRuntime) Remove(ctx context.Context, containerID string) error  { return nil }
+func (r *recordingOpsRuntime) RemoveByLabel(ctx context.Context, label string) error {
+	r.label = label
+	return nil
 }

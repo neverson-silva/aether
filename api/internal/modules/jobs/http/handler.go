@@ -271,7 +271,7 @@ func (h *Handler) PolicyEvents(c *gin.Context) {
 
 func cronDTO(job *domain.CronJob) gin.H {
 	return gin.H{
-		"id": job.ID, "app_id": job.AppID, "name": job.Name, "schedule": job.Schedule,
+		"id": job.ID, "app_id": job.AppID, "service_id": job.ServiceID, "service_name": job.ServiceName, "app_name": job.ServiceName, "name": job.Name, "schedule": job.Schedule,
 		"command": job.Command, "enabled": job.Enabled, "last_run": job.LastRun,
 		"next_run": job.NextRun, "created_at": job.CreatedAt,
 	}

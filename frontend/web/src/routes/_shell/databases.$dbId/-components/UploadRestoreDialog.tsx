@@ -119,7 +119,7 @@ export function UploadRestoreDialog({
     cancelRestore.mutate(selected.id, {
       onSuccess: () => {
         add({ title: "Restore cancelled", tone: "info" });
-        queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", dbId] });
+        queryClient.invalidateQueries({ queryKey: ["database-restore-jobs", "service", dbId] });
         onClose();
       },
       onError: (e) => setError(e instanceof Error ? e.message : "Could not cancel"),
