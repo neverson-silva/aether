@@ -140,6 +140,8 @@ export function useSourceControlBranches(repositoryID: string | undefined, insta
     queryKey: ["source-control", "branches", repositoryID, installationID],
     queryFn: () => apiGet<SourceControlBranch[]>(`/api/v1/source-control/github/repositories/${encodeURIComponent(repositoryID ?? "")}/branches?installation_id=${encodeURIComponent(installationID ?? "")}`),
     enabled: !!repositoryID && !!installationID,
+    refetchOnMount: "always",
+    retry: 1,
   });
 }
 
