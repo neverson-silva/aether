@@ -40,6 +40,10 @@ import {
   useComposeUp,
   useComposeDown,
   useDeleteCompose,
+  useComposeStats,
+  useComposeTimeline,
+  useComposeEnv,
+  useComposeDeployments,
 } from "@/hooks";
 import type { App } from "@/api/types";
 import { EnvEditorModal } from "../../../components/EnvEditorModal";
@@ -166,14 +170,19 @@ function stateTone(state: string): string {
 function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
-  const { data: detail } = useAppDetail(appId);
   const search = Route.useSearch();
   const isCompose = search.kind === "compose";
+  const serviceAppId = isCompose ? "" : appId;
+  const { data: detail } = useAppDetail(serviceAppId);
   const { data: composeStack } = useComposeStack(isCompose ? appId : "");
+  const { data: composeStats } = useComposeStats(isCompose ? appId : "");
+  const { data: composeTimeline } = useComposeTimeline(isCompose ? appId : "");
+  const { data: composeEnv } = useComposeEnv(isCompose ? appId : "");
+  const { data: composeDeployments } = useComposeDeployments(isCompose ? appId : "");
   const composeUp = useComposeUp();
   const composeDown = useComposeDown();
   const deleteCompose = useDeleteCompose();
-  const { data: source, isLoading: sourceLoading } = useServiceSource(appId);
+  const { data: source, isLoading: sourceLoading } = useServiceSource(serviceAppId);
   const { data: sourceConnections } = useSourceControlConnections();
   const sourceConnection = sourceConnections?.find((connection) => connection.id === source?.connection_id);
   const { data: providerRepositories } = useSourceControlRepositories(sourceConnection?.installation_id);
@@ -203,21 +212,24 @@ function AppDetail() {
       }
     : undefined;
   const app = detail?.app ?? composeApp;
-  const { data: detailSecrets } = useAppDetailSecrets(appId, envEditorOpen);
+  const { data: detailSecrets } = useAppDetailSecrets(serviceAppId, envEditorOpen && !isCompose);
   const envEditorVars = useMemo(
     () =>
-      (detailSecrets?.env ?? detail?.env ?? []).map((e) => ({
+      (detailSecrets?.env ?? detail?.env ?? (composeEnv?.env as never[]) ?? []).map((e) => ({
         key: e.name,
         value: e.value,
         is_secret: e.secret,
       })),
     [detailSecrets, detail],
   );
-  const { data: deployments } = useDeployments(appId);
-  const { data: domains } = useDomains("apps", appId);
+  const { data: deployments } = useDeployments(serviceAppId);
+  const runtimeDeployments = isCompose ? composeDeployments : deployments;
+  const { data: domains } = useDomains("apps", serviceAppId);
   const statsEnabled = Boolean(app);
-  const { data: stats } = useStats(appId, statsEnabled);
-  const { data: timeline } = useTimeline(appId);
+  const { data: stats } = useStats(serviceAppId, statsEnabled);
+  const { data: timeline } = useTimeline(serviceAppId);
+  const runtimeStats = isCompose ? composeStats : stats;
+  const runtimeTimeline = isCompose ? composeTimeline : timeline;
   const { data: states } = useAppStates();
   const { data: netq } = useNetQ();
 
@@ -885,9 +897,9 @@ function AppDetail() {
                         Health
                       </span>
                       <span
-                        className={`font-body-md text-body-md ${stats?.state === "running" ? "text-[#4ade80]" : "text-on-surface-variant"}`}
+                        className={`font-body-md text-body-md ${runtimeStats?.state === "running" ? "text-[#4ade80]" : "text-on-surface-variant"}`}
                       >
-                        {stats?.state === "running" ? "healthy" : "—"}
+                        {runtimeStats?.state === "running" ? "healthy" : "—"}
                       </span>
                     </div>
                     <div>
@@ -895,7 +907,7 @@ function AppDetail() {
                         Memory
                       </span>
                       <span className="font-body-md text-body-md text-on-surface">
-                        {fmtBytes(stats?.stats?.mem_bytes ?? 0)}
+                        {fmtBytes(runtimeStats?.stats?.mem_bytes ?? 0)}
                       </span>
                     </div>
                   </div>
@@ -929,13 +941,13 @@ function AppDetail() {
                   </span>
                   <div className="mt-4">
                     <span className="font-headline-sm text-headline-sm text-on-surface">
-                      {stats?.stats?.cpu_percent?.toFixed(0) ?? "0"}%
+                      {runtimeStats?.stats?.cpu_percent?.toFixed(0) ?? "0"}%
                     </span>
                     <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-primary rounded-full"
                         style={{
-                          width: `${Math.min(100, stats?.stats?.cpu_percent ?? 0)}%`,
+                          width: `${Math.min(100, runtimeStats?.stats?.cpu_percent ?? 0)}%`,
                         }}
                       />
                     </div>
@@ -947,13 +959,13 @@ function AppDetail() {
                   </span>
                   <div className="mt-4">
                     <span className="font-headline-sm text-headline-sm text-on-surface">
-                      {fmtBytes(stats?.stats?.mem_bytes ?? 0)}
+                      {fmtBytes(runtimeStats?.stats?.mem_bytes ?? 0)}
                     </span>
                     <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-secondary rounded-full"
                         style={{
-                          width: `${Math.min(100, stats?.stats?.mem_limit ? ((stats.stats.mem_bytes ?? 0) / stats.stats.mem_limit) * 100 : 0)}%`,
+                          width: `${Math.min(100, runtimeStats?.stats?.mem_limit ? ((runtimeStats.stats.mem_bytes ?? 0) / runtimeStats.stats.mem_limit) * 100 : 0)}%`,
                         }}
                       />
                     </div>
@@ -1014,7 +1026,7 @@ function AppDetail() {
                 )}
               </div>
 
-              <LiveLogs appId={app.id} />
+              <LiveLogs appId={app.id} enabled endpoint={isCompose ? `/api/v1/compose/${app.id}/logs?follow=1` : undefined} />
             </div>
           </div>
         </>
@@ -1025,7 +1037,7 @@ function AppDetail() {
       {tab === "deployments" && (
         <DeploymentsTab
           appId={app.id}
-          deployments={(deployments ?? []) as never}
+          deployments={(runtimeDeployments ?? []) as never}
           onRollback={() =>
             run(() => rollback.mutateAsync(undefined), "Rollback started")
           }
@@ -1038,13 +1050,13 @@ function AppDetail() {
             Live Logs
           </h2>
           <div className="mt-md">
-            <LiveLogs appId={app.id} />
+            <LiveLogs appId={app.id} enabled endpoint={isCompose ? `/api/v1/compose/${app.id}/logs?follow=1` : undefined} />
           </div>
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mt-lg mb-md">
             Event timeline
           </h2>
           <div className="space-y-1 max-h-[260px] overflow-y-auto sidebar-scroll">
-            {(timeline ?? []).map((e, i) => (
+            {(runtimeTimeline ?? []).map((e, i) => (
               <div
                 key={e.id}
                 className="flex items-stretch gap-sm font-code-md text-code-md"
@@ -1088,26 +1100,26 @@ function AppDetail() {
               live={isRuntimeLive(runtimeStatus)}
             />
           </div>
-          {stats?.stats ? (
+          {runtimeStats?.stats ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
               <Metric
                 label="CPU"
-                value={`${stats.stats?.cpu_percent?.toFixed(2) ?? 0}%`}
+                value={`${runtimeStats.stats?.cpu_percent?.toFixed(2) ?? 0}%`}
                 icon={Gauge}
               />
               <Metric
                 label="Memory"
-                value={fmtBytes(stats.stats?.mem_bytes ?? 0)}
+                value={fmtBytes(runtimeStats.stats?.mem_bytes ?? 0)}
                 icon={HardDrives}
               />
               <Metric
                 label="Limit"
-                value={fmtBytes(stats.stats?.mem_limit ?? 0)}
+                value={fmtBytes(runtimeStats.stats?.mem_limit ?? 0)}
                 icon={Database}
               />
               <Metric
                 label="Mem %"
-                value={`${stats.stats?.mem_percent?.toFixed(1) ?? 0}%`}
+                value={`${runtimeStats.stats?.mem_percent?.toFixed(1) ?? 0}%`}
                 icon={Target}
               />
             </div>
@@ -1324,7 +1336,7 @@ function AppDetail() {
 
       {tab === "cron" && <CronJobs appID={app.id} />}
       {tab === "terminal" && <Terminal appID={app.id} />}
-      {tab === "domains" && <DomainsPanel kind="apps" id={app.id} />}
+      {tab === "domains" && <DomainsPanel kind={isCompose ? "compose" : "apps"} id={app.id} />}
 
       <Dialog
         open={webhookModal}
@@ -1472,7 +1484,12 @@ function AppDetail() {
 export const Route = createFileRoute("/_shell/apps/$appId/")({
   validateSearch: z.object({
     tab: z.enum(TABS).optional(),
-    kind: z.enum(["app", "compose"]).optional(),
+    kind: z.preprocess((value) => {
+      const normalized = Array.isArray(value) ? value[0] : value;
+      if (normalized === "compose") return "compose";
+      if (normalized === "app" || normalized === "web" || normalized === "api") return "app";
+      return undefined;
+    }, z.enum(["app", "compose"]).optional()),
     returnTo: z.string().optional(),
   }),
   component: AppDetail,

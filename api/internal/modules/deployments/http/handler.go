@@ -14,6 +14,7 @@ import (
 	authhttp "aether/internal/modules/auth/http"
 	"aether/internal/modules/deployments/application"
 	deploydomain "aether/internal/modules/deployments/domain"
+	templatesdomain "aether/internal/modules/templates/domain"
 )
 
 type Handler struct {
@@ -22,6 +23,9 @@ type Handler struct {
 	appOps      *application.AppOps
 	logsDir     string
 	runtime     LogFollower
+	compose     interface {
+		Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
+	}
 }
 
 type AppReader interface {
@@ -34,6 +38,13 @@ type LogFollower interface {
 
 func New(deployments *application.Deployments, apps AppReader, appOps *application.AppOps, logsDir string, runtime LogFollower) *Handler {
 	return &Handler{deployments: deployments, apps: apps, appOps: appOps, logsDir: logsDir, runtime: runtime}
+}
+
+func (h *Handler) WithCompose(reader interface {
+	Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
+}) *Handler {
+	h.compose = reader
+	return h
 }
 
 func (h *Handler) Deploy(c *gin.Context) {
@@ -97,8 +108,27 @@ func (h *Handler) List(c *gin.Context) {
 			limit = n
 		}
 	}
+	if h.compose != nil {
+		if compose, composeErr := h.compose.Get(c.Request.Context(), appID, orgID(c)); composeErr == nil {
+			status := compose.Status
+			if status == "running" {
+				c.JSON(http.StatusOK, []gin.H{{
+					"id": compose.ID, "number": 1, "status": "ready", "image_ref": "compose",
+					"commit": "", "created_at": compose.CreatedAt, "started_at": compose.CreatedAt,
+					"finished_at": compose.CreatedAt, "error": "",
+				}})
+				return
+			}
+		}
+	}
 	deps, err := h.deployments.List(c.Request.Context(), appID, orgID(c), limit)
 	if err != nil {
+		if h.compose != nil {
+			if _, composeErr := h.compose.Get(c.Request.Context(), appID, orgID(c)); composeErr == nil {
+				c.JSON(http.StatusOK, []gin.H{})
+				return
+			}
+		}
 		abort(c, err)
 		return
 	}

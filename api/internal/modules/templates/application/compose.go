@@ -3,17 +3,20 @@ package application
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 
 	appsdomain "aether/internal/modules/apps/domain"
+	realtimedomain "aether/internal/modules/realtime/domain"
 	"aether/internal/modules/templates/domain"
 	variablesDomain "aether/internal/modules/variables/domain"
 )
@@ -24,6 +27,12 @@ type Compose struct {
 	Deployments DeploymentStore
 	DataDir     string
 	ProjectVars ProjectVarStore
+	Events      EventLog
+}
+
+type EventLog interface {
+	Append(ctx context.Context, orgID uuid.UUID, event realtimedomain.Event) (int64, error)
+	Recent(ctx context.Context, orgID uuid.UUID, limit int) ([]realtimedomain.Event, error)
 }
 
 type ProjectVarStore interface {
@@ -80,7 +89,11 @@ func (c *Compose) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	if err := c.runCompose(ctx, app, "up", "-d"); err != nil {
 		return err
 	}
-	return c.Store.SetComposeStatus(ctx, id, "running")
+	if err := c.Store.SetComposeStatus(ctx, id, "running"); err != nil {
+		return err
+	}
+	c.recordEvent(ctx, app, "compose.running")
+	return nil
 }
 
 func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
@@ -89,7 +102,56 @@ func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
 		return err
 	}
 	_ = c.runCompose(ctx, app, "down")
-	return c.Store.SetComposeStatus(ctx, id, "stopped")
+	if err := c.Store.SetComposeStatus(ctx, id, "stopped"); err != nil {
+		return err
+	}
+	c.recordEvent(ctx, app, "compose.stopped")
+	return nil
+}
+
+func (c *Compose) recordEvent(ctx context.Context, app *domain.ComposeApp, eventType string) {
+	if c.Events == nil {
+		return
+	}
+	_, _ = c.Events.Append(ctx, app.OrgID, realtimedomain.Event{
+		Type: eventType, Aggregate: "compose", OrgID: app.OrgID.String(), ProjectID: app.ProjectID.String(),
+		ResourceType: "compose", ResourceID: app.ID.String(), AppID: app.ID.String(), TS: time.Now().UTC(),
+	})
+}
+
+func (c *Compose) Timeline(ctx context.Context, id, orgID uuid.UUID) ([]realtimedomain.Event, error) {
+	if _, err := c.Get(ctx, id, orgID); err != nil {
+		return nil, err
+	}
+	if c.Events == nil {
+		return []realtimedomain.Event{}, nil
+	}
+	events, err := c.Events.Recent(ctx, orgID, 200)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]realtimedomain.Event, 0, len(events))
+	for _, event := range events {
+		if event.ResourceID == id.String() {
+			out = append(out, event)
+		}
+	}
+	return out, nil
+}
+
+func (c *Compose) ContainerID(ctx context.Context, id, orgID uuid.UUID) (string, error) {
+	if _, err := c.Get(ctx, id, orgID); err != nil {
+		return "", err
+	}
+	out, err := exec.CommandContext(ctx, "podman", "ps", "-q", "--filter", "label=aether.service-id="+id.String(), "--filter", "status=running").Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve compose container: %w", err)
+	}
+	containerID := strings.TrimSpace(string(out))
+	if containerID == "" {
+		return "", errors.New("no active container")
+	}
+	return strings.Split(containerID, "\n")[0], nil
 }
 
 type ComposeValidation struct {

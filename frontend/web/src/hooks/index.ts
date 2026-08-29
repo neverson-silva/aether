@@ -183,6 +183,7 @@ export * from "./use-app-compose";
 export * from "./use-deployment-compose";
 export * from "./use-compose-stacks";
 export * from "./use-compose-stack";
+export * from "./use-compose-runtime";
 export * from "./use-compose-up";
 export * from "./use-compose-down";
 export * from "./use-delete-compose";

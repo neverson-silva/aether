@@ -11,17 +11,20 @@ import (
 	appsdomain "aether/internal/modules/apps/domain"
 	databasesdomain "aether/internal/modules/databases/domain"
 	"aether/internal/modules/domains/domain"
+	composedomain "aether/internal/modules/templates/domain"
 )
 
 const (
-	ServiceTypeApp = "app"
-	ServiceTypeDB  = "db"
+	ServiceTypeApp     = "app"
+	ServiceTypeDB      = "db"
+	ServiceTypeCompose = "compose"
 )
 
 type Domains struct {
 	Store       domain.Store
 	Apps        AppStore
 	DBs         DBStore
+	Compose     ComposeStore
 	Provisioner *Provisioner
 }
 
@@ -31,6 +34,10 @@ type AppStore interface {
 
 type DBStore interface {
 	GetDatabase(ctx context.Context, id uuid.UUID) (*databasesdomain.Database, error)
+}
+
+type ComposeStore interface {
+	Get(ctx context.Context, id, orgID uuid.UUID) (*composedomain.ComposeApp, error)
 }
 
 type serviceRef struct {
@@ -50,6 +57,16 @@ type AddDomainInput struct {
 }
 
 func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, serviceType string, orgID uuid.UUID) (*serviceRef, error) {
+	if serviceType == ServiceTypeCompose {
+		if d.Compose == nil {
+			return nil, domain.ErrNotFound
+		}
+		compose, err := d.Compose.Get(ctx, serviceID, orgID)
+		if err != nil {
+			return nil, err
+		}
+		return &serviceRef{alias: d.Provisioner.Alias(serviceID, serviceType), name: compose.Name}, nil
+	}
 	if serviceType == ServiceTypeDB {
 		db, err := d.DBs.GetDatabase(ctx, serviceID)
 		if err != nil {

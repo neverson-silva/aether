@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -10,12 +11,16 @@ import (
 	"aether/internal/modules/apps/application"
 	"aether/internal/modules/apps/domain"
 	authhttp "aether/internal/modules/auth/http"
+	templatesdomain "aether/internal/modules/templates/domain"
 	variablesApp "aether/internal/modules/variables/application"
 )
 
 type Handler struct {
 	apps     *application.Apps
 	resolver *variablesApp.Resolver
+	compose  interface {
+		Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
+	}
 }
 
 func New(apps *application.Apps) *Handler {
@@ -26,6 +31,13 @@ func New(apps *application.Apps) *Handler {
 // de effective variables, que mascarar secrets).
 func (h *Handler) WithResolver(r *variablesApp.Resolver) *Handler {
 	h.resolver = r
+	return h
+}
+
+func (h *Handler) WithCompose(reader interface {
+	Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
+}) *Handler {
+	h.compose = reader
 	return h
 }
 
@@ -271,6 +283,13 @@ func (h *Handler) GetApp(c *gin.Context) {
 	}
 	app, err := h.apps.GetApp(c.Request.Context(), id, orgID(c))
 	if err != nil {
+		if h.compose != nil {
+			compose, composeErr := h.compose.Get(c.Request.Context(), id, orgID(c))
+			if composeErr == nil {
+				c.JSON(http.StatusOK, gin.H{"app": composeDTO(compose), "env": []gin.H{}})
+				return
+			}
+		}
 		abort(c, err)
 		return
 	}
@@ -284,6 +303,19 @@ func (h *Handler) GetApp(c *gin.Context) {
 		env = append(env, gin.H{"name": v.Name, "value": v.Value, "secret": v.Secret})
 	}
 	c.JSON(http.StatusOK, gin.H{"app": appDTO(app), "env": env})
+}
+
+func composeDTO(app *templatesdomain.ComposeApp) gin.H {
+	return gin.H{
+		"id": app.ID, "org_id": app.OrgID, "project_id": app.ProjectID, "name": app.Name,
+		"source_type": "image", "image": "Compose stack", "git_url": "", "git_branch": "",
+		"dockerfile": "", "build_type": "compose", "preview_domain": "", "server_id": "",
+		"cluster_id": "", "environment_id": app.EnvironmentID, "port": 0, "storage_mb": 0,
+		"resources":    gin.H{"cpus": "0", "mem_mb": 0, "storage_mb": 0},
+		"health_check": gin.H{"enabled": false, "path": "/", "interval_ms": 0, "timeout_ms": 0, "retries": 0},
+		"volumes":      []gin.H{}, "created_at": app.CreatedAt, "updated_at": app.CreatedAt,
+		"latest_deployment": gin.H{"status": app.Status},
+	}
 }
 
 func (h *Handler) ListApps(c *gin.Context) {

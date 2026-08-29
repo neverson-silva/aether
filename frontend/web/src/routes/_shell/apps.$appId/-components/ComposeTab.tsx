@@ -19,7 +19,7 @@ const THEME = {
 };
 
 export function ComposeTab({ appID, initialCompose }: { appID: string; initialCompose?: string }) {
-  const { data, isLoading, error } = useAppCompose(appID);
+  const { data, isLoading, error } = useAppCompose(appID, !initialCompose);
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [wrap, setWrap] = useState(false);

@@ -12,7 +12,7 @@ import { Check, Globe, MagicWand, X } from "@phosphor-icons/react";
 import { Badge, Button, Card, Checkbox, Input, useToast } from "@aether/design-system";
 import type { Icon as DesignIcon } from "@aether/design-system";
 
-type Kind = "apps" | "databases";
+type Kind = "apps" | "databases" | "compose";
 
 const schema = z.object({
   host: z.string().trim().min(1, "Enter a host"),

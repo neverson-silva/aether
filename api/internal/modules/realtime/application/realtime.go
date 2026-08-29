@@ -1,12 +1,15 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +22,7 @@ import (
 	appsdomain "aether/internal/modules/apps/domain"
 	deploydomain "aether/internal/modules/deployments/domain"
 	"aether/internal/modules/realtime/domain"
+	templatesdomain "aether/internal/modules/templates/domain"
 	"aether/internal/platform/druntime/presence"
 	"aether/internal/platform/druntime/pubsub"
 	"aether/internal/platform/druntime/queue"
@@ -30,6 +34,7 @@ type Realtime struct {
 	Presence      presence.Presence
 	PubSub        pubsub.PubSub
 	Apps          AppStore
+	Compose       ComposeReader
 	Deployments   DeploymentStore
 	Ports         PortReader
 	Log           EventLog
@@ -59,6 +64,10 @@ type AppStore interface {
 type DeploymentStore interface {
 	ListByApp(ctx context.Context, appID uuid.UUID, limit int) ([]deploydomain.Deployment, error)
 	GetDeployment(ctx context.Context, id uuid.UUID) (*deploydomain.Deployment, error)
+}
+
+type ComposeReader interface {
+	Get(ctx context.Context, id, orgID uuid.UUID) (*templatesdomain.ComposeApp, error)
 }
 
 type PortReader interface {
@@ -342,19 +351,33 @@ func (r *Realtime) SubscribeEvents(ctx context.Context, orgID uuid.UUID, handler
 }
 
 func (r *Realtime) ReadyContainer(ctx context.Context, appID, orgID uuid.UUID) (string, error) {
-	if _, err := r.Apps.GetApp(ctx, appID, orgID); err != nil {
-		return "", err
-	}
-	deployments, err := r.Deployments.ListByApp(ctx, appID, 1)
-	if err != nil {
-		return "", err
-	}
-	for _, deployment := range deployments {
-		if deployment.Status == deploydomain.StatusReady && deployment.ContainerID != "" {
-			return deployment.ContainerID, nil
+	if _, err := r.Apps.GetApp(ctx, appID, orgID); err == nil {
+		deployments, err := r.Deployments.ListByApp(ctx, appID, 1)
+		if err != nil {
+			return "", err
 		}
+		for _, deployment := range deployments {
+			if deployment.Status == deploydomain.StatusReady && deployment.ContainerID != "" {
+				return deployment.ContainerID, nil
+			}
+		}
+		return "", errors.New("no active container")
 	}
-	return "", errors.New("no active container")
+	if r.Compose == nil {
+		return "", errors.New("service not found")
+	}
+	if _, err := r.Compose.Get(ctx, appID, orgID); err != nil {
+		return "", err
+	}
+	containerID, err := exec.CommandContext(ctx, "podman", "ps", "-q", "--filter", "label=aether.service-id="+appID.String(), "--filter", "status=running").Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve compose container: %w", err)
+	}
+	containerID = bytes.TrimSpace(containerID)
+	if len(containerID) == 0 {
+		return "", errors.New("no active container")
+	}
+	return strings.Split(string(containerID), "\n")[0], nil
 }
 
 func (r *Realtime) Probe(ctx context.Context, orgID uuid.UUID) []domain.NetAppStat {

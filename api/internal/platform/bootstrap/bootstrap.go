@@ -172,6 +172,9 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	templatesStore := templatesInfra.NewStore(pool)
 	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore}
 	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
+	appsHandler.WithCompose(composeSvc)
+	deployHandler.WithCompose(composeSvc)
+	domainsSvc.Compose = composeSvc
 	templatesHandler := templateshttp.New(templatesSvc, composeSvc)
 
 	gitopsStore := gitopsInfra.NewStore(pool)
@@ -287,10 +290,11 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 			os.Exit(1)
 		}
 	}
+	composeSvc.Events = eventLog
 	realtimeSvc := &realtimeApp.Realtime{
 		Presence: rtRuntime.Presence, PubSub: rtRuntime.PubSub,
 		Queue: rtRuntime.Queue,
-		Apps:  appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
+		Apps:  appsStore, Compose: composeSvc, Deployments: deployStore, Ports: deployWorkerRuntime,
 		Log: eventLog, Notifications: notificationsSvc,
 	}
 	databasesStudio.Cache = rtRuntime.Cache
