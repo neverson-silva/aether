@@ -245,7 +245,7 @@ function AppDetail() {
         (item !== "metrics" || service.capabilities.can_view_metrics) &&
         (item !== "cron" || service.capabilities.can_manage_schedules) &&
         (item !== "terminal" || service.capabilities.can_open_terminal) &&
-        (item !== "settings" || service.capabilities.can_build) &&
+        (item !== "settings" || service.capabilities.can_build || service.kind === "compose") &&
         (item !== "backup" || service.capabilities.can_manage_backups),
       )
     : TABS;

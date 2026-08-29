@@ -2,7 +2,7 @@
 SELECT service_sources.id, service_sources.service_id, service_sources.connection_id, scm_connections.organization_id,
        service_sources.repository_id, service_sources.repository_owner, service_sources.repository_name,
        service_sources.repository_full_name, service_sources.default_branch, service_sources.branch,
-       service_sources.auto_deploy, service_sources.root_directory, service_sources.watch_paths,
+       service_sources.auto_deploy, service_sources.root_directory, service_sources.compose_file, service_sources.watch_paths,
        service_sources.ignore_paths, service_sources.watch_root_files, service_sources.created_at,
        service_sources.updated_at
 FROM service_sources
@@ -15,7 +15,7 @@ WHERE scm_connections.provider = $1
 SELECT service_sources.id, service_sources.service_id, service_sources.connection_id, scm_connections.organization_id,
        service_sources.repository_id, service_sources.repository_owner, service_sources.repository_name,
        service_sources.repository_full_name, service_sources.default_branch, service_sources.branch,
-       service_sources.auto_deploy, service_sources.root_directory, service_sources.watch_paths,
+       service_sources.auto_deploy, service_sources.root_directory, service_sources.compose_file, service_sources.watch_paths,
        service_sources.ignore_paths, service_sources.watch_root_files, service_sources.created_at,
        service_sources.updated_at
 FROM service_sources
@@ -29,11 +29,11 @@ WHERE service_sources.service_id = $1
 INSERT INTO service_sources (
     service_id, connection_id, repository_id, repository_owner, repository_name,
     repository_full_name, default_branch, branch, auto_deploy, root_directory,
-    watch_paths, ignore_paths, watch_root_files
+    compose_file, watch_paths, ignore_paths, watch_root_files
 )
-SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-WHERE EXISTS (SELECT 1 FROM services WHERE services.id = $1 AND services.org_id = $14)
-  AND EXISTS (SELECT 1 FROM scm_connections WHERE scm_connections.id = $2 AND scm_connections.organization_id = $14)
+SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+WHERE EXISTS (SELECT 1 FROM services WHERE services.id = $1 AND services.org_id = $15)
+  AND EXISTS (SELECT 1 FROM scm_connections WHERE scm_connections.id = $2 AND scm_connections.organization_id = $15)
 ON CONFLICT (service_id) DO UPDATE
 SET connection_id = EXCLUDED.connection_id,
     repository_id = EXCLUDED.repository_id,
@@ -44,13 +44,14 @@ SET connection_id = EXCLUDED.connection_id,
     branch = EXCLUDED.branch,
     auto_deploy = EXCLUDED.auto_deploy,
     root_directory = EXCLUDED.root_directory,
+    compose_file = EXCLUDED.compose_file,
     watch_paths = EXCLUDED.watch_paths,
     ignore_paths = EXCLUDED.ignore_paths,
     watch_root_files = EXCLUDED.watch_root_files,
     updated_at = now()
 RETURNING id, service_id, connection_id, repository_id, repository_owner, repository_name,
           repository_full_name, default_branch, branch, auto_deploy, root_directory,
-          watch_paths, ignore_paths, watch_root_files, created_at, updated_at;
+          compose_file, watch_paths, ignore_paths, watch_root_files, created_at, updated_at;
 
 -- name: DeleteServiceSource :exec
 DELETE FROM service_sources

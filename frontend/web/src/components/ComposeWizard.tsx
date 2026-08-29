@@ -3,7 +3,7 @@ import { Check, Code, NotePencil } from "@phosphor-icons/react";
 import { apiGet, apiPut } from "../api/client";
 import { useCreateCompose, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
 import { ComposeEditor } from "./ComposeEditor";
-import { Button, Input, Modal, Select, SelectSearch, Skeleton, useToast } from "@aether/design-system";
+import { Button, Input, Modal, Select, SelectSearch, Skeleton, VariableEditor, type VariableRow, useToast } from "@aether/design-system";
 
 const DEFAULT_COMPOSE = `services:
   app:
@@ -28,6 +28,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
   const [repositoryID, setRepositoryID] = useState<string | undefined>();
   const [branch, setBranch] = useState("main");
   const [composePath, setComposePath] = useState("docker-compose.yml");
+  const [envRows, setEnvRows] = useState<VariableRow[]>([]);
   const { data: branches, isLoading: branchesLoading, isError: branchesError } = useSourceControlBranches(repositoryID, githubConnection?.installation_id);
   const [creating, setCreating] = useState(false);
 
@@ -80,6 +81,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
               branch,
               auto_deploy: false,
               root_directory: ".",
+              compose_file: composePath,
               environment_template_path: ".env.example",
               watch_paths: [],
               ignore_paths: [],
@@ -87,6 +89,13 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
             });
           } catch {
             add({ title: "Stack created, but Git settings could not be saved", tone: "warning" });
+          }
+        }
+      }
+      if (service && envRows.length > 0) {
+        for (const variable of envRows) {
+          if (variable.key.trim()) {
+            await apiPut(`/api/v1/services/${service.id}/environment`, { name: variable.key.trim(), value: variable.value, secret: Boolean(variable.secret) });
           }
         }
       }
@@ -163,6 +172,13 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
             </div>
           )}
           {sourceMode === "editor" ? <ComposeEditor value={content} onChange={setContent} /> : null}
+          <div className="space-y-sm">
+            <div>
+              <h2 className="font-label-caps text-label-caps text-on-surface uppercase">Service variables</h2>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">Variables injected only into this Compose service.</p>
+            </div>
+            <VariableEditor variables={envRows} onChange={setEnvRows} onExport={() => undefined} className="max-h-80" />
+          </div>
         </div>
 
         <div className="flex justify-between border-t border-outline-variant pt-lg">

@@ -51,7 +51,7 @@ func (s *Store) GetByService(ctx context.Context, serviceID, organizationID uuid
 		RepositoryID: row.RepositoryID, RepositoryOwner: row.RepositoryOwner, RepositoryName: row.RepositoryName,
 		RepositoryFullName: row.RepositoryFullName, DefaultBranch: row.DefaultBranch, Branch: row.Branch,
 		AutoDeploy: row.AutoDeploy, RootDirectory: row.RootDirectory, EnvironmentTemplatePath: s.templatePath(ctx, row.ServiceID), WatchPaths: row.WatchPaths,
-		IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		ComposeFile: row.ComposeFile, IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}, nil
 }
 
@@ -61,7 +61,7 @@ func (s *Store) Upsert(ctx context.Context, source *domain.ServiceSource) (*doma
 		RepositoryOwner: source.RepositoryOwner, RepositoryName: source.RepositoryName,
 		RepositoryFullName: source.RepositoryFullName, DefaultBranch: source.DefaultBranch, Branch: source.Branch,
 		AutoDeploy: source.AutoDeploy, RootDirectory: source.RootDirectory, WatchPaths: source.WatchPaths,
-		IgnorePaths: source.IgnorePaths, WatchRootFiles: source.WatchRootFiles, OrgID: source.OrganizationID,
+		ComposeFile: source.ComposeFile, IgnorePaths: source.IgnorePaths, WatchRootFiles: source.WatchRootFiles, OrgID: source.OrganizationID,
 	})
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (s *Store) Upsert(ctx context.Context, source *domain.ServiceSource) (*doma
 		RepositoryID: row.RepositoryID, RepositoryOwner: row.RepositoryOwner, RepositoryName: row.RepositoryName,
 		RepositoryFullName: row.RepositoryFullName, DefaultBranch: row.DefaultBranch, Branch: row.Branch,
 		AutoDeploy: row.AutoDeploy, RootDirectory: row.RootDirectory, EnvironmentTemplatePath: s.templatePath(ctx, row.ServiceID), WatchPaths: row.WatchPaths,
-		IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		ComposeFile: row.ComposeFile, IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}, nil
 }
 
@@ -117,7 +117,7 @@ func sourceFromListRow(row gen.ListServiceSourcesByRepositoryRow) domain.Service
 		RepositoryName: row.RepositoryName, RepositoryFullName: row.RepositoryFullName,
 		DefaultBranch: row.DefaultBranch, Branch: row.Branch, AutoDeploy: row.AutoDeploy,
 		RootDirectory: row.RootDirectory, EnvironmentTemplatePath: ".env.example", WatchPaths: row.WatchPaths,
-		IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles,
+		ComposeFile: row.ComposeFile, IgnorePaths: row.IgnorePaths, WatchRootFiles: row.WatchRootFiles,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 }

@@ -3,6 +3,7 @@ package application
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	appsdomain "aether/internal/modules/apps/domain"
 	realtimedomain "aether/internal/modules/realtime/domain"
+	sourcedomain "aether/internal/modules/sourcecontrol/domain"
 	"aether/internal/modules/templates/domain"
 	variablesDomain "aether/internal/modules/variables/domain"
 )
@@ -29,6 +31,16 @@ type Compose struct {
 	DataDir         string
 	ProjectVars     ProjectVarStore
 	Events          EventLog
+	Source          ComposeSource
+	Clone           ComposeClone
+}
+
+type ComposeSource interface {
+	GetByService(context.Context, uuid.UUID, uuid.UUID) (*sourcedomain.ServiceSource, error)
+}
+
+type ComposeClone interface {
+	Clone(context.Context, *sourcedomain.ServiceSource, string) (string, error)
 }
 
 func (c *Compose) GetServiceID(ctx context.Context, appID uuid.UUID) (uuid.UUID, error) {
@@ -342,8 +354,50 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	workDir := dir
 	file := filepath.Join(dir, "docker-compose.yml")
 	content := app.Compose
+	if c.Source != nil && c.Clone != nil && len(args) > 0 && args[0] == "up" {
+		serviceID, err := c.GetServiceID(ctx, app.ID)
+		if err != nil {
+			return err
+		}
+		source, err := c.Source.GetByService(ctx, serviceID, app.OrgID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if source != nil {
+			if c.Clone == nil {
+				return errors.New("git source deployment is not configured")
+			}
+			checkoutPath := filepath.Join(dir, "checkout")
+			if err := os.RemoveAll(checkoutPath); err != nil {
+				return err
+			}
+			checkout, err := c.Clone.Clone(ctx, source, checkoutPath)
+			if err != nil {
+				return err
+			}
+			root := source.RootDirectory
+			if root == "" || root == "." {
+				root = ""
+			}
+			workDir = filepath.Join(checkout, root)
+			composeFile := source.ComposeFile
+			if composeFile == "" {
+				composeFile = "docker-compose.yml"
+			}
+			file = filepath.Join(workDir, composeFile)
+			if !pathWithin(checkout, file) {
+				return errors.New("compose file escapes repository checkout")
+			}
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return fmt.Errorf("read compose file from checkout: %w", err)
+			}
+			content = string(data)
+		}
+	}
 	if len(args) > 0 && args[0] == "up" {
 		serviceID, err := c.GetServiceID(ctx, app.ID)
 		if err != nil {
@@ -360,19 +414,35 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 			content = injected
 		}
 	}
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		return err
+	}
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
 		return err
 	}
 	if c.ProjectVars != nil {
-		c.writeEnvFile(ctx, dir, app)
+		c.writeEnvFile(ctx, workDir, app)
 	}
-	c.prepareConfig(ctx, dir, app.Compose)
+	c.prepareConfig(ctx, workDir, content)
 	cmdArgs := append([]string{"compose", "-f", file}, args...)
 	out, err := exec.CommandContext(ctx, "podman", cmdArgs...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+func pathWithin(root, candidate string) bool {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	candidate, err = filepath.Abs(candidate)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(root, candidate)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
 }
 
 func injectComposeLabels(content string, labels map[string]string) (string, error) {

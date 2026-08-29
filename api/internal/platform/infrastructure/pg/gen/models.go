@@ -648,6 +648,7 @@ type ServiceSource struct {
 	UpdatedAt               time.Time     `json:"updated_at"`
 	EnvironmentTemplatePath string        `json:"environment_template_path"`
 	LegacyAppID             uuid.NullUUID `json:"legacy_app_id"`
+	ComposeFile             string        `json:"compose_file"`
 }
 
 type Snapshot struct {

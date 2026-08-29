@@ -267,6 +267,7 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 		WatchPaths              []string  `json:"watch_paths"`
 		IgnorePaths             []string  `json:"ignore_paths"`
 		WatchRootFiles          bool      `json:"watch_root_files"`
+		ComposeFile             string    `json:"compose_file"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -278,6 +279,7 @@ func (h *Handler) SaveServiceSource(c *gin.Context) {
 		RepositoryFullName: request.RepositoryFullName, DefaultBranch: request.DefaultBranch, Branch: request.Branch,
 		AutoDeploy: request.AutoDeploy, RootDirectory: request.RootDirectory, EnvironmentTemplatePath: request.EnvironmentTemplatePath, WatchPaths: request.WatchPaths,
 		IgnorePaths: request.IgnorePaths, WatchRootFiles: request.WatchRootFiles,
+		ComposeFile: request.ComposeFile,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {

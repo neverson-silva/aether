@@ -32,6 +32,9 @@ import (
 	settingsInfra "aether/internal/modules/settings/infra"
 	snapshotsApp "aether/internal/modules/snapshots/application"
 	snapshotsInfra "aether/internal/modules/snapshots/infra"
+	sourcecontrolApp "aether/internal/modules/sourcecontrol/application"
+	sourcecontrolDomain "aether/internal/modules/sourcecontrol/domain"
+	sourcecontrolInfra "aether/internal/modules/sourcecontrol/infra"
 	templatesApp "aether/internal/modules/templates/application"
 	templatesInfra "aether/internal/modules/templates/infra"
 	variablesApp "aether/internal/modules/variables/application"
@@ -41,11 +44,37 @@ import (
 	"aether/internal/platform/druntime/adapter"
 	"aether/internal/platform/druntime/queue"
 	platformscheduler "aether/internal/platform/druntime/scheduler"
+	platformgit "aether/internal/platform/git"
 	"aether/internal/platform/health"
 	"aether/internal/platform/observability"
 	"aether/internal/platform/outbox"
+	githubscm "aether/internal/platform/scm/github"
 	"aether/internal/platform/worker"
 )
+
+type composeGitClone struct {
+	connections *sourcecontrolApp.Connections
+}
+
+func (c composeGitClone) Clone(ctx context.Context, source *sourcecontrolDomain.ServiceSource, destination string) (string, error) {
+	connection, err := c.connections.Store.GetConnection(ctx, source.ConnectionID)
+	if err != nil {
+		return "", err
+	}
+	provider, err := c.connections.ProviderForInstallation(ctx, connection.InstallationID)
+	if err != nil {
+		return "", err
+	}
+	credential, err := provider.CreateCloneCredential(ctx, source.RepositoryID)
+	if err != nil {
+		return "", err
+	}
+	url := "https://github.com/" + source.RepositoryFullName + ".git"
+	if err := platformgit.CloneWithCredential(ctx, url, source.Branch, destination, credential.Username, credential.Secret); err != nil {
+		return "", err
+	}
+	return destination, nil
+}
 
 func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *pgxpool.Pool, status *health.Status, metrics *observability.Metrics) error {
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -135,6 +164,16 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
 	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
+	sourceStore := sourcecontrolInfra.NewStore(pool)
+	composeSvc.Source = sourceStore
+	if cfg.GitHubAppID != 0 || cfg.GitHubPrivateKey != "" || cfg.GitHubWebhookSecret != "" {
+		githubProvider, providerErr := githubscm.New(cfg.GitHubAppID, cfg.GitHubPrivateKey, cfg.GitHubWebhookSecret, cfg.GitHubAPIURL)
+		if providerErr != nil {
+			return providerErr
+		}
+		connections := &sourcecontrolApp.Connections{Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets, APIURL: cfg.GitHubAPIURL}
+		composeSvc.Clone = composeGitClone{connections: connections}
+	}
 	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {

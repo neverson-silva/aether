@@ -4,13 +4,33 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
+
+func CloneWithCredential(ctx context.Context, url, branch, dest, username, secret string) error {
+	if username == "" || secret == "" {
+		return Clone(ctx, url, branch, dest)
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(username + ":" + secret))
+	args := []string{"clone", "--depth", "1", "--config-env", "http.extraHeader=GIT_CLONE_AUTH"}
+	if branch != "" {
+		args = append(args, "--branch", branch)
+	}
+	args = append(args, url, dest)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = append(os.Environ(), "GIT_CLONE_AUTH=Authorization: Basic "+encoded)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
 
 func Clone(ctx context.Context, url, branch, dest string) error {
 	if _, err := exec.LookPath("git"); err != nil {
