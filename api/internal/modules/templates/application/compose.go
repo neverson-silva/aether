@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -424,6 +425,9 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 	if c.ProjectVars != nil {
 		c.writeEnvFile(ctx, workDir, app)
 	}
+	if err := qualifyComposeDockerfiles(workDir, content); err != nil {
+		return err
+	}
 	if err := configurePodmanRegistries(); err != nil {
 		return err
 	}
@@ -436,6 +440,55 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+func qualifyComposeDockerfiles(workDir, compose string) error {
+	var document struct {
+		Services map[string]struct {
+			Build any `yaml:"build"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte(compose), &document); err != nil {
+		return err
+	}
+	for _, service := range document.Services {
+		build, ok := service.Build.(map[string]any)
+		if !ok {
+			continue
+		}
+		contextPath := "."
+		if value, ok := build["context"].(string); ok && value != "" {
+			contextPath = value
+		}
+		dockerfile := "Dockerfile"
+		if value, ok := build["dockerfile"].(string); ok && value != "" {
+			dockerfile = value
+		}
+		path := filepath.Join(workDir, contextPath, dockerfile)
+		if err := qualifyDockerfile(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func qualifyDockerfile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read Dockerfile: %w", err)
+	}
+	pattern := regexp.MustCompile(`(?m)^(\s*FROM\s+)([A-Za-z0-9._-]+:[A-Za-z0-9._-]+)(\s+AS\s+|\s*$)`)
+	updated := pattern.ReplaceAllStringFunc(string(data), func(line string) string {
+		matches := pattern.FindStringSubmatch(line)
+		if strings.Contains(matches[2], "/") {
+			return line
+		}
+		return matches[1] + "docker.io/library/" + matches[2] + matches[3]
+	})
+	if updated == string(data) {
+		return nil
+	}
+	return os.WriteFile(path, []byte(updated), 0o644)
 }
 
 func configurePodmanRegistries() error {
