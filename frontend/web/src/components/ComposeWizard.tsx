@@ -28,7 +28,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
   const [branch, setBranch] = useState("main");
   const [composePath, setComposePath] = useState("docker-compose.yml");
   const { data: branches, isLoading: branchesLoading, isError: branchesError } = useSourceControlBranches(repositoryID, githubConnection?.installation_id);
-  const fileQuery = useSourceControlFile(repositoryID, githubConnection?.installation_id, composePath, branch);
+  const fileQuery = useSourceControlFile(repositoryID, githubConnection?.installation_id, branches?.length ? composePath : "", branch);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
     if (fileQuery.data?.content) setContent(fileQuery.data.content);

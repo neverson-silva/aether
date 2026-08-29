@@ -198,10 +198,10 @@ function ProjectDetail() {
   const allServices = [
     ...envApps.map((a) => {
       const state = states?.[a.id];
-      return { type: "app", id: a.id, name: a.name, port: a.port, source: a.source_type, image: a.source_type === "image" ? a.image : a.git_url, runtimeStatus: mapRuntimeStatus(state, a.latest_deployment?.status), status: state ?? "" };
+      return { type: "app", id: a.id, name: a.name, port: a.port, source: a.source_type, image: a.source_type === "image" ? a.image : a.git_url, runtimeStatus: mapRuntimeStatus(state, a.latest_deployment?.status), runtimeLabel: undefined, status: state ?? "" };
     }),
-    ...projDatabases.map((d) => ({ type: "db", id: d.id, name: d.name, port: d.port, engine: d.engine, version: d.version, status: d.status, runtimeStatus: mapRuntimeStatus(d.status) })),
-    ...projCompose.map((c) => ({ type: "compose", id: c.id, name: c.name, port: 0, source: "compose", image: "Docker Compose", status: c.status, runtimeStatus: mapRuntimeStatus(c.status) })),
+    ...projDatabases.map((d) => ({ type: "db", id: d.id, name: d.name, port: d.port, engine: d.engine, version: d.version, status: d.status, runtimeStatus: ["ready", "running", "healthy"].includes(d.status) ? "healthy" as const : d.status === "failed" ? "failed" as const : "unknown" as const, runtimeLabel: ["ready", "running", "healthy"].includes(d.status) ? undefined : "Pending deployment" })),
+    ...projCompose.map((c) => ({ type: "compose", id: c.id, name: c.name, port: 0, source: "compose", image: "Docker Compose", status: c.status, runtimeStatus: mapRuntimeStatus(c.status), runtimeLabel: undefined })),
   ].sort((a, b) => a.name.localeCompare(b.name));
   const serviceKeys = allServices.map((service) => `${service.type}:${service.id}`).join(",");
   const selectedServices = allServices.filter((service) => selectedServiceKeys.has(`${service.type}:${service.id}`));
@@ -429,7 +429,7 @@ function ProjectDetail() {
                     >
                       <span className="flex w-full min-w-0 items-center justify-between">
                         <TechIcon name={isCompose ? "docker" : isDb ? (svc as { engine?: string }).engine : (svc as { source?: string }).source === "git" ? "gitlab" : "docker"} size={16} className="shrink-0 text-primary" />
-                        <RuntimeStatus status={svc.runtimeStatus} live={isRuntimeLive(svc.runtimeStatus)} />
+                        <RuntimeStatus status={svc.runtimeStatus} label={svc.runtimeLabel} live={isRuntimeLive(svc.runtimeStatus)} />
                       </span>
                       <span className="w-full min-w-0">
                         <span className="block truncate font-body-md text-body-md text-on-surface">{svc.name}</span>

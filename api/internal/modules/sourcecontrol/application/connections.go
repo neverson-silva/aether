@@ -106,7 +106,10 @@ func (s *Connections) ListRepositories(ctx context.Context, installationID strin
 func (s *Connections) ListBranches(ctx context.Context, installationID, repositoryID string) ([]domain.Branch, error) {
 	provider, err := s.ProviderForInstallation(ctx, installationID)
 	if err != nil {
-		return nil, err
+		if s.Provider == nil {
+			return nil, err
+		}
+		return s.Provider.GetBranches(ctx, repositoryID)
 	}
 	return provider.GetBranches(ctx, repositoryID)
 }
@@ -122,7 +125,10 @@ func (s *Connections) GetServiceFile(ctx context.Context, connectionID uuid.UUID
 func (s *Connections) GetFile(ctx context.Context, installationID, repositoryID, path, ref string) (string, error) {
 	provider, err := s.ProviderForInstallation(ctx, installationID)
 	if err != nil {
-		return "", err
+		if s.Provider == nil {
+			return "", err
+		}
+		return s.Provider.GetFile(ctx, repositoryID, path, ref)
 	}
 	return provider.GetFile(ctx, repositoryID, path, ref)
 }
