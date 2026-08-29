@@ -424,6 +424,9 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 	if c.ProjectVars != nil {
 		c.writeEnvFile(ctx, workDir, app)
 	}
+	if err := configurePodmanRegistries(); err != nil {
+		return err
+	}
 	c.prepareConfig(ctx, workDir, content)
 	cmdArgs := append([]string{"compose", "-f", file}, args...)
 	cmd := exec.CommandContext(ctx, "podman", cmdArgs...)
@@ -433,6 +436,18 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+func configurePodmanRegistries() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(home, ".config", "containers")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "registries.conf"), []byte("unqualified-search-registries = [\"docker.io\"]\n"), 0o600)
 }
 
 func pathWithin(root, candidate string) bool {
