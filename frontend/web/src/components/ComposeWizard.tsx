@@ -39,7 +39,8 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
     }
     setCreating(true);
     try {
-      await createCompose.mutateAsync({ project_id: projectId, name, content });
+      await createCompose.mutateAsync({ project_id: projectId, name, compose: content });
+      add({ title: "Stack created", tone: "success" });
       onClose();
     } catch (err) {
       add({ title: err instanceof Error ? err.message : "Failed to create stack", tone: "error" });
@@ -55,7 +56,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
         <div className="p-xl space-y-lg max-h-[70vh] overflow-y-auto sidebar-scroll">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
             <div>
-              <Select label="Project" value={projectId} onValueChange={(value) => setProjectId(value ?? "")} disabled={!!fixedProjectId} options={[{ label: "Select...", value: "" }, ...(projects ?? []).map((p) => ({ label: p.name, value: p.id }))]} />
+              {fixedProjectId ? <Input label="Project" value={projects?.find((project) => project.id === fixedProjectId)?.name ?? "Loading project..."} disabled /> : <Select label="Project" value={projectId} onValueChange={(value) => setProjectId(value ?? "")} options={[{ label: "Select...", value: "" }, ...(projects ?? []).map((p) => ({ label: p.name, value: p.id }))]} />}
             </div>
             <div>
               <Input label="Stack name" placeholder="my-stack" value={name} onChange={(e) => setName(e.target.value)} />

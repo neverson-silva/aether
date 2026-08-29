@@ -115,7 +115,7 @@ export function CreateServiceModal({
   const submit = async (values: CreateForm) => {
     try {
       if (values.source_type === "compose") {
-        await createCompose.mutateAsync({ project_id: values.project_id, name: values.name, content: composeYAML });
+        await createCompose.mutateAsync({ project_id: values.project_id, name: values.name, compose: composeYAML });
         onClose();
         reset();
         return;
