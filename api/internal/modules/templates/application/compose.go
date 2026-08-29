@@ -391,6 +391,7 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 			if !pathWithin(checkout, file) {
 				return errors.New("compose file escapes repository checkout")
 			}
+			workDir = filepath.Dir(file)
 			data, err := os.ReadFile(file)
 			if err != nil {
 				return fmt.Errorf("read compose file from checkout: %w", err)
@@ -425,7 +426,9 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 	}
 	c.prepareConfig(ctx, workDir, content)
 	cmdArgs := append([]string{"compose", "-f", file}, args...)
-	out, err := exec.CommandContext(ctx, "podman", cmdArgs...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, "podman", cmdArgs...)
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}

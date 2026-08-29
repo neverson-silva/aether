@@ -201,11 +201,13 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				if err := w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusStarting, "", "", "", &started, nil); err != nil {
 					w.log(ctx, "mark service deployment as starting", err)
 				}
+				w.notifyServiceDeployment(ctx, deploymentID, serviceID, string(deploydomain.StatusStarting), "")
 			}
 			if err := w.ServiceDeploy(ctx, payload.Kind, serviceID, specID, orgID); err != nil {
 				if deploymentID, parseErr := uuid.Parse(payload.DeploymentID); parseErr == nil {
 					finished := time.Now()
 					_ = w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusFailed, err.Error(), "", "", nil, &finished)
+					w.notifyServiceDeployment(ctx, deploymentID, serviceID, string(deploydomain.StatusFailed), err.Error())
 				}
 				w.log(ctx, "process service deployment job", err)
 				stopProgress()
@@ -214,6 +216,7 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				if deploymentID, parseErr := uuid.Parse(payload.DeploymentID); parseErr == nil {
 					finished := time.Now()
 					_ = w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusReady, "", "", "", nil, &finished)
+					w.notifyServiceDeployment(ctx, deploymentID, serviceID, string(deploydomain.StatusReady), "")
 				}
 				stopProgress()
 				_ = consumer.Ack(ctx, job)
@@ -270,6 +273,13 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 			_ = consumer.Ack(ctx, job)
 		}
 	}
+}
+
+func (w *Worker) notifyServiceDeployment(ctx context.Context, deploymentID, serviceID uuid.UUID, status, detail string) {
+	if w.Notifier == nil {
+		return
+	}
+	w.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: uuid.Nil, ServiceID: serviceID, DepID: deploymentID, Status: status, Detail: detail})
 }
 
 func (w *Worker) queueIsPermanent(err error) bool {
