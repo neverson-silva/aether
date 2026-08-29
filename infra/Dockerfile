@@ -17,6 +17,8 @@ RUN apk add --no-cache ca-certificates tzdata podman podman-compose containers-c
     && rm -f /tmp/pack.tgz \
     && mkdir -p /run/podman \
     && ln -sf /run/podman/podman.sock /var/run/docker.sock
+
+RUN printf 'unqualified-search-registries = ["docker.io"]\n' > /etc/containers/registries.conf
 WORKDIR /app
 COPY --from=build /out/aether-api /usr/local/bin/aether-api
 COPY --from=build /out/aether-worker /usr/local/bin/aether-worker
