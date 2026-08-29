@@ -18,14 +18,14 @@ const THEME = {
   colors: { "editor.background": "#0d0d0d" },
 };
 
-export function ComposeTab({ appID }: { appID: string }) {
+export function ComposeTab({ appID, initialCompose }: { appID: string; initialCompose?: string }) {
   const { data, isLoading, error } = useAppCompose(appID);
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [wrap, setWrap] = useState(false);
   const editorRef = useRef<{ setValue?: (v: string) => void } | null>(null);
 
-  const compose = data?.compose ?? "";
+  const compose = initialCompose ?? data?.compose ?? "";
   const lines = compose ? compose.split("\n").length : 0;
 
   const copy = async () => {

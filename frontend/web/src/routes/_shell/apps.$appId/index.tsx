@@ -36,7 +36,12 @@ import {
   useServiceSource,
   useStats,
   useTimeline,
+  useComposeStack,
+  useComposeUp,
+  useComposeDown,
+  useDeleteCompose,
 } from "@/hooks";
+import type { App } from "@/api/types";
 import { EnvEditorModal } from "../../../components/EnvEditorModal";
 import { DeploymentsTab } from "./-components/DeploymentsTab";
 import {
@@ -162,11 +167,42 @@ function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const { data: detail } = useAppDetail(appId);
+  const search = Route.useSearch();
+  const isCompose = search.kind === "compose";
+  const { data: composeStack } = useComposeStack(isCompose ? appId : "");
+  const composeUp = useComposeUp();
+  const composeDown = useComposeDown();
+  const deleteCompose = useDeleteCompose();
   const { data: source, isLoading: sourceLoading } = useServiceSource(appId);
   const { data: sourceConnections } = useSourceControlConnections();
   const sourceConnection = sourceConnections?.find((connection) => connection.id === source?.connection_id);
   const { data: providerRepositories } = useSourceControlRepositories(sourceConnection?.installation_id);
-  const app = detail?.app;
+  const composeApp: App | undefined = composeStack
+    ? {
+        id: composeStack.id,
+        org_id: composeStack.org_id,
+        project_id: composeStack.project_id,
+        name: composeStack.name,
+        source_type: "image",
+        image: "Compose stack",
+        git_url: "",
+        git_branch: "",
+        dockerfile: "",
+        build_type: "compose",
+        preview_domain: "",
+        server_id: "",
+        cluster_id: "",
+        environment_id: "",
+        port: 0,
+        storage_mb: 0,
+        resources: { cpus: "0", mem_mb: 0 },
+        health_check: { enabled: false, path: "/", interval_ms: 0, timeout_ms: 0, retries: 0 },
+        volumes: [],
+        created_at: composeStack.created_at,
+        updated_at: composeStack.created_at,
+      }
+    : undefined;
+  const app = detail?.app ?? composeApp;
   const { data: detailSecrets } = useAppDetailSecrets(appId, envEditorOpen);
   const envEditorVars = useMemo(
     () =>
@@ -200,7 +236,6 @@ function AppDetail() {
 
   const { add } = useToast();
   const navigate = Route.useNavigate();
-  const search = Route.useSearch();
   const returnTo = search.returnTo || "/apps";
   const tab: Tab = search.tab ?? "overview";
   const setTab = (nextTab: Tab) => {
@@ -413,6 +448,13 @@ function AppDetail() {
   };
 
   const startDeployment = () => {
+    if (isCompose) {
+      composeUp.mutate(appId, {
+        onSuccess: () => add({ title: "Stack deployment started", tone: "success" }),
+        onError: (error) => add({ title: "Could not deploy stack", description: error.message, tone: "error" }),
+      });
+      return;
+    }
     deploy.mutateAsync(undefined).catch((e) => {
       add({
         title: "Operation failed",
@@ -471,7 +513,7 @@ function AppDetail() {
                 </button>
               }
               onConfirm={() =>
-                deleteApp.mutate(app.id, {
+                (isCompose ? deleteCompose : deleteApp).mutate(app.id, {
                   onSuccess: () => {
                     add({ title: "Application deleted", tone: "success" });
                     window.location.href = returnTo;
@@ -573,7 +615,7 @@ function AppDetail() {
                   loading={stop.isPending}
                   onClick={() =>
                     run(
-                      () => stop.mutateAsync(app.id),
+                      () => isCompose ? composeDown.mutateAsync(app.id) : stop.mutateAsync(app.id),
                       "Service stopped",
                       () => setActionState("stopped"),
                     )
@@ -588,7 +630,7 @@ function AppDetail() {
                   loading={start.isPending}
                   onClick={() =>
                     run(
-                      () => start.mutateAsync(app.id),
+                      () => isCompose ? composeUp.mutateAsync(app.id) : start.mutateAsync(app.id),
                       "Service started",
                       () => setActionState("running"),
                     )
@@ -978,7 +1020,7 @@ function AppDetail() {
         </>
       )}
 
-      {tab === "compose" && <ComposeTab appID={app.id} />}
+      {tab === "compose" && <ComposeTab appID={app.id} initialCompose={composeStack?.compose} />}
 
       {tab === "deployments" && (
         <DeploymentsTab
@@ -1430,6 +1472,7 @@ function AppDetail() {
 export const Route = createFileRoute("/_shell/apps/$appId/")({
   validateSearch: z.object({
     tab: z.enum(TABS).optional(),
+    kind: z.enum(["app", "compose"]).optional(),
     returnTo: z.string().optional(),
   }),
   component: AppDetail,

@@ -409,7 +409,7 @@ function ProjectDetail() {
               {allServices.map((svc) => {
                 const isDb = svc.type === "db";
                 const isCompose = svc.type === "compose";
-                const target = isCompose ? `/compose/${svc.id}` : isDb ? `/databases/${svc.id}` : `/apps/${svc.id}`;
+                const target = isCompose ? `/apps/${svc.id}?kind=compose` : isDb ? `/databases/${svc.id}` : `/apps/${svc.id}`;
                 const sub = isCompose ? "Docker Compose stack" : isDb ? `${(svc as { engine?: string }).engine} ${(svc as { version?: string }).version}` : (svc as { image?: string }).image ?? "";
                 const serviceKey = `${svc.type}:${svc.id}`;
                 return (

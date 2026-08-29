@@ -110,7 +110,7 @@ function Marketplace() {
       setTarget(null);
       const stacks = await apiGet<{ id: string; name: string }[]>("/api/v1/compose");
       const byName = stacks.find((s) => s.name === target!.name) ?? stacks[0];
-      if (byName) navigate({ to: "/compose/$id", params: { id: byName.id } });
+      if (byName) navigate({ to: "/apps/$appId", params: { appId: byName.id }, search: { kind: "compose" } });
     } catch (err) {
       add({ title: "Installation failed", description: err instanceof Error ? err.message : "Unable to install template.", tone: "error" });
     }
