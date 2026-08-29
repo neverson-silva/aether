@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -23,11 +24,13 @@ type validateReq struct {
 func (h *Handler) Create(c *gin.Context) {
 	var req composeReq
 	if err := c.ShouldBindJSON(&req); err != nil {
+		slog.Error("compose creation request binding failed", "error", err, "request_id", c.GetString("request_id"))
 		abort(c, domain.ErrValidation)
 		return
 	}
 	projectID, err := uuid.Parse(req.ProjectID)
 	if err != nil {
+		slog.Error("compose creation project id is invalid", "error", err, "project_id", req.ProjectID, "request_id", c.GetString("request_id"))
 		abort(c, domain.ErrValidation)
 		return
 	}
@@ -35,6 +38,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if req.EnvironmentID != "" {
 		id, err := uuid.Parse(req.EnvironmentID)
 		if err != nil {
+			slog.Error("compose creation environment id is invalid", "error", err, "environment_id", req.EnvironmentID, "request_id", c.GetString("request_id"))
 			abort(c, domain.ErrValidation)
 			return
 		}
@@ -42,6 +46,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	app, err := h.compose.Create(c.Request.Context(), orgID(c), projectID, req.Name, req.Compose, environmentID)
 	if err != nil {
+		slog.Error("compose creation failed", "error", err, "project_id", projectID, "environment_id", req.EnvironmentID, "name", req.Name, "compose_bytes", len(req.Compose), "request_id", c.GetString("request_id"))
 		abort(c, err)
 		return
 	}
