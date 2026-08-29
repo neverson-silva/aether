@@ -166,14 +166,16 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
 	sourceStore := sourcecontrolInfra.NewStore(pool)
 	composeSvc.Source = sourceStore
+	var githubProvider *githubscm.Provider
 	if cfg.GitHubAppID != 0 || cfg.GitHubPrivateKey != "" || cfg.GitHubWebhookSecret != "" {
-		githubProvider, providerErr := githubscm.New(cfg.GitHubAppID, cfg.GitHubPrivateKey, cfg.GitHubWebhookSecret, cfg.GitHubAPIURL)
+		var providerErr error
+		githubProvider, providerErr = githubscm.New(cfg.GitHubAppID, cfg.GitHubPrivateKey, cfg.GitHubWebhookSecret, cfg.GitHubAPIURL)
 		if providerErr != nil {
 			return providerErr
 		}
-		connections := &sourcecontrolApp.Connections{Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets, APIURL: cfg.GitHubAPIURL}
-		composeSvc.Clone = composeGitClone{connections: connections}
 	}
+	connections := &sourcecontrolApp.Connections{Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets, APIURL: cfg.GitHubAPIURL}
+	composeSvc.Clone = composeGitClone{connections: connections}
 	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
