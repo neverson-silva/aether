@@ -517,7 +517,9 @@ func (h *Handler) Action(c *gin.Context) {
 			case "deploy", "start":
 				handled = true
 				if action == "deploy" {
-					err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
+					var deploymentID uuid.UUID
+					deploymentID, err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
+					result = gin.H{"deployment_id": deploymentID}
 				} else {
 					err = h.compose.Up(ctx, specID, orgID(c))
 				}
@@ -540,7 +542,9 @@ func (h *Handler) Action(c *gin.Context) {
 			switch action {
 			case "deploy":
 				handled = true
-				err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
+				var deploymentID uuid.UUID
+				deploymentID, err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
+				result = gin.H{"deployment_id": deploymentID}
 			case "start":
 				handled = true
 				result, err = h.database.Start(ctx, specID, orgID(c))
@@ -575,23 +579,36 @@ func (h *Handler) Action(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"service_id": id, "action": action, "result": result})
 }
 
-func (h *Handler) enqueueServiceDeployment(ctx context.Context, serviceID, specID, organizationID uuid.UUID, kind string) error {
+func (h *Handler) enqueueServiceDeployment(ctx context.Context, serviceID, specID, organizationID uuid.UUID, kind string) (uuid.UUID, error) {
 	if h.deploymentQueue == nil {
-		return errors.New("deployment queue is not configured")
+		return uuid.Nil, errors.New("deployment queue is not configured")
+	}
+	var deploymentID uuid.UUID
+	err := h.db.QueryRow(ctx, `
+INSERT INTO deployments (app_id, service_id, number, status, trigger, triggered_by, compose_yaml)
+SELECT CASE WHEN $3::text = 'compose' THEN NULL ELSE $1::uuid END, $2::uuid,
+       CASE WHEN $3::text = 'compose'
+            THEN COALESCE((SELECT MAX(number) + 1 FROM deployments WHERE service_id = $2::uuid), 1)
+            ELSE COALESCE((SELECT MAX(number) + 1 FROM deployments WHERE app_id = $1::uuid), 1)
+       END, 'queued', 'api', 'user',
+       CASE WHEN $3::text = 'compose' THEN COALESCE((SELECT compose FROM compose_apps WHERE id = $1::uuid), '') ELSE '' END
+RETURNING id`, specID, serviceID, kind).Scan(&deploymentID)
+	if err != nil {
+		return uuid.Nil, err
 	}
 	payload, err := json.Marshal(map[string]string{
-		"kind": kind, "service_id": serviceID.String(), "spec_id": specID.String(), "org_id": organizationID.String(),
+		"kind": kind, "service_id": serviceID.String(), "spec_id": specID.String(), "org_id": organizationID.String(), "deployment_id": deploymentID.String(),
 	})
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	job := queue.Job{ID: uuid.NewString(), Type: "service-deploy", Payload: payload, OrgID: organizationID.String(), AppID: specID.String()}
 	if err := h.deploymentQueue.Enqueue(ctx, "deployments", job); err != nil {
 		slog.Error("service deployment job enqueue failed", "error", err, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
-		return err
+		return uuid.Nil, err
 	}
 	slog.Info("service deployment job enqueued", "job_id", job.ID, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
-	return nil
+	return deploymentID, nil
 }
 
 func (h *Handler) Timeline(c *gin.Context) {

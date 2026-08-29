@@ -135,6 +135,13 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
 	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
+	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
+		var serviceID uuid.UUID
+		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
+			return uuid.Nil, err
+		}
+		return serviceID, nil
+	}
 	deployWorker.ServiceDeploy = func(ctx context.Context, kind string, serviceID, specID, orgID uuid.UUID) error {
 		switch kind {
 		case "compose":

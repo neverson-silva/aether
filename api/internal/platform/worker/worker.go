@@ -174,10 +174,11 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				continue
 			}
 			var payload struct {
-				Kind      string `json:"kind"`
-				ServiceID string `json:"service_id"`
-				SpecID    string `json:"spec_id"`
-				OrgID     string `json:"org_id"`
+				Kind         string `json:"kind"`
+				ServiceID    string `json:"service_id"`
+				SpecID       string `json:"spec_id"`
+				OrgID        string `json:"org_id"`
+				DeploymentID string `json:"deployment_id"`
 			}
 			if err := json.Unmarshal(job.Payload, &payload); err != nil {
 				w.log(ctx, "decode service deployment job", err)
@@ -194,11 +195,26 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				_ = consumer.Ack(ctx, job)
 				continue
 			}
+			deploymentID, deploymentErr := uuid.Parse(payload.DeploymentID)
+			if deploymentErr == nil {
+				started := time.Now()
+				if err := w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusStarting, "", "", "", &started, nil); err != nil {
+					w.log(ctx, "mark service deployment as starting", err)
+				}
+			}
 			if err := w.ServiceDeploy(ctx, payload.Kind, serviceID, specID, orgID); err != nil {
+				if deploymentID, parseErr := uuid.Parse(payload.DeploymentID); parseErr == nil {
+					finished := time.Now()
+					_ = w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusFailed, err.Error(), "", "", nil, &finished)
+				}
 				w.log(ctx, "process service deployment job", err)
 				stopProgress()
-				_ = consumer.Nack(ctx, job)
+				_ = consumer.Ack(ctx, job)
 			} else {
+				if deploymentID, parseErr := uuid.Parse(payload.DeploymentID); parseErr == nil {
+					finished := time.Now()
+					_ = w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusReady, "", "", "", nil, &finished)
+				}
 				stopProgress()
 				_ = consumer.Ack(ctx, job)
 			}
