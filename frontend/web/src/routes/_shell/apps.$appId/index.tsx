@@ -1485,11 +1485,10 @@ export const Route = createFileRoute("/_shell/apps/$appId/")({
   validateSearch: z.object({
     tab: z.enum(TABS).optional(),
     kind: z.preprocess((value) => {
-      const normalized = Array.isArray(value) ? value[0] : value;
-      if (normalized === "compose") return "compose";
-      if (normalized === "app" || normalized === "web" || normalized === "api") return "app";
-      return undefined;
-    }, z.enum(["app", "compose"]).optional()),
+      const candidate = Array.isArray(value) ? value[0] : value;
+      if (typeof candidate !== "string") return undefined;
+      return candidate.trim().toLowerCase();
+    }, z.string().optional().transform((value) => value === "compose" ? "compose" : "app")),
     returnTo: z.string().optional(),
   }),
   component: AppDetail,

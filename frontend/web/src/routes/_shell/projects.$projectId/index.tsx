@@ -409,7 +409,11 @@ function ProjectDetail() {
               {allServices.map((svc) => {
                 const isDb = svc.type === "db";
                 const isCompose = svc.type === "compose";
-                const target = isCompose ? `/apps/${svc.id}?kind=compose` : isDb ? `/databases/${svc.id}` : `/apps/${svc.id}`;
+                const target = isCompose ? `/apps/${svc.id}` : isDb ? `/databases/${svc.id}` : `/apps/${svc.id}`;
+                const targetSearch = new URLSearchParams({
+                  ...(isCompose ? { kind: "compose" } : {}),
+                  returnTo: window.location.pathname + window.location.search,
+                }).toString();
                 const sub = isCompose ? "Docker Compose stack" : isDb ? `${(svc as { engine?: string }).engine} ${(svc as { version?: string }).version}` : (svc as { image?: string }).image ?? "";
                 const serviceKey = `${svc.type}:${svc.id}`;
                 return (
@@ -423,7 +427,7 @@ function ProjectDetail() {
                       className="absolute bottom-3 left-3 z-10 size-4 accent-primary"
                     />
                     <a
-                      href={`${target}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+                      href={`${target}?${targetSearch}`}
                       className="group flex min-w-0 flex-col items-start gap-sm rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-md pb-10 pt-5 transition-colors hover:border-primary/50 hover:bg-surface-container-high/40"
                       title={`Open ${svc.name}`}
                     >
