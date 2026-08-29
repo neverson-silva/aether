@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, Code, NotePencil } from "@phosphor-icons/react";
-import { useCreateCompose, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlFile, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { useCreateCompose, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
 import { ComposeEditor } from "./ComposeEditor";
 import { Button, Input, Modal, Select, SelectSearch, Skeleton, useToast } from "@aether/design-system";
 
@@ -28,11 +28,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
   const [branch, setBranch] = useState("main");
   const [composePath, setComposePath] = useState("docker-compose.yml");
   const { data: branches, isLoading: branchesLoading, isError: branchesError } = useSourceControlBranches(repositoryID, githubConnection?.installation_id);
-  const fileQuery = useSourceControlFile(repositoryID, githubConnection?.installation_id, branches?.length ? composePath : "", branch);
   const [creating, setCreating] = useState(false);
-  useEffect(() => {
-    if (fileQuery.data?.content) setContent(fileQuery.data.content);
-  }, [fileQuery.data?.content]);
 
   const filteredRepositories = (repositories ?? []).filter((repository) => !repoQuery || repository.full_name.toLowerCase().includes(repoQuery.toLowerCase()));
 
@@ -106,12 +102,10 @@ export function ComposeWizard({ open, onClose, fixedProjectId }: { open: boolean
                 <>
                   <SelectSearch label="Repository" value={repositoryID ?? null} onValueChange={(value) => { const repository = (repositories ?? []).find((item) => item.id === value); setRepositoryID(value ?? undefined); setBranch(repository?.default_branch || "main"); setRepoQuery(repository?.full_name || ""); }} options={filteredRepositories.map((repository) => ({ label: repository.full_name, value: repository.id }))} placeholder="Search repositories" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-                    {branchesLoading ? <div><span className="mb-xs block text-label-md text-on-surface">Branch</span><Skeleton variant="table" aria-label="Loading branches" /></div> : branches?.length ? <Select label="Branch" value={branch} onValueChange={(value) => setBranch(value ?? branch)} options={branches.map((item) => ({ label: item.name, value: item.name }))} /> : <div><span className="mb-xs block text-label-md text-on-surface">Branch</span><p className="rounded-md border border-error/40 px-md py-sm text-body-sm text-error">No branches were found for this repository.</p></div>}
+                    {branchesLoading ? <div><span className="mb-xs block text-label-md text-on-surface">Branch</span><Skeleton variant="table" aria-label="Loading branches" /></div> : branches?.length ? <SelectSearch label="Branch" value={branch} onValueChange={(value) => setBranch(value ?? branch)} options={branches.map((item) => ({ label: item.name, value: item.name }))} placeholder="Select a branch" /> : <div><span className="mb-xs block text-label-md text-on-surface">Branch</span><p className="rounded-md border border-error/40 px-md py-sm text-body-sm text-error">No branches were found for this repository.</p></div>}
                   <Input label="Compose file" value={composePath} onChange={(event) => setComposePath(event.target.value)} placeholder="docker-compose.yml" />
                   </div>
                   {branchesError ? <p className="font-body-sm text-body-sm text-error">Could not load repository branches. Check the connected provider permissions.</p> : null}
-                  {fileQuery.isFetching && <div className="space-y-sm" aria-label="Loading Compose file"><Skeleton variant="text" /><Skeleton variant="text" className="w-2/3" /></div>}
-                  {fileQuery.isError && <p className="font-body-sm text-body-sm text-error">Could not load that file from the repository.</p>}
                 </>
               )}
             </div>
