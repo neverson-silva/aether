@@ -70,6 +70,7 @@ fi
 # Configuration — everything runs through Docker Engine.
 STATE_DIR="${AETHER_STATE:-$HOME/.aether}"
 NET_NAME="${AETHER_NET:-aether-net}"
+INGRESS_NET_NAME="${AETHER_INGRESS_NETWORK:-aether-ingress}"
 
 PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
@@ -412,20 +413,23 @@ EOF
 }
 
 ensure_network() {
-  if $RUNTIME network inspect "$NET_NAME" >/dev/null 2>&1; then
-    info "Application network already prepared."
-    return 0
+  local network
+  local missing=0
+  for network in "$NET_NAME" "$INGRESS_NET_NAME"; do
+    if $RUNTIME network inspect "$network" >/dev/null 2>&1; then
+      continue
+    fi
+    missing=1
+    info "Preparing the application network '$network'..."
+    if ! $RUNTIME network create "$network" >/dev/null 2>&1 && ! $RUNTIME network inspect "$network" >/dev/null 2>&1; then
+      fail "Could not prepare the application network '$network'."
+    fi
+  done
+  if [[ "$missing" -eq 0 ]]; then
+    info "Application networks already prepared."
+  else
+    info "Application networks prepared."
   fi
-  info "Preparing the application network..."
-  if $RUNTIME network create "$NET_NAME" >/dev/null 2>&1; then
-    info "Application network prepared."
-    return 0
-  fi
-  if $RUNTIME network inspect "$NET_NAME" >/dev/null 2>&1; then
-    info "Application network already prepared."
-    return 0
-  fi
-  fail "Could not prepare the application network '$NET_NAME'."
 }
 
 ensure_ingress_image() {
@@ -796,6 +800,17 @@ start_api() {
     fi
   fi
 
+  if [[ "$INGRESS_NET_NAME" != "$NET_NAME" ]]; then
+    if ! $RUNTIME network connect "$INGRESS_NET_NAME" "$API_CONTAINER" >/dev/null 2>&1; then
+      if ! $RUNTIME network inspect "$INGRESS_NET_NAME" >/dev/null 2>&1; then
+        fail "The ingress network '$INGRESS_NET_NAME' is unavailable."
+      fi
+      if ! $RUNTIME inspect "$API_CONTAINER" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null | grep -q "\"$INGRESS_NET_NAME\""; then
+        fail "Could not connect the API container to the ingress network '$INGRESS_NET_NAME'."
+      fi
+    fi
+  fi
+
   local tries=0
   until curl -fsS "http://127.0.0.1:$API_PORT/api/v1/ready" >/dev/null 2>&1; do
     tries=$((tries + 1))
@@ -857,6 +872,13 @@ start_auxiliary() {
   fi
   info "Starting $container..."
   $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start $container."
+  if [[ "$binary" == "aether-worker" && "$INGRESS_NET_NAME" != "$NET_NAME" ]]; then
+    if ! $RUNTIME network connect "$INGRESS_NET_NAME" "$container" >/dev/null 2>&1; then
+      if ! $RUNTIME inspect "$container" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null | grep -q "\"$INGRESS_NET_NAME\""; then
+        fail "Could not connect the deployment worker to the ingress network '$INGRESS_NET_NAME'."
+      fi
+    fi
+  fi
 }
 
 start_workers() {
