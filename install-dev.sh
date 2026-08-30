@@ -73,7 +73,7 @@ NET_NAME="${AETHER_NET:-aether-net}"
 
 PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
-PG_PORT="${AETHER_PG_PORT:-${DATABASE_PORT:-15432}}"
+PG_PORT="${AETHER_PG_PORT:-15432}"
 
 NATS_CONTAINER="aether-nats"
 NATS_IMAGE="${AETHER_NATS_IMAGE:-docker.io/library/nats:2.14.2-alpine}"
@@ -450,6 +450,10 @@ ensure_postgres() {
   if [[ -n "$exists" ]]; then
     local published_port
     published_port="$($runtime port "$PG_CONTAINER" 5432/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
+    if [[ -n "$published_port" && "$published_port" != "$PG_PORT" ]]; then
+      info "PostgreSQL is exposed on 127.0.0.1:$published_port — moving it to 127.0.0.1:$PG_PORT."
+      published_port=""
+    fi
     if [[ -n "$published_port" ]]; then
       PG_PORT="$published_port"
     else
