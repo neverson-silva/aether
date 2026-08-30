@@ -7,6 +7,7 @@ package pg
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -14,18 +15,18 @@ import (
 const createApp = `-- name: CreateApp :one
 INSERT INTO apps (
     org_id, project_id, environment_id, name, source_type, image, git_url, git_branch, upload_id,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, build_type, preview_domain, image_retention, storage_mb, install_command, build_command,
     start_command, root_folder, dist_folder, watch_paths
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-    $10, $11, $12, $13, $14, $15, $16, $17,
-    $18, $19, $20, $21, $22, $23,
-    $24, $25, $26, $27, $28
+    $10, $11, $12, $13, $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23, $24,
+    $25, $26, $27, $28, $29
 )
 RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -42,6 +43,7 @@ type CreateAppParams struct {
 	GitBranch      string        `json:"git_branch"`
 	UploadID       string        `json:"upload_id"`
 	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
 	Port           int32         `json:"port"`
 	Cpus           string        `json:"cpus"`
 	MemMb          int32         `json:"mem_mb"`
@@ -62,7 +64,44 @@ type CreateAppParams struct {
 	WatchPaths     string        `json:"watch_paths"`
 }
 
-func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, error) {
+type CreateAppRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (CreateAppRow, error) {
 	row := q.db.QueryRowContext(ctx, createApp,
 		arg.OrgID,
 		arg.ProjectID,
@@ -74,6 +113,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		arg.GitBranch,
 		arg.UploadID,
 		arg.Dockerfile,
+		arg.ComposeFile,
 		arg.Port,
 		arg.Cpus,
 		arg.MemMb,
@@ -93,7 +133,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		arg.DistFolder,
 		arg.WatchPaths,
 	)
-	var i App
+	var i CreateAppRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -105,6 +145,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		&i.GitUrl,
 		&i.GitBranch,
 		&i.Dockerfile,
+		&i.ComposeFile,
 		&i.Port,
 		&i.Cpus,
 		&i.MemMb,
@@ -149,7 +190,7 @@ func (q *Queries) DeleteApp(ctx context.Context, arg DeleteAppParams) error {
 
 const getApp = `-- name: GetApp :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -162,9 +203,46 @@ type GetAppParams struct {
 	OrgID uuid.UUID `json:"org_id"`
 }
 
-func (q *Queries) GetApp(ctx context.Context, arg GetAppParams) (App, error) {
+type GetAppRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) GetApp(ctx context.Context, arg GetAppParams) (GetAppRow, error) {
 	row := q.db.QueryRowContext(ctx, getApp, arg.ID, arg.OrgID)
-	var i App
+	var i GetAppRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -176,6 +254,7 @@ func (q *Queries) GetApp(ctx context.Context, arg GetAppParams) (App, error) {
 		&i.GitUrl,
 		&i.GitBranch,
 		&i.Dockerfile,
+		&i.ComposeFile,
 		&i.Port,
 		&i.Cpus,
 		&i.MemMb,
@@ -205,7 +284,7 @@ func (q *Queries) GetApp(ctx context.Context, arg GetAppParams) (App, error) {
 
 const getAppByID = `-- name: GetAppByID :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -213,9 +292,46 @@ FROM apps
 WHERE id = $1
 `
 
-func (q *Queries) GetAppByID(ctx context.Context, id uuid.UUID) (App, error) {
+type GetAppByIDRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) GetAppByID(ctx context.Context, id uuid.UUID) (GetAppByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getAppByID, id)
-	var i App
+	var i GetAppByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -227,6 +343,7 @@ func (q *Queries) GetAppByID(ctx context.Context, id uuid.UUID) (App, error) {
 		&i.GitUrl,
 		&i.GitBranch,
 		&i.Dockerfile,
+		&i.ComposeFile,
 		&i.Port,
 		&i.Cpus,
 		&i.MemMb,
@@ -256,7 +373,7 @@ func (q *Queries) GetAppByID(ctx context.Context, id uuid.UUID) (App, error) {
 
 const getAppByName = `-- name: GetAppByName :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -269,9 +386,46 @@ type GetAppByNameParams struct {
 	Lower string    `json:"lower"`
 }
 
-func (q *Queries) GetAppByName(ctx context.Context, arg GetAppByNameParams) (App, error) {
+type GetAppByNameRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) GetAppByName(ctx context.Context, arg GetAppByNameParams) (GetAppByNameRow, error) {
 	row := q.db.QueryRowContext(ctx, getAppByName, arg.OrgID, arg.Lower)
-	var i App
+	var i GetAppByNameRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -283,6 +437,7 @@ func (q *Queries) GetAppByName(ctx context.Context, arg GetAppByNameParams) (App
 		&i.GitUrl,
 		&i.GitBranch,
 		&i.Dockerfile,
+		&i.ComposeFile,
 		&i.Port,
 		&i.Cpus,
 		&i.MemMb,
@@ -312,7 +467,7 @@ func (q *Queries) GetAppByName(ctx context.Context, arg GetAppByNameParams) (App
 
 const listAppsByOrg = `-- name: ListAppsByOrg :many
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -321,15 +476,52 @@ WHERE org_id = $1
 ORDER BY name
 `
 
-func (q *Queries) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]App, error) {
+type ListAppsByOrgRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListAppsByOrgRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAppsByOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []App{}
+	items := []ListAppsByOrgRow{}
 	for rows.Next() {
-		var i App
+		var i ListAppsByOrgRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -341,6 +533,7 @@ func (q *Queries) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]App, er
 			&i.GitUrl,
 			&i.GitBranch,
 			&i.Dockerfile,
+			&i.ComposeFile,
 			&i.Port,
 			&i.Cpus,
 			&i.MemMb,
@@ -380,7 +573,7 @@ func (q *Queries) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]App, er
 
 const listAppsByProject = `-- name: ListAppsByProject :many
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -394,15 +587,52 @@ type ListAppsByProjectParams struct {
 	ProjectID uuid.UUID `json:"project_id"`
 }
 
-func (q *Queries) ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]App, error) {
+type ListAppsByProjectRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]ListAppsByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAppsByProject, arg.OrgID, arg.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []App{}
+	items := []ListAppsByProjectRow{}
 	for rows.Next() {
-		var i App
+		var i ListAppsByProjectRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -414,6 +644,7 @@ func (q *Queries) ListAppsByProject(ctx context.Context, arg ListAppsByProjectPa
 			&i.GitUrl,
 			&i.GitBranch,
 			&i.Dockerfile,
+			&i.ComposeFile,
 			&i.Port,
 			&i.Cpus,
 			&i.MemMb,
@@ -470,16 +701,16 @@ func (q *Queries) SetWebhookSecret(ctx context.Context, arg SetWebhookSecretPara
 
 const updateApp = `-- name: UpdateApp :one
 UPDATE apps
-SET name = $3, image = $4, git_url = $5, git_branch = $6, upload_id = $7, dockerfile = $8, port = $9,
-    cpus = $10, mem_mb = $11, hc_enabled = $12, hc_path = $13, hc_interval_ms = $14,
-    hc_timeout_ms = $15, hc_retries = $16, build_type = $17, environment_id = $18,
-    preview_domain = $19, image_retention = $20, storage_mb = $21, install_command = $22,
-    build_command = $23, start_command = $24, root_folder = $25, dist_folder = $26,
-    watch_paths = $27,
+SET name = $3, image = $4, git_url = $5, git_branch = $6, upload_id = $7, dockerfile = $8, compose_file = $9, port = $10,
+    cpus = $11, mem_mb = $12, hc_enabled = $13, hc_path = $14, hc_interval_ms = $15,
+    hc_timeout_ms = $16, hc_retries = $17, build_type = $18, environment_id = $19,
+    preview_domain = $20, image_retention = $21, storage_mb = $22, install_command = $23,
+    build_command = $24, start_command = $25, root_folder = $26, dist_folder = $27,
+    watch_paths = $28,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -494,6 +725,7 @@ type UpdateAppParams struct {
 	GitBranch      string        `json:"git_branch"`
 	UploadID       string        `json:"upload_id"`
 	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
 	Port           int32         `json:"port"`
 	Cpus           string        `json:"cpus"`
 	MemMb          int32         `json:"mem_mb"`
@@ -515,7 +747,44 @@ type UpdateAppParams struct {
 	WatchPaths     string        `json:"watch_paths"`
 }
 
-func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, error) {
+type UpdateAppRow struct {
+	ID             uuid.UUID     `json:"id"`
+	OrgID          uuid.UUID     `json:"org_id"`
+	ProjectID      uuid.UUID     `json:"project_id"`
+	EnvironmentID  uuid.NullUUID `json:"environment_id"`
+	Name           string        `json:"name"`
+	SourceType     string        `json:"source_type"`
+	Image          string        `json:"image"`
+	GitUrl         string        `json:"git_url"`
+	GitBranch      string        `json:"git_branch"`
+	Dockerfile     string        `json:"dockerfile"`
+	ComposeFile    string        `json:"compose_file"`
+	Port           int32         `json:"port"`
+	Cpus           string        `json:"cpus"`
+	MemMb          int32         `json:"mem_mb"`
+	HcEnabled      bool          `json:"hc_enabled"`
+	HcPath         string        `json:"hc_path"`
+	HcIntervalMs   int32         `json:"hc_interval_ms"`
+	HcTimeoutMs    int32         `json:"hc_timeout_ms"`
+	HcRetries      int32         `json:"hc_retries"`
+	WebhookSecret  string        `json:"webhook_secret"`
+	BuildType      string        `json:"build_type"`
+	PreviewDomain  string        `json:"preview_domain"`
+	ImageRetention int32         `json:"image_retention"`
+	StorageMb      int32         `json:"storage_mb"`
+	InstallCommand string        `json:"install_command"`
+	BuildCommand   string        `json:"build_command"`
+	StartCommand   string        `json:"start_command"`
+	RootFolder     string        `json:"root_folder"`
+	DistFolder     string        `json:"dist_folder"`
+	WatchPaths     string        `json:"watch_paths"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	UploadID       string        `json:"upload_id"`
+	ServiceID      uuid.UUID     `json:"service_id"`
+}
+
+func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (UpdateAppRow, error) {
 	row := q.db.QueryRowContext(ctx, updateApp,
 		arg.ID,
 		arg.OrgID,
@@ -525,6 +794,7 @@ func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, erro
 		arg.GitBranch,
 		arg.UploadID,
 		arg.Dockerfile,
+		arg.ComposeFile,
 		arg.Port,
 		arg.Cpus,
 		arg.MemMb,
@@ -545,7 +815,7 @@ func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, erro
 		arg.DistFolder,
 		arg.WatchPaths,
 	)
-	var i App
+	var i UpdateAppRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -557,6 +827,7 @@ func (q *Queries) UpdateApp(ctx context.Context, arg UpdateAppParams) (App, erro
 		&i.GitUrl,
 		&i.GitBranch,
 		&i.Dockerfile,
+		&i.ComposeFile,
 		&i.Port,
 		&i.Cpus,
 		&i.MemMb,

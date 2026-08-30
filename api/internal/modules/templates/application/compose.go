@@ -237,6 +237,40 @@ func (c *Compose) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	return nil
 }
 
+func (c *Compose) UpApp(ctx context.Context, id, orgID uuid.UUID) (string, error) {
+	if c.Apps == nil {
+		return "", errors.New("application store unavailable")
+	}
+	app, err := c.Apps.GetApp(ctx, id, orgID)
+	if err != nil {
+		return "", err
+	}
+	composeApp := &domain.ComposeApp{
+		ID: id, OrgID: app.OrgID, ProjectID: app.ProjectID, EnvironmentID: app.EnvironmentID,
+		ServiceID: id, Name: app.Name, Compose: "", Port: app.Port,
+	}
+	if _, err := c.runComposeForService(ctx, composeApp, true, "app", "up", "-d"); err != nil {
+		return "", err
+	}
+	serviceID, err := c.GetServiceID(ctx, id)
+	if err != nil {
+		serviceID = id
+	}
+	if c.Runtime == nil {
+		return "", errors.New("compose runtime unavailable")
+	}
+	containers, err := c.Runtime.ListContainers(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, container := range containers {
+		if container.Labels["aether.service-id"] == serviceID.String() || container.Labels["aether.spec-id"] == id.String() {
+			return container.ID, nil
+		}
+	}
+	return "", errors.New("compose container not found")
+}
+
 func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
 	app, err := c.Get(ctx, id, orgID)
 	if err != nil {
@@ -543,6 +577,10 @@ func (c *Compose) Logs(ctx context.Context, id, orgID uuid.UUID, follow bool) (s
 }
 
 func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, refresh bool, args ...string) (string, error) {
+	return c.runComposeForService(ctx, app, refresh, "compose", args...)
+}
+
+func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeApp, refresh bool, serviceType string, args ...string) (string, error) {
 	if c.DataDir == "" {
 		return "", fmt.Errorf("data dir not configured")
 	}
@@ -614,7 +652,7 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, refres
 		}
 		injected, err := injectComposeLabels(content, map[string]string{
 			"aether.owner":        "user",
-			"aether.service-type": "compose",
+			"aether.service-type": serviceType,
 			"aether.service-id":   serviceID.String(),
 			"aether.spec-id":      app.ID.String(),
 			"aether.project-id":   app.ProjectID.String(),

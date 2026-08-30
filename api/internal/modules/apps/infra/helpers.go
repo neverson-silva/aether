@@ -3,6 +3,7 @@ package infra
 import (
 	"database/sql"
 	"errors"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,28 +70,41 @@ func envFromRow(row gen.Environment) *domain.Environment {
 	}
 }
 
-func appFromRow(row gen.App) *domain.App {
+func appFromRow(row any) *domain.App {
+	value := reflect.ValueOf(row)
+	if value.Kind() == reflect.Pointer {
+		value = value.Elem()
+	}
+	field := func(name string) reflect.Value {
+		return value.FieldByName(name)
+	}
+	uuidValue := func(name string) uuid.UUID { return field(name).Interface().(uuid.UUID) }
+	stringValue := func(name string) string { return field(name).String() }
+	int32Value := func(name string) int32 { return int32(field(name).Int()) }
+	timeValue := func(name string) time.Time { return field(name).Interface().(time.Time) }
+	nullEnvironment := field("EnvironmentID").Interface().(uuid.NullUUID)
 	return &domain.App{
-		ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID,
-		EnvironmentID: uuidPtr(row.EnvironmentID), Name: row.Name, SourceType: row.SourceType,
-		Image: row.Image, GitURL: row.GitUrl, GitBranch: row.GitBranch, UploadID: row.UploadID, Dockerfile: row.Dockerfile,
-		Port: int(row.Port), CPUs: row.Cpus, MemMB: int(row.MemMb),
+		ID: uuidValue("ID"), OrgID: uuidValue("OrgID"), ProjectID: uuidValue("ProjectID"),
+		EnvironmentID: uuidPtr(nullEnvironment), Name: stringValue("Name"), SourceType: stringValue("SourceType"),
+		Image: stringValue("Image"), GitURL: stringValue("GitUrl"), GitBranch: stringValue("GitBranch"), UploadID: stringValue("UploadID"), Dockerfile: stringValue("Dockerfile"), ComposeFile: stringValue("ComposeFile"),
+		Port: int(int32Value("Port")), CPUs: stringValue("Cpus"), MemMB: int(int32Value("MemMb")),
 		HealthCheck: domain.HealthCheck{
-			Enabled: row.HcEnabled, Path: row.HcPath, IntervalMS: int(row.HcIntervalMs),
-			TimeoutMS: int(row.HcTimeoutMs), Retries: int(row.HcRetries),
+			Enabled: field("HcEnabled").Bool(), Path: stringValue("HcPath"), IntervalMS: int(int32Value("HcIntervalMs")),
+			TimeoutMS: int(int32Value("HcTimeoutMs")), Retries: int(int32Value("HcRetries")),
 		},
-		WebhookSecret: row.WebhookSecret, BuildType: row.BuildType, PreviewDomain: row.PreviewDomain,
-		ImageRetention: int(row.ImageRetention), StorageMB: int(row.StorageMb),
-		InstallCommand: row.InstallCommand, BuildCommand: row.BuildCommand, StartCommand: row.StartCommand,
-		RootFolder: row.RootFolder, DistFolder: row.DistFolder, WatchPaths: row.WatchPaths,
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		WebhookSecret: stringValue("WebhookSecret"), BuildType: stringValue("BuildType"), PreviewDomain: stringValue("PreviewDomain"),
+		ImageRetention: int(int32Value("ImageRetention")), StorageMB: int(int32Value("StorageMb")),
+		InstallCommand: stringValue("InstallCommand"), BuildCommand: stringValue("BuildCommand"), StartCommand: stringValue("StartCommand"),
+		RootFolder: stringValue("RootFolder"), DistFolder: stringValue("DistFolder"), WatchPaths: stringValue("WatchPaths"),
+		CreatedAt: timeValue("CreatedAt"), UpdatedAt: timeValue("UpdatedAt"),
 	}
 }
 
-func appsFromRows(rows []gen.App) []domain.App {
-	out := make([]domain.App, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, *appFromRow(r))
+func appsFromRows(rows any) []domain.App {
+	value := reflect.ValueOf(rows)
+	out := make([]domain.App, 0, value.Len())
+	for index := 0; index < value.Len(); index++ {
+		out = append(out, *appFromRow(value.Index(index).Interface()))
 	}
 	return out
 }
@@ -99,7 +113,7 @@ func appParams(app *domain.App) gen.CreateAppParams {
 	return gen.CreateAppParams{
 		OrgID: app.OrgID, ProjectID: app.ProjectID, EnvironmentID: nullUUID(app.EnvironmentID),
 		Name: app.Name, SourceType: app.SourceType, Image: app.Image, GitUrl: app.GitURL,
-		GitBranch: app.GitBranch, UploadID: app.UploadID, Dockerfile: app.Dockerfile, Port: int32(app.Port), Cpus: app.CPUs,
+		GitBranch: app.GitBranch, UploadID: app.UploadID, Dockerfile: app.Dockerfile, ComposeFile: app.ComposeFile, Port: int32(app.Port), Cpus: app.CPUs,
 		MemMb: int32(app.MemMB), HcEnabled: app.HealthCheck.Enabled, HcPath: app.HealthCheck.Path,
 		HcIntervalMs: int32(app.HealthCheck.IntervalMS), HcTimeoutMs: int32(app.HealthCheck.TimeoutMS),
 		HcRetries: int32(app.HealthCheck.Retries), BuildType: app.BuildType,

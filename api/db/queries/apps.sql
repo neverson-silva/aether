@@ -1,25 +1,25 @@
 -- name: CreateApp :one
 INSERT INTO apps (
     org_id, project_id, environment_id, name, source_type, image, git_url, git_branch, upload_id,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, build_type, preview_domain, image_retention, storage_mb, install_command, build_command,
     start_command, root_folder, dist_folder, watch_paths
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-    $10, $11, $12, $13, $14, $15, $16, $17,
-    $18, $19, $20, $21, $22, $23,
-    $24, $25, $26, $27, $28
+    $10, $11, $12, $13, $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23, $24,
+    $25, $26, $27, $28, $29
 )
 RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id;
 
 -- name: GetApp :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -28,7 +28,7 @@ WHERE id = $1 AND org_id = $2;
 
 -- name: GetAppByName :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -37,7 +37,7 @@ WHERE org_id = $1 AND lower(name) = lower($2);
 
 -- name: GetAppByID :one
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -46,7 +46,7 @@ WHERE id = $1;
 
 -- name: ListAppsByProject :many
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -56,7 +56,7 @@ ORDER BY name;
 
 -- name: ListAppsByOrg :many
 SELECT id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id
@@ -66,16 +66,16 @@ ORDER BY name;
 
 -- name: UpdateApp :one
 UPDATE apps
-SET name = $3, image = $4, git_url = $5, git_branch = $6, upload_id = $7, dockerfile = $8, port = $9,
-    cpus = $10, mem_mb = $11, hc_enabled = $12, hc_path = $13, hc_interval_ms = $14,
-    hc_timeout_ms = $15, hc_retries = $16, build_type = $17, environment_id = $18,
-    preview_domain = $19, image_retention = $20, storage_mb = $21, install_command = $22,
-    build_command = $23, start_command = $24, root_folder = $25, dist_folder = $26,
-    watch_paths = $27,
+SET name = $3, image = $4, git_url = $5, git_branch = $6, upload_id = $7, dockerfile = $8, compose_file = $9, port = $10,
+    cpus = $11, mem_mb = $12, hc_enabled = $13, hc_path = $14, hc_interval_ms = $15,
+    hc_timeout_ms = $16, hc_retries = $17, build_type = $18, environment_id = $19,
+    preview_domain = $20, image_retention = $21, storage_mb = $22, install_command = $23,
+    build_command = $24, start_command = $25, root_folder = $26, dist_folder = $27,
+    watch_paths = $28,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING id, org_id, project_id, environment_id, name, source_type, image, git_url, git_branch,
-    dockerfile, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
+    dockerfile, compose_file, port, cpus, mem_mb, hc_enabled, hc_path, hc_interval_ms, hc_timeout_ms,
     hc_retries, webhook_secret, build_type, preview_domain, image_retention, storage_mb,
     install_command, build_command, start_command, root_folder, dist_folder, watch_paths,
     created_at, updated_at, upload_id, service_id;

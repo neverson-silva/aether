@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"path"
 	"regexp"
 	"strings"
 
@@ -165,6 +166,9 @@ func (a *Apps) UpdateApp(ctx context.Context, id, orgID uuid.UUID, app *domain.A
 	if app.Dockerfile == "" {
 		app.Dockerfile = existing.Dockerfile
 	}
+	if app.ComposeFile == "" {
+		app.ComposeFile = existing.ComposeFile
+	}
 	if app.Image == "" {
 		app.Image = existing.Image
 	}
@@ -294,6 +298,33 @@ func validateApp(app *domain.App) error {
 	if app.HealthCheck.IntervalMS < 0 || app.HealthCheck.TimeoutMS < 0 || app.HealthCheck.Retries < 0 {
 		return domain.ErrValidation
 	}
+	switch app.BuildType {
+	case "dockerfile", "buildpacks", "custom":
+	case "compose":
+		if err := validateRepositoryPath(app.RootFolder); err != nil {
+			return err
+		}
+		if err := validateRepositoryPath(app.ComposeFile); err != nil {
+			return err
+		}
+		if strings.TrimSpace(app.ComposeFile) == "" {
+			return domain.ErrValidation
+		}
+	default:
+		return domain.ErrValidation
+	}
+	return nil
+}
+
+func validateRepositoryPath(value string) error {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" || value == "." || value == "/" {
+		return nil
+	}
+	clean := path.Clean(strings.TrimPrefix(value, "./"))
+	if path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return domain.ErrValidation
+	}
 	return nil
 }
 
@@ -306,6 +337,9 @@ func applyAppDefaults(app *domain.App) {
 	}
 	if app.Dockerfile == "" {
 		app.Dockerfile = "Dockerfile"
+	}
+	if app.ComposeFile == "" {
+		app.ComposeFile = "compose.yaml"
 	}
 	if app.Port == 0 {
 		app.Port = 80

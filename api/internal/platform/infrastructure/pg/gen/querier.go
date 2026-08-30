@@ -22,7 +22,7 @@ type Querier interface {
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateAlertEvent(ctx context.Context, arg CreateAlertEventParams) (AlertEvent, error)
 	CreateAlertRule(ctx context.Context, arg CreateAlertRuleParams) (AlertRule, error)
-	CreateApp(ctx context.Context, arg CreateAppParams) (App, error)
+	CreateApp(ctx context.Context, arg CreateAppParams) (CreateAppRow, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
 	CreateAutopilotEvent(ctx context.Context, arg CreateAutopilotEventParams) error
 	CreateBackup(ctx context.Context, arg CreateBackupParams) (Backup, error)
@@ -94,9 +94,9 @@ type Querier interface {
 	FinishPipelineRun(ctx context.Context, arg FinishPipelineRunParams) error
 	GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, error)
 	GetAlertRule(ctx context.Context, id uuid.UUID) (AlertRule, error)
-	GetApp(ctx context.Context, arg GetAppParams) (App, error)
-	GetAppByID(ctx context.Context, id uuid.UUID) (App, error)
-	GetAppByName(ctx context.Context, arg GetAppByNameParams) (App, error)
+	GetApp(ctx context.Context, arg GetAppParams) (GetAppRow, error)
+	GetAppByID(ctx context.Context, id uuid.UUID) (GetAppByIDRow, error)
+	GetAppByName(ctx context.Context, arg GetAppByNameParams) (GetAppByNameRow, error)
 	GetAppPolicy(ctx context.Context, id uuid.UUID) (AppPolicy, error)
 	GetBackup(ctx context.Context, id uuid.UUID) (Backup, error)
 	GetBackupConfiguration(ctx context.Context, id uuid.UUID) (BackupConfiguration, error)
@@ -148,8 +148,8 @@ type Querier interface {
 	ListActiveBackupJobsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupJob, error)
 	ListAlertEventsByOrg(ctx context.Context, arg ListAlertEventsByOrgParams) ([]AlertEvent, error)
 	ListAlertRules(ctx context.Context, orgID uuid.UUID) ([]AlertRule, error)
-	ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]App, error)
-	ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]App, error)
+	ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListAppsByOrgRow, error)
+	ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]ListAppsByProjectRow, error)
 	ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrgParams) ([]AuditLog, error)
 	ListAutopilotEvents(ctx context.Context, arg ListAutopilotEventsParams) ([]AutopilotEvent, error)
 	ListBackupConfigurationsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupConfiguration, error)
@@ -227,7 +227,7 @@ type Querier interface {
 	SetWebhookSecret(ctx context.Context, arg SetWebhookSecretParams) error
 	SetWorkerState(ctx context.Context, arg SetWorkerStateParams) error
 	TouchAPIKey(ctx context.Context, id uuid.UUID) error
-	UpdateApp(ctx context.Context, arg UpdateAppParams) (App, error)
+	UpdateApp(ctx context.Context, arg UpdateAppParams) (UpdateAppRow, error)
 	UpdateBackupConfiguration(ctx context.Context, arg UpdateBackupConfigurationParams) (BackupConfiguration, error)
 	UpdateBackupJob(ctx context.Context, arg UpdateBackupJobParams) (BackupJob, error)
 	UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (CronJob, error)

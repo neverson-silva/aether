@@ -106,12 +106,13 @@ export function ApplicationWizard({
 
   const [projectId, setProjectId] = useState(fixedProjectId ?? "");
   const [name, setName] = useState("");
-  const [buildType, setBuildType] = useState<"dockerfile" | "buildpacks" | "custom">("buildpacks");
+  const [buildType, setBuildType] = useState<"dockerfile" | "buildpacks" | "custom" | "compose">("buildpacks");
   const [port, setPort] = useState(kind === "api" ? 8080 : 3000);
   const [installCmd, setInstallCmd] = useState("");
   const [buildCmd, setBuildCmd] = useState("");
   const [startCmd, setStartCmd] = useState(kind === "api" ? "./server" : "");
   const [dockerfilePath, setDockerfilePath] = useState("Dockerfile");
+  const [composeFile, setComposeFile] = useState("compose.yaml");
   const [rootFolder, setRootFolder] = useState("");
   const [environmentTemplatePath, setEnvironmentTemplatePath] = useState(".env.example");
   const [distFolder, setDistFolder] = useState("");
@@ -159,6 +160,8 @@ export function ApplicationWizard({
       setZipUpload(null);
       setZipFile(null);
       setCustomUrl("");
+      setBuildType("buildpacks");
+      setComposeFile("compose.yaml");
     }
   }, [open]);
 
@@ -233,6 +236,10 @@ export function ApplicationWizard({
       add({ title: "Fill in the source, project and name", tone: "error" });
       return;
     }
+    if (buildType === "compose" && !composeFile.trim()) {
+      add({ title: "Compose file is required", tone: "error" });
+      return;
+    }
     setCreating(true);
     try {
       const gitUrl = customUrl.trim() || (selectedRepository ? `https://github.com/${selectedRepository.full_name}.git` : "");
@@ -245,11 +252,12 @@ export function ApplicationWizard({
           git_url: zipUpload ? "" : gitUrl,
           git_branch: branch,
           build_type: buildType,
-          dockerfile: dockerfilePath,
+          dockerfile: buildType === "dockerfile" ? dockerfilePath : "",
+          compose_file: buildType === "compose" ? composeFile.trim() : "",
           upload_id: zipUpload?.upload_id ?? "",
-          install_command: installCmd,
-          build_command: buildCmd,
-          start_command: startCmd,
+          install_command: buildType === "custom" ? installCmd : "",
+          build_command: buildType === "custom" ? buildCmd : "",
+          start_command: buildType === "custom" ? startCmd : "",
           root_folder: rootFolder,
           dist_folder: distFolder,
           watch_paths: watchPaths,
@@ -295,12 +303,13 @@ export function ApplicationWizard({
           environment_template_path: environmentTemplatePath.trim() || ".env.example",
           watch_paths: watchPaths.split(",").map((path) => path.trim()).filter(Boolean),
           ignore_paths: [],
+          compose_file: buildType === "compose" ? composeFile.trim() : "",
           watch_root_files: true,
         });
       }
       add({ title: "Deploy it manually from the service page", tone: "info" });
-        onClose();
-        navigate({ to: "/apps/$appId", params: { appId: app.service_id ?? app.id } } as never);
+      onClose();
+      navigate({ to: "/apps/$appId", params: { appId: app.service_id ?? app.id } } as never);
     } catch (err) {
       add({ title: err instanceof Error ? err.message : "Failed to create service", tone: "error" });
     } finally {
@@ -536,33 +545,22 @@ export function ApplicationWizard({
                   <FileText size={20} className="text-primary" />
                   <h2 className="font-label-caps text-label-caps text-on-surface">Build Method</h2>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-sm">
-                  {[
-                    { id: "dockerfile", icon: "description", label: "Dockerfile", desc: "Build from a Dockerfile in the source." },
-                    { id: "buildpacks", icon: "auto_awesome", label: "SmartBuild (CNB)", desc: "Auto-detect and build with CNB (Cloud Native Buildpacks)." },
-                    { id: "custom", icon: "tune", label: "Custom", desc: "Manual install/build/start commands, served with nginx." },
-                  ].map((bt) => {
-                    const active = buildType === bt.id;
-                    return (
-                      <div
-                        key={bt.id}
-                        onClick={() => setBuildType(bt.id as typeof buildType)}
-                        className={`relative ${active ? "bg-secondary-container/10 border-2 border-primary" : "bg-surface-dim border border-outline-variant hover:border-outline"} rounded p-sm flex flex-col items-start gap-xs cursor-pointer transition-colors duration-200`}
-                      >
-                        {active && (
-                          <div className="absolute top-2 right-2">
-                            <CheckCircle size={14} className="text-primary" />
-                          </div>
-                        )}
-                        <div className="flex items-center gap-xs">
-                      <WizardIcon name={bt.icon} className={active ? "text-primary" : "text-on-surface-variant"} />
-                          <span className={`font-body-sm text-body-sm font-semibold ${active ? "text-on-surface" : "text-on-surface-variant"}`}>{bt.label}</span>
-                        </div>
-                        <p className="font-body-sm text-body-sm text-on-surface-variant/80 leading-snug">{bt.desc}</p>
-                      </div>
-                    );
-                  })}
-                </div>
+                <NativeSelect
+                  value={buildType}
+                  onChange={(event) => setBuildType(event.target.value as typeof buildType)}
+                  options={[
+                    { label: "Dockerfile", value: "dockerfile" },
+                    { label: "SmartBuild (CNB)", value: "buildpacks" },
+                    { label: "Custom", value: "custom" },
+                    { label: "Compose", value: "compose" },
+                  ]}
+                />
+                <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  {buildType === "dockerfile" && "Build the application using a Dockerfile from the repository."}
+                  {buildType === "buildpacks" && "Automatically detect and build the application using Cloud Native Buildpacks."}
+                  {buildType === "custom" && "Use custom install, build and start commands."}
+                  {buildType === "compose" && "Deploy using a Compose file from the repository."}
+                </p>
                 {buildType === "dockerfile" && (
                   <div className="flex flex-col gap-xs">
                     <label className="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-1">
@@ -571,6 +569,17 @@ export function ApplicationWizard({
                       <span className="font-code-md text-[10px] text-on-surface-variant/50">default: Dockerfile at repo root</span>
                     </label>
                     <Input placeholder="Dockerfile" value={dockerfilePath} onChange={(e) => setDockerfilePath(e.target.value)} />
+                  </div>
+                )}
+                {buildType === "compose" && (
+                  <div className="flex flex-col gap-xs">
+                    <label className="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-1">
+                      <FolderOpen size={14} />
+                      Compose file
+                    </label>
+                    <Input placeholder="compose.yaml" value={composeFile} onChange={(e) => setComposeFile(e.target.value)} />
+                    <span className="font-code-md text-[10px] text-on-surface-variant/50">Path relative to the configured Root Directory.</span>
+                    {!composeFile.trim() && <span className="font-body-sm text-body-sm text-status-danger">Compose file is required.</span>}
                   </div>
                 )}
                 {buildType === "buildpacks" && (

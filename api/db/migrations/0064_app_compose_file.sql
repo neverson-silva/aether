@@ -1,0 +1,1 @@
+ALTER TABLE apps ADD COLUMN IF NOT EXISTS compose_file TEXT NOT NULL DEFAULT 'compose.yaml';

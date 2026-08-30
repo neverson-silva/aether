@@ -87,6 +87,7 @@ type App struct {
 	UpdatedAt      time.Time     `json:"updated_at"`
 	UploadID       string        `json:"upload_id"`
 	ServiceID      uuid.UUID     `json:"service_id"`
+	ComposeFile    string        `json:"compose_file"`
 }
 
 type AppEnv struct {

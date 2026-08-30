@@ -51,6 +51,7 @@ type appReq struct {
 	GitBranch      string       `json:"git_branch"`
 	UploadID       string       `json:"upload_id"`
 	Dockerfile     string       `json:"dockerfile"`
+	ComposeFile    string       `json:"compose_file"`
 	Port           *int         `json:"port"`
 	CPUs           string       `json:"cpus"`
 	MemMB          *int         `json:"mem_mb"`
@@ -462,7 +463,7 @@ func appFromReq(req *appReq, c *gin.Context, projectID uuid.UUID) (*domain.App, 
 	}
 	app := &domain.App{
 		Name: req.Name, SourceType: req.SourceType, Image: req.Image, GitURL: req.GitURL,
-		GitBranch: req.GitBranch, UploadID: req.UploadID, Dockerfile: req.Dockerfile, CPUs: req.CPUs,
+		GitBranch: req.GitBranch, UploadID: req.UploadID, Dockerfile: req.Dockerfile, ComposeFile: req.ComposeFile, CPUs: req.CPUs,
 		BuildType: req.BuildType, PreviewDomain: req.PreviewDomain,
 		InstallCommand: req.InstallCommand, BuildCommand: req.BuildCommand,
 		StartCommand: req.StartCommand, RootFolder: req.RootFolder, DistFolder: req.DistFolder,
@@ -533,7 +534,7 @@ func appDTO(a *domain.App) gin.H {
 		"id": a.ID, "org_id": a.OrgID, "project_id": a.ProjectID, "environment_id": a.EnvironmentID,
 		"name": a.Name, "source_type": a.SourceType, "image": a.Image, "git_url": a.GitURL,
 		"git_branch": a.GitBranch, "upload_id": a.UploadID, "dockerfile": a.Dockerfile, "port": a.Port, "cpus": a.CPUs,
-		"mem_mb": a.MemMB, "build_type": a.BuildType, "preview_domain": a.PreviewDomain,
+		"mem_mb": a.MemMB, "build_type": a.BuildType, "compose_file": a.ComposeFile, "preview_domain": a.PreviewDomain,
 		"image_retention": a.ImageRetention,
 		"storage_mb":      a.StorageMB, "install_command": a.InstallCommand, "build_command": a.BuildCommand,
 		"start_command": a.StartCommand, "root_folder": a.RootFolder, "dist_folder": a.DistFolder,

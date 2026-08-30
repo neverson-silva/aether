@@ -136,6 +136,7 @@ export type ServiceSpec = {
   git_url?: string;
   git_branch?: string;
   dockerfile?: string;
+  compose_file?: string;
   build_type?: string;
   cpus?: string;
   port?: number;
@@ -180,6 +181,7 @@ export interface App {
   git_url: string;
   git_branch: string;
   dockerfile: string;
+  compose_file?: string;
   build_type: string;
   preview_domain: string;
   server_id: string;

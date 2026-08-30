@@ -41,6 +41,7 @@ export interface ServiceSource {
   watch_paths: string[];
   ignore_paths: string[];
   watch_root_files: boolean;
+  compose_file: string;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +60,7 @@ export interface ServiceSourceInput {
   watch_paths: string[];
   ignore_paths: string[];
   watch_root_files: boolean;
+  compose_file?: string;
 }
 
 type ServiceSourceResponse = Partial<ServiceSource> & {
@@ -80,6 +82,7 @@ type ServiceSourceResponse = Partial<ServiceSource> & {
   EnvironmentTemplatePath?: string;
   CreatedAt?: string;
   UpdatedAt?: string;
+  ComposeFile?: string;
 };
 
 export function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSource {
@@ -100,6 +103,7 @@ export function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSourc
     watch_paths: raw.watch_paths ?? raw.WatchPaths ?? [],
     ignore_paths: raw.ignore_paths ?? raw.IgnorePaths ?? [],
     watch_root_files: raw.watch_root_files ?? raw.WatchRootFiles ?? false,
+    compose_file: raw.compose_file ?? raw.ComposeFile ?? "",
     created_at: raw.created_at ?? raw.CreatedAt ?? "",
     updated_at: raw.updated_at ?? raw.UpdatedAt ?? "",
   };

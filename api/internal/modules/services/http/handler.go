@@ -458,10 +458,10 @@ func (h *Handler) enrichSpec(c *gin.Context, service gin.H, kind servicedomain.K
 	var spec gin.H
 	switch kind {
 	case servicedomain.KindApp:
-		var sourceType, image, gitURL, gitBranch, dockerfile, buildType, cpus string
+		var sourceType, image, gitURL, gitBranch, dockerfile, composeFile, buildType, cpus string
 		var port, storageMB, memMB, imageRetention int
-		if err := h.db.QueryRow(c.Request.Context(), `SELECT source_type, image, git_url, git_branch, dockerfile, build_type, port, cpus, storage_mb, mem_mb, image_retention FROM apps WHERE id = $1`, specID).Scan(&sourceType, &image, &gitURL, &gitBranch, &dockerfile, &buildType, &port, &cpus, &storageMB, &memMB, &imageRetention); err == nil {
-			spec = gin.H{"source_type": sourceType, "image": image, "git_url": gitURL, "git_branch": gitBranch, "dockerfile": dockerfile, "build_type": buildType, "port": port, "cpus": cpus, "storage_mb": storageMB, "mem_mb": memMB, "image_retention": imageRetention}
+		if err := h.db.QueryRow(c.Request.Context(), `SELECT source_type, image, git_url, git_branch, dockerfile, compose_file, build_type, port, cpus, storage_mb, mem_mb, image_retention FROM apps WHERE id = $1`, specID).Scan(&sourceType, &image, &gitURL, &gitBranch, &dockerfile, &composeFile, &buildType, &port, &cpus, &storageMB, &memMB, &imageRetention); err == nil {
+			spec = gin.H{"source_type": sourceType, "image": image, "git_url": gitURL, "git_branch": gitBranch, "dockerfile": dockerfile, "compose_file": composeFile, "build_type": buildType, "port": port, "cpus": cpus, "storage_mb": storageMB, "mem_mb": memMB, "image_retention": imageRetention}
 		}
 	case servicedomain.KindCompose:
 		var compose string

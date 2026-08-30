@@ -41,24 +41,27 @@ type AppStore interface {
 }
 
 type Worker struct {
-	Store             DeploymentStore
-	Apps              AppStore
-	Runtime           Runtime
-	Logger            *slog.Logger
-	LogsDir           string
-	BuildsDir         string
-	UploadsDir        string
-	IngressNetwork    string
-	Notifier          DeployNotifier
-	LogNotifier       LogNotifier
-	CnbBuilder        string
-	DockerHost        string
-	BuildDockerHost   string
-	Images            ImageRuntime
-	Builder           ImageBuildRuntime
-	Registry          ImageRegistryRuntime
-	Queue             queue.Queue
-	ServiceDeploy     func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
+	Store           DeploymentStore
+	Apps            AppStore
+	Runtime         Runtime
+	Logger          *slog.Logger
+	LogsDir         string
+	BuildsDir       string
+	UploadsDir      string
+	IngressNetwork  string
+	Notifier        DeployNotifier
+	LogNotifier     LogNotifier
+	CnbBuilder      string
+	DockerHost      string
+	BuildDockerHost string
+	Images          ImageRuntime
+	Builder         ImageBuildRuntime
+	Registry        ImageRegistryRuntime
+	Queue           queue.Queue
+	ServiceDeploy   func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
+	ComposeDeploy   interface {
+		UpApp(context.Context, uuid.UUID, uuid.UUID) (string, error)
+	}
 	Metrics           *observability.Metrics
 	deploymentTimeout time.Duration
 
@@ -384,6 +387,20 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 	}
 	if err := w.setStatus(ctx, dep, deploydomain.StatusBuilding, spec.Image, ""); err != nil {
 		return err
+	}
+	if spec.BuildType == "compose" {
+		if w.ComposeDeploy == nil {
+			return w.fail(ctx, dep, "", errors.New("compose deployment is not configured"))
+		}
+		app, err := w.Apps.GetAppByID(ctx, dep.AppID)
+		if err != nil {
+			return w.fail(ctx, dep, "", err)
+		}
+		containerID, err := w.ComposeDeploy.UpApp(ctx, dep.AppID, app.OrgID)
+		if err != nil {
+			return w.fail(ctx, dep, "", err)
+		}
+		return w.setStatus(ctx, dep, deploydomain.StatusReady, "", containerID)
 	}
 	built := false
 	switch {
@@ -950,6 +967,7 @@ type runSpec struct {
 	UploadID      string      `json:"upload_id"`
 	BuildType     string      `json:"build_type"`
 	Dockerfile    string      `json:"dockerfile"`
+	ComposeFile   string      `json:"compose_file"`
 	InstallCmd    string      `json:"install_command"`
 	BuildCmd      string      `json:"build_command"`
 	StartCmd      string      `json:"start_command"`

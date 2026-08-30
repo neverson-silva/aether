@@ -192,9 +192,9 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	connections := &sourcecontrolApp.Connections{Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets, APIURL: cfg.GitHubAPIURL}
 	composeSvc.Clone = composeGitClone{connections: connections}
-	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
+	composeSvc.ServiceIdentity = func(ctx context.Context, specID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
-		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
+		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1 UNION ALL SELECT service_id FROM apps WHERE id = $1 LIMIT 1`, specID).Scan(&serviceID); err != nil {
 			return uuid.Nil, err
 		}
 		return serviceID, nil
@@ -213,6 +213,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 			return "", fmt.Errorf("unsupported service deployment kind %q", kind)
 		}
 	}
+	deployWorker.ComposeDeploy = composeSvc
 	settingsStore := settingsInfra.NewStore(pool)
 	settingsSvc := &settingsApp.Settings{Store: settingsStore, Passwords: dbCipher, PublicURL: cfg.PublicURL, OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL), GoogleRedirectURI: cfg.GoogleOAuthRedirectURI}
 	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)

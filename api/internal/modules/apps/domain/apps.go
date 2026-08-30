@@ -50,6 +50,7 @@ type App struct {
 	GitBranch      string
 	UploadID       string
 	Dockerfile     string
+	ComposeFile    string
 	Port           int
 	CPUs           string
 	MemMB          int

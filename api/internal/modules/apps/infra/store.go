@@ -198,7 +198,7 @@ func (s *Store) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Ap
 func (s *Store) UpdateApp(ctx context.Context, app *domain.App) (*domain.App, error) {
 	row, err := s.q.UpdateApp(ctx, gen.UpdateAppParams{
 		ID: app.ID, OrgID: app.OrgID, Name: app.Name, Image: app.Image, GitUrl: app.GitURL,
-		GitBranch: app.GitBranch, UploadID: app.UploadID, Dockerfile: app.Dockerfile, Port: int32(app.Port), Cpus: app.CPUs,
+		GitBranch: app.GitBranch, UploadID: app.UploadID, Dockerfile: app.Dockerfile, ComposeFile: app.ComposeFile, Port: int32(app.Port), Cpus: app.CPUs,
 		MemMb: int32(app.MemMB), HcEnabled: app.HealthCheck.Enabled, HcPath: app.HealthCheck.Path,
 		HcIntervalMs: int32(app.HealthCheck.IntervalMS), HcTimeoutMs: int32(app.HealthCheck.TimeoutMS),
 		HcRetries: int32(app.HealthCheck.Retries), BuildType: app.BuildType,
