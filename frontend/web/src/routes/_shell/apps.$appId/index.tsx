@@ -339,6 +339,7 @@ function AppDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPort, setEditPort] = useState(0);
+  const [editBuildType, setEditBuildType] = useState<"dockerfile" | "buildpacks" | "custom" | "compose">("buildpacks");
   const [copied, setCopied] = useState(false);
   const [connectionCopied, setConnectionCopied] = useState(false);
   const [autodeploy, setAutodeploy] = useState(false);
@@ -351,6 +352,7 @@ function AppDetail() {
     if (editOpen && app) {
       setEditName(app.name);
       setEditPort(app.port);
+      setEditBuildType((app.build_type as typeof editBuildType) || "buildpacks");
     }
   }, [editOpen, app]);
 
@@ -1470,14 +1472,30 @@ function AppDetail() {
               placeholder="my-service"
             />
           </Field>
-          <Field label="Port">
-            <Input
-              type="number"
-              value={String(editPort)}
-              onChange={(e) => setEditPort(parseInt(e.target.value) || 0)}
-              placeholder="8080"
-            />
-          </Field>
+          {editBuildType !== "compose" && (
+            <Field label="Port">
+              <Input
+                type="number"
+                value={String(editPort)}
+                onChange={(e) => setEditPort(parseInt(e.target.value) || 0)}
+                placeholder="8080"
+              />
+            </Field>
+          )}
+          {service?.kind === "app" && (
+            <Field label="Build type">
+              <NativeSelect
+                value={editBuildType}
+                onChange={(event) => setEditBuildType(event.target.value as typeof editBuildType)}
+                options={[
+                  { label: "Dockerfile", value: "dockerfile" },
+                  { label: "SmartBuild (CNB)", value: "buildpacks" },
+                  { label: "Custom", value: "custom" },
+                  { label: "Compose", value: "compose" },
+                ]}
+              />
+            </Field>
+          )}
           <div className="flex justify-end gap-md border-t border-outline-variant pt-lg">
             <Button variant="ghost" onClick={() => setEditOpen(false)}>
               Cancel
@@ -1488,6 +1506,8 @@ function AppDetail() {
                 if (editName.trim() && editName.trim() !== app.name)
                   body.name = editName.trim();
                 if (editPort > 0 && editPort !== app.port) body.port = editPort;
+                if (service?.kind === "app" && editBuildType !== app.build_type)
+                  body.build_type = editBuildType;
                 if (Object.keys(body).length) {
                   updateService.mutate({ serviceId: service.id, update: body }, {
                     onSuccess: () => {

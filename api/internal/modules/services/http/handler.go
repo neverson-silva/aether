@@ -365,6 +365,7 @@ func (h *Handler) Update(c *gin.Context) {
 	var input struct {
 		Name           *string `json:"name"`
 		Port           *int    `json:"port"`
+		BuildType      *string `json:"build_type"`
 		ImageRetention *int    `json:"image_retention"`
 		Resources      *struct {
 			CPUs      *string `json:"cpus"`
@@ -385,6 +386,18 @@ func (h *Handler) Update(c *gin.Context) {
 		}
 		name = &trimmed
 	}
+	if input.BuildType != nil {
+		switch *input.BuildType {
+		case "dockerfile", "buildpacks", "custom", "compose":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid build type"})
+			return
+		}
+		if kind != string(servicedomain.KindApp) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "build type is only available for applications"})
+			return
+		}
+	}
 	if _, err := h.db.Exec(c.Request.Context(), `UPDATE services SET name = COALESCE($2, name), updated_at = now() WHERE id = $1 AND org_id = $3`, id, name, orgID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "service could not be updated"})
 		return
@@ -397,7 +410,7 @@ func (h *Handler) Update(c *gin.Context) {
 			memMB = input.Resources.MemMB
 			storageMB = input.Resources.StorageMB
 		}
-		if _, err := h.db.Exec(c.Request.Context(), `UPDATE apps SET port = COALESCE($2, port), cpus = COALESCE($3, cpus), mem_mb = COALESCE($4, mem_mb), storage_mb = COALESCE($5, storage_mb), image_retention = COALESCE($6, image_retention), updated_at = now() WHERE id = $1`, specID, input.Port, cpus, memMB, storageMB, input.ImageRetention); err != nil {
+		if _, err := h.db.Exec(c.Request.Context(), `UPDATE apps SET port = COALESCE($2, port), cpus = COALESCE($3, cpus), mem_mb = COALESCE($4, mem_mb), storage_mb = COALESCE($5, storage_mb), image_retention = COALESCE($6, image_retention), build_type = COALESCE($7, build_type), updated_at = now() WHERE id = $1`, specID, input.Port, cpus, memMB, storageMB, input.ImageRetention, input.BuildType); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "application specification could not be updated"})
 			return
 		}

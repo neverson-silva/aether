@@ -651,6 +651,20 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		}
 	}
 	if len(args) > 0 && args[0] == "up" {
+		publishedPort, hasPort, err := composePublishedPort(content)
+		if err != nil {
+			return "", fmt.Errorf("parse compose ports: %w", err)
+		}
+		if !hasPort && c.Store != nil {
+			publishedPort, err = c.Store.NextComposePort(ctx)
+			if err != nil {
+				return "", fmt.Errorf("allocate compose port: %w", err)
+			}
+			content, err = addComposePort(content, publishedPort)
+			if err != nil {
+				return "", fmt.Errorf("add compose port: %w", err)
+			}
+		}
 		serviceID, err := c.GetServiceID(ctx, app.ID)
 		if err != nil {
 			serviceID = app.ID

@@ -4,6 +4,7 @@ import { apiPatch } from "../api/client";
 export interface ServiceUpdate {
   name?: string;
   port?: number;
+  build_type?: "dockerfile" | "buildpacks" | "custom" | "compose";
   image_retention?: number;
   resources?: { cpus?: string; mem_mb?: number; storage_mb?: number };
 }
