@@ -18,6 +18,11 @@ export interface VariableEditorProps {
   onBulkEdit?: (variables: VariableRow[]) => void
   className?: string
 }
+
+function createVariableID() {
+  return `variable-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 export function VariableEditor({
   onChange,
   onExport,
@@ -162,7 +167,7 @@ export function VariableEditor({
           onClick={() =>
             update([
               ...variables,
-              { id: crypto.randomUUID(), key: '', value: '' },
+              { id: createVariableID(), key: '', value: '' },
             ])
           }
           className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md border border-border text-body-sm text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface-container-high"
