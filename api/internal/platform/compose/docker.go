@@ -7,8 +7,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Project struct {
@@ -51,11 +54,16 @@ func (d *Docker) execute(ctx context.Context, project Project, sink func(string)
 	if binary == "" {
 		binary = "docker"
 	}
+	composeFile, cleanup, err := d.prepareNetworks(ctx, project)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
 	commandArgs := []string{"compose", "--project-directory", project.Directory, "--project-name", project.Name}
 	if project.EnvFile != "" {
 		commandArgs = append(commandArgs, "--env-file", project.EnvFile)
 	}
-	commandArgs = append(commandArgs, "-f", project.File)
+	commandArgs = append(commandArgs, "-f", composeFile)
 	commandArgs = append(commandArgs, args...)
 	cmd := exec.CommandContext(ctx, binary, commandArgs...)
 	cmd.Dir = project.Directory
@@ -72,7 +80,7 @@ func (d *Docker) execute(ctx context.Context, project Project, sink func(string)
 		cmd.Stdout = writer
 		cmd.Stderr = writer
 	}
-	err := cmd.Run()
+	err = cmd.Run()
 	output := outputBuffer.String()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -82,6 +90,81 @@ func (d *Docker) execute(ctx context.Context, project Project, sink func(string)
 		return string(output), fmt.Errorf("docker compose %s: %s: %w", strings.Join(args, " "), message, err)
 	}
 	return string(output), nil
+}
+
+func (d *Docker) prepareNetworks(ctx context.Context, project Project) (string, func(), error) {
+	content, err := os.ReadFile(project.File)
+	if err != nil {
+		return "", func() {}, err
+	}
+	updated, changed, err := markExistingNetworks(string(content), func(name string) bool {
+		binary := d.Binary
+		if binary == "" {
+			binary = "docker"
+		}
+		command := exec.CommandContext(ctx, binary, "network", "inspect", name)
+		if d.Host != "" {
+			command.Env = append(os.Environ(), "DOCKER_HOST="+d.Host)
+		}
+		return command.Run() == nil
+	})
+	if err != nil {
+		return "", func() {}, err
+	}
+	if !changed {
+		return project.File, func() {}, nil
+	}
+	overlay, err := os.CreateTemp(project.Directory, ".compose-network-*.yml")
+	if err != nil {
+		return "", func() {}, err
+	}
+	name := overlay.Name()
+	if _, err := overlay.WriteString(updated); err != nil {
+		_ = overlay.Close()
+		_ = os.Remove(name)
+		return "", func() {}, err
+	}
+	if err := overlay.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", func() {}, err
+	}
+	return name, func() { _ = os.Remove(filepath.Clean(name)) }, nil
+}
+
+func markExistingNetworks(content string, exists func(string) bool) (string, bool, error) {
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", false, err
+	}
+	rawNetworks, ok := document["networks"].(map[string]any)
+	if !ok {
+		return content, false, nil
+	}
+	changed := false
+	for key, raw := range rawNetworks {
+		config, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if external, ok := config["external"].(bool); ok && external {
+			continue
+		}
+		name, ok := config["name"].(string)
+		if !ok || strings.TrimSpace(name) == "" || !exists(name) {
+			continue
+		}
+		config["external"] = true
+		rawNetworks[key] = config
+		changed = true
+	}
+	if !changed {
+		return content, false, nil
+	}
+	updated, err := yaml.Marshal(document)
+	if err != nil {
+		return "", false, err
+	}
+	return string(updated), true, nil
 }
 
 type streamWriter struct {

@@ -977,22 +977,21 @@ func (h *Handler) CancelDeployment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid deployment id"})
 		return
 	}
-	var status string
-	var imageRef, containerID string
+	_, specID, err := h.resolve(c, serviceID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
+		return
+	}
+	var imageRef, containerID *string
 	if err := h.db.QueryRow(c.Request.Context(), `
-SELECT status, image_ref, container_id
-FROM deployments
-JOIN services s ON s.id = deployments.service_id AND s.org_id = $3 AND s.deleted_at IS NULL
-WHERE deployments.id = $1 AND deployments.service_id = $2`, deploymentID, serviceID, orgID(c)).Scan(&status, &imageRef, &containerID); err != nil {
+	UPDATE deployments
+	SET status = 'cancelled', service_id = $2, error = 'deployment cancelled by user', finished_at = now()
+	WHERE id = $1
+	  AND (service_id = $2 OR (service_id IS NULL AND app_id = $3))
+	  AND status IN ('queued', 'building', 'starting', 'health_checking')
+	  AND EXISTS (SELECT 1 FROM services WHERE id = $2 AND org_id = $4 AND deleted_at IS NULL)
+	RETURNING image_ref, container_id`, deploymentID, serviceID, specID, orgID(c)).Scan(&imageRef, &containerID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "deployment not found"})
-		return
-	}
-	if status != string(deploydomain.StatusQueued) && status != string(deploydomain.StatusBuilding) && status != string(deploydomain.StatusStarting) && status != string(deploydomain.StatusHealthChecking) {
-		c.JSON(http.StatusConflict, gin.H{"error": "deployment is not active"})
-		return
-	}
-	if _, err := h.db.Exec(c.Request.Context(), `UPDATE deployments SET status = 'cancelled', error = 'deployment cancelled by user', finished_at = now() WHERE id = $1 AND service_id = $2 AND status IN ('queued', 'building', 'starting', 'health_checking')`, deploymentID, serviceID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "deployment cancellation failed"})
 		return
 	}
 	if h.deploymentCanceller != nil {
@@ -1001,7 +1000,14 @@ WHERE deployments.id = $1 AND deployments.service_id = $2`, deploymentID, servic
 	if h.notifier != nil {
 		h.notifier.NotifyDeploy(c.Request.Context(), deploydomain.DeployEvent{ServiceID: serviceID, DepID: deploymentID, Status: string(deploydomain.StatusCancelled), Detail: "deployment cancelled by user"})
 	}
-	c.JSON(http.StatusOK, gin.H{"service_id": serviceID, "deployment_id": deploymentID, "status": deploydomain.StatusCancelled, "image_ref": imageRef, "container_id": containerID})
+	response := gin.H{"service_id": serviceID, "deployment_id": deploymentID, "status": deploydomain.StatusCancelled}
+	if imageRef != nil {
+		response["image_ref"] = *imageRef
+	}
+	if containerID != nil {
+		response["container_id"] = *containerID
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *Handler) DeploymentLog(c *gin.Context) {

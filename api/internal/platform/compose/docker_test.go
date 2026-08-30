@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDockerExecuteBuildsExplicitProjectCommand(t *testing.T) {
@@ -48,5 +50,42 @@ func TestDockerExecuteWithLogsStreamsOutput(t *testing.T) {
 	}
 	if len(lines) != 1 || lines[0] != "build one\nbuild two" {
 		t.Fatalf("streamed lines = %#v", lines)
+	}
+}
+
+func TestMarkExistingNetworksAsExternal(t *testing.T) {
+	content := `services:
+  api:
+    image: nginx:alpine
+    networks:
+      - shared
+      - private
+networks:
+  shared:
+    name: waf_net
+  private:
+    name: private_net
+`
+	updated, changed, err := markExistingNetworks(content, func(name string) bool {
+		return name == "waf_net"
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected network configuration to change")
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(updated), &document); err != nil {
+		t.Fatal(err)
+	}
+	networks := document["networks"].(map[string]any)
+	shared := networks["shared"].(map[string]any)
+	if shared["external"] != true {
+		t.Fatalf("shared network = %#v", shared)
+	}
+	private := networks["private"].(map[string]any)
+	if _, ok := private["external"]; ok {
+		t.Fatalf("private network unexpectedly external: %#v", private)
 	}
 }

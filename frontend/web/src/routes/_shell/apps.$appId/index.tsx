@@ -1190,7 +1190,7 @@ function AppDetail() {
             )}
           </div>
           <div className="mt-md">
-            <LiveLogs serviceId={logsID} enabled={Boolean(service)} deploymentId={activeDeploymentRecord?.id} endpoint={serviceLogsEndpoint} />
+            <LiveLogs serviceId={logsID} enabled={Boolean(service)} endpoint={serviceLogsEndpoint} />
           </div>
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mt-lg mb-md">
             Event timeline
