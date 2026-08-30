@@ -232,7 +232,7 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 	}
 	desc := DBDescriptor{
 		Engine: string(target.Engine), ContainerID: target.ContainerID, User: target.User,
-		Password: pass, DBName: target.DBName, Version: target.Version,
+		Password: pass, DBName: target.DBName, Version: target.Version, Format: rj.SourceFormat,
 	}
 	adapter, err := adapterForEngine(desc.Engine)
 	if err != nil {
@@ -263,6 +263,9 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 		return
 	}
 	_, _ = s.Store.UpdateRestoreJob(ctx, rj)
+	if s.Cache != nil {
+		_ = s.Cache.Invalidate(ctx, "studio:db:"+rj.TargetDatabaseID.String()+":")
+	}
 	if rj.SourceType == domain.RestoreSourceUpload {
 		s.removeUploadArtifact(rj.ID)
 	}

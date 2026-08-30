@@ -37,6 +37,9 @@ func (a *Adapter) CreateBackup(ctx context.Context, db application.DBDescriptor,
 
 func (a *Adapter) Restore(ctx context.Context, db application.DBDescriptor, src io.Reader) error {
 	args := []string{"pg_restore", "-U", db.User, "-d", db.DBName, "--clean", "--if-exists", "--no-owner", "--no-privileges", "--exit-on-error"}
+	if db.Format == "sql" || db.Format == "sql.gz" || db.Format == "gzip" {
+		args = []string{"psql", "-U", db.User, "-d", db.DBName, "--set", "ON_ERROR_STOP=1", "--single-transaction"}
+	}
 	var stderr strings.Builder
 	if err := a.exec.ExecIn(ctx, db.ContainerID, pgEnv(db.Password), src, io.Discard, &stderr, args...); err != nil {
 		message := strings.TrimSpace(stderr.String())

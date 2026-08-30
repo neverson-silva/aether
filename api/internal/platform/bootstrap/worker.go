@@ -222,6 +222,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Audit: auditRecorder{store: store},
 		Notifier: realtimeSvc, Timeout: 45 * time.Minute,
 		Outbox:     outbox.NewStore(pool),
+		Cache:      rtRuntime.Cache,
 		UploadRoot: filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes,
 	}
 	cronWorker := &jobsApp.CronWorker{Store: jobsInfra.NewStore(pool), Apps: appsStore, Runtime: jobsApp.NewRuntime(deployRuntime), Resolver: cronResolver, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}

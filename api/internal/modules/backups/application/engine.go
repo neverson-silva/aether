@@ -26,6 +26,7 @@ type DBDescriptor struct {
 	Password    string
 	DBName      string
 	Version     string
+	Format      string
 }
 
 type BackupAdapter interface {

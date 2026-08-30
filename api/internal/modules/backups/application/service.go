@@ -9,6 +9,7 @@ import (
 	"aether/internal/modules/backups/adapters/container"
 	"aether/internal/modules/backups/domain"
 	databasedomain "aether/internal/modules/databases/domain"
+	"aether/internal/platform/druntime/cache"
 	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/locks"
 	"aether/internal/platform/druntime/queue"
@@ -30,6 +31,7 @@ type DatabaseBackups struct {
 	Outbox       interface {
 		Enqueue(context.Context, events.Event, string) error
 	}
+	Cache          cache.Cache
 	UploadRoot     string
 	MaxUploadBytes int64
 	Timeout        time.Duration
