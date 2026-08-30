@@ -284,6 +284,34 @@ func (s *Store) ListEnvVars(ctx context.Context, appID uuid.UUID) ([]domain.EnvV
 	return out, mapErr(rows.Err())
 }
 
+func (s *Store) GetServiceScope(ctx context.Context, serviceID, orgID uuid.UUID) (uuid.UUID, *uuid.UUID, error) {
+	var projectID uuid.UUID
+	var environmentID uuid.NullUUID
+	err := s.db.QueryRowContext(ctx, `SELECT project_id, environment_id FROM services WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`, serviceID, orgID).Scan(&projectID, &environmentID)
+	if err != nil {
+		return uuid.Nil, nil, mapErr(err)
+	}
+	return projectID, uuidPtr(environmentID), nil
+}
+
+func (s *Store) ListEnvVarsByService(ctx context.Context, serviceID uuid.UUID) ([]domain.EnvVar, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name, value, secret FROM app_env WHERE service_id = $1 ORDER BY name`, serviceID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	result := make([]domain.EnvVar, 0)
+	for rows.Next() {
+		var name, value string
+		var secret bool
+		if err := rows.Scan(&name, &value, &secret); err != nil {
+			return nil, mapErr(err)
+		}
+		result = append(result, domain.EnvVar{Name: name, Value: value, Secret: secret})
+	}
+	return result, mapErr(rows.Err())
+}
+
 func (s *Store) DeleteEnvVar(ctx context.Context, appID uuid.UUID, name string) error {
 	serviceID, err := s.serviceIDForApp(ctx, appID)
 	if err != nil {

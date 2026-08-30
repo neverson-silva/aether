@@ -24,7 +24,10 @@ type Databases struct {
 	Network     string
 	LogsDir     string
 	Deployments deploydomain.Store
-	Notifier    interface {
+	Variables   interface {
+		Effective(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error)
+	}
+	Notifier interface {
 		NotifyDeploy(context.Context, deploydomain.DeployEvent)
 	}
 }

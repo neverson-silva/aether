@@ -18,6 +18,17 @@ func (s *Service) GetSource(ctx context.Context, serviceID, organizationID uuid.
 }
 
 func (s *Service) SaveSource(ctx context.Context, source *domain.ServiceSource) (*domain.ServiceSource, error) {
+	root, err := safeRepositoryPath(source.RootDirectory)
+	if err != nil {
+		return nil, err
+	}
+	if root == "." {
+		source.RootDirectory = ""
+	} else {
+		source.RootDirectory = root
+	}
+	source.WatchPaths = normalizeWatchPaths(source.WatchPaths)
+	source.IgnorePaths = normalizeWatchPaths(source.IgnorePaths)
 	if source.Branch == "" {
 		source.Branch = source.DefaultBranch
 	}
@@ -33,6 +44,18 @@ func (s *Service) SaveSource(ctx context.Context, source *domain.ServiceSource) 
 	}
 	_, _, _ = s.ImportTemplate(ctx, saved)
 	return saved, nil
+}
+
+func normalizeWatchPaths(paths []string) []string {
+	normalized := make([]string, 0, len(paths))
+	for _, item := range paths {
+		item = strings.TrimSpace(strings.ReplaceAll(item, "\\", "/"))
+		if item == "" {
+			continue
+		}
+		normalized = append(normalized, strings.TrimPrefix(path.Clean(item), "./"))
+	}
+	return normalized
 }
 
 func (s *Service) DeleteSource(ctx context.Context, serviceID, organizationID uuid.UUID) error {

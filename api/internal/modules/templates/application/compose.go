@@ -34,6 +34,7 @@ type Compose struct {
 	Runtime         worker.Runtime
 	ComposeRuntime  composeengine.Executor
 	ProjectVars     ProjectVarStore
+	Variables       EffectiveVariableResolver
 	Events          EventLog
 	Source          ComposeSource
 	Clone           ComposeClone
@@ -61,6 +62,10 @@ type EventLog interface {
 
 type ProjectVarStore interface {
 	ListVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]variablesDomain.Variable, error)
+}
+
+type EffectiveVariableResolver interface {
+	Effective(ctx context.Context, appID, orgID uuid.UUID) (map[string]string, error)
 }
 
 type composePortDefinition struct {
@@ -661,6 +666,14 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if err != nil {
 			return "", fmt.Errorf("inject compose labels: %w", err)
 		}
+		variables, err := c.effectiveVariables(ctx, app)
+		if err != nil {
+			return "", err
+		}
+		injected, err = injectComposeEnvironment(injected, variables)
+		if err != nil {
+			return "", fmt.Errorf("inject compose environment: %w", err)
+		}
 		content = injected
 		overlay := filepath.Join(dir, "compose.generated.yml")
 		if err := os.WriteFile(overlay, []byte(content), 0o644); err != nil {
@@ -811,6 +824,16 @@ func (c *Compose) writeEnvFile(ctx context.Context, dir, sourceDir string, app *
 			merged[key] = value
 		}
 	}
+	if c.Variables != nil {
+		variables, err := c.effectiveVariables(ctx, app)
+		if err != nil {
+			return err
+		}
+		for key, value := range variables {
+			merged[key] = value
+		}
+		return writeEnvValues(filepath.Join(dir, ".env"), merged)
+	}
 	if c.ProjectVars == nil {
 		return writeEnvValues(filepath.Join(dir, ".env"), merged)
 	}
@@ -834,6 +857,104 @@ func (c *Compose) writeEnvFile(ctx context.Context, dir, sourceDir string, app *
 		return nil
 	}
 	return writeEnvValues(filepath.Join(dir, ".env"), merged)
+}
+
+func (c *Compose) effectiveVariables(ctx context.Context, app *domain.ComposeApp) (map[string]string, error) {
+	if c.Variables == nil {
+		return map[string]string{}, nil
+	}
+	serviceID, err := c.GetServiceID(ctx, app.ID)
+	if err != nil {
+		return nil, err
+	}
+	return c.Variables.Effective(ctx, serviceID, app.OrgID)
+}
+
+func injectComposeEnvironment(content string, variables map[string]string) (string, error) {
+	if len(variables) == 0 {
+		return content, nil
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return "", err
+	}
+	root := &doc
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	if root.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("compose root is not a mapping")
+	}
+	var services *yaml.Node
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "services" {
+			services = root.Content[i+1]
+			break
+		}
+	}
+	if services == nil || services.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("compose has no services mapping")
+	}
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		svc := services.Content[i+1]
+		if svc.Kind == yaml.MappingNode {
+			services.Content[i+1] = injectServiceEnvironment(svc, variables)
+		}
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return "", err
+	}
+	_ = enc.Close()
+	return buf.String(), nil
+}
+
+func injectServiceEnvironment(svc *yaml.Node, variables map[string]string) *yaml.Node {
+	for i := 0; i+1 < len(svc.Content); i += 2 {
+		if svc.Content[i].Value != "environment" {
+			continue
+		}
+		environment := svc.Content[i+1]
+		switch environment.Kind {
+		case yaml.MappingNode:
+			for key, value := range variables {
+				updated := false
+				for j := 0; j+1 < len(environment.Content); j += 2 {
+					if environment.Content[j].Value == key {
+						environment.Content[j+1] = valueNode(value)
+						updated = true
+						break
+					}
+				}
+				if !updated {
+					environment.Content = append(environment.Content, keyNode(key), valueNode(value))
+				}
+			}
+		case yaml.SequenceNode:
+			for key, value := range variables {
+				found := false
+				for _, item := range environment.Content {
+					if item.Value == key || strings.HasPrefix(item.Value, key+"=") {
+						item.Value = key + "=" + value
+						found = true
+						break
+					}
+				}
+				if !found {
+					environment.Content = append(environment.Content, valueNode(key+"="+value))
+				}
+			}
+		}
+		return svc
+	}
+	environment := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	for key, value := range variables {
+		environment.Content = append(environment.Content, keyNode(key), valueNode(value))
+	}
+	svc.Content = append(svc.Content, keyNode("environment"), environment)
+	return svc
 }
 
 func parseEnvFile(content string) map[string]string {

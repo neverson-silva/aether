@@ -108,6 +108,7 @@ func (a *Apps) CreateApp(ctx context.Context, orgID, projectID uuid.UUID, app *d
 	app.OrgID = orgID
 	app.ProjectID = projectID
 	app.Name = strings.TrimSpace(app.Name)
+	normalizeAppPaths(app)
 	if app.EnvironmentID != nil {
 		if _, err := a.Store.GetEnvironment(ctx, *app.EnvironmentID, projectID); err != nil {
 			return nil, err
@@ -184,6 +185,7 @@ func (a *Apps) UpdateApp(ctx context.Context, id, orgID uuid.UUID, app *domain.A
 	if app.EnvironmentID == nil {
 		app.EnvironmentID = existing.EnvironmentID
 	}
+	normalizeAppPaths(app)
 	if err := validateApp(app); err != nil {
 		return nil, err
 	}
@@ -326,6 +328,29 @@ func validateRepositoryPath(value string) error {
 		return domain.ErrValidation
 	}
 	return nil
+}
+
+func normalizeAppPaths(app *domain.App) {
+	app.RootFolder = normalizeRepositoryPath(app.RootFolder)
+	app.DistFolder = normalizeRepositoryPath(app.DistFolder)
+	paths := strings.Split(app.WatchPaths, ",")
+	normalized := make([]string, 0, len(paths))
+	for _, item := range paths {
+		item = strings.TrimSpace(strings.ReplaceAll(item, "\\", "/"))
+		if item == "" {
+			continue
+		}
+		normalized = append(normalized, strings.TrimPrefix(path.Clean(item), "./"))
+	}
+	app.WatchPaths = strings.Join(normalized, ",")
+}
+
+func normalizeRepositoryPath(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" || value == "." || value == "/" {
+		return ""
+	}
+	return strings.TrimPrefix(path.Clean(value), "./")
 }
 
 func applyAppDefaults(app *domain.App) {

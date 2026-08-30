@@ -24,6 +24,11 @@ type ServiceAppStore interface {
 	ListEnvVars(ctx context.Context, appID uuid.UUID) ([]appsdomain.EnvVar, error)
 }
 
+type ServiceScopeStore interface {
+	GetServiceScope(ctx context.Context, serviceID, orgID uuid.UUID) (uuid.UUID, *uuid.UUID, error)
+	ListEnvVarsByService(ctx context.Context, serviceID uuid.UUID) ([]appsdomain.EnvVar, error)
+}
+
 func (r *Resolver) Effective(ctx context.Context, appID, orgID uuid.UUID) (map[string]string, error) {
 	resolved, err := r.Resolved(ctx, appID, orgID)
 	if err != nil {
@@ -44,15 +49,28 @@ type scopeEntry struct {
 }
 
 func (r *Resolver) Resolved(ctx context.Context, appID, orgID uuid.UUID) ([]domain.ResolvedVariable, error) {
-	app, err := r.Apps.GetApp(ctx, appID, orgID)
-	if err != nil {
-		return nil, err
+	app, appErr := r.Apps.GetApp(ctx, appID, orgID)
+	projectID := uuid.Nil
+	var environmentID *uuid.UUID
+	serviceVars := []appsdomain.EnvVar(nil)
+	if appErr == nil {
+		projectID = app.ProjectID
+		environmentID = app.EnvironmentID
+		serviceVars, appErr = r.Apps.ListEnvVars(ctx, appID)
+	} else if serviceStore, ok := r.Apps.(ServiceScopeStore); ok {
+		projectID, environmentID, appErr = serviceStore.GetServiceScope(ctx, appID, orgID)
+		if appErr == nil {
+			serviceVars, appErr = serviceStore.ListEnvVarsByService(ctx, appID)
+		}
+	}
+	if appErr != nil {
+		return nil, appErr
 	}
 
 	scopes := newVarScopes(map[string]string{})
 	merged := map[string]scopeEntry{}
 
-	project, err := r.Vars.ListVariables(ctx, app.ProjectID, uuid.Nil)
+	project, err := r.Vars.ListVariables(ctx, projectID, uuid.Nil)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +80,8 @@ func (r *Resolver) Resolved(ctx context.Context, appID, orgID uuid.UUID) ([]doma
 		merged[v.Key] = scopeEntry{Key: v.Key, Value: val, Source: "project", Secret: v.IsSecret}
 	}
 
-	if app.EnvironmentID != nil {
-		env, err := r.Vars.ListVariables(ctx, app.ProjectID, *app.EnvironmentID)
+	if environmentID != nil {
+		env, err := r.Vars.ListVariables(ctx, projectID, *environmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -74,11 +92,7 @@ func (r *Resolver) Resolved(ctx context.Context, appID, orgID uuid.UUID) ([]doma
 		}
 	}
 
-	service, err := r.Apps.ListEnvVars(ctx, appID)
-	if err != nil {
-		return nil, err
-	}
-	for _, v := range service {
+	for _, v := range serviceVars {
 		val := r.decryptEnvVar(v)
 		scopes.service[v.Name] = val
 		merged[v.Name] = scopeEntry{Key: v.Name, Value: val, Source: "service", Secret: v.Secret}

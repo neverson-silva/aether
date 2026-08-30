@@ -178,8 +178,9 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	if err != nil {
 		return err
 	}
-	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
+	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore, Variables: cronResolver}
 	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
+	composeSvc.Variables = cronResolver
 	sourceStore := sourcecontrolInfra.NewStore(pool)
 	composeSvc.Source = sourceStore
 	var githubProvider *githubscm.Provider

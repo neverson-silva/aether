@@ -278,6 +278,8 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	deploySvc.Resolver = &variablesApp.Resolver{Vars: variablesStore, Apps: appsStore, Cipher: appsSecrets}
 	appsHandler.WithResolver(deploySvc.Resolver)
 	composeSvc.ProjectVars = variablesStore
+	composeSvc.Variables = deploySvc.Resolver
+	databasesSvc.Variables = deploySvc.Resolver
 	jobsSvc.Resolver = deploySvc.Resolver
 
 	hostSvc := &hostApp.Host{LogsDir: cfg.LogsDir, AgentFile: filepath.Join(cfg.StateDir, "host-stats.json"), PublicIP: hostinfo.PublicIP(), FreeDomainBase: domainsSvc.Provisioner.EffectiveBase()}

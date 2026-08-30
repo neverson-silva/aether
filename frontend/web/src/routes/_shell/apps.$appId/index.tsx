@@ -150,6 +150,7 @@ const webhookSchema = z.object({
 
 const TABS = [
   "overview",
+  "variables",
   "deployments",
   "compose",
   "domains",
@@ -167,6 +168,7 @@ const detailSearchSchema = z.preprocess(normalizeDetailsSearch, z.object({
 }));
 const TAB_ICONS: Record<Tab, typeof Code> = {
   overview: Gauge,
+  variables: ListChecks,
   deployments: RocketLaunch,
   compose: Code,
   domains: Globe,
@@ -1106,6 +1108,57 @@ function AppDetail() {
         </>
       )}
 
+      {tab === "variables" && (
+        <Card>
+          <div className="flex items-center justify-between mb-md">
+            <div>
+              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Service Variables</h2>
+              <p className="font-body-sm text-body-sm text-on-surface-variant/70 mt-xs">Only available to this service.</p>
+            </div>
+            <Button variant="ghost" onClick={() => setEnvEditorOpen(true)}>
+              <TerminalWindow size={14} />
+              Open editor
+            </Button>
+          </div>
+          <div className="space-y-sm mb-md">
+            {visibleServiceVariables.map((entry) => (
+              <div key={entry.name} className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60">
+                <div className="min-w-0">
+                  <p className="font-code-md text-code-md text-on-surface">{entry.name}</p>
+                  <p className="font-code-md text-code-md text-on-surface-variant/60 truncate">••••••••</p>
+                </div>
+                <div className="flex items-center gap-sm shrink-0">
+                  {entry.secret && <Badge tone="warning">Secret</Badge>}
+                  {entry.managed ? <Badge tone="neutral">Managed</Badge> : <button
+                    onClick={() => deleteEnv.mutate(entry.name)}
+                    className="text-muted-foreground hover:text-status-danger transition-colors"
+                    aria-label={`Delete ${entry.name}`}
+                  ><X size={16} /></button>}
+                </div>
+              </div>
+            ))}
+            {visibleServiceVariables.length === 0 && <p className="font-body-sm text-body-sm text-on-surface-variant">No variables defined.</p>}
+          </div>
+          <Button variant="ghost" className="w-full" onClick={() => setEnvEditorOpen(true)}>
+            <Plus size={16} />
+            Add variable
+          </Button>
+          <EnvEditorModal
+            open={envEditorOpen}
+            onClose={() => setEnvEditorOpen(false)}
+            title={`Service variables · ${app.name}`}
+            description="Variables injected only into this service. They override environment variables."
+            vars={envEditorVars}
+            onSave={async (entries) => {
+              for (const [key, entry] of Object.entries(entries)) {
+                await setEnv.mutateAsync({ name: key, value: entry.value, secret: entry.secret });
+              }
+              return { saved: Object.keys(entries).length };
+            }}
+          />
+        </Card>
+      )}
+
       {tab === "compose" && <ComposeTab appID={app.id} initialCompose={composeSource} canonicalService={Boolean(service)} exportID={service?.kind === "app" ? service.spec_id ?? app.id : undefined} showRuntimeExports={service?.kind !== "compose"} />}
 
       {tab === "deployments" && (
@@ -1314,79 +1367,6 @@ function AppDetail() {
               Global policy: AETHER_IMAGE_RETENTION (default 5, 0 = disabled)
             </p>
           </Card>
-          <Card>
-            <div className="flex items-center justify-between mb-md">
-              <div>
-                <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-                  Service Variables
-                </h2>
-                <p className="font-body-sm text-body-sm text-on-surface-variant/70 mt-xs">
-                  Only available to this service.
-                </p>
-              </div>
-              <Button variant="ghost" onClick={() => setEnvEditorOpen(true)}>
-                <TerminalWindow size={14} />
-                Open editor
-              </Button>
-            </div>
-            <div className="space-y-sm mb-md">
-              {visibleServiceVariables.map((e) => (
-                <div
-                  key={e.name}
-                  className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60"
-                >
-                  <div className="min-w-0">
-                    <p className="font-code-md text-code-md text-on-surface">
-                      {e.name}
-                    </p>
-                    <p className="font-code-md text-code-md text-on-surface-variant/60 truncate">
-                      ••••••••
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-sm shrink-0">
-                    {e.secret && <Badge tone="warning">Secret</Badge>}
-                    {e.managed ? <Badge tone="neutral">Managed</Badge> : <button
-                      onClick={() => deleteEnv.mutate(e.name)}
-                      className="text-muted-foreground hover:text-status-danger transition-colors"
-                      aria-label={`Delete ${e.name}`}
-                    ><X size={16} /></button>}
-                  </div>
-                </div>
-              ))}
-              {visibleServiceVariables.length === 0 && (
-                <p className="font-body-sm text-body-sm text-on-surface-variant">
-                  No variables defined.
-                </p>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              className="w-full"
-              onClick={() => setEnvEditorOpen(true)}
-            >
-              <Plus size={16} />
-              Add variable
-            </Button>
-          </Card>
-
-          <EnvEditorModal
-            open={envEditorOpen}
-            onClose={() => setEnvEditorOpen(false)}
-            title={`Service variables · ${app.name}`}
-            description="Variables injected only into this service. They override environment variables."
-            vars={envEditorVars}
-            onSave={async (entries) => {
-              for (const [key, entry] of Object.entries(entries)) {
-                await setEnv.mutateAsync({
-                  name: key,
-                  value: entry.value,
-                  secret: entry.secret,
-                });
-              }
-              return { saved: Object.keys(entries).length };
-            }}
-          />
-
           {(!service || service.capabilities.can_build) && <div className="space-y-lg">
             <Autopilot appID={service?.kind === "app" ? runtimeId : app.id} />
             <Card>

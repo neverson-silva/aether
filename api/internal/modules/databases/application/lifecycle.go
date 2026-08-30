@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +134,7 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 	spec := worker.RunSpec{
 		Name:          "db-" + db.Name,
 		Image:         image,
-		Env:           dbEnv(db, pass),
+		Env:           d.runtimeEnv(ctx, db, pass),
 		Port:          hostPort,
 		ContainerPort: containerPort,
 		Network:       d.Network,
@@ -153,6 +154,33 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		return "", err
 	}
 	return strings.TrimSpace(containerID), nil
+}
+
+func (d *Databases) runtimeEnv(ctx context.Context, db *domain.Database, pass string) []string {
+	values := map[string]string{}
+	if d.Variables != nil && db.ServiceID != uuid.Nil {
+		if resolved, err := d.Variables.Effective(ctx, db.ServiceID, db.OrgID); err == nil {
+			for key, value := range resolved {
+				values[key] = value
+			}
+		}
+	}
+	for _, item := range dbEnv(db, pass) {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	env := make([]string, 0, len(keys))
+	for _, key := range keys {
+		env = append(env, key+"="+values[key])
+	}
+	return env
 }
 
 func hostPortFree(port int) bool {
