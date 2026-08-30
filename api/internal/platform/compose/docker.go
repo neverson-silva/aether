@@ -1,11 +1,14 @@
 package compose
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 type Project struct {
@@ -19,6 +22,10 @@ type Executor interface {
 	Execute(context.Context, Project, ...string) (string, error)
 }
 
+type StreamingExecutor interface {
+	ExecuteWithLogs(context.Context, Project, func(string), ...string) (string, error)
+}
+
 type Docker struct {
 	Binary string
 	Host   string
@@ -29,6 +36,14 @@ func NewDocker(host string) *Docker {
 }
 
 func (d *Docker) Execute(ctx context.Context, project Project, args ...string) (string, error) {
+	return d.execute(ctx, project, nil, args...)
+}
+
+func (d *Docker) ExecuteWithLogs(ctx context.Context, project Project, sink func(string), args ...string) (string, error) {
+	return d.execute(ctx, project, sink, args...)
+}
+
+func (d *Docker) execute(ctx context.Context, project Project, sink func(string), args ...string) (string, error) {
 	if strings.TrimSpace(project.Directory) == "" || strings.TrimSpace(project.File) == "" {
 		return "", fmt.Errorf("compose project is incomplete")
 	}
@@ -48,7 +63,17 @@ func (d *Docker) Execute(ctx context.Context, project Project, args ...string) (
 	if d.Host != "" {
 		cmd.Env = append(cmd.Env, "DOCKER_HOST="+d.Host)
 	}
-	output, err := cmd.CombinedOutput()
+	var outputBuffer bytes.Buffer
+	if sink == nil {
+		cmd.Stdout = &outputBuffer
+		cmd.Stderr = &outputBuffer
+	} else {
+		writer := &streamWriter{buffer: &outputBuffer, sink: sink}
+		cmd.Stdout = writer
+		cmd.Stderr = writer
+	}
+	err := cmd.Run()
+	output := outputBuffer.String()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
 		if message == "" {
@@ -58,3 +83,23 @@ func (d *Docker) Execute(ctx context.Context, project Project, args ...string) (
 	}
 	return string(output), nil
 }
+
+type streamWriter struct {
+	buffer *bytes.Buffer
+	sink   func(string)
+	mu     sync.Mutex
+}
+
+func (w *streamWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.sink != nil {
+		line := strings.TrimSpace(string(data))
+		if line != "" {
+			w.sink(line)
+		}
+	}
+	return w.buffer.Write(data)
+}
+
+var _ io.Writer = (*streamWriter)(nil)

@@ -32,7 +32,6 @@ import {
   useServiceContainers,
 } from "@/hooks";
 import type { App } from "@/api/types";
-import { EnvEditorModal } from "../../../components/EnvEditorModal";
 import { DeploymentsTab } from "./-components/DeploymentsTab";
 import { BackupTab } from "../databases.$dbId/-components/BackupTab";
 import {
@@ -54,13 +53,11 @@ import {
   MagnifyingGlass,
   PencilSimple,
   Play,
-  Plus,
   RocketLaunch,
   Stop,
   Target,
   TerminalWindow,
   Trash,
-  X,
 } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
 import {
@@ -79,6 +76,8 @@ import {
   Skeleton,
   Slider,
   Switch,
+  VariableEditor,
+  type VariableRow,
   useToast,
 } from "@aether/design-system";
 import { isRuntimeLive, mapRuntimeStatus } from "../../../lib/runtime-status";
@@ -150,8 +149,8 @@ const webhookSchema = z.object({
 
 const TABS = [
   "overview",
-  "variables",
   "deployments",
+  "variables",
   "compose",
   "domains",
   "logs",
@@ -168,8 +167,8 @@ const detailSearchSchema = z.preprocess(normalizeDetailsSearch, z.object({
 }));
 const TAB_ICONS: Record<Tab, typeof Code> = {
   overview: Gauge,
-  variables: ListChecks,
   deployments: RocketLaunch,
+  variables: ListChecks,
   compose: Code,
   domains: Globe,
   logs: TerminalWindow,
@@ -188,27 +187,26 @@ function stateTone(state: string): string {
       : "pending";
 }
 
-function managedDatabaseVariables(engine?: string): string[] {
-  switch (engine) {
-    case "postgres":
-      return ["POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"];
-    case "mysql":
-    case "mariadb":
-      return ["MYSQL_ROOT_PASSWORD", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"];
-    case "mongodb":
-      return ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD", "MONGO_INITDB_DATABASE"];
-    case "mssql":
-      return ["MSSQL_SA_PASSWORD"];
-    case "oracle":
-      return ["ORACLE_PASSWORD", "ORACLE_DATABASE"];
-    default:
-      return [];
-  }
+function parseEnv(): VariableRow[] | undefined {
+  const pasted = window.prompt("Paste .env content (KEY=value per line):");
+  if (!pasted) return;
+  return pasted.split("\n").flatMap((raw, index) => {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) return [];
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) return [];
+    return [{
+      id: `imported-${index}-${match[1]}`,
+      key: match[1],
+      value: match[2].replace(/^"|"$/g, ""),
+      secret: /password|secret|key|token/i.test(match[1]),
+    }];
+  });
 }
 
 function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
-  const [envEditorOpen, setEnvEditorOpen] = useState(false);
+  const [variables, setVariables] = useState<VariableRow[]>([]);
   const [connectionVisible, setConnectionVisible] = useState(false);
   const search = Route.useSearch();
   const resolvedServiceID = appId;
@@ -265,18 +263,10 @@ function AppDetail() {
       })),
     [serviceEnvironment],
   );
-  const managedVariableNames = useMemo(
-    () => managedDatabaseVariables(service?.kind === "database" ? service.spec?.engine : undefined),
-    [service?.kind, service?.spec?.engine],
+  const variableKey = useMemo(
+    () => envEditorVars.map((entry) => `${entry.key}:${entry.value.length}:${entry.is_secret}`).join("|"),
+    [envEditorVars],
   );
-  const visibleServiceVariables = useMemo(() => {
-    const existing = serviceEnvironment?.env ?? [];
-    const existingNames = new Set(existing.map((entry) => entry.name));
-    const managed = managedVariableNames
-      .filter((name) => !existingNames.has(name))
-      .map((name) => ({ name, value: "", secret: true, managed: true }));
-    return [...existing.map((entry) => ({ ...entry, managed: false })), ...managed];
-  }, [managedVariableNames, serviceEnvironment]);
   const { data: canonicalDeployments } = useServiceDeployments(canonicalServiceID, Boolean(service));
   const runtimeDeployments = canonicalDeployments;
   const { data: domains } = useDomains("services", canonicalServiceID);
@@ -305,6 +295,46 @@ function AppDetail() {
   const updateService = useUpdateService();
 
   const { add } = useToast();
+
+  useEffect(() => {
+    setVariables(envEditorVars.map((entry, index) => ({
+      id: `service-${index}-${entry.key}`,
+      key: entry.key,
+      value: entry.value,
+      secret: entry.is_secret,
+    })));
+  }, [envEditorVars]);
+
+  const exportVariables = () => {
+    const content = variables
+      .filter((variable) => variable.key.trim())
+      .map((variable) => `${variable.key}=${variable.value}`)
+      .join("\n");
+    void copyText(content)
+      .then(() => add({ title: "Variables copied", description: "Environment variables were copied as .env text.", tone: "success" }))
+      .catch(() => add({ title: "Variables could not be copied", description: "Try again later.", tone: "error" }));
+  };
+
+  const saveVariables = async () => {
+    const entries = new Map<string, { value: string; secret: boolean }>();
+    for (const variable of variables) {
+      const key = variable.key.trim();
+      if (key) entries.set(key, { value: variable.value, secret: Boolean(variable.secret) });
+    }
+    try {
+      const existingNames = new Set(envEditorVars.map((entry) => entry.key));
+      for (const name of existingNames) {
+        if (!entries.has(name)) await deleteEnv.mutateAsync(name);
+      }
+      for (const [name, entry] of entries) {
+        await setEnv.mutateAsync({ name, value: entry.value, secret: entry.secret });
+      }
+      add({ title: "Variables saved", description: `${entries.size} variable(s) updated.`, tone: "success" });
+    } catch (error) {
+      add({ title: "Variables could not be saved", description: error instanceof Error ? error.message : "Try again later.", tone: "error" });
+    }
+  };
+
   const navigate = Route.useNavigate();
   const returnTo = readDetailsReturnTo(search.returnTo);
 
@@ -1112,52 +1142,23 @@ function AppDetail() {
 
       {tab === "variables" && (
         <Card>
-          <div className="flex items-center justify-between mb-md">
-            <div>
-              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Service Variables</h2>
-              <p className="font-body-sm text-body-sm text-on-surface-variant/70 mt-xs">Only available to this service.</p>
-            </div>
-            <Button variant="ghost" onClick={() => setEnvEditorOpen(true)}>
-              <TerminalWindow size={14} />
-              Open editor
+          <div className="mb-md">
+            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Service Variables</h2>
+            <p className="font-body-sm text-body-sm text-on-surface-variant/70 mt-xs">Variables injected only into this service. They override environment variables.</p>
+          </div>
+          <VariableEditor
+            key={variableKey}
+            variables={variables}
+            onChange={setVariables}
+            onImport={parseEnv}
+            onExport={exportVariables}
+            className="max-h-[min(42rem,calc(100dvh-18rem))]"
+          />
+          <div className="mt-md flex justify-end">
+            <Button type="button" onClick={() => void saveVariables()} loading={setEnv.isPending || deleteEnv.isPending} loadingLabel="Saving variables">
+              Save variables
             </Button>
           </div>
-          <div className="space-y-sm mb-md">
-            {visibleServiceVariables.map((entry) => (
-              <div key={entry.name} className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60">
-                <div className="min-w-0">
-                  <p className="font-code-md text-code-md text-on-surface">{entry.name}</p>
-                  <p className="font-code-md text-code-md text-on-surface-variant/60 truncate">••••••••</p>
-                </div>
-                <div className="flex items-center gap-sm shrink-0">
-                  {entry.secret && <Badge tone="warning">Secret</Badge>}
-                  {entry.managed ? <Badge tone="neutral">Managed</Badge> : <button
-                    onClick={() => deleteEnv.mutate(entry.name)}
-                    className="text-muted-foreground hover:text-status-danger transition-colors"
-                    aria-label={`Delete ${entry.name}`}
-                  ><X size={16} /></button>}
-                </div>
-              </div>
-            ))}
-            {visibleServiceVariables.length === 0 && <p className="font-body-sm text-body-sm text-on-surface-variant">No variables defined.</p>}
-          </div>
-          <Button variant="ghost" className="w-full" onClick={() => setEnvEditorOpen(true)}>
-            <Plus size={16} />
-            Add variable
-          </Button>
-          <EnvEditorModal
-            open={envEditorOpen}
-            onClose={() => setEnvEditorOpen(false)}
-            title={`Service variables · ${app.name}`}
-            description="Variables injected only into this service. They override environment variables."
-            vars={envEditorVars}
-            onSave={async (entries) => {
-              for (const [key, entry] of Object.entries(entries)) {
-                await setEnv.mutateAsync({ name: key, value: entry.value, secret: entry.secret });
-              }
-              return { saved: Object.keys(entries).length };
-            }}
-          />
         </Card>
       )}
 

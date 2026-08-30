@@ -96,6 +96,20 @@ type LogNotifier interface {
 	NotifyDeployLog(ctx context.Context, appID, depID uuid.UUID, line string)
 }
 
+type deploymentLogContextKey struct{}
+
+// WithDeploymentLog attaches a live deployment log sink to a context.
+func WithDeploymentLog(ctx context.Context, sink func(string)) context.Context {
+	return context.WithValue(ctx, deploymentLogContextKey{}, sink)
+}
+
+// EmitDeploymentLog sends a deployment log line to the context sink.
+func EmitDeploymentLog(ctx context.Context, line string) {
+	if sink, ok := ctx.Value(deploymentLogContextKey{}).(func(string)); ok && line != "" {
+		sink(line)
+	}
+}
+
 type ServiceLogNotifier interface {
 	NotifyServiceDeployLog(ctx context.Context, serviceID, appID, depID uuid.UUID, line string)
 }
@@ -320,6 +334,7 @@ func (w *Worker) processServiceQueueJob(ctx context.Context, dep *deploydomain.D
 		delete(w.cancellers, dep.ID)
 		w.mu.Unlock()
 	}()
+	deploymentCtx = WithDeploymentLog(deploymentCtx, func(line string) { w.appendLog(dep, line) })
 	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusBuilding, "", ""); err != nil {
 		return err
 	}
@@ -377,6 +392,8 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		delete(w.cancellers, dep.ID)
 		w.mu.Unlock()
 	}()
+	ctx = deploymentCtx
+	deploymentCtx = WithDeploymentLog(deploymentCtx, func(line string) { w.appendLog(dep, line) })
 	ctx = deploymentCtx
 	if current, err := w.Store.GetDeployment(ctx, dep.ID); err == nil && current != nil && current.Status != deploydomain.StatusQueued {
 		return nil

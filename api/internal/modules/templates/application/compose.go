@@ -710,9 +710,24 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 	if _, err := os.Stat(envFile); err == nil {
 		project.EnvFile = envFile
 	}
-	output, err := c.ComposeRuntime.Execute(ctx, project, args...)
+	var output string
+	var err error
+	logSink := func(line string) { worker.EmitDeploymentLog(ctx, line) }
+	streamed := false
+	if streaming, ok := c.ComposeRuntime.(composeengine.StreamingExecutor); ok {
+		streamed = true
+		output, err = streaming.ExecuteWithLogs(ctx, project, logSink, args...)
+	} else {
+		output, err = c.ComposeRuntime.Execute(ctx, project, args...)
+	}
 	if err != nil {
+		if !streamed && strings.TrimSpace(output) != "" {
+			logSink(output)
+		}
 		return "", err
+	}
+	if !streamed && strings.TrimSpace(output) != "" {
+		logSink(output)
 	}
 	return output, nil
 }

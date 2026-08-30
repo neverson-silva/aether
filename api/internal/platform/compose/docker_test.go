@@ -27,3 +27,26 @@ func TestDockerExecuteBuildsExplicitProjectCommand(t *testing.T) {
 		t.Fatalf("command = %q, want %q", output, want)
 	}
 }
+
+func TestDockerExecuteWithLogsStreamsOutput(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(file, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(dir, "docker")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf 'build one\\nbuild two\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	adapter := &Docker{Binary: command}
+	_, err := adapter.ExecuteWithLogs(context.Background(), Project{Directory: dir, File: file, Name: "aether-test"}, func(line string) {
+		lines = append(lines, line)
+	}, "compose", "up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0] != "build one\nbuild two" {
+		t.Fatalf("streamed lines = %#v", lines)
+	}
+}

@@ -277,23 +277,23 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 	if dep != nil && d.Notifier != nil {
 		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(deploydomain.StatusStarting), Detail: "Database deployment started"})
 	}
+	deploymentID := uuid.Nil
 	if dep != nil {
-		d.appendDeployLog(dep.ID, "Deploying database '"+db.Name+"' ("+string(db.Engine)+")")
-		d.appendDeployLog(dep.ID, "Pulling image "+dbImage(db.Engine, db.Version))
+		deploymentID = dep.ID
 	}
+	d.appendDeployLog(ctx, deploymentID, "Deploying database '"+db.Name+"' ("+string(db.Engine)+")")
+	d.appendDeployLog(ctx, deploymentID, "Pulling image "+dbImage(db.Engine, db.Version))
 	containerID, err := d.deploy(ctx, db)
 	if err != nil {
+		d.appendDeployLog(ctx, deploymentID, "Deploy failed: "+err.Error())
 		if dep != nil {
-			d.appendDeployLog(dep.ID, "Deploy failed: "+err.Error())
 			d.finishDeployment(ctx, dep.ID, deploydomain.StatusFailed, "", err.Error())
 			d.notifyDeployment(ctx, dep, deploydomain.StatusFailed, err.Error())
 		}
 		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", db.ContainerID)
 		return nil, err
 	}
-	if dep != nil {
-		d.appendDeployLog(dep.ID, "Container started: "+containerID)
-	}
+	d.appendDeployLog(ctx, deploymentID, "Container started: "+containerID)
 	_ = d.Store.UpdateDatabaseStatus(ctx, id, "starting", containerID)
 	containerPort := defaultPorts[db.Engine]
 	if containerPort == 0 {
@@ -301,16 +301,16 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 	}
 	if err := d.waitHealthy(ctx, db, containerPort, databaseHealthTimeout); err != nil {
 		_ = d.Runtime.Remove(ctx, containerID)
+		d.appendDeployLog(ctx, deploymentID, "Health check failed: "+err.Error())
 		if dep != nil {
-			d.appendDeployLog(dep.ID, "Health check failed: "+err.Error())
 			d.finishDeployment(ctx, dep.ID, deploydomain.StatusFailed, containerID, err.Error())
 			d.notifyDeployment(ctx, dep, deploydomain.StatusFailed, err.Error())
 		}
 		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", containerID)
 		return nil, fmt.Errorf("database did not become healthy: %w", err)
 	}
+	d.appendDeployLog(ctx, deploymentID, "Database is healthy on port "+strconv.Itoa(db.Port))
 	if dep != nil {
-		d.appendDeployLog(dep.ID, "Database is healthy on port "+strconv.Itoa(db.Port))
 		d.finishDeployment(ctx, dep.ID, deploydomain.StatusReady, containerID, "")
 		d.notifyDeployment(ctx, dep, deploydomain.StatusReady, "Database is healthy")
 	}
@@ -353,7 +353,11 @@ func (d *Databases) finishDeployment(ctx context.Context, depID uuid.UUID, statu
 	_ = d.Deployments.UpdateStatus(ctx, depID, status, errMsg, "", containerID, &now, &now)
 }
 
-func (d *Databases) appendDeployLog(depID uuid.UUID, line string) {
+func (d *Databases) appendDeployLog(ctx context.Context, depID uuid.UUID, line string) {
+	worker.EmitDeploymentLog(ctx, line)
+	if depID == uuid.Nil {
+		return
+	}
 	if d.LogsDir == "" {
 		return
 	}
