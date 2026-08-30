@@ -127,6 +127,23 @@ const parseProviderPaths = (value: string) =>
 
 const maskedConnectionString = (value: string) => value.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:••••••••@");
 
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Copy command failed");
+}
+
 const webhookSchema = z.object({
   secret: z.string().min(1, "Secret is required"),
 });
@@ -167,6 +184,24 @@ function stateTone(state: string): string {
     : state === "no_container"
       ? "disabled"
       : "pending";
+}
+
+function managedDatabaseVariables(engine?: string): string[] {
+  switch (engine) {
+    case "postgres":
+      return ["POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"];
+    case "mysql":
+    case "mariadb":
+      return ["MYSQL_ROOT_PASSWORD", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"];
+    case "mongodb":
+      return ["MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD", "MONGO_INITDB_DATABASE"];
+    case "mssql":
+      return ["MSSQL_SA_PASSWORD"];
+    case "oracle":
+      return ["ORACLE_PASSWORD", "ORACLE_DATABASE"];
+    default:
+      return [];
+  }
 }
 
 function AppDetail() {
@@ -228,6 +263,18 @@ function AppDetail() {
       })),
     [serviceEnvironment],
   );
+  const managedVariableNames = useMemo(
+    () => managedDatabaseVariables(service?.kind === "database" ? service.spec?.engine : undefined),
+    [service?.kind, service?.spec?.engine],
+  );
+  const visibleServiceVariables = useMemo(() => {
+    const existing = serviceEnvironment?.env ?? [];
+    const existingNames = new Set(existing.map((entry) => entry.name));
+    const managed = managedVariableNames
+      .filter((name) => !existingNames.has(name))
+      .map((name) => ({ name, value: "", secret: true, managed: true }));
+    return [...existing.map((entry) => ({ ...entry, managed: false })), ...managed];
+  }, [managedVariableNames, serviceEnvironment]);
   const { data: canonicalDeployments } = useServiceDeployments(canonicalServiceID, Boolean(service));
   const runtimeDeployments = canonicalDeployments;
   const { data: domains } = useDomains("services", canonicalServiceID);
@@ -291,6 +338,7 @@ function AppDetail() {
   const [editName, setEditName] = useState("");
   const [editPort, setEditPort] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [connectionCopied, setConnectionCopied] = useState(false);
   const [autodeploy, setAutodeploy] = useState(false);
   const serviceLogsEndpoint = service
     ? `/api/v1/services/${service.id}/logs?follow=1${logContainer ? `&container=${encodeURIComponent(logContainer)}` : ""}`
@@ -439,10 +487,23 @@ function AppDetail() {
 
   const copyURL = () => {
     if (!liveURL) return;
-    navigator.clipboard.writeText(liveURL).then(() => {
+    copyText(liveURL).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }).catch(() => add({ title: "Could not copy URL", tone: "error" }));
+  };
+
+  const copyConnection = async () => {
+    const value = serviceConnection?.dsn;
+    if (!value) return;
+    try {
+      await copyText(value);
+      setConnectionCopied(true);
+      setTimeout(() => setConnectionCopied(false), 1500);
+      add({ title: "Connection string copied", tone: "success" });
+    } catch {
+      add({ title: "Could not copy connection string", tone: "error" });
+    }
   };
 
   const submitWebhook = async (values: z.infer<typeof webhookSchema>) => {
@@ -830,7 +891,7 @@ function AppDetail() {
                       <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">Connection</span>
                       {!connectionVisible ? <Button variant="ghost" onClick={() => setConnectionVisible(true)}>Show connection</Button> : serviceConnection?.dsn ? <div className="flex items-center justify-between gap-sm p-3 bg-surface-container-low border border-outline-variant rounded-md">
                         <span className="font-code-md text-code-md text-on-surface truncate">{maskedConnectionString(serviceConnection.dsn)}</span>
-                        <button type="button" onClick={() => navigator.clipboard.writeText(serviceConnection.dsn)} className="text-on-surface-variant hover:text-primary transition-colors" title="Copy connection string"><Copy size={18} /></button>
+                        <button type="button" onClick={copyConnection} className="text-on-surface-variant hover:text-primary transition-colors" title={connectionCopied ? "Copied!" : "Copy connection string"}>{connectionCopied ? <Check size={18} /> : <Copy size={18} />}</button>
                       </div> : <span className="font-body-sm text-body-sm text-on-surface-variant">{serviceConnectionError ? "Connection string unavailable" : "Loading connection..."}</span>}
                     </div>
                   )}
@@ -1269,7 +1330,7 @@ function AppDetail() {
               </Button>
             </div>
             <div className="space-y-sm mb-md">
-              {(serviceEnvironment?.env ?? []).map((e) => (
+              {visibleServiceVariables.map((e) => (
                 <div
                   key={e.name}
                   className="flex items-center justify-between gap-sm p-sm rounded border border-outline-variant/60"
@@ -1284,16 +1345,15 @@ function AppDetail() {
                   </div>
                   <div className="flex items-center gap-sm shrink-0">
                     {e.secret && <Badge tone="warning">Secret</Badge>}
-                    <button
+                    {e.managed ? <Badge tone="neutral">Managed</Badge> : <button
                       onClick={() => deleteEnv.mutate(e.name)}
                       className="text-muted-foreground hover:text-status-danger transition-colors"
-                    >
-                      <X size={16} />
-                    </button>
+                      aria-label={`Delete ${e.name}`}
+                    ><X size={16} /></button>}
                   </div>
                 </div>
               ))}
-              {(serviceEnvironment?.env ?? []).length === 0 && (
+              {visibleServiceVariables.length === 0 && (
                 <p className="font-body-sm text-body-sm text-on-surface-variant">
                   No variables defined.
                 </p>
