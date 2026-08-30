@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +61,12 @@ type EventLog interface {
 
 type ProjectVarStore interface {
 	ListVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]variablesDomain.Variable, error)
+}
+
+type composePortDefinition struct {
+	Services map[string]struct {
+		Ports []any `yaml:"ports"`
+	} `yaml:"services"`
 }
 
 func (c *Compose) Environment(ctx context.Context, id, orgID uuid.UUID) ([]variablesDomain.Variable, error) {
@@ -125,9 +132,79 @@ func (c *Compose) Create(ctx context.Context, orgID, projectID uuid.UUID, name, 
 	if !validYAML(content) {
 		return nil, domain.ErrValidation
 	}
+	port, hasPort, err := composePublishedPort(content)
+	if err != nil {
+		return nil, domain.ErrValidation
+	}
+	if !hasPort {
+		port, err = c.Store.NextComposePort(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("allocate compose port: %w", err)
+		}
+		content, err = addComposePort(content, port)
+		if err != nil {
+			return nil, fmt.Errorf("add compose port: %w", err)
+		}
+	}
 	return c.Store.CreateComposeApp(ctx, &domain.ComposeApp{
-		OrgID: orgID, ProjectID: projectID, EnvironmentID: environmentID, Name: name, Compose: content, Status: "pending",
+		OrgID: orgID, ProjectID: projectID, EnvironmentID: environmentID, Name: name, Compose: content, Port: port, Status: "pending",
 	})
+}
+
+func composePublishedPort(content string) (int, bool, error) {
+	var definition composePortDefinition
+	if err := yaml.Unmarshal([]byte(content), &definition); err != nil {
+		return 0, false, err
+	}
+	for _, service := range definition.Services {
+		for _, raw := range service.Ports {
+			switch value := raw.(type) {
+			case string:
+				parts := strings.Split(strings.TrimSpace(value), ":")
+				if len(parts) < 2 {
+					continue
+				}
+				host := strings.TrimSpace(parts[len(parts)-2])
+				host = strings.TrimPrefix(host, "[")
+				host = strings.TrimSuffix(host, "]")
+				if parsed, err := strconv.Atoi(host); err == nil && parsed > 0 {
+					return parsed, true, nil
+				}
+			case map[string]any:
+				if published, ok := value["published"]; ok {
+					if parsed, err := strconv.Atoi(fmt.Sprint(published)); err == nil && parsed > 0 {
+						return parsed, true, nil
+					}
+				}
+			}
+		}
+	}
+	return 0, false, nil
+}
+
+func PublishedPort(content string) (int, bool, error) {
+	return composePublishedPort(content)
+}
+
+func addComposePort(content string, port int) (string, error) {
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", err
+	}
+	services, ok := document["services"].(map[string]any)
+	if !ok || len(services) == 0 {
+		return "", errors.New("compose has no services mapping")
+	}
+	for _, raw := range services {
+		service, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		service["ports"] = []string{fmt.Sprintf("%d:%d", port, port)}
+		break
+	}
+	encoded, err := yaml.Marshal(document)
+	return string(encoded), err
 }
 
 func (c *Compose) Get(ctx context.Context, id, orgID uuid.UUID) (*domain.ComposeApp, error) {

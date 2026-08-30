@@ -43,8 +43,22 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 			return nil, domain.ErrValidation
 		}
 	}
+	port, hasPort, err := composePublishedPort(compose)
+	if err != nil {
+		return nil, domain.ErrValidation
+	}
+	if !hasPort {
+		port, err = t.Store.NextComposePort(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("allocate compose port: %w", err)
+		}
+		compose, err = addComposePort(compose, port)
+		if err != nil {
+			return nil, domain.ErrValidation
+		}
+	}
 	if _, err := t.Store.CreateComposeApp(ctx, &domain.ComposeApp{
-		OrgID: orgID, ProjectID: projectID, Name: appName, Compose: compose, Status: "stopped",
+		OrgID: orgID, ProjectID: projectID, Name: appName, Compose: compose, Port: port, Status: "stopped",
 	}); err != nil {
 		return nil, err
 	}

@@ -44,6 +44,7 @@ type ComposeApp struct {
 	ServiceID     uuid.UUID
 	Name          string
 	Compose       string
+	Port          int
 	Status        string
 	CreatedAt     time.Time
 }
@@ -62,6 +63,7 @@ type Store interface {
 	IncrementInstalls(ctx context.Context, id uuid.UUID) error
 
 	CreateComposeApp(ctx context.Context, app *ComposeApp) (*ComposeApp, error)
+	NextComposePort(ctx context.Context) (int, error)
 	GetComposeApp(ctx context.Context, id uuid.UUID) (*ComposeApp, error)
 	ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ComposeApp, error)
 	SetComposeStatus(ctx context.Context, id uuid.UUID, status string) error

@@ -144,7 +144,7 @@ func (h *Handler) DeploymentCompose(c *gin.Context) {
 func composeDTO(app *domain.ComposeApp) gin.H {
 	return gin.H{
 		"id": app.ID, "service_id": app.ServiceID, "org_id": app.OrgID, "project_id": app.ProjectID, "environment_id": app.EnvironmentID,
-		"name": app.Name, "status": app.Status, "compose": app.Compose, "created_at": app.CreatedAt,
+		"name": app.Name, "status": app.Status, "compose": app.Compose, "port": app.Port, "created_at": app.CreatedAt,
 	}
 }
 

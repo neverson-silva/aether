@@ -43,7 +43,7 @@ export function EnvEditorModal({
 }) {
   const { add } = useToast();
   const [variables, setVariables] = useState<VariableRow[]>([]);
-  const variableKey = useMemo(() => `${open}-${(vars ?? []).map((entry) => `${entry.key}:${entry.is_secret}`).join("|")}`, [open, vars]);
+  const variableKey = useMemo(() => `${open}-${(vars ?? []).map((entry) => `${entry.key}:${entry.value.length}:${entry.is_secret}`).join("|")}`, [open, vars]);
 
   useEffect(() => {
     if (open && vars) {

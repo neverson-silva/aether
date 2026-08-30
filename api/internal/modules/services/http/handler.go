@@ -312,14 +312,43 @@ WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
 	}
 	if specID, ok := service["spec_id"].(*uuid.UUID); ok && specID != nil {
 		if serviceStatus, statusOK := service["status"].(string); statusOK {
-			if serviceStatus == string(servicedomain.StatusUnknown) {
-				serviceStatus = string(servicedomain.StatusPending)
-			}
-			service["status"] = serviceStatus
+			service["status"] = h.projectedServiceStatus(c, service["id"].(uuid.UUID), *specID, servicedomain.Kind(service["kind"].(string)), serviceStatus)
 		}
 		h.enrichDetails(c, service, servicedomain.Kind(service["kind"].(string)), *specID)
 	}
 	c.JSON(http.StatusOK, service)
+}
+
+func (h *Handler) projectedServiceStatus(c *gin.Context, serviceID, specID uuid.UUID, kind servicedomain.Kind, storedStatus string) servicedomain.Status {
+	var latestStatus string
+	var deployments int
+	if err := h.db.QueryRow(c.Request.Context(), `SELECT COUNT(*), COALESCE((SELECT status FROM deployments WHERE service_id = $1 ORDER BY number DESC LIMIT 1), '') FROM deployments WHERE service_id = $1`, serviceID).Scan(&deployments, &latestStatus); err != nil {
+		deployments = 0
+	}
+	active := latestStatus == "queued" || latestStatus == "building" || latestStatus == "starting" || latestStatus == "health_checking"
+	if latestStatus == "failed" || latestStatus == "error" || latestStatus == "cancelled" {
+		return servicedomain.StatusFailed
+	}
+	states, err := runtimeContainerStates(c, h.runtime, serviceID, specID)
+	if err == nil && len(states) > 0 {
+		return servicedomain.ProjectStatus(kind, states, active, deployments > 0)
+	}
+	if active {
+		return servicedomain.StatusDeploying
+	}
+	switch strings.ToLower(storedStatus) {
+	case "pending", "creating", "validating", "unknown":
+		if deployments == 0 {
+			return servicedomain.StatusPending
+		}
+	case "running", "healthy", "ready":
+		return servicedomain.StatusRunning
+	case "stopped", "exited":
+		return servicedomain.StatusStopped
+	case "failed", "error":
+		return servicedomain.StatusFailed
+	}
+	return servicedomain.StatusPending
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -436,8 +465,14 @@ func (h *Handler) enrichSpec(c *gin.Context, service gin.H, kind servicedomain.K
 		}
 	case servicedomain.KindCompose:
 		var compose string
-		if err := h.db.QueryRow(c.Request.Context(), `SELECT compose FROM compose_apps WHERE id = $1`, specID).Scan(&compose); err == nil {
-			spec = gin.H{"compose": compose}
+		var port int
+		if err := h.db.QueryRow(c.Request.Context(), `SELECT compose, port FROM compose_apps WHERE id = $1`, specID).Scan(&compose, &port); err == nil {
+			if port == 0 {
+				if parsed, found, parseErr := templatesapplication.PublishedPort(compose); parseErr == nil && found {
+					port = parsed
+				}
+			}
+			spec = gin.H{"compose": compose, "port": port}
 		}
 	case servicedomain.KindDatabase:
 		var engine, version, dbName, user string

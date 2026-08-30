@@ -221,6 +221,7 @@ type ComposeApp struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	EnvironmentID uuid.NullUUID `json:"environment_id"`
 	ServiceID     uuid.UUID     `json:"service_id"`
+	Port          int32         `json:"port"`
 }
 
 type CronJob struct {

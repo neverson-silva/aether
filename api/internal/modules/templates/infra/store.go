@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -59,12 +60,25 @@ func (s *Store) IncrementInstalls(ctx context.Context, id uuid.UUID) error {
 func (s *Store) CreateComposeApp(ctx context.Context, app *domain.ComposeApp) (*domain.ComposeApp, error) {
 	row, err := s.q.CreateComposeApp(ctx, gen.CreateComposeAppParams{
 		OrgID: app.OrgID, ProjectID: app.ProjectID, EnvironmentID: nullUUIDPtr(app.EnvironmentID),
-		Name: app.Name, Compose: app.Compose, Status: app.Status,
+		Name: app.Name, Compose: app.Compose, Port: int32(app.Port), Status: app.Status,
 	})
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return composeFromRow(row), nil
+	return composeFromParts(row.ID, row.ServiceID, row.OrgID, row.ProjectID, row.EnvironmentID, row.Name, row.Compose, int(row.Port), row.Status, row.CreatedAt), nil
+}
+
+func (s *Store) NextComposePort(ctx context.Context) (int, error) {
+	var port int
+	err := s.db.QueryRowContext(ctx, `
+SELECT candidate
+FROM generate_series(1000, 1999) AS candidate
+WHERE NOT EXISTS (SELECT 1 FROM compose_apps WHERE compose_apps.port = candidate)
+  AND NOT EXISTS (SELECT 1 FROM apps WHERE apps.port = candidate)
+  AND NOT EXISTS (SELECT 1 FROM databases WHERE databases.port = candidate)
+ORDER BY candidate
+LIMIT 1`).Scan(&port)
+	return port, mapErr(err)
 }
 
 func (s *Store) GetComposeApp(ctx context.Context, id uuid.UUID) (*domain.ComposeApp, error) {
@@ -72,7 +86,7 @@ func (s *Store) GetComposeApp(ctx context.Context, id uuid.UUID) (*domain.Compos
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return composeFromRow(row), nil
+	return composeFromParts(row.ID, row.ServiceID, row.OrgID, row.ProjectID, row.EnvironmentID, row.Name, row.Compose, int(row.Port), row.Status, row.CreatedAt), nil
 }
 
 func (s *Store) GetServiceID(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
@@ -90,7 +104,7 @@ func (s *Store) ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]do
 	}
 	out := make([]domain.ComposeApp, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *composeFromRow(r))
+		out = append(out, *composeFromParts(r.ID, r.ServiceID, r.OrgID, r.ProjectID, r.EnvironmentID, r.Name, r.Compose, int(r.Port), r.Status, r.CreatedAt))
 	}
 	return out, nil
 }
@@ -113,15 +127,15 @@ func templateFromRow(row gen.GetTemplateRow) *domain.Template {
 	}
 }
 
-func composeFromRow(row gen.ComposeApp) *domain.ComposeApp {
+func composeFromParts(id, serviceID, orgID, projectID uuid.UUID, environmentID uuid.NullUUID, name, compose string, port int, status string, createdAt time.Time) *domain.ComposeApp {
 	var envID *uuid.UUID
-	if row.EnvironmentID.Valid {
-		id := row.EnvironmentID.UUID
+	if environmentID.Valid {
+		id := environmentID.UUID
 		envID = &id
 	}
 	return &domain.ComposeApp{
-		ID: row.ID, ServiceID: row.ServiceID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: envID,
-		Name: row.Name, Compose: row.Compose, Status: row.Status, CreatedAt: row.CreatedAt,
+		ID: id, ServiceID: serviceID, OrgID: orgID, ProjectID: projectID, EnvironmentID: envID,
+		Name: name, Compose: compose, Port: port, Status: status, CreatedAt: createdAt,
 	}
 }
 

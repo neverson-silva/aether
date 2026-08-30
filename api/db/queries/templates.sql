@@ -21,17 +21,17 @@ SET installs = installs + 1
 WHERE id = $1;
 
 -- name: CreateComposeApp :one
-INSERT INTO compose_apps (org_id, project_id, environment_id, name, compose, status)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, org_id, project_id, name, compose, status, created_at, environment_id, service_id;
+INSERT INTO compose_apps (org_id, project_id, environment_id, name, compose, port, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, project_id, name, compose, port, status, created_at, environment_id, service_id;
 
 -- name: GetComposeApp :one
-SELECT id, org_id, project_id, name, compose, status, created_at, environment_id, service_id
+SELECT id, org_id, project_id, name, compose, port, status, created_at, environment_id, service_id
 FROM compose_apps
 WHERE id = $1;
 
 -- name: ListComposeAppsByOrg :many
-SELECT id, org_id, project_id, name, compose, status, created_at, environment_id, service_id
+SELECT id, org_id, project_id, name, compose, port, status, created_at, environment_id, service_id
 FROM compose_apps
 WHERE org_id = $1
 ORDER BY name;
