@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -191,7 +192,11 @@ func (s *Scheduler) ReconcileRecurring(ctx context.Context, namespace string, ac
 	}
 	keys, err := s.rt.state.Keys(ctx)
 	if err != nil {
-		return err
+		if errors.Is(err, jetstream.ErrNoKeysFound) || errors.Is(err, natsgo.ErrNoKeysFound) {
+			keys = []string{}
+		} else {
+			return err
+		}
 	}
 	for _, stateKey := range keys {
 		if !strings.HasPrefix(stateKey, recurringStatePrefix) {
