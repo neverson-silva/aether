@@ -74,12 +74,12 @@ INGRESS_NET_NAME="${AETHER_INGRESS_NETWORK:-aether-ingress}"
 
 PG_CONTAINER="aether-postgres"
 PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
-PG_PORT="${AETHER_PG_PORT:-15432}"
+PG_PORT="1543"
 
 NATS_CONTAINER="aether-nats"
 NATS_IMAGE="${AETHER_NATS_IMAGE:-docker.io/library/nats:2.14.2-alpine}"
-NATS_PORT="${AETHER_NATS_PORT:-4222}"
-NATS_MONITOR_PORT="${AETHER_NATS_MONITOR_PORT:-8222}"
+NATS_PORT="1422"
+NATS_MONITOR_PORT="1822"
 NATS_URL_EFFECTIVE="${AETHER_NATS_URL:-}"
 NATS_USER="${AETHER_NATS_USER:-aether}"
 NATS_PASSWORD="${AETHER_NATS_PASSWORD:-}"
@@ -91,6 +91,8 @@ API_IMAGE="${AETHER_API_IMAGE:-aether.local/api:1}"
 API_PORT="${AETHER_API_PORT:-8080}"
 WORKER_CONTAINER="aether-worker"
 MONITORING_CONTAINER="aether-monitoring"
+WORKER_HEALTH_PORT="1801"
+MONITORING_HEALTH_PORT="1802"
 
 WEB_CONTAINER="aether-web"
 WEB_IMAGE="${AETHER_WEB_IMAGE:-aether.local/web:1}"
@@ -399,6 +401,8 @@ load_db_credentials() {
     DB_PASSWORD="$(strong_password)"
   fi
 
+  PG_PORT="1543"
+
   mkdir -p "$STATE_DIR"
   umask 077
   cat > "$CRED_FILE" <<EOF
@@ -446,7 +450,7 @@ ensure_ingress_image() {
 
 ensure_postgres() {
   local runtime="$RUNTIME"
-  local expected_port="${AETHER_PG_PORT:-15432}"
+  local expected_port="1543"
   PG_PORT="$expected_port"
   load_db_credentials
   local password="$DB_PASSWORD"
@@ -535,6 +539,16 @@ ensure_nats() {
   local runtime="$RUNTIME"
   local exists
   exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$NATS_CONTAINER" || true)"
+  if [[ -n "$exists" ]]; then
+    local configured_port configured_monitor_port
+    configured_port="$($runtime port "$NATS_CONTAINER" 4222/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
+    configured_monitor_port="$($runtime port "$NATS_CONTAINER" 8222/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
+    if [[ "$configured_port" != "$NATS_PORT" || "$configured_monitor_port" != "$NATS_MONITOR_PORT" ]]; then
+      info "Migrating NATS to the internal port range."
+      $runtime rm -f "$NATS_CONTAINER" >/dev/null
+      exists=""
+    fi
+  fi
   if [[ -n "$exists" ]]; then
     local configured_image
     configured_image="$($runtime inspect "$NATS_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)"
@@ -851,9 +865,9 @@ start_auxiliary() {
     --restart unless-stopped
   )
   if [[ "$binary" == "aether-worker" ]]; then
-    args+=( -e "AETHER_WORKER_HEALTH_ADDR=0.0.0.0:8081" -p "127.0.0.1:8081:8081" )
+    args+=( -e "AETHER_WORKER_HEALTH_ADDR=0.0.0.0:8081" -p "127.0.0.1:$WORKER_HEALTH_PORT:8081" )
   elif [[ "$binary" == "aether-monitoring" ]]; then
-    args+=( -e "AETHER_MONITORING_HEALTH_ADDR=0.0.0.0:8082" -p "127.0.0.1:8082:8082" )
+    args+=( -e "AETHER_MONITORING_HEALTH_ADDR=0.0.0.0:8082" -p "127.0.0.1:$MONITORING_HEALTH_PORT:8082" )
   fi
   if [[ "$binary" == "aether-worker" ]]; then
     local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
@@ -946,12 +960,12 @@ start_web() {
 # ---------------------------------------------------------------------------
 # REGISTRY + CNB BUILDER — local registry and Docker-backed CNB builder.
 REGISTRY_IMAGE="${AETHER_REGISTRY_IMAGE:-docker.io/library/registry:2}"
-REGISTRY_ADDR="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}"
+REGISTRY_ADDR="127.0.0.1:1500"
 REGISTRY_CONTAINER="aether-registry"
 DOCKER_RUNTIME="${AETHER_DOCKER_CLI:-docker}"
-CNB_BUILDER="${AETHER_CNB_BUILDER:-${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa}"
+CNB_BUILDER="127.0.0.1:1500/builder:node-spa"
 if [[ "$CNB_BUILDER" == "aether/builder:node-spa" || "$CNB_BUILDER" == "localhost/aether/builder:node-spa" ]]; then
-  CNB_BUILDER="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa"
+  CNB_BUILDER="127.0.0.1:1500/builder:node-spa"
 fi
 
 ensure_registry() {
@@ -959,6 +973,15 @@ ensure_registry() {
   "$DOCKER_RUNTIME" info >/dev/null 2>&1 || fail "Docker Engine is unavailable for the image registry."
   local exists
   exists="$($DOCKER_RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$REGISTRY_CONTAINER" || true)"
+  if [[ -n "$exists" ]]; then
+    local configured_port
+    configured_port="$($DOCKER_RUNTIME port "$REGISTRY_CONTAINER" 5000/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
+    if [[ "$configured_port" != "1500" ]]; then
+      info "Migrating the internal registry to port 1500."
+      $DOCKER_RUNTIME rm -f "$REGISTRY_CONTAINER" >/dev/null
+      exists=""
+    fi
+  fi
   if [[ -n "$exists" ]]; then
     local running
     running="$($DOCKER_RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -cx "$REGISTRY_CONTAINER" || true)"

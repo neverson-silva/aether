@@ -15,7 +15,7 @@ case "$ARCH" in
   *) echo "unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-REGISTRY="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}"
+REGISTRY="${AETHER_REGISTRY_ADDR:-127.0.0.1:1500}"
 BUILDER_TAG="$REGISTRY/builder:node-spa"
 LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
 RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
@@ -41,14 +41,14 @@ info "host distro: $HOST_DISTRO; builder base: $BUILDER_BASE_IMAGE"
 # 1. Local registry
 # ---------------------------------------------------------------------------
 if ! docker ps --format '{{.Names}}' | grep -qx aether-registry; then
-  info "starting aether-registry on :5000..."
+  info "starting aether-registry on :1500..."
   if docker ps -a --format '{{.Names}}' | grep -qx aether-registry; then
     docker rm -f aether-registry >/dev/null
   fi
-  docker run -d --name aether-registry --network host docker.io/library/registry:2 >/dev/null
+  docker run -d --name aether-registry -p 127.0.0.1:1500:5000 docker.io/library/registry:2 >/dev/null
   sleep 3
 fi
-info "registry at http://127.0.0.1:5000/v2/ -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/v2/ || echo unavailable)"
+info "registry at http://127.0.0.1:1500/v2/ -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:1500/v2/ || echo unavailable)"
 
 # ---------------------------------------------------------------------------
 # 2. Contexto de build
@@ -167,4 +167,4 @@ info "publishing to the local registry..."
 docker push "$BUILDER_TAG"
 
 info "ready: $BUILDER_TAG"
-info "use: pack build my-app -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit --platform linux/$(uname -m)"
+info "use: pack build my-app -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit --platform linux/$(uname -m)"

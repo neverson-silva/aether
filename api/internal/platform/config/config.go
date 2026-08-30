@@ -163,7 +163,7 @@ func Load() (*Config, error) {
 		NATSName:                 envOr("AETHER_NATS_NAME", "aether-api"),
 		NATSUser:                 os.Getenv("AETHER_NATS_USER"),
 		NATSPassword:             os.Getenv("AETHER_NATS_PASSWORD"),
-		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "127.0.0.1:5000/builder:node-spa"),
+		CnbBuilder:               envOr("AETHER_CNB_BUILDER", "127.0.0.1:1500/builder:node-spa"),
 		GitHubAppID:              int64(envInt("AETHER_GITHUB_APP_ID", 0)),
 		GitHubAppSlug:            os.Getenv("AETHER_GITHUB_APP_SLUG"),
 		GitHubPrivateKey:         os.Getenv("AETHER_GITHUB_PRIVATE_KEY"),

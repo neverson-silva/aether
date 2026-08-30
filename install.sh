@@ -146,7 +146,7 @@ validate_checkout() {
 run_development_installer() {
   export AETHER_MODE="${AETHER_MODE:-prod}"
   export DEV_MODE="${DEV_MODE:-false}"
-  export AETHER_PG_PORT="${AETHER_PG_PORT:-15432}"
+  export AETHER_PG_PORT="1543"
   if [[ -z "${AETHER_STATE:-}" ]]; then
     if [[ "$(id -u)" -eq 0 ]]; then
       export AETHER_STATE="$DEFAULT_STATE_DIR"

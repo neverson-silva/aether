@@ -605,7 +605,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	img := "aether/" + dep.ID.String()[:8]
 	builder := w.CnbBuilder
 	if builder == "" {
-		builder = "127.0.0.1:5000/builder:node-spa"
+		builder = "127.0.0.1:1500/builder:node-spa"
 	}
 	dockerHost := w.BuildDockerHost
 	if dockerHost == "" {

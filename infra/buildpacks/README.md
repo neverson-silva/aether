@@ -1,7 +1,7 @@
 # Build Engine — Cloud Native Buildpacks (CNB)
 
 The Aether build engine is **Cloud Native Buildpacks**. The worker runs `pack`
-with the `127.0.0.1:5000/builder:node-spa` builder from the local registry:
+with the `127.0.0.1:1500/builder:node-spa` builder from the local registry:
 
 ```
 source → detection → build → launch → OCI image (ready for Docker Engine)
@@ -32,7 +32,7 @@ Ambos seguem a especificação CNB (buildpack.toml `api=0.10`, `bin/detect`,
 ## Builder lifecycle
 
 `builders/build-builder.sh` builds the builder with Docker Engine and publishes
-it to the local registry at `127.0.0.1:5000/builder:node-spa`.
+it to the local registry at `127.0.0.1:1500/builder:node-spa`.
 
 O script:
 1. garante o registry local (`aether-registry`, `--network host` — visível aos
@@ -46,7 +46,7 @@ O script:
 
 ```bash
 ./builders/build-builder.sh          # usa o uname -m do host
-pack build my-app -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+pack build my-app -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit
 ```
 
 The development and installation flows prepare the registry and builder before
@@ -56,23 +56,23 @@ starting the deployment worker.
 
 ```bash
 # SPA (React/Vue/Angular/Vite...)
-pack build my-spa -p ./frontend -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+pack build my-spa -p ./frontend -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit
 docker run -p 8080:8080 -e PORT=8080 my-spa
 
 # App Node com servidor (NestJS, Next, Express...)
-pack build my-api -p ./api -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+pack build my-api -p ./api -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit
 docker run -p 8080:8080 -e PORT=8080 my-api
 
 # App Bun (Hono/Elysia/Bun.serve — bun.lockb, bun.lock ou bunfig.toml)
-pack build my-bun-api -p ./api -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+pack build my-bun-api -p ./api -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit
 docker run -p 8080:8080 -e PORT=8080 my-bun-api
 
 # App Deno (Fresh/Oak/Hono-Deno — deno.json/deno.lock/import_map.json)
-pack build my-deno-api -p ./api -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+pack build my-deno-api -p ./api -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit
 docker run -p 8080:8080 -e PORT=8080 my-deno-api
 
 # Site estático em Deno (Lume — _config.ts)
-pack build my-site -p ./site -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+pack build my-site -p ./site -B 127.0.0.1:1500/builder:node-spa --docker-host=inherit
 docker run -p 8080:8080 -e PORT=8080 my-site
 ```
 

@@ -72,7 +72,7 @@ for volume in aether-pg-data aether-nats-data aether-traefik aether-pack-cache; 
   remove_volume "$volume"
 done
 
-for image in aether.local/api:1 aether.local/web:1 aether.local/builder:node-spa 127.0.0.1:5000/builder:node-spa localhost:5000/builder:node-spa; do
+for image in aether.local/api:1 aether.local/web:1 aether.local/builder:node-spa 127.0.0.1:1500/builder:node-spa localhost:1500/builder:node-spa; do
   remove_image "$image"
 done
 
