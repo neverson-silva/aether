@@ -12,6 +12,7 @@ export interface WizardProps {
   initialStep?: number
   currentStep?: number
   onStepChange?: (step: number) => void
+  onNext?: (currentStep: number, nextStep: number) => void | Promise<void>
   onComplete?: () => void
   onCancel?: () => void
   loading?: boolean
@@ -23,6 +24,7 @@ export function Wizard({
   initialStep = 0,
   loading,
   onStepChange,
+  onNext,
   onCancel,
   onComplete,
   steps,
@@ -30,20 +32,32 @@ export function Wizard({
   const [internalCurrent, setInternalCurrent] = useState(initialStep)
   const current = currentStep ?? internalCurrent
   const [invalid, setInvalid] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
   const step = steps[current]
   const setCurrent = (next: number) => {
     setInternalCurrent(next)
     onStepChange?.(next)
   }
   const next = async () => {
+    if (advancing) return
+    setAdvancing(true)
     const valid = (await step.validate?.()) ?? true
     if (!valid) {
       setInvalid(true)
+      setAdvancing(false)
       return
     }
     setInvalid(false)
-    if (current === steps.length - 1) onComplete?.()
-    else setCurrent(current + 1)
+    try {
+      if (current === steps.length - 1) {
+        onComplete?.()
+        return
+      }
+      await onNext?.(current, current + 1)
+      setCurrent(current + 1)
+    } finally {
+      setAdvancing(false)
+    }
   }
   return (
     <section className="flex h-full max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface-card">
@@ -108,9 +122,9 @@ export function Wizard({
               Back
             </button>
           ) : null}
-          <button
-            type="button"
-            disabled={loading}
+            <button
+              type="button"
+              disabled={loading || advancing}
             onClick={next}
             className="rounded-md bg-primary px-3 py-2 text-body-sm text-primary-foreground disabled:opacity-50"
           >

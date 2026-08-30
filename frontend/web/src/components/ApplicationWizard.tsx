@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CaretDown, Check, CheckCircle, Code, Database, FileArrowUp, FileText, FolderOpen, Gear, Globe, Info, LinkSimple, MagnifyingGlass, Package, Pulse, SpinnerGap, Warning, Wrench } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlFile, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
-import { ApiError, apiPut, getServer } from "../api/client";
+import { useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { ApiError, apiGet, apiPut, getServer } from "../api/client";
 import { TechIcon } from "./TechIcon";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { Accordion, Attachment, Button, Input, Modal, NativeSelect, Select, SelectSearch, VariableEditor, type VariableRow, Wizard, useToast } from "@aether/design-system";
@@ -122,8 +122,7 @@ export function ApplicationWizard({
   const [plan, setPlan] = useState<DetectedPlan | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [creating, setCreating] = useState(false);
-  const environmentFilePath = [rootFolder.trim().replace(/^\.\//, "").replace(/\/$/, ""), environmentTemplatePath.trim() || ".env.example"].filter(Boolean).join("/");
-  const { data: environmentTemplate } = useSourceControlFile(selectedRepo ?? undefined, githubConnection?.installation_id, environmentFilePath, branch, sourceMode === "git" && !!selectedRepo);
+  const environmentTemplateKeyRef = useRef("");
 
   const [cpu, setCpu] = useState("0.5");
   const [memMB, setMemMB] = useState(512);
@@ -153,11 +152,6 @@ export function ApplicationWizard({
     }, 400);
     return () => clearTimeout(t);
   }, [port, buildType]);
-
-  useEffect(() => {
-    if (!environmentTemplate?.variables) return;
-    setEnvRows(environmentTemplate.variables.map((variable, index) => ({ ...variable, id: `template-${index}-${variable.key}` })));
-  }, [environmentTemplate?.path, environmentTemplate?.ref, environmentTemplate?.variables]);
 
   useEffect(() => {
     if (open) {
@@ -237,6 +231,16 @@ export function ApplicationWizard({
     }
     const url = customUrl.trim() || (selectedRepository ? `https://github.com/${selectedRepository.full_name}.git` : "");
     await runDetect(sourceMode === "upload" ? { upload_id: zipUpload?.upload_id } : { git_url: url });
+  };
+
+  const loadEnvironmentTemplate = async () => {
+    if (sourceMode !== "git" || !selectedRepo || !githubConnection?.installation_id) return;
+    const environmentFilePath = [rootFolder.trim().replace(/^\.\//, "").replace(/\/$/, ""), environmentTemplatePath.trim() || ".env.example"].filter(Boolean).join("/");
+    const requestKey = [selectedRepo, githubConnection.installation_id, environmentFilePath, branch].join("|");
+    if (environmentTemplateKeyRef.current === requestKey) return;
+    const file = await apiGet<{ variables?: Array<{ key: string; value: string; secret: boolean }> }>(`/api/v1/source-control/github/repositories/${encodeURIComponent(selectedRepo)}/file?installation_id=${encodeURIComponent(githubConnection.installation_id)}&path=${encodeURIComponent(environmentFilePath)}&ref=${encodeURIComponent(branch)}`);
+    setEnvRows((file.variables ?? []).map((variable, index) => ({ ...variable, id: `template-${index}-${variable.key}` })));
+    environmentTemplateKeyRef.current = requestKey;
   };
 
   const create = async () => {
@@ -330,6 +334,15 @@ export function ApplicationWizard({
       <Wizard
         currentStep={step - 1}
         onStepChange={(value) => setStep(value + 1)}
+        onNext={async (_currentStep, nextStep) => {
+          if (nextStep !== 2) return;
+          try {
+            await loadEnvironmentTemplate();
+          } catch {
+            setEnvRows([]);
+            add({ title: "Could not load the environment template", tone: "warning" });
+          }
+        }}
         onCancel={onClose}
         onComplete={create}
         loading={creating}

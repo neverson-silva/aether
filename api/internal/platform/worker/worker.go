@@ -417,6 +417,12 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		if err != nil {
 			return w.fail(ctx, dep, "", err)
 		}
+		if err := w.setStatus(ctx, dep, deploydomain.StatusStarting, "", containerID); err != nil {
+			return err
+		}
+		if err := w.setStatus(ctx, dep, deploydomain.StatusHealthChecking, "", containerID); err != nil {
+			return err
+		}
 		return w.setStatus(ctx, dep, deploydomain.StatusReady, "", containerID)
 	}
 	built := false
