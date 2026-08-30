@@ -176,12 +176,21 @@ func hostPortFree(port int) bool {
 
 const databaseHealthTimeout = 120 * time.Second
 
-func (d *Databases) waitHealthy(ctx context.Context, port int, timeout time.Duration) error {
+func (d *Databases) waitHealthy(ctx context.Context, db *domain.Database, containerPort int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	targets := []struct {
+		host string
+		port int
+	}{
+		{host: "db-" + db.ID.String()[:8], port: containerPort},
+		{host: "host.docker.internal", port: db.Port},
+		{host: "host.containers.internal", port: db.Port},
+		{host: "127.0.0.1", port: db.Port},
+	}
 	for {
 		var lastErr error
-		for _, host := range []string{"host.containers.internal", "127.0.0.1"} {
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 2*time.Second)
+		for _, target := range targets {
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", target.host, target.port), 2*time.Second)
 			if err == nil {
 				conn.Close()
 				return nil
@@ -258,7 +267,11 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 		d.appendDeployLog(dep.ID, "Container started: "+containerID)
 	}
 	_ = d.Store.UpdateDatabaseStatus(ctx, id, "starting", containerID)
-	if err := d.waitHealthy(ctx, db.Port, databaseHealthTimeout); err != nil {
+	containerPort := defaultPorts[db.Engine]
+	if containerPort == 0 {
+		containerPort = db.Port
+	}
+	if err := d.waitHealthy(ctx, db, containerPort, databaseHealthTimeout); err != nil {
 		_ = d.Runtime.Remove(ctx, containerID)
 		if dep != nil {
 			d.appendDeployLog(dep.ID, "Health check failed: "+err.Error())
