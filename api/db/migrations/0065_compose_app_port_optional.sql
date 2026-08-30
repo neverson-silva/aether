@@ -1,0 +1,4 @@
+ALTER TABLE apps DROP CONSTRAINT IF EXISTS apps_port_check;
+
+ALTER TABLE apps
+    ADD CONSTRAINT apps_port_check CHECK (port BETWEEN 0 AND 65535);
