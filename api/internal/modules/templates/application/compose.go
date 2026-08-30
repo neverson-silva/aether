@@ -117,6 +117,10 @@ type AppStore interface {
 	GetEnvironment(ctx context.Context, id, projectID uuid.UUID) (*appsdomain.Environment, error)
 }
 
+type AppPortUpdater interface {
+	UpdateAppPort(ctx context.Context, id uuid.UUID, port int) error
+}
+
 type DeploymentStore interface {
 	GetDeploymentCompose(ctx context.Context, depID uuid.UUID) (string, error)
 }
@@ -664,6 +668,12 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 			if err != nil {
 				return "", fmt.Errorf("add compose port: %w", err)
 			}
+		}
+		if updater, ok := c.Apps.(AppPortUpdater); ok && publishedPort > 0 && app.Port != publishedPort {
+			if err := updater.UpdateAppPort(ctx, app.ID, publishedPort); err != nil {
+				return "", fmt.Errorf("persist compose port: %w", err)
+			}
+			app.Port = publishedPort
 		}
 		serviceID, err := c.GetServiceID(ctx, app.ID)
 		if err != nil {

@@ -366,7 +366,7 @@ func applyAppDefaults(app *domain.App) {
 	if app.ComposeFile == "" {
 		app.ComposeFile = "compose.yaml"
 	}
-	if app.Port == 0 {
+	if app.Port == 0 && app.BuildType != "compose" {
 		app.Port = 80
 	}
 }

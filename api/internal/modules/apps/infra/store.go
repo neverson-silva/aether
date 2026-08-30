@@ -179,6 +179,11 @@ func (s *Store) GetServiceID(ctx context.Context, appID uuid.UUID) (uuid.UUID, e
 	return serviceID, nil
 }
 
+func (s *Store) UpdateAppPort(ctx context.Context, id uuid.UUID, port int) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET port = $2, updated_at = now() WHERE id = $1`, id, port)
+	return mapErr(err)
+}
+
 func (s *Store) ListAppsByProject(ctx context.Context, orgID, projectID uuid.UUID) ([]domain.App, error) {
 	rows, err := s.q.ListAppsByProject(ctx, gen.ListAppsByProjectParams{OrgID: orgID, ProjectID: projectID})
 	if err != nil {

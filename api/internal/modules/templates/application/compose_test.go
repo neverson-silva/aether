@@ -44,6 +44,16 @@ func (f fakeComposeSource) GetByService(context.Context, uuid.UUID, uuid.UUID) (
 
 type fakeComposeClone struct{}
 
+func TestPublishedPort(t *testing.T) {
+	port, found, err := PublishedPort("services:\n  app:\n    ports:\n      - \"5000:5000\"\n")
+	if err != nil {
+		t.Fatalf("parse compose port: %v", err)
+	}
+	if !found || port != 5000 {
+		t.Fatalf("unexpected compose port: found=%v port=%d", found, port)
+	}
+}
+
 func (fakeComposeClone) Clone(ctx context.Context, source *sourcedomain.ServiceSource, destination string) (string, error) {
 	file := filepath.Join(destination, "api-funvest", "infra", "waf", "docker-compose.yml")
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
