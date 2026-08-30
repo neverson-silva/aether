@@ -72,7 +72,7 @@ type Handler struct {
 		Delete(context.Context, uuid.UUID, uuid.UUID) error
 	}
 	databaseConnection interface {
-		ConnectionString(context.Context, uuid.UUID, uuid.UUID) (string, error)
+		ConnectionStringByServiceID(context.Context, uuid.UUID, uuid.UUID) (string, error)
 	}
 	domains interface {
 		Add(context.Context, uuid.UUID, uuid.UUID, string, domainsapplication.AddDomainInput) (*domainsdomain.Domain, error)
@@ -181,7 +181,7 @@ func (h *Handler) WithRuntimes(appDeploy *deployapplication.Deployments, appOps 
 	h.compose = composeRuntime{up: compose, delete: composeDelete, timeline: compose}
 	h.database = database
 	if connection, ok := database.(interface {
-		ConnectionString(context.Context, uuid.UUID, uuid.UUID) (string, error)
+		ConnectionStringByServiceID(context.Context, uuid.UUID, uuid.UUID) (string, error)
 	}); ok {
 		h.databaseConnection = connection
 	}
@@ -492,7 +492,7 @@ func (h *Handler) Connection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
-	kind, specID, err := h.resolve(c, id)
+	kind, _, err := h.resolve(c, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
@@ -501,7 +501,7 @@ func (h *Handler) Connection(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service connection is unavailable"})
 		return
 	}
-	dsn, err := h.databaseConnection.ConnectionString(c.Request.Context(), specID, orgID(c))
+	dsn, err := h.databaseConnection.ConnectionStringByServiceID(c.Request.Context(), id, orgID(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "service connection is unavailable"})
 		return

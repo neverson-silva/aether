@@ -183,6 +183,18 @@ func (d *Databases) ConnectionString(ctx context.Context, id, orgID uuid.UUID) (
 	if err != nil {
 		return "", err
 	}
+	return d.connectionString(db)
+}
+
+func (d *Databases) ConnectionStringByServiceID(ctx context.Context, serviceID, orgID uuid.UUID) (string, error) {
+	db, err := d.GetByServiceID(ctx, serviceID, orgID)
+	if err != nil {
+		return "", err
+	}
+	return d.connectionString(db)
+}
+
+func (d *Databases) connectionString(db *domain.Database) (string, error) {
 	pass, err := d.Passwords.Decrypt(db.PassEnc)
 	if err != nil {
 		return "", err

@@ -180,7 +180,7 @@ function AppDetail() {
   const canonicalServiceID = service?.id ?? resolvedServiceID;
   const runtimeId = service?.spec_id ?? appId;
   const { data: serviceEnvironment } = useServiceEnvironment(canonicalServiceID, Boolean(service));
-  const { data: serviceConnection } = useServiceConnection(canonicalServiceID, connectionVisible && service?.kind === "database");
+  const { data: serviceConnection, isError: serviceConnectionError } = useServiceConnection(canonicalServiceID, connectionVisible && service?.kind === "database");
   const serviceDeploy = useServiceAction("deploy");
   const serviceStart = useServiceAction("start");
   const serviceStop = useServiceAction("stop");
@@ -831,7 +831,7 @@ function AppDetail() {
                       {!connectionVisible ? <Button variant="ghost" onClick={() => setConnectionVisible(true)}>Show connection</Button> : serviceConnection?.dsn ? <div className="flex items-center justify-between gap-sm p-3 bg-surface-container-low border border-outline-variant rounded-md">
                         <span className="font-code-md text-code-md text-on-surface truncate">{maskedConnectionString(serviceConnection.dsn)}</span>
                         <button type="button" onClick={() => navigator.clipboard.writeText(serviceConnection.dsn)} className="text-on-surface-variant hover:text-primary transition-colors" title="Copy connection string"><Copy size={18} /></button>
-                      </div> : <span className="font-body-sm text-body-sm text-on-surface-variant">Loading connection...</span>}
+                      </div> : <span className="font-body-sm text-body-sm text-on-surface-variant">{serviceConnectionError ? "Connection string unavailable" : "Loading connection..."}</span>}
                     </div>
                   )}
                   <div>
