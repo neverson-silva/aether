@@ -1279,7 +1279,7 @@ function AppDetail() {
                       {e.name}
                     </p>
                     <p className="font-code-md text-code-md text-on-surface-variant/60 truncate">
-                      {e.secret ? "••••••••" : e.value}
+                      ••••••••
                     </p>
                   </div>
                   <div className="flex items-center gap-sm shrink-0">

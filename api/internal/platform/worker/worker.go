@@ -776,13 +776,25 @@ func (w *Worker) buildDockerfile(ctx context.Context, dep *deploydomain.Deployme
 	if builder == nil {
 		builder = w.Runtime
 	}
-	out, err := builder.Build(ctx, srcDir, dockerfile, tag)
+	var out string
+	var err error
+	streamed := false
+	if streaming, ok := builder.(StreamingImageBuildRuntime); ok {
+		streamed = true
+		out, err = streaming.BuildStream(ctx, srcDir, dockerfile, tag, func(line string) { w.appendLog(dep, line) })
+	} else {
+		out, err = builder.Build(ctx, srcDir, dockerfile, tag)
+	}
 	if err != nil {
-		w.appendLog(dep, out)
+		if !streamed {
+			w.appendLog(dep, out)
+		}
 		return "", err
 	}
-	if trimmed := strings.TrimSpace(out); trimmed != "" {
-		w.appendLog(dep, trimmed)
+	if !streamed {
+		if trimmed := strings.TrimSpace(out); trimmed != "" {
+			w.appendLog(dep, trimmed)
+		}
 	}
 	return tag, nil
 }
@@ -804,13 +816,25 @@ func (w *Worker) buildCommandSource(ctx context.Context, dep *deploydomain.Deplo
 	if builder == nil {
 		builder = w.Runtime
 	}
-	out, err := builder.Build(ctx, srcDir, df, tag)
+	var out string
+	var err error
+	streamed := false
+	if streaming, ok := builder.(StreamingImageBuildRuntime); ok {
+		streamed = true
+		out, err = streaming.BuildStream(ctx, srcDir, df, tag, func(line string) { w.appendLog(dep, line) })
+	} else {
+		out, err = builder.Build(ctx, srcDir, df, tag)
+	}
 	if err != nil {
-		w.appendLog(dep, out)
+		if !streamed {
+			w.appendLog(dep, out)
+		}
 		return "", err
 	}
-	if trimmed := strings.TrimSpace(out); trimmed != "" {
-		w.appendLog(dep, trimmed)
+	if !streamed {
+		if trimmed := strings.TrimSpace(out); trimmed != "" {
+			w.appendLog(dep, trimmed)
+		}
 	}
 	return tag, nil
 }

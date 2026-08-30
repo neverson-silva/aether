@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -183,6 +184,24 @@ func TestReadEngineOutputBoundsResponse(t *testing.T) {
 	large := fmt.Sprintf(`{"stream":"%s"}`, strings.Repeat("x", 17<<20))
 	if _, err := readEngineOutput(strings.NewReader(large)); err == nil {
 		t.Fatal("expected oversized engine response error")
+	}
+}
+
+func TestReadEngineOutputWithCallbackStreamsLines(t *testing.T) {
+	input := strings.NewReader(`{"stream":"first\nsecond"}{"stream":" continued\nthird\n"}`)
+	var lines []string
+	output, err := readEngineOutputWithCallback(input, func(line string) {
+		lines = append(lines, line)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output != "first\nsecond continued\nthird\n" {
+		t.Fatalf("output = %q", output)
+	}
+	want := []string{"first", "second continued", "third"}
+	if !reflect.DeepEqual(lines, want) {
+		t.Fatalf("lines = %#v, want %#v", lines, want)
 	}
 }
 

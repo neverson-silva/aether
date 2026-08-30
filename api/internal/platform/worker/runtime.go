@@ -66,6 +66,11 @@ type ImageBuildRuntime interface {
 	Build(ctx context.Context, dir, dockerfile, tag string) (output string, err error)
 }
 
+type StreamingImageBuildRuntime interface {
+	ImageBuildRuntime
+	BuildStream(ctx context.Context, dir, dockerfile, tag string, onLine func(string)) (output string, err error)
+}
+
 type ImageRegistryRuntime interface {
 	Pull(ctx context.Context, image string) (output string, err error)
 	Push(ctx context.Context, image string) (output string, err error)

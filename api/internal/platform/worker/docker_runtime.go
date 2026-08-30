@@ -87,6 +87,10 @@ func (r *DockerRuntime) Tag(ctx context.Context, source, target string) error {
 }
 
 func (r *DockerRuntime) Build(ctx context.Context, dir, dockerfile, tag string) (string, error) {
+	return r.BuildStream(ctx, dir, dockerfile, tag, nil)
+}
+
+func (r *DockerRuntime) BuildStream(ctx context.Context, dir, dockerfile, tag string, onLine func(string)) (string, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return "", runtimeError("resolve build context", err)
@@ -118,7 +122,7 @@ func (r *DockerRuntime) Build(ctx context.Context, dir, dockerfile, tag string) 
 		return "", runtimeError("build image", err)
 	}
 	defer response.Body.Close()
-	output, readErr := readEngineOutput(response.Body)
+	output, readErr := readEngineOutputWithCallback(response.Body, onLine)
 	if readErr != nil {
 		return output, runtimeError("read image build output", readErr)
 	}
@@ -715,8 +719,13 @@ func normalizeStats(raw container.StatsResponse) ContainerStats {
 }
 
 func readEngineOutput(reader io.Reader) (string, error) {
+	return readEngineOutputWithCallback(reader, nil)
+}
+
+func readEngineOutputWithCallback(reader io.Reader, onLine func(string)) (string, error) {
 	const maxEngineOutputBytes int64 = 16 << 20
 	var output strings.Builder
+	var pendingLine string
 	limitedReader := &io.LimitedReader{R: reader, N: maxEngineOutputBytes + 1}
 	decoder := json.NewDecoder(limitedReader)
 	for {
@@ -729,6 +738,9 @@ func readEngineOutput(reader io.Reader) (string, error) {
 		}
 		if err := decoder.Decode(&event); err != nil {
 			if errors.Is(err, io.EOF) {
+				if onLine != nil && strings.TrimSpace(pendingLine) != "" {
+					onLine(strings.TrimRight(pendingLine, "\r"))
+				}
 				if limitedReader.N == 0 {
 					return output.String(), fmt.Errorf("engine response exceeds %d bytes", maxEngineOutputBytes)
 				}
@@ -739,12 +751,29 @@ func readEngineOutput(reader io.Reader) (string, error) {
 			}
 			return output.String(), err
 		}
-		output.WriteString(event.Stream)
+		if event.Stream != "" {
+			output.WriteString(event.Stream)
+			if onLine != nil {
+				emitOutputLines(&pendingLine, event.Stream, onLine)
+			}
+		}
 		if event.Error != "" {
 			return output.String(), errors.New(event.Error)
 		}
 		if event.ErrorDetail.Message != "" {
 			return output.String(), errors.New(event.ErrorDetail.Message)
+		}
+	}
+}
+
+func emitOutputLines(pending *string, chunk string, onLine func(string)) {
+	value := strings.ReplaceAll(*pending+chunk, "\r\n", "\n")
+	parts := strings.Split(value, "\n")
+	*pending = parts[len(parts)-1]
+	for _, line := range parts[:len(parts)-1] {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) != "" {
+			onLine(line)
 		}
 	}
 }
