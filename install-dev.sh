@@ -211,29 +211,121 @@ ensure_runtime() {
 
 # install_docker installs Docker CLI and Engine through the host package manager.
 install_docker() {
-  local pm=""
-  if command_exists dnf; then
-    pm="dnf install -y docker docker-compose-plugin"
-  elif command_exists apt-get; then
-    pm="apt-get update -qq && apt-get install -y docker.io docker-compose-plugin"
-  elif command_exists pacman; then
-    pm="pacman -S --noconfirm --needed docker docker-compose"
-  elif command_exists zypper; then
-    pm="zypper --non-interactive install docker docker-compose"
-  elif command_exists apk; then
-    pm="apk add docker docker-cli-compose"
+  local distro="linux"
+  if [[ -r /etc/os-release ]]; then
+    . /etc/os-release
+    distro="${ID:-linux}"
   fi
-  [[ -n "$pm" ]] || { host_log "fail: no package manager matched (dnf/apt/pacman/zypper/apk)"; return 1; }
-  host_log "step: install docker -> $pm"
+  local out=""
+  case "$distro" in
+    fedora)
+      if install_docker_fedora; then
+        return 0
+      fi
+      ;;
+    ubuntu|debian|linuxmint|pop)
+      if install_docker_debian; then
+        return 0
+      fi
+      ;;
+    rhel|centos|rocky|almalinux|ol|amzn)
+      if install_docker_rpm "$distro"; then
+        return 0
+      fi
+      ;;
+    pacman)
+      if install_docker_command "pacman -S --noconfirm --needed docker docker-compose"; then
+        return 0
+      fi
+      ;;
+    arch|manjaro)
+      if install_docker_command "pacman -S --noconfirm --needed docker docker-compose"; then
+        return 0
+      fi
+      ;;
+    opensuse*|sles)
+      if install_docker_command "zypper --non-interactive install docker docker-compose"; then
+        return 0
+      fi
+      ;;
+    alpine)
+      if install_docker_command "apk add docker docker-cli-compose"; then
+        return 0
+      fi
+      ;;
+  esac
+  if command_exists curl; then
+    local script
+    script="$(mktemp)"
+    host_log "step: install Docker using the official installer"
+    if curl -fsSL https://get.docker.com -o "$script" && run_sudo sh "$script" > /tmp/aether-docker-install.log 2>&1; then
+      rm -f "$script"
+      host_log "ok: Docker installed using the official installer"
+      info "  Docker installed using the official installer."
+      start_docker_service
+      return 0
+    fi
+    out="$(tail -40 /tmp/aether-docker-install.log 2>/dev/null || true)"
+    rm -f "$script"
+  fi
+  host_log "fail: Docker installation on $distro ($out)"
+  return 1
+}
+
+install_docker_command() {
+  local command="$1"
+  host_log "step: install Docker -> $command"
   local out
-  out="$(run_sudo sh -c "$pm" 2>&1)"
-  if [[ $? -eq 0 ]]; then
-    host_log "ok: docker installed via $pm"
+  if out="$(run_sudo sh -c "$command" 2>&1)"; then
+    host_log "ok: Docker installed via package manager"
     info "  Docker installed via package manager."
+    start_docker_service
     return 0
   fi
-  host_log "fail: install docker -> $pm ($out)"
+  host_log "fail: Docker package installation -> $command ($out)"
   return 1
+}
+
+install_docker_fedora() {
+  local repo_command=""
+  if dnf config-manager addrepo --help >/dev/null 2>&1; then
+    repo_command="dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo"
+  else
+    repo_command="dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
+  fi
+  install_docker_command "dnf install -y dnf-plugins-core ca-certificates && $repo_command && dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+}
+
+install_docker_rpm() {
+  local distro="$1"
+  local repo_base="centos"
+  [[ "$distro" == "amzn" ]] && repo_base="amazon"
+  local package_manager="dnf"
+  local plugins_package="dnf-plugins-core"
+  [[ "$distro" == "amzn" ]] && package_manager="yum"
+  [[ "$package_manager" == "yum" ]] && plugins_package="yum-utils"
+  local repo_command=""
+  if command_exists dnf && dnf config-manager addrepo --help >/dev/null 2>&1; then
+    repo_command="dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/$repo_base/docker-ce.repo"
+  elif command_exists dnf; then
+    repo_command="dnf config-manager --add-repo https://download.docker.com/linux/$repo_base/docker-ce.repo"
+  else
+    repo_command="yum-config-manager --add-repo https://download.docker.com/linux/$repo_base/docker-ce.repo"
+  fi
+  install_docker_command "$package_manager install -y $plugins_package ca-certificates && $repo_command && $package_manager install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+}
+
+install_docker_debian() {
+  install_docker_command "apt-get update -qq && apt-get install -y ca-certificates curl gnupg && install -m 0755 -d /etc/apt/keyrings /etc/apt/sources.list.d && curl -fsSL https://download.docker.com/linux/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && chmod a+r /etc/apt/keyrings/docker.gpg && . /etc/os-release && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\\n' \"$(dpkg --print-architecture)\" \"\${ID}\" \"\${VERSION_CODENAME}\" > /etc/apt/sources.list.d/docker.list && apt-get update -qq && apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+}
+
+start_docker_service() {
+  if command_exists systemctl; then
+    run_sudo systemctl enable --now docker >/dev/null 2>&1 || true
+    run_sudo systemctl enable --now containerd >/dev/null 2>&1 || true
+  elif command_exists service; then
+    run_sudo service docker start >/dev/null 2>&1 || true
+  fi
 }
 
 # ensure_linux_host validates Docker host prerequisites.
