@@ -16,7 +16,7 @@ import (
 	alertsInfra "aether/internal/modules/alerts/infra"
 	appsInfra "aether/internal/modules/apps/infra"
 	"aether/internal/modules/auth/infra"
-	container "aether/internal/modules/backups/adapters/container"
+	backupsEngine "aether/internal/modules/backups/adapters/engine"
 	backupsApp "aether/internal/modules/backups/application"
 	backupsInfra "aether/internal/modules/backups/infra"
 	databasesApp "aether/internal/modules/databases/application"
@@ -28,6 +28,7 @@ import (
 	jobsInfra "aether/internal/modules/jobs/infra"
 	realtimeApp "aether/internal/modules/realtime/application"
 	realtimeInfra "aether/internal/modules/realtime/infra"
+	servicesInfra "aether/internal/modules/services/infra"
 	settingsApp "aether/internal/modules/settings/application"
 	settingsInfra "aether/internal/modules/settings/infra"
 	snapshotsApp "aether/internal/modules/snapshots/application"
@@ -39,6 +40,7 @@ import (
 	templatesInfra "aether/internal/modules/templates/infra"
 	variablesApp "aether/internal/modules/variables/application"
 	variablesInfra "aether/internal/modules/variables/infra"
+	composeengine "aether/internal/platform/compose"
 	"aether/internal/platform/config"
 	"aether/internal/platform/druntime"
 	"aether/internal/platform/druntime/adapter"
@@ -79,7 +81,6 @@ func (c composeGitClone) Clone(ctx context.Context, source *sourcecontrolDomain.
 func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *pgxpool.Pool, status *health.Status, metrics *observability.Metrics) error {
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	ensureIngress(workerCtx, cfg)
 
 	appsStore := appsInfra.NewStore(pool)
 	appsSecrets, err := appsInfra.NewSecretCipher(secretKey)
@@ -91,7 +92,20 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	variablesStore.Cipher = appsSecrets
 	cronResolver := &variablesApp.Resolver{Vars: variablesStore, Apps: appsStore, Cipher: appsSecrets}
 	deployStore := deployInfra.NewStore(pool)
-	deployRuntime := worker.NewPodmanRuntime()
+	deployRuntime, err := worker.NewDockerRuntime(cfg.DockerHost)
+	if err != nil {
+		return err
+	}
+	defer deployRuntime.Close()
+	imageRuntime, err := worker.NewDockerRuntime(cfg.BuildDockerHost)
+	if err != nil {
+		return err
+	}
+	defer imageRuntime.Close()
+	backupsEngine.Register(deployRuntime)
+	if err := ensureIngress(workerCtx, cfg, deployRuntime); err != nil {
+		return fmt.Errorf("bootstrap ingress: %w", err)
+	}
 	domainsStore := domainsInfra.NewStore(pool)
 	databasesStore := databasesInfra.NewStore(pool)
 	domainsSvc := &domainsApp.Domains{
@@ -100,7 +114,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 			TraefikDir:         filepath.Join(cfg.StateDir, "traefik"),
 			FreeDomainBase:     cfg.FreeDomainBase,
 			FreeDomainProvider: cfg.FreeDomainProvider,
-			TraefikBin:         cfg.TraefikBin,
+			Runtime:            deployRuntime,
 		},
 	}
 
@@ -143,7 +157,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	defer eventLog.Close()
 	realtimeSvc := &realtimeApp.Realtime{
 		Presence: rtRuntime.Presence, PubSub: rtRuntime.PubSub,
-		Apps: appsStore, Deployments: deployStore, Ports: deployRuntime,
+		Apps: appsStore, Deployments: deployStore, Ports: deployRuntime, Runtime: deployRuntime,
 		Log: eventLog, Notifications: notifications,
 	}
 
@@ -151,11 +165,13 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		Store: deployStore, Apps: appsStore, Runtime: deployRuntime,
 		LogsDir: cfg.LogsDir, BuildsDir: cfg.BuildsDir, UploadsDir: cfg.UploadsDir,
 		IngressNetwork: cfg.IngressNetwork, CnbBuilder: cfg.CnbBuilder,
+		DockerHost: cfg.DockerHost, BuildDockerHost: cfg.BuildDockerHost,
+		Images: imageRuntime, Builder: imageRuntime, Registry: imageRuntime,
 		Logger: slog.Default(), Queue: rtRuntime.Queue,
-		Metrics: metrics, QueueConcurrency: 1,
+		Metrics:  metrics,
 		Notifier: realtimeSvc, LogNotifier: realtimeSvc,
 	}
-	deployWatcher := &worker.Watcher{Store: deployStore, Runtime: deployRuntime, Notifier: realtimeSvc, Logger: slog.Default()}
+	deployWatcher := &worker.Watcher{Store: deployStore, Runtime: deployRuntime, ServiceStore: servicesInfra.NewStore(pool), Notifier: realtimeSvc, Logger: slog.Default()}
 	provisionWorker := &domainsApp.ProvisionWorker{Store: domainsStore, Provisioner: domainsSvc.Provisioner}
 
 	dbCipher, err := databasesInfra.NewPasswordCipher(secretKey)
@@ -163,7 +179,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		return err
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
-	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
+	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
 	sourceStore := sourcecontrolInfra.NewStore(pool)
 	composeSvc.Source = sourceStore
 	var githubProvider *githubscm.Provider
@@ -183,15 +199,18 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		}
 		return serviceID, nil
 	}
-	deployWorker.ServiceDeploy = func(ctx context.Context, kind string, serviceID, specID, orgID uuid.UUID) error {
+	deployWorker.ServiceDeploy = func(ctx context.Context, kind string, serviceID, specID, orgID uuid.UUID) (string, error) {
 		switch kind {
 		case "compose":
-			return composeSvc.Up(ctx, specID, orgID)
+			return "", composeSvc.Up(ctx, specID, orgID)
 		case "database":
-			_, err := databasesSvc.Deploy(ctx, specID, orgID)
-			return err
+			db, err := databasesSvc.DeployForWorker(ctx, specID, orgID)
+			if err != nil {
+				return "", err
+			}
+			return db.ContainerID, nil
 		default:
-			return fmt.Errorf("unsupported service deployment kind %q", kind)
+			return "", fmt.Errorf("unsupported service deployment kind %q", kind)
 		}
 	}
 	settingsStore := settingsInfra.NewStore(pool)
@@ -199,18 +218,18 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)
 	dbBackupsSvc := &backupsApp.DatabaseBackups{
 		Store: dbBackupsStore, Databases: databasesSvc, Passwords: dbCipher,
-		Destinations: settingsDestProvider{s: settingsSvc}, Exec: container.NewPodman(),
+		Destinations: settingsDestProvider{s: settingsSvc}, Exec: deployRuntime,
 		Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Audit: auditRecorder{store: store},
 		Notifier: realtimeSvc, Timeout: 45 * time.Minute,
 		Outbox:     outbox.NewStore(pool),
 		UploadRoot: filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes,
 	}
-	cronWorker := &jobsApp.CronWorker{Store: jobsInfra.NewStore(pool), Apps: appsStore, Runtime: jobsApp.NewRuntime(), Resolver: cronResolver, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
+	cronWorker := &jobsApp.CronWorker{Store: jobsInfra.NewStore(pool), Apps: appsStore, Runtime: jobsApp.NewRuntime(deployRuntime), Resolver: cronResolver, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
 	snapshotOutputDir := os.Getenv("AETHER_SNAPSHOT_HOST_DIR")
 	if snapshotOutputDir == "" {
 		snapshotOutputDir = filepath.Join(cfg.StateDir, "snapshots")
 	}
-	snapshotWorker := &snapshotsApp.SnapshotWorker{Store: snapshotsInfra.NewStore(pool), Executor: snapshotsInfra.PodmanExecutor{OutputDir: snapshotOutputDir}, OutputDir: snapshotOutputDir, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
+	snapshotWorker := &snapshotsApp.SnapshotWorker{Store: snapshotsInfra.NewStore(pool), Executor: snapshotsInfra.DockerExecutor{OutputDir: snapshotOutputDir, Runtime: deployRuntime}, OutputDir: snapshotOutputDir, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
 	if err := checkWorkerConsumers(workerCtx, rtRuntime.Queue); err != nil {
 		return fmt.Errorf("initialize job consumers: %w", err)
 	}

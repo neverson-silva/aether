@@ -93,3 +93,63 @@ func TestCapabilitiesExposeLifecycleActionsForEveryServiceKind(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectStatusUsesPendingForNeverDeployedServices(t *testing.T) {
+	for _, kind := range []Kind{KindApp, KindCompose, KindDatabase} {
+		if got := ProjectStatus(kind, nil, false, false); got != StatusPending {
+			t.Fatalf("kind %q status = %q, want %q", kind, got, StatusPending)
+		}
+	}
+}
+
+func TestProjectStatusDeploymentTakesPrecedenceOverRuntime(t *testing.T) {
+	got := ProjectStatus(KindApp, []ContainerState{{Status: "running"}}, true, true)
+	if got != StatusDeploying {
+		t.Fatalf("status = %q, want %q", got, StatusDeploying)
+	}
+}
+
+func TestProjectStatusRuntimeMatrix(t *testing.T) {
+	healthy := true
+	unhealthy := false
+	tests := []struct {
+		name   string
+		state  ContainerState
+		status Status
+	}{
+		{name: "running", state: ContainerState{Status: "running", Healthy: &healthy}, status: StatusRunning},
+		{name: "stopped", state: ContainerState{Status: "stopped"}, status: StatusStopped},
+		{name: "exited", state: ContainerState{Status: "exited"}, status: StatusStopped},
+		{name: "restarting", state: ContainerState{Status: "restarting"}, status: StatusDegraded},
+		{name: "unhealthy", state: ContainerState{Status: "running", Healthy: &unhealthy}, status: StatusDegraded},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ProjectStatus(KindApp, []ContainerState{test.state}, false, true); got != test.status {
+				t.Fatalf("status = %q, want %q", got, test.status)
+			}
+		})
+	}
+}
+
+func TestProjectStatusComposeAggregateMatrix(t *testing.T) {
+	healthy := true
+	unhealthy := false
+	tests := []struct {
+		name   string
+		states []ContainerState
+		status Status
+	}{
+		{name: "all running", states: []ContainerState{{Status: "running", Healthy: &healthy}, {Status: "running"}}, status: StatusRunning},
+		{name: "mixed", states: []ContainerState{{Status: "running"}, {Status: "stopped"}}, status: StatusDegraded},
+		{name: "unhealthy", states: []ContainerState{{Status: "running", Healthy: &unhealthy}}, status: StatusDegraded},
+		{name: "all stopped", states: []ContainerState{{Status: "stopped"}, {Status: "stopped"}}, status: StatusStopped},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ProjectStatus(KindCompose, test.states, false, true); got != test.status {
+				t.Fatalf("status = %q, want %q", got, test.status)
+			}
+		})
+	}
+}

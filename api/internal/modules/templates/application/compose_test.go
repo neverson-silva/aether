@@ -9,8 +9,10 @@ import (
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 
+	sourcedomain "aether/internal/modules/sourcecontrol/domain"
 	"aether/internal/modules/templates/domain"
 	variablesDomain "aether/internal/modules/variables/domain"
+	composeengine "aether/internal/platform/compose"
 )
 
 type fakeVarStore struct {
@@ -30,6 +32,38 @@ func (f *fakeVarStore) ListVariables(ctx context.Context, projectID, environment
 type fakeVarMulti struct {
 	project ProjectVarStore
 	env     ProjectVarStore
+}
+
+type fakeComposeSource struct {
+	source *sourcedomain.ServiceSource
+}
+
+func (f fakeComposeSource) GetByService(context.Context, uuid.UUID, uuid.UUID) (*sourcedomain.ServiceSource, error) {
+	return f.source, nil
+}
+
+type fakeComposeClone struct{}
+
+func (fakeComposeClone) Clone(ctx context.Context, source *sourcedomain.ServiceSource, destination string) (string, error) {
+	file := filepath.Join(destination, "api-funvest", "infra", "waf", "docker-compose.yml")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(file, []byte("services:\n  waf:\n    build:\n      context: .\n"), 0o644); err != nil {
+		return "", err
+	}
+	return destination, nil
+}
+
+type fakeComposeExecutor struct {
+	project composeengine.Project
+	args    []string
+}
+
+func (f *fakeComposeExecutor) Execute(ctx context.Context, project composeengine.Project, args ...string) (string, error) {
+	f.project = project
+	f.args = append([]string(nil), args...)
+	return "ok", nil
 }
 
 func (f *fakeVarMulti) ListVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]variablesDomain.Variable, error) {
@@ -52,7 +86,9 @@ func TestComposeWriteEnvFile(t *testing.T) {
 	composeDir := filepath.Join(dir, "compose", "stack-1")
 	_ = os.MkdirAll(composeDir, 0o755)
 	app := &domain.ComposeApp{ID: uuid.New(), ProjectID: projID}
-	c.writeEnvFile(context.Background(), composeDir, app)
+	if err := c.writeEnvFile(context.Background(), composeDir, composeDir, app); err != nil {
+		t.Fatal(err)
+	}
 
 	data, err := os.ReadFile(filepath.Join(composeDir, ".env"))
 	if err != nil {
@@ -83,7 +119,9 @@ func TestComposeWriteEnvFileEnvOverrides(t *testing.T) {
 	composeDir := filepath.Join(dir, "compose", "stack-2")
 	_ = os.MkdirAll(composeDir, 0o755)
 	app := &domain.ComposeApp{ID: uuid.New(), ProjectID: projID, EnvironmentID: &envID}
-	c.writeEnvFile(context.Background(), composeDir, app)
+	if err := c.writeEnvFile(context.Background(), composeDir, composeDir, app); err != nil {
+		t.Fatal(err)
+	}
 
 	data, _ := os.ReadFile(filepath.Join(composeDir, ".env"))
 	if string(data) != "HOST=staging.example.com\n" {
@@ -163,5 +201,76 @@ services:
 func TestInjectComposeLabelsRejectsInvalid(t *testing.T) {
 	if _, err := injectComposeLabels("not: [valid", map[string]string{"aether.owner": "user"}); err == nil {
 		t.Fatal("expected error for invalid yaml")
+	}
+}
+
+func TestRepositoryPathRejectsEscape(t *testing.T) {
+	for _, value := range []string{"../Dockerfile", "/tmp/compose.yml", "../../secret"} {
+		if _, err := repositoryPath(value); err == nil {
+			t.Fatalf("expected path rejection for %q", value)
+		}
+	}
+}
+
+func TestRepositoryPathNormalizesNestedFile(t *testing.T) {
+	value, err := repositoryPath("infra/waf/../docker-compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != filepath.Join("infra", "docker-compose.yml") {
+		t.Fatalf("path = %q", value)
+	}
+}
+
+func TestInjectComposeLabelsUpdatesExistingValues(t *testing.T) {
+	src := `services:
+  api:
+    image: nginx
+    labels:
+      aether.service-id: old
+`
+	out, err := injectComposeLabels(src, map[string]string{"aether.service-id": "new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatal(err)
+	}
+	service := doc["services"].(map[string]any)["api"].(map[string]any)
+	labels := service["labels"].(map[string]any)
+	if labels["aether.service-id"] != "new" {
+		t.Fatalf("labels = %v", labels)
+	}
+}
+
+func TestComposeGitDeploymentUsesNestedComposeDirectory(t *testing.T) {
+	dir := t.TempDir()
+	appID := uuid.New()
+	orgID := uuid.New()
+	executor := &fakeComposeExecutor{}
+	compose := &Compose{
+		DataDir:        dir,
+		ComposeRuntime: executor,
+		Source: fakeComposeSource{source: &sourcedomain.ServiceSource{
+			RepositoryFullName: "owner/repository",
+			Branch:             "feature",
+			ComposeFile:        "api-funvest/infra/waf/docker-compose.yml",
+		}},
+		Clone: fakeComposeClone{},
+	}
+	app := &domain.ComposeApp{ID: appID, OrgID: orgID, ProjectID: uuid.New(), Name: "waf", Compose: "services: {}\n"}
+	if _, err := compose.runCompose(context.Background(), app, true, "up", "-d"); err != nil {
+		t.Fatal(err)
+	}
+	wantDir := filepath.Join(dir, "compose", appID.String(), "checkout", "api-funvest", "infra", "waf")
+	if executor.project.Directory != wantDir {
+		t.Fatalf("project directory = %q, want %q", executor.project.Directory, wantDir)
+	}
+	if executor.project.File != filepath.Join(dir, "compose", appID.String(), "compose.generated.yml") {
+		t.Fatalf("project file = %q", executor.project.File)
+	}
+	if len(executor.args) != 2 || executor.args[0] != "up" || executor.args[1] != "-d" {
+		t.Fatalf("compose args = %v", executor.args)
 	}
 }

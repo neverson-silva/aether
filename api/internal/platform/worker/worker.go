@@ -30,7 +30,6 @@ import (
 )
 
 type DeploymentStore interface {
-	ListQueued(ctx context.Context) ([]deploydomain.Deployment, error)
 	ListReady(ctx context.Context) ([]deploydomain.Deployment, error)
 	GetDeployment(ctx context.Context, id uuid.UUID) (*deploydomain.Deployment, error)
 	ListByApp(ctx context.Context, appID uuid.UUID, limit int) ([]deploydomain.Deployment, error)
@@ -53,15 +52,23 @@ type Worker struct {
 	Notifier          DeployNotifier
 	LogNotifier       LogNotifier
 	CnbBuilder        string
+	DockerHost        string
+	BuildDockerHost   string
+	Images            ImageRuntime
+	Builder           ImageBuildRuntime
+	Registry          ImageRegistryRuntime
 	Queue             queue.Queue
-	QueueConcurrency  int
-	ServiceDeploy     func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) error
+	ServiceDeploy     func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
 	Metrics           *observability.Metrics
 	deploymentTimeout time.Duration
 
 	mu         sync.Mutex
 	inFlight   map[uuid.UUID]bool
 	cancellers map[uuid.UUID]context.CancelFunc
+}
+
+type cancellationWatcher interface {
+	WatchCancellations(context.Context, string, func(string)) (func(), error)
 }
 
 type interruptedDeploymentStore interface {
@@ -95,16 +102,7 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 		w.runQueue(ctx)
 		return
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			w.processQueued(ctx)
-		}
-	}
+	w.log(ctx, "deployment queue is not configured", errors.New("NATS deployment queue is required"))
 }
 
 func (w *Worker) CancelDeployment(id uuid.UUID) bool {
@@ -128,31 +126,21 @@ func (w *Worker) runQueue(ctx context.Context) {
 		return
 	}
 	defer consumer.Close()
-	go w.drainLoop(ctx)
-	for range w.queueConcurrency() {
-		go w.consumeQueueLoop(ctx, consumer)
-	}
-	<-ctx.Done()
-}
-
-func (w *Worker) queueConcurrency() int {
-	if w.QueueConcurrency < 1 {
-		return 1
-	}
-	return w.QueueConcurrency
-}
-
-func (w *Worker) drainLoop(ctx context.Context) {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
+	var stopCancellations func()
+	if watcher, ok := w.Queue.(cancellationWatcher); ok {
+		stopCancellations, err = watcher.WatchCancellations(ctx, "deployments", func(id string) {
+			if parsed, parseErr := uuid.Parse(id); parseErr == nil {
+				w.CancelDeployment(parsed)
+			}
+		})
+		if err != nil {
+			w.log(ctx, "queue cancellation watcher", err)
 			return
-		case <-ticker.C:
-			w.drainQueued(ctx)
 		}
+		defer stopCancellations()
 	}
+	go w.consumeQueueLoop(ctx, consumer)
+	<-ctx.Done()
 }
 
 func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) {
@@ -165,14 +153,9 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 			w.log(ctx, "queue next", err)
 			continue
 		}
-		if job.Type == "service-deploy" {
-			w.logInfo(ctx, "service deployment job received", "job_id", job.ID, "service_id", job.AppID)
+		if job.Type == "deployment.execute" {
+			w.logInfo(ctx, "deployment job received", "job_id", job.ID, "deployment_id", job.DeploymentID)
 			stopProgress := queue.StartProgress(ctx, consumer, job)
-			if w.ServiceDeploy == nil {
-				stopProgress()
-				_ = consumer.Ack(ctx, job)
-				continue
-			}
 			var payload struct {
 				Kind         string `json:"kind"`
 				ServiceID    string `json:"service_id"`
@@ -196,29 +179,32 @@ func (w *Worker) consumeQueueLoop(ctx context.Context, consumer queue.Consumer) 
 				continue
 			}
 			deploymentID, deploymentErr := uuid.Parse(payload.DeploymentID)
-			if deploymentErr == nil {
-				started := time.Now()
-				if err := w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusStarting, "", "", "", &started, nil); err != nil {
-					w.log(ctx, "mark service deployment as starting", err)
-				}
-				w.notifyServiceDeployment(ctx, deploymentID, serviceID, string(deploydomain.StatusStarting), "")
-			}
-			if err := w.ServiceDeploy(ctx, payload.Kind, serviceID, specID, orgID); err != nil {
-				if deploymentID, parseErr := uuid.Parse(payload.DeploymentID); parseErr == nil {
-					finished := time.Now()
-					_ = w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusFailed, err.Error(), "", "", nil, &finished)
-					w.notifyServiceDeployment(ctx, deploymentID, serviceID, string(deploydomain.StatusFailed), err.Error())
-				}
-				w.log(ctx, "process service deployment job", err)
+			if deploymentErr != nil {
 				stopProgress()
 				_ = consumer.Ack(ctx, job)
-			} else {
-				if deploymentID, parseErr := uuid.Parse(payload.DeploymentID); parseErr == nil {
-					finished := time.Now()
-					_ = w.Store.UpdateStatus(ctx, deploymentID, deploydomain.StatusReady, "", "", "", nil, &finished)
-					w.notifyServiceDeployment(ctx, deploymentID, serviceID, string(deploydomain.StatusReady), "")
-				}
+				continue
+			}
+			dep, err := w.Store.GetDeployment(ctx, deploymentID)
+			if err != nil {
 				stopProgress()
+				_ = consumer.Nack(ctx, job)
+				continue
+			}
+			if dep == nil || dep.Status != deploydomain.StatusQueued {
+				stopProgress()
+				_ = consumer.Ack(ctx, job)
+				continue
+			}
+			var processErr error
+			if payload.Kind == "app" {
+				processErr = w.processQueueJob(ctx, dep)
+			} else {
+				processErr = w.processServiceQueueJob(ctx, dep, payload.Kind, serviceID, specID, orgID)
+			}
+			stopProgress()
+			if processErr != nil {
+				_ = consumer.Nack(ctx, job)
+			} else {
 				_ = consumer.Ack(ctx, job)
 			}
 			continue
@@ -287,7 +273,9 @@ func (w *Worker) queueIsPermanent(err error) bool {
 }
 
 func (w *Worker) processQueueJob(ctx context.Context, dep *deploydomain.Deployment) error {
-	w.deploy(ctx, dep)
+	if err := w.deploy(ctx, dep); err != nil {
+		return err
+	}
 	current, err := w.Store.GetDeployment(ctx, dep.ID)
 	if err != nil {
 		return err
@@ -301,40 +289,74 @@ func (w *Worker) processQueueJob(ctx context.Context, dep *deploydomain.Deployme
 	return fmt.Errorf("deployment ended in non-terminal state %s", current.Status)
 }
 
-func (w *Worker) drainQueued(ctx context.Context) {
-	queued, err := w.Store.ListQueued(ctx)
-	if err != nil {
-		w.log(ctx, "drain queued", err)
-		return
+func (w *Worker) processServiceQueueJob(ctx context.Context, dep *deploydomain.Deployment, kind string, serviceID, specID, orgID uuid.UUID) error {
+	if w.ServiceDeploy == nil {
+		return queue.Permanent(errors.New("service deployment materializer is not configured"))
 	}
+	current, err := w.Store.GetDeployment(ctx, dep.ID)
+	if err != nil {
+		return err
+	}
+	if current == nil || current.Status != deploydomain.StatusQueued {
+		return nil
+	}
+	timeout := w.deploymentTimeout
+	if timeout <= 0 || timeout > maxDeploymentTimeout {
+		timeout = maxDeploymentTimeout
+	}
+	deploymentCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	for i := range queued {
-		dep := &queued[i]
-		if w.inFlight[dep.ID] {
-			continue
-		}
-		if time.Since(dep.CreatedAt) < 5*time.Second {
-			continue
-		}
-		_ = w.Queue.Enqueue(ctx, "deployments", queue.Job{
-			DeploymentID: dep.ID.String(), AppID: dep.AppID.String(),
-		})
+	if w.cancellers == nil {
+		w.cancellers = make(map[uuid.UUID]context.CancelFunc)
 	}
-}
-
-func (w *Worker) processQueued(ctx context.Context) {
-	queued, err := w.Store.ListQueued(ctx)
+	w.cancellers[dep.ID] = cancel
+	w.mu.Unlock()
+	defer func() {
+		w.mu.Lock()
+		delete(w.cancellers, dep.ID)
+		w.mu.Unlock()
+	}()
+	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusBuilding, "", ""); err != nil {
+		return err
+	}
+	if w.deploymentCancelled(dep.ID) {
+		return nil
+	}
+	containerID, err := w.ServiceDeploy(deploymentCtx, kind, serviceID, specID, orgID)
 	if err != nil {
-		w.log(ctx, "list queue", err)
-		return
+		if w.deploymentCancelled(dep.ID) {
+			return nil
+		}
+		if deploymentCtx.Err() != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
+		w.fail(deploymentCtx, dep, containerID, err)
+		return nil
 	}
-	for i := range queued {
-		w.deploy(ctx, &queued[i])
+	if w.deploymentCancelled(dep.ID) {
+		return nil
 	}
+	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusStarting, dep.ImageRef, containerID); err != nil {
+		return err
+	}
+	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusHealthChecking, dep.ImageRef, containerID); err != nil {
+		return err
+	}
+	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusReady, dep.ImageRef, containerID); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
+func (w *Worker) deploymentCancelled(id uuid.UUID) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	dep, err := w.Store.GetDeployment(ctx, id)
+	return err == nil && dep != nil && dep.Status == deploydomain.StatusCancelled
+}
+
+func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error {
 	timeout := w.deploymentTimeout
 	if timeout <= 0 || timeout > maxDeploymentTimeout {
 		timeout = maxDeploymentTimeout
@@ -354,40 +376,42 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
 	}()
 	ctx = deploymentCtx
 	if current, err := w.Store.GetDeployment(ctx, dep.ID); err == nil && current != nil && current.Status != deploydomain.StatusQueued {
-		return
+		return nil
 	}
 	spec, hc, err := buildSpec(dep)
 	if err != nil {
-		w.fail(ctx, dep, "", err)
-		return
+		return w.fail(ctx, dep, "", err)
 	}
-	w.setStatus(ctx, dep, deploydomain.StatusBuilding, spec.Image, "")
+	if err := w.setStatus(ctx, dep, deploydomain.StatusBuilding, spec.Image, ""); err != nil {
+		return err
+	}
 	built := false
 	switch {
 	case spec.UploadID != "" && dep.ImageRef == "":
 		image, err := w.buildUploadSource(ctx, dep, spec)
 		if err != nil {
-			w.fail(ctx, dep, "", err)
-			return
+			return w.fail(ctx, dep, "", err)
 		}
 		spec.Image = image
 		built = true
 	case spec.GitURL != "" && dep.ImageRef == "":
 		image, err := w.buildGitSource(ctx, dep, spec)
 		if err != nil {
-			w.fail(ctx, dep, "", err)
-			return
+			return w.fail(ctx, dep, "", err)
 		}
 		spec.Image = image
 		built = true
 	}
 	if !built {
 		w.appendLog(dep, "pulling image "+spec.Image)
-		out, err := w.Runtime.Pull(ctx, spec.Image)
+		images := w.Images
+		if images == nil {
+			images = w.Runtime
+		}
+		out, err := images.Pull(ctx, spec.Image)
 		if err != nil {
 			w.appendLog(dep, out)
-			w.fail(ctx, dep, "", err)
-			return
+			return w.fail(ctx, dep, "", err)
 		}
 		if trimmed := strings.TrimSpace(out); trimmed != "" {
 			w.appendLog(dep, trimmed)
@@ -396,7 +420,11 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
 	w.appendLog(dep, "starting container "+spec.Name)
 	containerPort := spec.ContainerPort
 	if containerPort == 0 {
-		containerPort, _ = w.Runtime.ExposedPort(ctx, spec.Image)
+		images := w.Images
+		if images == nil {
+			images = w.Runtime
+		}
+		containerPort, _ = images.ExposedPort(ctx, spec.Image)
 	}
 	if containerPort == 0 {
 		containerPort = spec.Port
@@ -428,29 +456,32 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) {
 		MemMB: spec.MemMB, CPUs: spec.CPUs, StorageMB: spec.StorageMB, Labels: labels,
 	})
 	if err != nil {
-		w.fail(ctx, dep, "", err)
-		return
+		return w.fail(ctx, dep, "", err)
 	}
 	w.appendLog(dep, "container "+containerID+" started")
-	w.setStatus(ctx, dep, deploydomain.StatusStarting, spec.Image, containerID)
-	w.setStatus(ctx, dep, deploydomain.StatusHealthChecking, spec.Image, containerID)
+	if err := w.setStatus(ctx, dep, deploydomain.StatusStarting, spec.Image, containerID); err != nil {
+		return err
+	}
+	if err := w.setStatus(ctx, dep, deploydomain.StatusHealthChecking, spec.Image, containerID); err != nil {
+		return err
+	}
 	if !hc.Enabled {
 		w.appendLog(dep, "health check disabled, deploy ready")
-		w.setStatus(ctx, dep, deploydomain.StatusReady, spec.Image, containerID)
-		return
+		return w.setStatus(ctx, dep, deploydomain.StatusReady, spec.Image, containerID)
 	}
 	hostPort, err := w.Runtime.Port(ctx, containerID)
 	if err != nil {
-		w.fail(ctx, dep, containerID, err)
-		return
+		return w.fail(ctx, dep, containerID, err)
 	}
 	w.appendLog(dep, "health check http://127.0.0.1:"+hostPort+hc.Path)
 	if err := w.checkHealth(ctx, hostPort, hc); err != nil {
-		w.fail(ctx, dep, containerID, err)
-		return
+		return w.fail(ctx, dep, containerID, err)
 	}
 	w.appendLog(dep, "deploy ready")
-	w.setStatus(ctx, dep, deploydomain.StatusReady, spec.Image, containerID)
+	if err := w.setStatus(ctx, dep, deploydomain.StatusReady, spec.Image, containerID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (w *Worker) removeOldContainers(ctx context.Context, appID, currentDepID uuid.UUID) {
@@ -576,7 +607,10 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	if builder == "" {
 		builder = "127.0.0.1:5000/builder:node-spa"
 	}
-	dockerHost := cnbDockerHost()
+	dockerHost := w.BuildDockerHost
+	if dockerHost == "" {
+		dockerHost = "unix:///var/run/docker.sock"
+	}
 	spa := isStaticSPA(srcDir)
 
 	if plan, err := planner.Detect(srcDir); err == nil {
@@ -599,7 +633,7 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		cmd := exec.CommandContext(ctx, "pack", args...)
-		cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "CONTAINER_HOST="+dockerHost, "DOCKER_API_VERSION=1.40", "PACK_VOLUME_KEY=aether-"+dep.ID.String()[:8])
+		cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "DOCKER_API_VERSION=1.40", "PACK_VOLUME_KEY=aether-"+dep.ID.String()[:8])
 		out, err = w.streamCmd(ctx, dep, cmd)
 		if err == nil || !isTransientCNBError(out) || attempt == 1 {
 			break
@@ -615,7 +649,16 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 		w.appendLog(dep, "fail: "+strings.TrimSpace(out)+": "+err.Error())
 		return "", fmt.Errorf("%s: %w", strings.TrimSpace(out), err)
 	}
-	if _, err := exec.CommandContext(ctx, "podman", "tag", img+":latest", tag).CombinedOutput(); err != nil {
+	images := w.Registry
+	if images == nil {
+		if runtime, ok := w.Runtime.(ImageRegistryRuntime); ok {
+			images = runtime
+		}
+	}
+	if images == nil {
+		return "", errors.New("image registry runtime unavailable")
+	}
+	if err := images.Tag(ctx, img+":latest", tag); err != nil {
 		return "", err
 	}
 	return tag, nil
@@ -626,50 +669,6 @@ func isTransientCNBError(output string) bool {
 	return strings.Contains(value, "connection reset by peer") ||
 		strings.Contains(value, "proxy already running") ||
 		strings.Contains(value, "payload does not match any of the supported image formats")
-}
-
-func cnbDockerHost() string {
-	for _, name := range []string{"DOCKER_HOST", "CONTAINER_HOST"} {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			if strings.HasPrefix(value, "unix://") {
-				path := strings.TrimPrefix(value, "unix://")
-				if info, err := os.Stat(path); err != nil || info.Mode()&os.ModeSocket == 0 {
-					continue
-				}
-			}
-			return value
-		}
-	}
-	for _, path := range []string{"/var/run/docker.sock", "/run/podman/podman.sock", "/run/user/" + strconv.Itoa(os.Getuid()) + "/podman/podman.sock"} {
-		if info, err := os.Stat(path); err == nil && info.Mode()&os.ModeSocket != 0 {
-			return "unix://" + path
-		}
-	}
-	if isDevMode() {
-		path := os.Getenv("XDG_RUNTIME_DIR")
-		if path == "" {
-			path = "/run/user/" + strconv.Itoa(os.Getuid())
-		}
-		path += "/podman/podman.sock"
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
-			service := exec.Command("podman", "system", "service", "--time=0", "unix://"+path)
-			if err := service.Start(); err == nil {
-				_ = service.Process.Release()
-				for range 20 {
-					if info, statErr := os.Stat(path); statErr == nil && info.Mode()&os.ModeSocket != 0 {
-						return "unix://" + path
-					}
-					time.Sleep(50 * time.Millisecond)
-				}
-			}
-		}
-	}
-	return "unix:///var/run/docker.sock"
-}
-
-func isDevMode() bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_MODE")))
-	return value == "1" || value == "true" || value == "yes"
 }
 
 func cnbBuildEnv(srcDir string, spec runSpec) []string {
@@ -773,7 +772,11 @@ func (w *Worker) buildDockerfile(ctx context.Context, dep *deploydomain.Deployme
 	}
 	w.writeBuildEnv(srcDir, spec.Env)
 	w.appendLog(dep, "building image (Dockerfile) "+tag)
-	out, err := w.Runtime.Build(ctx, srcDir, dockerfile, tag)
+	builder := w.Builder
+	if builder == nil {
+		builder = w.Runtime
+	}
+	out, err := builder.Build(ctx, srcDir, dockerfile, tag)
 	if err != nil {
 		w.appendLog(dep, out)
 		return "", err
@@ -797,7 +800,11 @@ func (w *Worker) buildCommandSource(ctx context.Context, dep *deploydomain.Deplo
 	w.writeBuildEnv(srcDir, spec.Env)
 	df := filepath.Join(srcDir, "Dockerfile")
 	w.appendLog(dep, "building image (install/build + nginx) "+tag)
-	out, err := w.Runtime.Build(ctx, srcDir, df, tag)
+	builder := w.Builder
+	if builder == nil {
+		builder = w.Runtime
+	}
+	out, err := builder.Build(ctx, srcDir, df, tag)
 	if err != nil {
 		w.appendLog(dep, out)
 		return "", err
@@ -819,17 +826,19 @@ func (w *Worker) writeBuildEnv(srcDir string, env []string) {
 	_ = os.WriteFile(filepath.Join(srcDir, ".env"), []byte(sb.String()), 0o600)
 }
 
-func (w *Worker) setStatus(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status, imageRef, containerID string) {
+func (w *Worker) setStatus(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status, imageRef, containerID string) error {
 	if err := dep.Transition(status); err != nil {
 		w.log(ctx, "transition "+string(status), err)
-		return
+		return err
 	}
 	dep.ImageRef = imageRef
 	dep.ContainerID = containerID
 	if err := w.Store.UpdateStatus(ctx, dep.ID, dep.Status, dep.Error, dep.ImageRef, dep.ContainerID, dep.StartedAt, dep.FinishedAt); err != nil {
 		w.log(ctx, "persist status "+string(status), err)
+		return err
 	}
 	w.notify(ctx, dep, status)
+	return nil
 }
 
 func (w *Worker) notify(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status) {
@@ -841,14 +850,14 @@ func (w *Worker) notify(ctx context.Context, dep *deploydomain.Deployment, statu
 	})
 }
 
-func (w *Worker) fail(ctx context.Context, dep *deploydomain.Deployment, containerID string, cause error) {
+func (w *Worker) fail(ctx context.Context, dep *deploydomain.Deployment, containerID string, cause error) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		if containerID != "" {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = w.Runtime.Remove(cleanupCtx, containerID)
 			cancel()
 		}
-		return
+		return nil
 	}
 	statusCtx := ctx
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -862,7 +871,7 @@ func (w *Worker) fail(ctx context.Context, dep *deploydomain.Deployment, contain
 	if containerID != "" {
 		_ = w.Runtime.Remove(statusCtx, containerID)
 	}
-	w.setStatus(statusCtx, dep, deploydomain.StatusFailed, dep.ImageRef, "")
+	return w.setStatus(statusCtx, dep, deploydomain.StatusFailed, dep.ImageRef, "")
 }
 
 func (w *Worker) appendLog(dep *deploydomain.Deployment, line string) {

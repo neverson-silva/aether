@@ -1,24 +1,26 @@
 package application
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"aether/internal/modules/domains/domain"
 	"aether/internal/platform/hostinfo"
+	"aether/internal/platform/worker"
 )
 
 type Provisioner struct {
 	TraefikDir         string
 	FreeDomainBase     string
 	FreeDomainProvider string
-	TraefikBin         string
+	Runtime            worker.Runtime
 }
 
 var hostPattern = regexp.MustCompile(`^(?i)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$`)
@@ -164,13 +166,16 @@ func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, http
 // VerifyCertificate tenta confirmar que o Traefik do server já emitiu e serve
 // o certificado para o host, via HTTPS no entrypoint websecure.
 func (p *Provisioner) VerifyCertificate(host string) bool {
-	if p.TraefikBin == "" {
+	if p.Runtime == nil {
 		return false
 	}
-	out, err := exec.Command(p.TraefikBin, "exec", "aether-traefik",
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, _, err := p.Runtime.Exec(ctx, "aether-traefik", []string{
 		"wget", "-q", "-O", "/dev/null", "--no-check-certificate",
-		"https://localhost/", "--header=Host: "+host).CombinedOutput()
-	return err == nil && strings.Contains(string(out), "200")
+		"https://localhost/", "--header=Host: " + host,
+	})
+	return err == nil && strings.Contains(out, "200")
 }
 
 func itoa(n int) string {

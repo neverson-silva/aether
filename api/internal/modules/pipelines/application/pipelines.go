@@ -3,13 +3,13 @@ package application
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/google/uuid"
 
 	appsdomain "aether/internal/modules/apps/domain"
 	"aether/internal/modules/pipelines/domain"
+	"aether/internal/platform/worker"
 )
 
 type Pipelines struct {
@@ -37,13 +37,14 @@ type StageRunner interface {
 	RunStage(ctx context.Context, image string, commands []string) (output string, err error)
 }
 
-type PodmanStageRunner struct{}
+type DockerStageRunner struct{ engine worker.CommandRuntime }
 
-func (PodmanStageRunner) RunStage(ctx context.Context, image string, commands []string) (string, error) {
-	script := strings.Join(commands, "\n")
-	args := []string{"run", "--rm", image, "sh", "-c", script}
-	out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
-	return string(out), err
+func NewStageRunner(engine worker.CommandRuntime) StageRunner {
+	return DockerStageRunner{engine: engine}
+}
+
+func (r DockerStageRunner) RunStage(ctx context.Context, image string, commands []string) (string, error) {
+	return r.engine.RunCommand(ctx, "", image, strings.Join(commands, "\n"), nil, true)
 }
 
 func (p *Pipelines) Create(ctx context.Context, orgID uuid.UUID, appID *uuid.UUID, name, trigger string, stages []domain.Stage) (*domain.Pipeline, error) {

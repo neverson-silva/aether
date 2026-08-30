@@ -47,6 +47,24 @@ type ContainerState struct {
 	Healthy *bool
 }
 
+func ProjectStatus(kind Kind, states []ContainerState, activeDeployment, everDeployed bool) Status {
+	if activeDeployment {
+		return StatusDeploying
+	}
+	if len(states) == 0 {
+		if !everDeployed {
+			return StatusPending
+		}
+		return StatusUnknown
+	}
+	switch kind {
+	case KindCompose:
+		return NormalizeCompose(states, false)
+	default:
+		return normalizeContainer(states[0].Status, states[0].Healthy)
+	}
+}
+
 func CapabilitiesFor(kind Kind) Capabilities {
 	capabilities := Capabilities{
 		CanRestart:           true,
@@ -105,6 +123,7 @@ func NormalizeCompose(states []ContainerState, deploying bool) Status {
 	}
 	running := 0
 	failed := 0
+	degraded := 0
 	stopped := 0
 	for _, state := range states {
 		normalized := normalizeContainer(state.Status, state.Healthy)
@@ -117,7 +136,9 @@ func NormalizeCompose(states []ContainerState, deploying bool) Status {
 			} else {
 				failed++
 			}
-		case StatusFailed, StatusDegraded:
+		case StatusDegraded:
+			degraded++
+		case StatusFailed:
 			failed++
 		default:
 			failed++
@@ -127,6 +148,9 @@ func NormalizeCompose(states []ContainerState, deploying bool) Status {
 		return StatusRunning
 	}
 	if running > 0 && running < len(states) {
+		return StatusDegraded
+	}
+	if degraded > 0 {
 		return StatusDegraded
 	}
 	if failed > 0 {
@@ -154,10 +178,12 @@ func normalizeContainer(raw string, healthy *bool) Status {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "running", "healthy":
 		return StatusRunning
-	case "created", "configured", "exited", "stopped", "paused":
+	case "created", "configured", "stopped", "paused":
 		return StatusStopped
 	case "restarting", "starting":
-		return StatusDeploying
+		return StatusDegraded
+	case "exited":
+		return StatusStopped
 	case "unhealthy", "failed", "dead":
 		return StatusFailed
 	default:

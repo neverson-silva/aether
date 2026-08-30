@@ -8,6 +8,9 @@ export function useCreateApp() {
   return useMutation({
     mutationFn: (body: { projectID: string; payload: Partial<App> }) =>
       apiPost<App>(`/api/v1/projects/${body.projectID}/apps`, body.payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.apps }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: qk.apps }),
+      qc.invalidateQueries({ queryKey: qk.services }),
+    ]),
   });
 }

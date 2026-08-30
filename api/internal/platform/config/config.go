@@ -25,7 +25,6 @@ type Config struct {
 	ProxyEndpoint           string
 	ChallengeAddr           string
 	AgentAddr               string
-	TraefikBin              string
 	GoogleOAuthClientID     string
 	GoogleOAuthClientSecret string
 	GoogleOAuthRedirectURI  string
@@ -38,6 +37,8 @@ type Config struct {
 	IngressNetwork          string
 	TraefikImage            string
 	MetricsPath             string
+	DockerHost              string
+	BuildDockerHost         string
 
 	DatabaseURL              string
 	DatabaseHost             string
@@ -122,7 +123,6 @@ func Load() (*Config, error) {
 		ProxyEndpoint:           envOr("AETHER_PROXY_ENDPOINT", "127.0.0.1:15090"),
 		ChallengeAddr:           envOr("AETHER_CHALLENGE_ADDR", "127.0.0.1:15001"),
 		AgentAddr:               envOr("AETHER_AGENT_ADDR", "127.0.0.1:9443"),
-		TraefikBin:              envOr("AETHER_TRAEFIK_BIN", ""),
 		PublicURL:               publicURL,
 		DevMode:                 devMode,
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
@@ -156,6 +156,8 @@ func Load() (*Config, error) {
 		FreeDomainBase:           freeDomainBase,
 		IngressNetwork:           envOr("AETHER_INGRESS_NETWORK", "aether-ingress"),
 		TraefikImage:             envOr("AETHER_TRAEFIK_IMAGE", "docker.io/library/traefik:v3.2"),
+		DockerHost:               dockerHost(),
+		BuildDockerHost:          buildDockerHost(),
 		RuntimeBackend:           envOr("AETHER_RUNTIME_BACKEND", "nats"),
 		NATSURL:                  envOr("AETHER_NATS_URL", "nats://127.0.0.1:4222"),
 		NATSName:                 envOr("AETHER_NATS_NAME", "aether-api"),
@@ -175,6 +177,23 @@ func Load() (*Config, error) {
 		cfg.ACMEDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 	}
 	return cfg, nil
+}
+
+func dockerHost() string {
+	if value := os.Getenv("AETHER_DOCKER_HOST"); value != "" {
+		return value
+	}
+	return os.Getenv("DOCKER_HOST")
+}
+
+func buildDockerHost() string {
+	if value := os.Getenv("AETHER_BUILD_DOCKER_HOST"); value != "" {
+		return value
+	}
+	if value := os.Getenv("AETHER_IMAGE_DOCKER_HOST"); value != "" {
+		return value
+	}
+	return "unix:///var/run/docker.sock"
 }
 
 func isLocalURL(value string) bool {

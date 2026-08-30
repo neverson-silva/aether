@@ -40,6 +40,17 @@ type DeploymentCanceller interface {
 	CancelDeployment(id uuid.UUID) bool
 }
 
+type QueueDeploymentCanceller struct {
+	Queue queue.Queue
+}
+
+func (c QueueDeploymentCanceller) CancelDeployment(id uuid.UUID) bool {
+	if c.Queue == nil {
+		return false
+	}
+	return c.Queue.Cancel(context.Background(), "deployments", id.String()) == nil
+}
+
 type AppStore interface {
 	GetApp(ctx context.Context, id, orgID uuid.UUID) (*appsdomain.App, error)
 	ListEnvVars(ctx context.Context, appID uuid.UUID) ([]appsdomain.EnvVar, error)
@@ -106,15 +117,25 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 }
 
 func (d *Deployments) enqueue(ctx context.Context, dep *deploydomain.Deployment, orgID uuid.UUID) {
+	payload, err := json.Marshal(map[string]string{
+		"kind": "app", "service_id": dep.ServiceID.String(), "spec_id": dep.AppID.String(), "org_id": orgID.String(), "deployment_id": dep.ID.String(),
+	})
+	if err != nil {
+		return
+	}
+	published := false
 	if d.Queue != nil {
 		if err := d.Queue.Enqueue(ctx, "deployments", queue.Job{
-			ID:           dep.ID.String(),
+			ID: dep.ID.String(), Type: "deployment.execute", Payload: payload,
 			DeploymentID: dep.ID.String(), AppID: dep.AppID.String(), OrgID: orgID.String(),
-		}); err != nil && d.Outbox != nil {
-			payload, _ := json.Marshal(queue.Job{ID: dep.ID.String(), DeploymentID: dep.ID.String(), AppID: dep.AppID.String(), OrgID: orgID.String()})
-			event := events.Event{ID: uuid.New().String(), Type: "deployment.queued", AggregateType: "deployment", AggregateID: dep.ID.String(), Payload: payload, TS: time.Now()}
-			_ = d.Outbox.Enqueue(ctx, event, "deployments")
+		}); err == nil {
+			published = true
 		}
+	}
+	if !published && d.Outbox != nil {
+		jobPayload, _ := json.Marshal(queue.Job{ID: dep.ID.String(), Type: "deployment.execute", Payload: payload, DeploymentID: dep.ID.String(), AppID: dep.AppID.String(), OrgID: orgID.String()})
+		event := events.Event{ID: dep.ID.String(), Type: "deployment.queued", AggregateType: "deployment", AggregateID: dep.ID.String(), Payload: jobPayload, TS: time.Now()}
+		_ = d.Outbox.Enqueue(ctx, event, "deployments")
 	}
 	if d.Notifier != nil {
 		d.notify(ctx, dep)

@@ -112,7 +112,12 @@ func TestWorkerDeploysRealContainer(t *testing.T) {
 		t.Fatalf("deploy: %v", err)
 	}
 
-	w := &Worker{Store: deployStore, Runtime: NewPodmanRuntime()}
+	runtime, err := NewDockerRuntime("")
+	if err != nil {
+		t.Fatalf("create Docker runtime: %v", err)
+	}
+	defer runtime.Close()
+	w := &Worker{Store: deployStore, Runtime: runtime}
 	w.deploy(ctx, dep)
 
 	got, err := deployStore.GetDeployment(ctx, dep.ID)
@@ -127,6 +132,6 @@ func TestWorkerDeploysRealContainer(t *testing.T) {
 	}
 
 	time.Sleep(time.Second)
-	_ = NewPodmanRuntime().Remove(ctx, got.ContainerID)
+	_ = runtime.Remove(ctx, got.ContainerID)
 	t.Logf("container real deployado: %s", got.ContainerID)
 }

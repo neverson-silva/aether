@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -10,15 +11,32 @@ import (
 	authhttp "aether/internal/modules/auth/http"
 	"aether/internal/modules/templates/application"
 	"aether/internal/modules/templates/domain"
+	"aether/internal/platform/worker"
 )
 
 type Handler struct {
-	templates *application.Templates
-	compose   *application.Compose
+	templates          *application.Templates
+	compose            *application.Compose
+	runtime            worker.Runtime
+	deploymentEnqueuer interface {
+		EnqueueServiceDeployment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)
+	}
 }
 
 func New(templates *application.Templates, compose *application.Compose) *Handler {
 	return &Handler{templates: templates, compose: compose}
+}
+
+func (h *Handler) WithRuntime(runtime worker.Runtime) *Handler {
+	h.runtime = runtime
+	return h
+}
+
+func (h *Handler) WithDeploymentEnqueuer(enqueuer interface {
+	EnqueueServiceDeployment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)
+}) *Handler {
+	h.deploymentEnqueuer = enqueuer
+	return h
 }
 
 type installReq struct {

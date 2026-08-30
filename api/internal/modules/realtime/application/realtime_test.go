@@ -130,6 +130,29 @@ func TestSubscribeEvents(t *testing.T) {
 	}
 }
 
+func TestNotifyServiceStatePublishesCanonicalEvent(t *testing.T) {
+	rt := newRealtime()
+	org := uuid.New()
+	received := make(chan domain.Event, 1)
+	sub, err := rt.SubscribeEvents(context.Background(), org, func(event domain.Event) {
+		received <- event
+	})
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer sub.Unsubscribe()
+	serviceID := uuid.New()
+	rt.NotifyServiceState(context.Background(), org, serviceID, "running")
+	select {
+	case event := <-received:
+		if event.Type != "service.state" || event.ServiceID != serviceID.String() || event.ResourceID != serviceID.String() {
+			t.Fatalf("service state event: %+v", event)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("service state event not received")
+	}
+}
+
 func TestMetrics(t *testing.T) {
 	rt := newRealtime()
 	metrics := rt.Metrics(context.Background())

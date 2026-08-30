@@ -56,7 +56,13 @@ func main() {
 	}
 	defer publisher.Close()
 	publisher.Metrics = metrics
-	collector := monitoringApp.NewMonitoring(worker.NewPodmanRuntime(), host, slog.Default(), monitoringInfra.NewStore(pool))
+	runtime, err := worker.NewDockerRuntime(cfg.DockerHost)
+	if err != nil {
+		slog.Error("create Docker runtime", "err", err)
+		os.Exit(1)
+	}
+	defer runtime.Close()
+	collector := monitoringApp.NewMonitoring(runtime, host, slog.Default(), monitoringInfra.NewStore(pool))
 	collector.Metrics = metrics
 	collector.Publish = publisher.Publish
 	collector.Collect(ctx)

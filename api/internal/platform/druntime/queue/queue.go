@@ -60,7 +60,7 @@ func StartProgress(ctx context.Context, consumer Consumer, job *Job) func() {
 	}
 	stop := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {

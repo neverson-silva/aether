@@ -47,6 +47,7 @@ func (q *Queue) NewConsumer(ctx context.Context, stream, group, consumerID strin
 		MaxDeliver:    maxJobDeliveries,
 		BackOff:       []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute},
 		MaxAckPending: 1,
+		MaxWaiting:    1,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		ReplayPolicy:  jetstream.ReplayInstantPolicy,
 	})
@@ -283,4 +284,25 @@ func (q *Queue) QueueMetrics(ctx context.Context, stream, group string) (queue.M
 func (q *Queue) Cancel(ctx context.Context, stream, jobID string) error {
 	_, err := q.rt.js.Publish(ctx, messaging.Jobs(stream)+".cancel", []byte(jobID), jetstream.WithMsgID("cancel-"+jobID))
 	return err
+}
+
+func (q *Queue) WatchCancellations(ctx context.Context, stream string, handler func(string)) (func(), error) {
+	subscription, err := q.rt.conn.Subscribe(messaging.Jobs(stream)+".cancel", func(message *natsgo.Msg) {
+		handler(string(message.Data))
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := q.rt.conn.Flush(); err != nil {
+		_ = subscription.Unsubscribe()
+		return nil, err
+	}
+	stop := func() {
+		_ = subscription.Unsubscribe()
+	}
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	return stop, nil
 }

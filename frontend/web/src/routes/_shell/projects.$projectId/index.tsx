@@ -181,12 +181,7 @@ function ProjectDetail() {
         engine: service.spec?.engine,
         version: service.spec?.version,
         status: service.status,
-        runtimeStatus: mapRuntimeStatus(
-          service.runtime?.containers?.some((container) => container.healthy || ["running", "healthy"].includes(container.status))
-            ? "healthy"
-            : service.runtime?.containers?.[0]?.status ?? service.status,
-          service.status === "deploying" ? service.status : undefined,
-        ),
+        runtimeStatus: mapRuntimeStatus(service.status),
         runtimeLabel: service.status === "pending" ? "Pending deployment" : undefined,
       }));
   const serviceKeys = allServices.map((service) => `${service.type}:${service.id}`).join(",");

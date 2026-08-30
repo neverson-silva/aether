@@ -4,11 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 export PATH="$PATH:$HOME/.local/bin"
-export DOCKER_HOST="${DOCKER_HOST:-unix://${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock}"
+export DOCKER_HOST="${DOCKER_HOST:-unix:///var/run/docker.sock}"
 BUILDER="${AETHER_CNB_BUILDER:-${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa}"
 
 command -v pack >/dev/null 2>&1 || { echo "pack não encontrado"; exit 1; }
-command -v podman >/dev/null 2>&1 || { echo "podman não encontrado"; exit 1; }
+command -v docker >/dev/null 2>&1 || { echo "docker not found"; exit 1; }
 
 case "$(uname -m)" in
   x86_64|amd64) CNB_ARCH="amd64" ;;
@@ -32,8 +32,8 @@ run_case() {
     fail=$((fail + 1))
     return
   fi
-  podman rm -f "cnb-e2e-$name-run" >/dev/null 2>&1 || true
-  if ! podman run -d --name "cnb-e2e-$name-run" -e "PORT=$port" -p "127.0.0.1:$port:$port" "$img" >/dev/null; then
+  docker rm -f "cnb-e2e-$name-run" >/dev/null 2>&1 || true
+  if ! docker run -d --name "cnb-e2e-$name-run" -e "PORT=$port" -p "127.0.0.1:$port:$port" "$img" >/dev/null; then
     echo "FAIL $name (run)"
     fail=$((fail + 1))
     return
@@ -46,7 +46,7 @@ run_case() {
     code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/qualquer-rota" 2>/dev/null || true)"
     [ "$code" = "200" ] || ok=0
   fi
-  podman rm -f "cnb-e2e-$name-run" >/dev/null 2>&1 || true
+  docker rm -f "cnb-e2e-$name-run" >/dev/null 2>&1 || true
   if [ "$ok" = "1" ]; then
     echo "PASS $name"
     pass=$((pass + 1))

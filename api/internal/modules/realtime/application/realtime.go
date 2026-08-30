@@ -1,7 +1,6 @@
 package application
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +26,7 @@ import (
 	"aether/internal/platform/druntime/queue"
 	"aether/internal/platform/hostinfo"
 	"aether/internal/platform/messaging"
+	"aether/internal/platform/worker"
 )
 
 type Realtime struct {
@@ -37,6 +36,7 @@ type Realtime struct {
 	Apps          AppStore
 	Deployments   DeploymentStore
 	Ports         PortReader
+	Runtime       worker.Runtime
 	Log           EventLog
 	Notifications NotificationsSink
 	Queue         queue.Queue
@@ -221,6 +221,14 @@ func (r *Realtime) NotifyAppState(ctx context.Context, appID uuid.UUID, state st
 		Type: "app.state", Aggregate: "service",
 		AppID: appID.String(), ServiceID: serviceID, ResourceType: "service", ResourceID: serviceID,
 		Payload: payload, Ephemeral: true,
+	})
+}
+
+func (r *Realtime) NotifyServiceState(ctx context.Context, organizationID, serviceID uuid.UUID, state string) {
+	payload, _ := json.Marshal(map[string]string{"service_id": serviceID.String(), "status": state})
+	_ = r.PublishEvent(ctx, organizationID, domain.Event{
+		Type: "service.state", Aggregate: "service", ServiceID: serviceID.String(), ResourceType: "service", ResourceID: serviceID.String(),
+		CorrelationID: serviceID.String(), Message: "Service status changed to " + state, Payload: payload,
 	})
 }
 
@@ -464,17 +472,21 @@ func (r *Realtime) readyLabeledContainer(ctx context.Context, serviceID, specID 
 		values = append(values, specID)
 	}
 	for _, value := range values {
-		args := []string{"ps", "-q", "--filter", "label=aether.service-id=" + value.String(), "--filter", "status=running"}
-		if strings.TrimSpace(preferred) != "" {
-			args = append(args, "--filter", "name=^"+strings.TrimSpace(preferred)+"$")
+		if r.Runtime == nil {
+			return "", errors.New("container runtime unavailable")
 		}
-		containerID, err := exec.CommandContext(ctx, "podman", args...).Output()
+		containers, err := r.Runtime.ListContainers(ctx)
 		if err != nil {
 			return "", fmt.Errorf("resolve service container: %w", err)
 		}
-		containerID = bytes.TrimSpace(containerID)
-		if len(containerID) > 0 {
-			return strings.Split(string(containerID), "\n")[0], nil
+		for _, item := range containers {
+			if item.State != "running" || item.Labels["aether.service-id"] != value.String() {
+				continue
+			}
+			if strings.TrimSpace(preferred) != "" && item.Name != strings.TrimSpace(preferred) {
+				continue
+			}
+			return item.ID, nil
 		}
 	}
 	return "", errors.New("no active container")

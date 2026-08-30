@@ -6,18 +6,18 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"aether/internal/modules/clusters/domain"
+	"aether/internal/platform/worker"
 )
 
 type Clusters struct {
-	Store domain.Store
+	Store   domain.Store
+	Runtime worker.ImageRegistryRuntime
 }
 
 func (c *Clusters) CreateCluster(ctx context.Context, orgID uuid.UUID, name string, labels []string) (*domain.Cluster, error) {
@@ -108,17 +108,11 @@ func (c *Clusters) SetRegistryEnabled(ctx context.Context, enabled bool) (*domai
 }
 
 func (c *Clusters) RegistryImages(ctx context.Context) ([]domain.RegistryImage, error) {
-	out, err := exec.CommandContext(ctx, "podman", "images", "--format", "json").CombinedOutput()
+	if c.Runtime == nil {
+		return nil, fmt.Errorf("image runtime unavailable")
+	}
+	images, err := c.Runtime.ListImages(ctx)
 	if err != nil {
-		return nil, err
-	}
-	var images []struct {
-		Names   []string `json:"Names"`
-		ID      string   `json:"Id"`
-		Size    int64    `json:"Size"`
-		Created int64    `json:"Created"`
-	}
-	if err := json.Unmarshal(out, &images); err != nil {
 		return nil, err
 	}
 	result := make([]domain.RegistryImage, 0, len(images))
@@ -128,7 +122,7 @@ func (c *Clusters) RegistryImages(ctx context.Context) ([]domain.RegistryImage, 
 			repo, tag = splitImage(img.Names[0])
 		}
 		result = append(result, domain.RegistryImage{
-			Repo: repo, Tag: tag, ID: img.ID[:12],
+			Repo: repo, Tag: tag, ID: shortImageID(img.ID),
 			Size: img.Size, Created: img.Created,
 		})
 	}
@@ -136,11 +130,18 @@ func (c *Clusters) RegistryImages(ctx context.Context) ([]domain.RegistryImage, 
 }
 
 func (c *Clusters) RegistryDelete(ctx context.Context, repo, tag string) error {
-	out, err := exec.CommandContext(ctx, "podman", "rmi", repo+":"+tag).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	if c.Runtime == nil {
+		return fmt.Errorf("image runtime unavailable")
 	}
-	return nil
+	return c.Runtime.RemoveImage(ctx, repo+":"+tag)
+}
+
+func shortImageID(value string) string {
+	value = strings.TrimPrefix(value, "sha256:")
+	if len(value) > 12 {
+		return value[:12]
+	}
+	return value
 }
 
 func splitImage(name string) (repo, tag string) {

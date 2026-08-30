@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -73,11 +74,21 @@ func (h *Handler) Up(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.compose.Up(c.Request.Context(), id, orgID(c)); err != nil {
+	if h.deploymentEnqueuer == nil {
+		abort(c, errors.New("deployment queue is not configured"))
+		return
+	}
+	app, err := h.compose.Get(c.Request.Context(), id, orgID(c))
+	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "running"})
+	deploymentID, err := h.deploymentEnqueuer.EnqueueServiceDeployment(c.Request.Context(), app.ServiceID, app.ID, orgID(c), "compose", "deploy")
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"status": "queued", "deployment_id": deploymentID})
 }
 
 func (h *Handler) Down(c *gin.Context) {

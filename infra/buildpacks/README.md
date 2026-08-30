@@ -1,14 +1,13 @@
-# Engine de Build — Cloud Native Buildpacks (CNB)
+# Build Engine — Cloud Native Buildpacks (CNB)
 
-A engine de build oficial do Aether é **Cloud Native Buildpacks**. O worker
-roda `pack` com o builder `127.0.0.1:5000/builder:node-spa` (publicado no
-registry local), que executa o lifecycle CNB completo:
+The Aether build engine is **Cloud Native Buildpacks**. The worker runs `pack`
+with the `127.0.0.1:5000/builder:node-spa` builder from the local registry:
 
 ```
-source → detection → build → launch → OCI image (pronta para podman run)
+source → detection → build → launch → OCI image (ready for Docker Engine)
 ```
 
-## Buildpacks próprios
+## Aether buildpacks
 
 O builder contém **apenas buildpacks da Aether** (nenhum Paketo de terceiros):
 
@@ -30,11 +29,10 @@ Todos seguem a especificação CNB (buildpack.toml `api=0.10`, `bin/detect`, `bi
 Ambos seguem a especificação CNB (buildpack.toml `api=0.10`, `bin/detect`,
 `bin/build`, layers, `launch.toml` com processo `web`).
 
-## Builder
+## Builder lifecycle
 
-`builders/build-builder.sh` monta o builder via `podman build` (o
-`pack builder create` não exporta corretamente para o podman — "duplicate
-paths" no unpack) e publica no registry local `127.0.0.1:5000/builder:node-spa`.
+`builders/build-builder.sh` builds the builder with Docker Engine and publishes
+it to the local registry at `127.0.0.1:5000/builder:node-spa`.
 
 O script:
 1. garante o registry local (`aether-registry`, `--network host` — visível aos
@@ -44,59 +42,57 @@ O script:
    versões dos `buildpack.toml`;
 4. gera `order.toml` (ordem de detecção: php → ruby → dotnet → go → rust →
    jvm → node → spa) e `stack.toml` (run/build image `ubuntu:24.04`);
-5. `podman build` + `podman push`.
+5. `docker build` + `docker push`.
 
 ```bash
 ./builders/build-builder.sh          # usa o uname -m do host
 pack build my-app -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
 ```
 
-> Nota: `dev.sh`/`install.sh` ainda **não** sobem o registry/builder
-> automaticamente — rode o script uma vez (o registry persiste no podman).
+The development and installation flows prepare the registry and builder before
+starting the deployment worker.
 
-## Zero-config
+## Zero configuration
 
 ```bash
 # SPA (React/Vue/Angular/Vite...)
 pack build my-spa -p ./frontend -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
-podman run -p 8080:8080 -e PORT=8080 my-spa
+docker run -p 8080:8080 -e PORT=8080 my-spa
 
 # App Node com servidor (NestJS, Next, Express...)
 pack build my-api -p ./api -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
-podman run -p 8080:8080 -e PORT=8080 my-api
+docker run -p 8080:8080 -e PORT=8080 my-api
 
 # App Bun (Hono/Elysia/Bun.serve — bun.lockb, bun.lock ou bunfig.toml)
 pack build my-bun-api -p ./api -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
-podman run -p 8080:8080 -e PORT=8080 my-bun-api
+docker run -p 8080:8080 -e PORT=8080 my-bun-api
 
 # App Deno (Fresh/Oak/Hono-Deno — deno.json/deno.lock/import_map.json)
 pack build my-deno-api -p ./api -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
-podman run -p 8080:8080 -e PORT=8080 my-deno-api
+docker run -p 8080:8080 -e PORT=8080 my-deno-api
 
 # Site estático em Deno (Lume — _config.ts)
 pack build my-site -p ./site -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
-podman run -p 8080:8080 -e PORT=8080 my-site
+docker run -p 8080:8080 -e PORT=8080 my-site
 ```
 
-Sem Dockerfile, sem comando de start, sem servidor HTTP manual, sem porta
-hardcoded — o processo `web` respeita `$PORT`. O runtime é escolhido
-automaticamente: **Deno** (deno.json/deno.lock/import_map.json) > **Bun**
-(bun.lockb/bun.lock/bunfig.toml/packageManager `bun@`/engines.bun) > **Node**
-(engines.node). Binários baixados arch-aware (x64/arm64).
+No Dockerfile, start command, manual HTTP server, or hardcoded port is needed.
+The `web` process respects `$PORT`. Runtime selection is automatic: **Deno**
+(`deno.json`/`deno.lock`/`import_map.json`) > **Bun**
+(`bun.lockb`/`bun.lock`/`bunfig.toml`/`packageManager bun@`/`engines.bun`) >
+**Node** (`engines.node`). Binaries are architecture-aware.
 
-## Não detectado?
+## Undetected applications
 
-Se nenhum buildpack detectar a aplicação, o deploy falha com diagnóstico
-claro no log. Nesse caso a configuração manual é necessária: forneça um
-Dockerfile na fonte ou use `build_type: custom` com install/build/start.
+If no buildpack detects the application, deployment fails with a clear log
+diagnostic. Provide a Dockerfile or use `build_type: custom` with
+install/build/start.
 
-## Testes
+## Tests
 
-Validação feita nos scripts `bin/detect` (host, bash puro) e `bin/build`
-(container Ubuntu 24.04 glibc, equivalente ao ambiente CNB) — cenários
-cobertos abaixo. Builds pesados (Next.js real, Quarkus native, Gradle/Kotlin,
-Rails com assets) devem ser validados manualmente com
-`./builders/build-builder.sh` + `pack build` (matriz de detecção validada):
+Validation uses `bin/detect` and `bin/build` in an Ubuntu 24.04 glibc CNB
+environment. Heavy builds should be validated with
+`./builders/build-builder.sh` and `pack build`:
 
 | Cenário | Buildpack |
 |---|---|
@@ -116,7 +112,7 @@ Rails com assets) devem ser validados manualmente com
 Runtimes escolhidos automaticamente (arch-aware x64/arm64): node-server **Deno > Bun > Node**;
 spa-static idem; php **8.x estático / 7.4 PPA**; jvm **GraalVM (native) > Temurin**.
 
-## Robustez, determinismo e performance
+## Determinism and performance
 
 **Determinismo**
 - Installs **travados**: `npm ci`/`pnpm --frozen-lockfile`/`bun --frozen-lockfile`/`bundle --deployment`/`cargo --locked` (com fallback documentado quando não há lockfile).

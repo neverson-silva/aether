@@ -80,19 +80,17 @@ install_bootstrap_dependencies() {
 }
 
 configure_runtime_socket() {
-  if [[ -n "${AETHER_PODMAN_SOCKET:-}" && -S "$AETHER_PODMAN_SOCKET" ]]; then
-    export AETHER_PODMAN_SOCKET
+  if [[ -n "${AETHER_DOCKER_SOCKET:-}" && -S "$AETHER_DOCKER_SOCKET" ]]; then
+    export AETHER_DOCKER_SOCKET
     return 0
   fi
-  if [[ -S /run/podman/podman.sock ]]; then
-    export AETHER_PODMAN_SOCKET=/run/podman/podman.sock
-  elif [[ -S "/run/user/$(id -u)/podman/podman.sock" ]]; then
-    export AETHER_PODMAN_SOCKET="/run/user/$(id -u)/podman/podman.sock"
-  elif [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]]; then
-    export AETHER_PODMAN_SOCKET="$XDG_RUNTIME_DIR/podman/podman.sock"
+  if [[ -S /var/run/docker.sock ]]; then
+    export AETHER_DOCKER_SOCKET=/var/run/docker.sock
+  elif [[ -S "$HOME/.docker/run/docker.sock" ]]; then
+    export AETHER_DOCKER_SOCKET="$HOME/.docker/run/docker.sock"
   else
-    unset AETHER_PODMAN_SOCKET
-    warn "Podman socket was not found yet; install-dev.sh will retry its runtime detection."
+    unset AETHER_DOCKER_SOCKET
+    warn "Docker socket was not found; install-dev.sh will validate Docker Desktop or Docker Engine."
   fi
 }
 

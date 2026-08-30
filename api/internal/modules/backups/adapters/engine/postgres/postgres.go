@@ -10,10 +10,6 @@ import (
 	"aether/internal/modules/backups/application"
 )
 
-func init() {
-	application.RegisterBackupAdapter(New(container.NewPodman()))
-}
-
 type Adapter struct {
 	exec container.Executor
 }

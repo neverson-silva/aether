@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Aether host agent — collects REAL host metrics on macOS and Linux.
 #
-# The API runs inside a container (podman VM); its own view of /proc reports
+# The API runs inside a container; its own view of /proc reports
 # the runtime, not the host. This agent runs natively on the host machine and
 # writes $STATE_DIR/host-stats.json, which is mounted into the API container
 # ($AETHER_STATE -> /var/lib/aether). The API reads it and falls back to

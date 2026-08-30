@@ -12,7 +12,7 @@ export function mapRuntimeStatus(state?: string, deploymentStatus?: string): Run
   if (values.some((value) => ["running", "ready", "healthy", "active"].includes(value))) return "healthy";
   if (values.some((value) => offlineStates.includes(value))) return "offline";
   if (values.includes("paused")) return "paused";
-  return "unknown";
+  return "validating";
 }
 
 export function isRuntimeLive(status: RuntimeStatusValue) {

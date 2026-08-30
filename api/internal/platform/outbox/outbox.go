@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ type Item struct {
 	AggregateID   string
 	Payload       []byte
 	Attempts      int
+	CreatedAt     time.Time
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
@@ -51,7 +53,7 @@ func (s *Store) Claim(ctx context.Context, limit int) ([]Item, error) {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `UPDATE outbox_events SET attempts = attempts + 1 WHERE id IN (SELECT id FROM outbox_events WHERE published_at IS NULL AND available_at <= now() ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, topic, event_type, aggregate_type, aggregate_id, payload, attempts`, limit)
+	rows, err := tx.Query(ctx, `UPDATE outbox_events SET attempts = attempts + 1 WHERE id IN (SELECT id FROM outbox_events WHERE published_at IS NULL AND available_at <= now() ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, topic, event_type, aggregate_type, aggregate_id, payload, attempts, created_at`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +61,7 @@ func (s *Store) Claim(ctx context.Context, limit int) ([]Item, error) {
 	items := make([]Item, 0, limit)
 	for rows.Next() {
 		var item Item
-		if err := rows.Scan(&item.ID, &item.Topic, &item.EventType, &item.AggregateType, &item.AggregateID, &item.Payload, &item.Attempts); err != nil {
+		if err := rows.Scan(&item.ID, &item.Topic, &item.EventType, &item.AggregateType, &item.AggregateID, &item.Payload, &item.Attempts, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -93,6 +95,12 @@ func (d *Dispatcher) Run(ctx context.Context) {
 		}
 		items, err := d.Store.Claim(ctx, 32)
 		if err == nil {
+			sort.SliceStable(items, func(i, j int) bool {
+				if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+					return items[i].ID.String() < items[j].ID.String()
+				}
+				return items[i].CreatedAt.Before(items[j].CreatedAt)
+			})
 			for _, item := range items {
 				var event events.Event
 				if json.Unmarshal(item.Payload, &event) == nil && d.publish(ctx, event, item.Topic) == nil {

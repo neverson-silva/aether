@@ -12,14 +12,14 @@ run_root() {
   elif command_exists sudo; then
     sudo "$@"
   else
-    fail "Root privileges are required to purge podman."
+    fail "Root privileges are required to purge Docker packages."
   fi
 }
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   fail "The production uninstaller supports Linux servers only."
 fi
-command_exists podman || fail "podman is not installed."
+command_exists docker || fail "Docker CLI is not installed."
 
 STATE_DIR="${AETHER_STATE:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/var/lib/aether'; else printf '%s/.aether' "$HOME"; fi)}"
 INSTALL_DIR="${AETHER_INSTALL_DIR:-$(if [[ "$(id -u)" -eq 0 ]]; then printf '/opt/aether'; else printf '%s/.local/share/aether' "$HOME"; fi)}"
@@ -42,25 +42,25 @@ fi
 
 remove_container() {
   local container="$1"
-  if podman container exists "$container" 2>/dev/null; then
+  if docker container inspect "$container" >/dev/null 2>&1; then
     info "Removing container $container."
-    podman rm -t 0 -f "$container" >/dev/null
+    docker rm -f "$container" >/dev/null
   fi
 }
 
 remove_volume() {
   local volume="$1"
-  if podman volume exists "$volume" 2>/dev/null; then
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
     info "Removing volume $volume."
-    podman volume rm -f "$volume" >/dev/null
+    docker volume rm -f "$volume" >/dev/null
   fi
 }
 
 remove_image() {
   local image="$1"
-  if podman image exists "$image" 2>/dev/null; then
+  if docker image inspect "$image" >/dev/null 2>&1; then
     info "Removing image $image."
-    podman image rm "$image" >/dev/null || warn "Could not remove image $image."
+    docker image rm "$image" >/dev/null || warn "Could not remove image $image."
   fi
 }
 
@@ -77,7 +77,7 @@ for image in aether.local/api:1 aether.local/web:1 aether.local/builder:node-spa
 done
 
 for network in aether-net aether-ingress aether-internal; do
-  podman network exists "$network" 2>/dev/null && podman network rm "$network" >/dev/null 2>&1 || true
+  docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network" >/dev/null 2>&1 || true
 done
 
 if [[ -d "$STATE_DIR" && "$STATE_DIR" != "/" && "$STATE_DIR" != "$HOME" ]]; then
@@ -92,19 +92,19 @@ fi
 
 if [[ "$PURGE_RUNTIME" -eq 1 ]]; then
   if command_exists apt-get; then
-    run_root apt-get purge -y podman podman-docker podman-compose
+    run_root apt-get purge -y docker.io docker-ce docker-ce-cli docker-compose-plugin
   elif command_exists dnf; then
-    run_root dnf remove -y podman podman-docker podman-compose
+    run_root dnf remove -y docker docker-ce docker-ce-cli docker-compose-plugin
   elif command_exists yum; then
-    run_root yum remove -y podman podman-docker podman-compose
+    run_root yum remove -y docker docker-ce docker-ce-cli docker-compose-plugin
   elif command_exists pacman; then
-    run_root pacman -Rns --noconfirm podman podman-docker podman-compose
+    run_root pacman -Rns --noconfirm docker docker-compose
   elif command_exists zypper; then
-    run_root zypper --non-interactive remove podman podman-docker podman-compose
+    run_root zypper --non-interactive remove docker docker-compose
   elif command_exists apk; then
-    run_root apk del podman podman-compose
+    run_root apk del docker docker-cli-compose
   else
-    warn "Could not identify the package manager; podman was not removed."
+    warn "Could not identify the package manager; Docker packages were not removed."
   fi
 fi
 

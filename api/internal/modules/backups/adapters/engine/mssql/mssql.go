@@ -11,10 +11,6 @@ import (
 	"aether/internal/modules/backups/application"
 )
 
-func init() {
-	application.RegisterBackupAdapter(New(container.NewPodman()))
-}
-
 const backupDir = "/var/opt/mssql/backups"
 
 type Adapter struct {

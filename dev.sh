@@ -93,109 +93,17 @@ if [[ "${AETHER_FREE_DOMAIN_PROVIDER}" == "ngrok" ]]; then
   fi
 fi
 
-# Podman socket — pack/buildpacks (SmartBuild) precisa de um daemon docker-compatível
-# (DOCKER_HOST), senão o pack cai no /var/run/docker.sock e o build falha.
-PODMAN_SOCK=""
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  # Preferência: socket de forwards nativo do gvproxy (podman machine) — mantido
-  # pelo próprio podman, sem processo ssh frágil entre execuções.
-  GV_SOCK="$(find /var/folders -type s -name 'podman-machine-*-api.sock' -path '*/T/podman/*' 2>/dev/null | head -1 || true)"
-  if [[ -n "$GV_SOCK" ]] && podman --url "unix://$GV_SOCK" info >/dev/null 2>&1; then
-    PODMAN_SOCK="$GV_SOCK"
-    echo "podman socket (gvproxy VM forward): $PODMAN_SOCK"
-  else
-    # Fallback: forward próprio via SSH quando o gvproxy não expõe o socket.
-    # podman machine: o socket vive DENTRO da VM, acessível via ssh. O pack não
-    # entende o transporte ssh:// do podman, então fazemos um forward do socket
-    # da VM para um socket unix local (reusado entre execuções).
-    URI="$(podman system connection list --format '{{.URI}}' 2>/dev/null | head -1)"
-    IDENTITY="$(podman system connection list --format '{{.Identity}}' 2>/dev/null | head -1)"
-    if [[ -n "$URI" && -n "$IDENTITY" ]]; then
-      SSH_USER="$(printf '%s' "$URI" | sed -E 's#^ssh://([^@]+)@.*#\1#')"
-      SSH_HOST="$(printf '%s' "$URI" | sed -E 's#^ssh://[^@]+@([^:/]+):[0-9]+/.*#\1#')"
-      SSH_PORT="$(printf '%s' "$URI" | sed -E 's#^ssh://[^@]+@[^:/]+:([0-9]+)/.*#\1#')"
-      REMOTE_PATH="/${URI#*ssh://*/}"
-      LOCAL_SOCK="$AETHER_STATE/podman.sock"
-      FWD_PIDFILE="$AETHER_STATE/podman-sock-forward.pid"
-      forward_alive() {
-        [[ -S "$LOCAL_SOCK" ]] || return 1
-        podman --url "unix://$LOCAL_SOCK" info >/dev/null 2>&1
-      }
-      if ! forward_alive; then
-        [[ -S "$LOCAL_SOCK" ]] && rm -f "$LOCAL_SOCK"
-        if [[ -f "$FWD_PIDFILE" ]] && kill -0 "$(cat "$FWD_PIDFILE")" 2>/dev/null; then
-          kill "$(cat "$FWD_PIDFILE")" 2>/dev/null
-          sleep 0.3
-        fi
-        mkdir -p "$AETHER_STATE/logs"
-        for _ in 1 2 3; do
-          nohup ssh -N -i "$IDENTITY" -p "$SSH_PORT" -l "$SSH_USER" "$SSH_HOST" \
-            -o StrictHostKeyChecking=no -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
-            -o StreamLocalBindUnlink=yes \
-            -L "$LOCAL_SOCK:$REMOTE_PATH" >>"$AETHER_STATE/logs/podman-sock.log" 2>&1 &
-          echo "$!" > "$FWD_PIDFILE"
-          for _ in $(seq 1 25); do
-            forward_alive && break
-            sleep 0.4
-          done
-          forward_alive && break
-          rm -f "$LOCAL_SOCK"
-          kill "$(cat "$FWD_PIDFILE")" 2>/dev/null || true
-        done
-      fi
-      if forward_alive; then
-        PODMAN_SOCK="$LOCAL_SOCK"
-        echo "podman socket (VM forward): $PODMAN_SOCK"
-      else
-        echo "warning: podman socket forward failed ($LOCAL_SOCK) — SmartBuild app deploys will fail." >&2
-      fi
-    else
-      echo "warning: no podman machine connection found — SmartBuild app deploys will fail." >&2
-    fi
-  fi
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  export AETHER_BUILD_DOCKER_HOST="${AETHER_BUILD_DOCKER_HOST:-unix:///var/run/docker.sock}"
+  echo "AETHER_BUILD_DOCKER_HOST set for SmartBuild"
 else
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user start podman.socket >/dev/null 2>&1 || true
-  fi
-  for s in "/run/podman/podman.sock" "${XDG_RUNTIME_DIR:-}/podman/podman.sock" "/run/user/$(id -u)/podman/podman.sock"; do
-    if [[ -S "$s" ]]; then
-      PODMAN_SOCK="$s"
-      break
-    fi
-  done
-  if [[ -z "$PODMAN_SOCK" ]] && command -v podman >/dev/null 2>&1; then
-    PODMAN_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
-    mkdir -p "$(dirname "$PODMAN_SOCK")" "$AETHER_STATE/logs"
-    SERVICE_PIDFILE="$AETHER_STATE/podman-service.pid"
-    if [[ -f "$SERVICE_PIDFILE" ]] && ! kill -0 "$(cat "$SERVICE_PIDFILE")" 2>/dev/null; then
-      rm -f "$SERVICE_PIDFILE"
-    fi
-    if [[ ! -f "$SERVICE_PIDFILE" ]]; then
-      nohup podman system service --time=0 "unix://$PODMAN_SOCK" >"$AETHER_STATE/logs/podman-service.log" 2>&1 &
-      echo "$!" > "$SERVICE_PIDFILE"
-    fi
-    for _ in $(seq 1 20); do
-      [[ -S "$PODMAN_SOCK" ]] && break
-      sleep 0.25
-    done
-    [[ -S "$PODMAN_SOCK" ]] || PODMAN_SOCK=""
-  fi
-  if [[ -n "$PODMAN_SOCK" ]]; then
-    echo "podman socket: $PODMAN_SOCK"
-  fi
-fi
-if [[ -n "$PODMAN_SOCK" ]]; then
-  export DOCKER_HOST="unix://$PODMAN_SOCK"
-  export CONTAINER_HOST="unix://$PODMAN_SOCK"
-  echo "DOCKER_HOST set for SmartBuild"
-else
-  echo "warning: podman.socket not found — SmartBuild app deploys will fail." >&2
+  echo "warning: Docker Engine is unavailable — SmartBuild app deploys will fail." >&2
 fi
 
-if command -v podman >/dev/null 2>&1; then
+if command -v docker >/dev/null 2>&1; then
   LIFECYCLE_IMAGE="docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}"
-  if ! podman image exists "$LIFECYCLE_IMAGE" >/dev/null 2>&1; then
-    podman pull "$LIFECYCLE_IMAGE"
+  if ! docker image inspect "$LIFECYCLE_IMAGE" >/dev/null 2>&1; then
+    docker pull "$LIFECYCLE_IMAGE"
   fi
 fi
 

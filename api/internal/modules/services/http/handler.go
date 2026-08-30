@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -29,7 +29,9 @@ import (
 	realtimedomain "aether/internal/modules/realtime/domain"
 	servicedomain "aether/internal/modules/services/domain"
 	templatesapplication "aether/internal/modules/templates/application"
+	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/queue"
+	"aether/internal/platform/worker"
 )
 
 type Handler struct {
@@ -56,6 +58,9 @@ type Handler struct {
 	}
 	compose interface {
 		Up(context.Context, uuid.UUID, uuid.UUID) error
+		Start(context.Context, uuid.UUID, uuid.UUID) error
+		Stop(context.Context, uuid.UUID, uuid.UUID) error
+		Restart(context.Context, uuid.UUID, uuid.UUID) error
 		Down(context.Context, uuid.UUID, uuid.UUID) error
 		Delete(context.Context, uuid.UUID, uuid.UUID) error
 		Timeline(context.Context, uuid.UUID, uuid.UUID) ([]realtimedomain.Event, error)
@@ -79,9 +84,13 @@ type Handler struct {
 		DeleteEnv(context.Context, uuid.UUID, uuid.UUID, string) error
 	}
 	logsDir         string
+	runtime         worker.Runtime
 	deploymentQueue queue.Queue
 	notifier        interface {
 		NotifyDeploy(context.Context, deploydomain.DeployEvent)
+	}
+	deploymentCanceller interface {
+		CancelDeployment(uuid.UUID) bool
 	}
 }
 
@@ -95,6 +104,9 @@ func (h *Handler) WithNotifier(notifier interface {
 type composeRuntime struct {
 	up interface {
 		Up(context.Context, uuid.UUID, uuid.UUID) error
+		Start(context.Context, uuid.UUID, uuid.UUID) error
+		Stop(context.Context, uuid.UUID, uuid.UUID) error
+		Restart(context.Context, uuid.UUID, uuid.UUID) error
 		Down(context.Context, uuid.UUID, uuid.UUID) error
 	}
 	delete interface {
@@ -107,6 +119,15 @@ type composeRuntime struct {
 
 func (r composeRuntime) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	return r.up.Up(ctx, id, orgID)
+}
+func (r composeRuntime) Start(ctx context.Context, id, orgID uuid.UUID) error {
+	return r.up.Start(ctx, id, orgID)
+}
+func (r composeRuntime) Stop(ctx context.Context, id, orgID uuid.UUID) error {
+	return r.up.Stop(ctx, id, orgID)
+}
+func (r composeRuntime) Restart(ctx context.Context, id, orgID uuid.UUID) error {
+	return r.up.Restart(ctx, id, orgID)
 }
 func (r composeRuntime) Down(ctx context.Context, id, orgID uuid.UUID) error {
 	return r.up.Down(ctx, id, orgID)
@@ -122,8 +143,20 @@ func New(db *pgxpool.Pool) *Handler {
 	return &Handler{db: db}
 }
 
+func (h *Handler) WithRuntime(runtime worker.Runtime) *Handler {
+	h.runtime = runtime
+	return h
+}
+
 func (h *Handler) WithDeploymentQueue(deploymentQueue queue.Queue) *Handler {
 	h.deploymentQueue = deploymentQueue
+	return h
+}
+
+func (h *Handler) WithDeploymentCanceller(canceller interface {
+	CancelDeployment(uuid.UUID) bool
+}) *Handler {
+	h.deploymentCanceller = canceller
 	return h
 }
 
@@ -183,10 +216,7 @@ func (h *Handler) WithAppWebhook(webhook interface {
 
 func (h *Handler) List(c *gin.Context) {
 	query := `SELECT id, org_id, project_id, environment_id, name, kind,
-CASE kind
-WHEN 'database' THEN COALESCE((SELECT CASE LOWER(status) WHEN 'creating' THEN 'pending' WHEN 'starting' THEN 'deploying' WHEN 'running' THEN 'running' WHEN 'stopped' THEN 'stopped' WHEN 'failed' THEN 'failed' ELSE 'unknown' END FROM databases WHERE service_id = services.id), status)
-WHEN 'compose' THEN COALESCE((SELECT CASE LOWER(status) WHEN 'pending' THEN 'pending' WHEN 'deploying' THEN 'deploying' WHEN 'running' THEN 'running' WHEN 'stopped' THEN 'stopped' WHEN 'error' THEN 'failed' ELSE 'unknown' END FROM compose_apps WHERE service_id = services.id), status)
-ELSE CASE WHEN EXISTS (SELECT 1 FROM deployments d WHERE d.service_id = services.id AND d.status IN ('queued', 'building', 'starting', 'health_checking')) THEN 'deploying' ELSE status END END AS status, created_at, updated_at,
+CASE WHEN status = 'unknown' AND NOT EXISTS (SELECT 1 FROM deployments WHERE deployments.service_id = services.id) THEN 'pending' ELSE status END, created_at, updated_at,
 CASE kind WHEN 'app' THEN (SELECT id FROM apps WHERE service_id = services.id)
 WHEN 'compose' THEN (SELECT id FROM compose_apps WHERE service_id = services.id)
 WHEN 'database' THEN (SELECT id FROM databases WHERE service_id = services.id) END
@@ -230,17 +260,18 @@ ORDER BY created_at, name`
 		}
 		if specID, ok := service["spec_id"].(*uuid.UUID); ok && specID != nil {
 			if serviceStatus, statusOK := service["status"].(string); statusOK {
-				kind := servicedomain.Kind(service["kind"].(string))
 				serviceID := service["id"].(uuid.UUID)
-				states, statesErr := runtimeContainerStates(c, serviceID, *specID)
+				states, statesErr := runtimeContainerStates(c, h.runtime, serviceID, *specID)
 				if statesErr == nil && len(states) > 0 {
 					containers := make([]gin.H, 0, len(states))
 					for _, state := range states {
 						containers = append(containers, gin.H{"id": state.ID, "name": state.Name, "status": state.Status, "healthy": state.Healthy})
 					}
 					service["runtime"] = gin.H{"containers": containers}
+					service["status"] = string(servicedomain.ProjectStatus(servicedomain.Kind(service["kind"].(string)), states, serviceStatus == string(servicedomain.StatusDeploying), true))
+				} else {
+					service["status"] = serviceStatus
 				}
-				service["status"] = runtimeStatus(c, kind, serviceID, *specID, serviceStatus)
 			}
 			h.enrichSpec(c, service, servicedomain.Kind(service["kind"].(string)), *specID)
 		}
@@ -261,10 +292,7 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 	row := h.db.QueryRow(c.Request.Context(), `
 SELECT id, org_id, project_id, environment_id, name, kind,
-CASE kind
-WHEN 'database' THEN COALESCE((SELECT CASE LOWER(status) WHEN 'creating' THEN 'pending' WHEN 'starting' THEN 'deploying' WHEN 'running' THEN 'running' WHEN 'stopped' THEN 'stopped' WHEN 'failed' THEN 'failed' ELSE 'unknown' END FROM databases WHERE service_id = services.id), status)
-WHEN 'compose' THEN COALESCE((SELECT CASE LOWER(status) WHEN 'pending' THEN 'pending' WHEN 'deploying' THEN 'deploying' WHEN 'running' THEN 'running' WHEN 'stopped' THEN 'stopped' WHEN 'error' THEN 'failed' ELSE 'unknown' END FROM compose_apps WHERE service_id = services.id), status)
-ELSE CASE WHEN EXISTS (SELECT 1 FROM deployments d WHERE d.service_id = services.id AND d.status IN ('queued', 'building', 'starting', 'health_checking')) THEN 'deploying' ELSE status END END AS status, created_at, updated_at,
+CASE WHEN status = 'unknown' AND NOT EXISTS (SELECT 1 FROM deployments WHERE deployments.service_id = services.id) THEN 'pending' ELSE status END, created_at, updated_at,
 CASE kind WHEN 'app' THEN (SELECT id FROM apps WHERE service_id = services.id)
 WHEN 'compose' THEN (SELECT id FROM compose_apps WHERE service_id = services.id)
 WHEN 'database' THEN (SELECT id FROM databases WHERE service_id = services.id) END
@@ -284,7 +312,10 @@ WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
 	}
 	if specID, ok := service["spec_id"].(*uuid.UUID); ok && specID != nil {
 		if serviceStatus, statusOK := service["status"].(string); statusOK {
-			service["status"] = runtimeStatus(c, servicedomain.Kind(service["kind"].(string)), service["id"].(uuid.UUID), *specID, serviceStatus)
+			if serviceStatus == string(servicedomain.StatusUnknown) {
+				serviceStatus = string(servicedomain.StatusPending)
+			}
+			service["status"] = serviceStatus
 		}
 		h.enrichDetails(c, service, servicedomain.Kind(service["kind"].(string)), *specID)
 	}
@@ -352,7 +383,7 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 func (h *Handler) enrichDetails(c *gin.Context, service gin.H, kind servicedomain.Kind, specID uuid.UUID) {
-	states, err := runtimeContainerStates(c, service["id"].(uuid.UUID), specID)
+	states, err := runtimeContainerStates(c, h.runtime, service["id"].(uuid.UUID), specID)
 	if err == nil {
 		containers := make([]gin.H, 0, len(states))
 		for _, state := range states {
@@ -455,15 +486,17 @@ func (h *Handler) DeployService(ctx context.Context, id, organizationID uuid.UUI
 		}
 		return h.appDeploy.Deploy(ctx, specID, organizationID, deployapplication.DeployOpts{ServiceID: id, Trigger: trigger, CommitSHA: commit})
 	case string(servicedomain.KindCompose):
-		if h.compose == nil {
-			return nil, errors.New("compose runtime is not configured")
+		deploymentID, err := h.EnqueueServiceDeployment(ctx, id, specID, organizationID, string(servicedomain.KindCompose), trigger)
+		if err != nil {
+			return nil, err
 		}
-		return nil, h.compose.Up(ctx, specID, organizationID)
+		return gin.H{"deployment_id": deploymentID}, nil
 	case string(servicedomain.KindDatabase):
-		if h.database == nil {
-			return nil, errors.New("database runtime is not configured")
+		deploymentID, err := h.EnqueueServiceDeployment(ctx, id, specID, organizationID, string(servicedomain.KindDatabase), trigger)
+		if err != nil {
+			return nil, err
 		}
-		return h.database.Deploy(ctx, specID, organizationID)
+		return gin.H{"deployment_id": deploymentID}, nil
 	default:
 		return nil, errors.New("unsupported service kind")
 	}
@@ -531,17 +564,14 @@ func (h *Handler) Action(c *gin.Context) {
 					deploymentID, err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
 					result = gin.H{"deployment_id": deploymentID}
 				} else {
-					err = h.compose.Up(ctx, specID, orgID(c))
+					err = h.compose.Start(ctx, specID, orgID(c))
 				}
 			case "stop":
 				handled = true
-				err = h.compose.Down(ctx, specID, orgID(c))
+				err = h.compose.Stop(ctx, specID, orgID(c))
 			case "restart":
 				handled = true
-				err = h.compose.Down(ctx, specID, orgID(c))
-				if err == nil {
-					err = h.compose.Up(ctx, specID, orgID(c))
-				}
+				err = h.compose.Restart(ctx, specID, orgID(c))
 			case "delete":
 				handled = true
 				err = h.compose.Delete(ctx, specID, orgID(c))
@@ -590,38 +620,73 @@ func (h *Handler) Action(c *gin.Context) {
 }
 
 func (h *Handler) enqueueServiceDeployment(ctx context.Context, serviceID, specID, organizationID uuid.UUID, kind string) (uuid.UUID, error) {
+	return h.EnqueueServiceDeployment(ctx, serviceID, specID, organizationID, kind, "deploy")
+}
+
+func (h *Handler) EnqueueServiceDeployment(ctx context.Context, serviceID, specID, organizationID uuid.UUID, kind, trigger string) (uuid.UUID, error) {
 	if h.deploymentQueue == nil {
 		return uuid.Nil, errors.New("deployment queue is not configured")
 	}
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tx.Rollback(ctx)
+	var active uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT id FROM deployments WHERE service_id = $1 AND status IN ('queued', 'building', 'starting', 'health_checking') ORDER BY created_at, id LIMIT 1`, serviceID).Scan(&active); err == nil {
+		return uuid.Nil, deploydomain.ErrConflict
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
 	var deploymentID uuid.UUID
-	err := h.db.QueryRow(ctx, `
-INSERT INTO deployments (app_id, service_id, number, status, trigger, triggered_by, compose_yaml)
-SELECT CASE WHEN $3::text = 'compose' THEN NULL ELSE $1::uuid END, $2::uuid,
-       CASE WHEN $3::text = 'compose'
-            THEN COALESCE((SELECT MAX(number) + 1 FROM deployments WHERE service_id = $2::uuid), 1)
-            ELSE COALESCE((SELECT MAX(number) + 1 FROM deployments WHERE app_id = $1::uuid), 1)
-       END, 'queued', 'api', 'user',
-       CASE WHEN $3::text = 'compose' THEN COALESCE((SELECT compose FROM compose_apps WHERE id = $1::uuid), '') ELSE '' END
-RETURNING id`, specID, serviceID, kind).Scan(&deploymentID)
-	if err != nil {
+	appID := any(nil)
+	composeYAML := ""
+	numberQuery := `SELECT COALESCE(MAX(number), 0) + 1 FROM deployments WHERE service_id = $1`
+	if kind == string(servicedomain.KindApp) {
+		appID = specID
+		numberQuery = `SELECT COALESCE(MAX(number), 0) + 1 FROM deployments WHERE app_id = $1`
+	} else if kind == string(servicedomain.KindCompose) {
+		if err := tx.QueryRow(ctx, `SELECT compose FROM compose_apps WHERE id = $1`, specID).Scan(&composeYAML); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	var number int
+	numberKey := serviceID
+	if kind == string(servicedomain.KindApp) {
+		numberKey = specID
+	}
+	if err := tx.QueryRow(ctx, numberQuery, numberKey).Scan(&number); err != nil {
 		return uuid.Nil, err
 	}
-	payload, err := json.Marshal(map[string]string{
+	if err := tx.QueryRow(ctx, `INSERT INTO deployments (app_id, service_id, number, status, trigger, triggered_by, compose_yaml) VALUES ($1, $2, $3, 'queued', $4, 'user', $5) RETURNING id`, appID, serviceID, number, trigger, composeYAML).Scan(&deploymentID); err != nil {
+		return uuid.Nil, err
+	}
+	payload, err := json.Marshal(queue.Job{ID: deploymentID.String(), Type: "deployment.execute", DeploymentID: deploymentID.String(), AppID: specID.String(), OrgID: organizationID.String(), Payload: mustJSON(map[string]string{
 		"kind": kind, "service_id": serviceID.String(), "spec_id": specID.String(), "org_id": organizationID.String(), "deployment_id": deploymentID.String(),
-	})
+	})})
 	if err != nil {
 		return uuid.Nil, err
 	}
-	job := queue.Job{ID: uuid.NewString(), Type: "service-deploy", Payload: payload, OrgID: organizationID.String(), AppID: specID.String()}
-	if err := h.deploymentQueue.Enqueue(ctx, "deployments", job); err != nil {
-		slog.Error("service deployment job enqueue failed", "error", err, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
+	eventPayload, err := json.Marshal(events.Event{ID: deploymentID.String(), Type: "deployment.queued", AggregateType: "deployment", AggregateID: deploymentID.String(), Payload: payload, TS: time.Now().UTC()})
+	if err != nil {
 		return uuid.Nil, err
 	}
-	slog.Info("service deployment job enqueued", "job_id", job.ID, "service_id", serviceID, "spec_id", specID, "kind", kind, "org_id", organizationID)
+	if _, err := tx.Exec(ctx, `INSERT INTO outbox_events (id, topic, event_type, aggregate_type, aggregate_id, payload) VALUES ($1, 'deployments', 'deployment.queued', 'deployment', $2, $3)`, deploymentID, deploymentID.String(), eventPayload); err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	slog.Info("deployment enqueued", "deployment_id", deploymentID, "service_id", serviceID, "kind", kind, "org_id", organizationID)
 	if h.notifier != nil {
 		h.notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{ServiceID: serviceID, DepID: deploymentID, Status: string(deploydomain.StatusQueued)})
 	}
 	return deploymentID, nil
+}
+
+func mustJSON(value map[string]string) []byte {
+	raw, _ := json.Marshal(value)
+	return raw
 }
 
 func (h *Handler) Timeline(c *gin.Context) {
@@ -662,7 +727,7 @@ func (h *Handler) Logs(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
-	containers, err := serviceContainers(c, id, specID)
+	containers, err := serviceContainers(c, h.runtime, id, specID)
 	if err != nil || len(containers) == 0 {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "service logs unavailable"})
 		return
@@ -685,9 +750,10 @@ func (h *Handler) Logs(c *gin.Context) {
 	var output []byte
 	for _, container := range containers {
 		containerID := strings.SplitN(container, "|", 2)[0]
-		logs, logsErr := exec.CommandContext(c.Request.Context(), "podman", "logs", "--tail", "200", containerID).CombinedOutput()
+		logs, logsErr := h.runtime.LogTail(c.Request.Context(), containerID, 200)
 		if logsErr == nil || len(logs) > 0 {
-			output = append(output, logs...)
+			output = append(output, []byte(strings.Join(logs, "\n"))...)
+			output = append(output, '\n')
 		}
 	}
 	if c.Query("follow") == "1" {
@@ -710,121 +776,68 @@ func (h *Handler) Containers(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
-	output, err := serviceRuntimeQuery(c, "ps", id, specID, "-a", "--format", "{{.ID}}|{{.Names}}|{{.State}}")
+	items, err := runtimeContainers(c, h.runtime, id, specID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "service containers unavailable"})
 		return
 	}
-	containers := make([]gin.H, 0)
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		parts := strings.SplitN(strings.TrimSpace(line), "|", 3)
-		if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
-			continue
-		}
-		containers = append(containers, gin.H{"id": parts[0], "name": parts[1], "status": parts[2]})
+	containers := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		containers = append(containers, gin.H{"id": item.ID, "name": item.Name, "status": item.State})
 	}
 	c.JSON(http.StatusOK, containers)
 }
 
-func serviceRuntimeQuery(c *gin.Context, command string, serviceID, specID uuid.UUID, args ...string) ([]byte, error) {
+func runtimeContainers(c *gin.Context, runtime worker.Runtime, serviceID, specID uuid.UUID) ([]worker.ContainerInfo, error) {
+	if runtime == nil {
+		return nil, errors.New("container runtime unavailable")
+	}
+	var items []worker.ContainerInfo
+	var err error
+	if metadataRuntime, ok := runtime.(worker.ContainerMetadataRuntime); ok {
+		items, err = metadataRuntime.ListContainerMetadata(c.Request.Context())
+	} else {
+		items, err = runtime.ListContainers(c.Request.Context())
+	}
+	if err != nil {
+		return nil, err
+	}
 	values := []uuid.UUID{serviceID}
 	if specID != serviceID {
 		values = append(values, specID)
 	}
-	var output []byte
-	var err error
-	for _, value := range values {
-		queryArgs := append([]string{}, args...)
-		queryArgs = append(queryArgs, "--filter", "label=aether.service-id="+value.String())
-		commandArgs := append([]string{command}, queryArgs...)
-		output, err = exec.CommandContext(c.Request.Context(), "podman", commandArgs...).Output()
-		if err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(string(output)) != "" {
-			return output, nil
+	matched := make([]worker.ContainerInfo, 0)
+	for _, item := range items {
+		for _, value := range values {
+			if item.Labels["aether.service-id"] == value.String() {
+				matched = append(matched, item)
+				break
+			}
 		}
 	}
-	return output, nil
+	return matched, nil
 }
 
-func serviceContainers(c *gin.Context, serviceID, specID uuid.UUID) ([]string, error) {
-	output, err := serviceRuntimeQuery(c, "ps", serviceID, specID, "-aq", "--format", "{{.ID}}|{{.Names}}")
+func serviceContainers(c *gin.Context, runtime worker.Runtime, serviceID, specID uuid.UUID) ([]string, error) {
+	items, err := runtimeContainers(c, runtime, serviceID, specID)
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	containers := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if value := strings.TrimSpace(line); value != "" {
-			containers = append(containers, value)
-		}
+	containers := make([]string, 0, len(items))
+	for _, item := range items {
+		containers = append(containers, item.ID+"|"+item.Name)
 	}
 	return containers, nil
 }
 
-func runtimeStatus(c *gin.Context, kind servicedomain.Kind, serviceID, specID uuid.UUID, stored string) string {
-	states, err := runtimeContainerStates(c, serviceID, specID)
-	if err != nil {
-		if stored == string(servicedomain.StatusPending) || stored == string(servicedomain.StatusDeploying) {
-			return stored
-		}
-		return string(servicedomain.StatusUnknown)
-	}
-	if len(states) == 0 {
-		if stored == string(servicedomain.StatusPending) || stored == string(servicedomain.StatusDeploying) || stored == string(servicedomain.StatusStopped) || stored == string(servicedomain.StatusFailed) {
-			return stored
-		}
-		return string(servicedomain.StatusUnknown)
-	}
-	switch kind {
-	case servicedomain.KindApp:
-		return string(servicedomain.NormalizeApp(stored, states[0].Status, states[0].Healthy))
-	case servicedomain.KindDatabase:
-		return string(servicedomain.NormalizeDatabase(states[0].Status, states[0].Healthy))
-	case servicedomain.KindCompose:
-		return string(servicedomain.NormalizeCompose(states, stored == string(servicedomain.StatusDeploying)))
-	default:
-		return string(servicedomain.StatusUnknown)
-	}
-}
-
-func runtimeContainerStates(c *gin.Context, serviceID, specID uuid.UUID) ([]servicedomain.ContainerState, error) {
-	output, err := serviceRuntimeQuery(c, "ps", serviceID, specID, "-aq")
+func runtimeContainerStates(c *gin.Context, runtime worker.Runtime, serviceID, specID uuid.UUID) ([]servicedomain.ContainerState, error) {
+	items, err := runtimeContainers(c, runtime, serviceID, specID)
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	states := make([]servicedomain.ContainerState, 0, len(lines))
-	for _, line := range lines {
-		containerParts := strings.SplitN(strings.TrimSpace(line), "|", 2)
-		containerID := containerParts[0]
-		if containerID == "" {
-			continue
-		}
-		inspection, inspectErr := exec.CommandContext(c.Request.Context(), "podman", "inspect", "--format", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}", containerID).Output()
-		if inspectErr != nil {
-			continue
-		}
-		parts := strings.SplitN(strings.TrimSpace(string(inspection)), "|", 2)
-		if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
-			continue
-		}
-		state := servicedomain.ContainerState{ID: containerID, Status: strings.TrimSpace(parts[0])}
-		if len(containerParts) == 2 {
-			state.Name = strings.TrimSpace(containerParts[1])
-		}
-		if len(parts) == 2 {
-			switch strings.ToLower(strings.TrimSpace(parts[1])) {
-			case "healthy":
-				healthy := true
-				state.Healthy = &healthy
-			case "unhealthy":
-				healthy := false
-				state.Healthy = &healthy
-			}
-		}
-		states = append(states, state)
+	states := make([]servicedomain.ContainerState, 0, len(items))
+	for _, item := range items {
+		states = append(states, servicedomain.ContainerState{ID: item.ID, Name: item.Name, Status: item.State, Healthy: item.Healthy})
 	}
 	return states, nil
 }
@@ -835,42 +848,30 @@ func (h *Handler) Stats(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
-	kind, specID, err := h.resolve(c, id)
+	_, specID, err := h.resolve(c, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
-	output, err := serviceRuntimeQuery(c, "stats", id, specID, "--no-stream", "--all", "--format", "{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}")
-	states, statesErr := runtimeContainerStates(c, id, specID)
 	state := string(servicedomain.StatusUnknown)
-	if statesErr == nil && len(states) > 0 {
-		switch kind {
-		case string(servicedomain.KindApp):
-			state = string(servicedomain.NormalizeApp("", states[0].Status, states[0].Healthy))
-		case string(servicedomain.KindDatabase):
-			state = string(servicedomain.NormalizeDatabase(states[0].Status, states[0].Healthy))
-		default:
-			state = string(servicedomain.NormalizeCompose(states, false))
-		}
+	if statusErr := h.db.QueryRow(c.Request.Context(), `SELECT status FROM services WHERE id = $1 AND deleted_at IS NULL`, id).Scan(&state); statusErr != nil {
+		state = string(servicedomain.StatusUnknown)
 	}
+	items, err := runtimeContainers(c, h.runtime, id, specID)
 	containerStats := make([]gin.H, 0)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"state": state, "stats": gin.H{"cpu_percent": 0, "mem_bytes": 0, "mem_limit": 0, "mem_percent": 0}, "containers": containerStats})
 		return
 	}
 	var cpu, used, limit float64
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		parts := strings.SplitN(strings.TrimSpace(line), "|", 5)
-		if len(parts) != 5 {
+	for _, item := range items {
+		if !item.HasStats {
 			continue
 		}
-		value, _ := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(parts[2]), "%"), 64)
-		cpu += value
-		memoryUsed, memoryLimit := parseMemory(parts[3])
-		used += float64(memoryUsed)
-		limit += float64(memoryLimit)
-		containerMemoryPercent, _ := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(parts[4]), "%"), 64)
-		containerStats = append(containerStats, gin.H{"id": strings.TrimSpace(parts[0]), "name": strings.TrimSpace(parts[1]), "cpu_percent": value, "mem_bytes": memoryUsed, "mem_limit": memoryLimit, "mem_percent": containerMemoryPercent})
+		cpu += item.Stats.CPUPercent
+		used += float64(item.Stats.MemBytes)
+		limit += float64(item.Stats.MemLimit)
+		containerStats = append(containerStats, gin.H{"id": item.ID, "name": item.Name, "cpu_percent": item.Stats.CPUPercent, "mem_bytes": item.Stats.MemBytes, "mem_limit": item.Stats.MemLimit, "mem_percent": item.Stats.MemPercent})
 	}
 	memPercent := float64(0)
 	if limit > 0 {
@@ -934,33 +935,31 @@ func (h *Handler) CancelDeployment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid deployment id"})
 		return
 	}
-	kind, specID, err := h.resolve(c, serviceID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
+	var status string
+	var imageRef, containerID string
+	if err := h.db.QueryRow(c.Request.Context(), `
+SELECT status, image_ref, container_id
+FROM deployments
+JOIN services s ON s.id = deployments.service_id AND s.org_id = $3 AND s.deleted_at IS NULL
+WHERE deployments.id = $1 AND deployments.service_id = $2`, deploymentID, serviceID, orgID(c)).Scan(&status, &imageRef, &containerID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "deployment not found"})
 		return
 	}
-	if kind == string(servicedomain.KindCompose) && deploymentID == serviceID {
-		if h.compose == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "compose runtime is not configured"})
-			return
-		}
-		if err := h.compose.Down(c.Request.Context(), specID, orgID(c)); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"service_id": serviceID, "deployment_id": deploymentID, "status": "cancelled"})
+	if status != string(deploydomain.StatusQueued) && status != string(deploydomain.StatusBuilding) && status != string(deploydomain.StatusStarting) && status != string(deploydomain.StatusHealthChecking) {
+		c.JSON(http.StatusConflict, gin.H{"error": "deployment is not active"})
 		return
 	}
-	if kind != string(servicedomain.KindApp) || h.appDeploy == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "deployment cancellation is unavailable"})
+	if _, err := h.db.Exec(c.Request.Context(), `UPDATE deployments SET status = 'cancelled', error = 'deployment cancelled by user', finished_at = now() WHERE id = $1 AND service_id = $2 AND status IN ('queued', 'building', 'starting', 'health_checking')`, deploymentID, serviceID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "deployment cancellation failed"})
 		return
 	}
-	deployment, err := h.appDeploy.Cancel(c.Request.Context(), specID, orgID(c), deploymentID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if h.deploymentCanceller != nil {
+		h.deploymentCanceller.CancelDeployment(deploymentID)
 	}
-	c.JSON(http.StatusOK, deployment)
+	if h.notifier != nil {
+		h.notifier.NotifyDeploy(c.Request.Context(), deploydomain.DeployEvent{ServiceID: serviceID, DepID: deploymentID, Status: string(deploydomain.StatusCancelled), Detail: "deployment cancelled by user"})
+	}
+	c.JSON(http.StatusOK, gin.H{"service_id": serviceID, "deployment_id": deploymentID, "status": deploydomain.StatusCancelled, "image_ref": imageRef, "container_id": containerID})
 }
 
 func (h *Handler) DeploymentLog(c *gin.Context) {
@@ -1014,7 +1013,7 @@ func (h *Handler) DeploymentLog(c *gin.Context) {
 }
 
 func (h *Handler) composeRuntimeLog(c *gin.Context, serviceID, specID uuid.UUID) string {
-	containers, err := serviceContainers(c, serviceID, specID)
+	containers, err := serviceContainers(c, h.runtime, serviceID, specID)
 	if err != nil {
 		return ""
 	}
@@ -1024,8 +1023,8 @@ func (h *Handler) composeRuntimeLog(c *gin.Context, serviceID, specID uuid.UUID)
 		if len(parts) == 0 || parts[0] == "" {
 			continue
 		}
-		output, logErr := exec.CommandContext(c.Request.Context(), "podman", "logs", parts[0]).CombinedOutput()
-		if logErr != nil && len(output) == 0 {
+		lines, logErr := h.runtime.LogTail(c.Request.Context(), parts[0], 200)
+		if logErr != nil && len(lines) == 0 {
 			continue
 		}
 		if builder.Len() > 0 {
@@ -1034,7 +1033,7 @@ func (h *Handler) composeRuntimeLog(c *gin.Context, serviceID, specID uuid.UUID)
 		if len(parts) == 2 {
 			builder.WriteString("[" + parts[1] + "]\n")
 		}
-		builder.Write(output)
+		builder.WriteString(strings.Join(lines, "\n"))
 	}
 	return builder.String()
 }

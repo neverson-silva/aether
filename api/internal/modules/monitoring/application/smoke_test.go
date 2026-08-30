@@ -13,9 +13,13 @@ import (
 
 func TestSmokeCollectReal(t *testing.T) {
 	if os.Getenv("AETHER_SMOKE") == "" {
-		t.Skip("set AETHER_SMOKE=1 to run against live podman")
+		t.Skip("set AETHER_SMOKE=1 to run against live Docker Engine")
 	}
-	rt := worker.NewPodmanRuntime()
+	rt, err := worker.NewDockerRuntime("")
+	if err != nil {
+		t.Fatalf("create Docker runtime: %v", err)
+	}
+	defer rt.Close()
 	hostSvc := &hostApp.Host{LogsDir: ""}
 	m := NewMonitoring(rt, hostSvc, nil, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

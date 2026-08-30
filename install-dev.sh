@@ -67,7 +67,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Configuration — everything runs in containers; podman is the ONLY host dep.
+# Configuration — everything runs through Docker Engine.
 STATE_DIR="${AETHER_STATE:-$HOME/.aether}"
 NET_NAME="${AETHER_NET:-aether-net}"
 
@@ -83,6 +83,7 @@ NATS_URL_EFFECTIVE="${AETHER_NATS_URL:-}"
 NATS_USER="${AETHER_NATS_USER:-aether}"
 NATS_PASSWORD="${AETHER_NATS_PASSWORD:-}"
 NATS_AUTH_FILE="$STATE_DIR/keys/nats.auth"
+TRAEFIK_IMAGE="${AETHER_TRAEFIK_IMAGE:-docker.io/library/traefik:v3.2}"
 
 API_CONTAINER="aether-api"
 API_IMAGE="${AETHER_API_IMAGE:-aether.local/api:1}"
@@ -152,7 +153,7 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 # host_log — registro por passo da configuração de host (Linux nativo).
 host_log() {
   mkdir -p "$(dirname "$HOST_LOG")"
-  printf '%s %s\n' "$(date -Is)" "$*" >> "$HOST_LOG"
+  printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >> "$HOST_LOG"
 }
 
 can_sudo() {
@@ -180,292 +181,66 @@ user_bus_available() {
 }
 
 # ---------------------------------------------------------------------------
-# RUNTIME — podman (única dependência do host)
+# RUNTIME — Docker Engine
 detect_runtime() {
-  if command_exists podman; then
-    echo "podman"
+  if command_exists docker; then
+    echo "docker"
   else
     echo "none"
   fi
-}
-
-ensure_podman_machine() {
-  command_exists podman || fail "podman is not available"
-  if podman machine inspect --format '{{.State}}' >/dev/null 2>&1; then
-    info "Podman machine already exists."
-  else
-    info "Creating Podman machine..."
-    podman machine init >/dev/null || fail "The application environment could not be initialized."
-  fi
-  local state
-  state="$(podman machine inspect --format '{{.State}}' 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
-  if [[ "$state" != "running" ]]; then
-    info "Starting Podman machine..."
-    podman machine start >/dev/null || fail "The application environment could not be started."
-  fi
-  info "Podman machine: $(podman machine inspect --format '{{.Name}} {{.State}}' 2>/dev/null || podman info --format '{{.Host.Arch}}')"
-
-  # O buildah (via podman build) espera o profile de seccomp em
-  # /etc/containers/seccomp.json. Em Fedora CoreOS ele fica em
-  # /usr/share/containers/seccomp.json — cria o symlink na VM se faltar.
-  if podman machine ssh -- "test -e /etc/containers/seccomp.json" 2>/dev/null | grep -q false; then
-    podman machine ssh -- "sudo sh -c 'mkdir -p /etc/containers && ln -sf /usr/share/containers/seccomp.json /etc/containers/seccomp.json'" 2>/dev/null \
-      || true
-  fi
-
-  # Permite o Traefik (rootless) expor as portas 80/443.
-  podman machine ssh -- "sudo sh -c 'echo net.ipv4.ip_unprivileged_port_start=80 > /etc/sysctl.d/80-unpriv-ports.conf' && sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80" >/dev/null 2>/dev/null \
-    || true
 }
 
 ensure_runtime() {
   local runtime
   runtime="$(detect_runtime)"
   if [[ "$runtime" == "none" ]]; then
-    warn "podman is not installed — attempting to install it automatically..."
-    if install_podman; then
+    warn "Docker CLI is not installed — attempting to install it automatically..."
+    if install_docker; then
       runtime="$(detect_runtime)"
     else
-      fail "podman is required but could not be installed. Install it manually (https://podman.io/docs/installation) and run again."
+      fail "Docker CLI is required but could not be installed. Install Docker Engine or Docker Desktop and run again."
     fi
   fi
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    ensure_podman_machine
-  else
-    ensure_linux_host
-  fi
+  docker info >/dev/null 2>&1 || fail "Docker Engine is unavailable. Start Docker Desktop or the Docker daemon and run again."
+  docker compose version >/dev/null 2>&1 || fail "Docker Compose is unavailable. Install the Docker Compose plugin and run again."
+  ensure_linux_host
   RUNTIME="$runtime"
-  info "Container runtime: podman"
+  DOCKER_RUNTIME="$runtime"
+  info "Container runtime: Docker Engine"
 }
 
-# install_podman — instala o podman via gerenciador de pacotes da distro.
-install_podman() {
+# install_docker installs Docker CLI and Engine through the host package manager.
+install_docker() {
   local pm=""
   if command_exists dnf; then
-    pm="dnf install -y podman podman-docker"
+    pm="dnf install -y docker docker-compose-plugin"
   elif command_exists apt-get; then
-    pm="apt-get update -qq && apt-get install -y podman"
+    pm="apt-get update -qq && apt-get install -y docker.io docker-compose-plugin"
   elif command_exists pacman; then
-    pm="pacman -S --noconfirm --needed podman"
+    pm="pacman -S --noconfirm --needed docker docker-compose"
   elif command_exists zypper; then
-    pm="zypper --non-interactive install podman"
+    pm="zypper --non-interactive install docker docker-compose"
   elif command_exists apk; then
-    pm="apk add podman podman-compose"
+    pm="apk add docker docker-cli-compose"
   fi
   [[ -n "$pm" ]] || { host_log "fail: no package manager matched (dnf/apt/pacman/zypper/apk)"; return 1; }
-  host_log "step: install podman -> $pm"
+  host_log "step: install docker -> $pm"
   local out
   out="$(run_sudo sh -c "$pm" 2>&1)"
   if [[ $? -eq 0 ]]; then
-    host_log "ok: podman installed via $pm"
-    info "  ✓ podman installed via package manager."
+    host_log "ok: docker installed via $pm"
+    info "  Docker installed via package manager."
     return 0
   fi
-  host_log "fail: install podman -> $pm ($out)"
+  host_log "fail: install docker -> $pm ($out)"
   return 1
 }
 
-# ensure_linux_host — configura o host Linux nativo para o runtime rootless
-# do podman. No macOS isso acontece dentro da VM (ensure_podman_machine);
-# no Linux o host É a máquina, então fazemos os ajustes aqui, com sudo não
+# ensure_linux_host validates Docker host prerequisites.
 ensure_linux_host() {
-  [[ "$(uname -s)" == "Linux" ]] || return 0
-  host_log "=== host setup begin (user $(id -un), uid $(id -u)) ==="
-
-  configure_system_podman_service
-
-  # 1) podman.socket — a API monta o socket para orquestrar deploys de apps.
-  local sock
-  sock="$(podman_socket)"
-  if [[ -n "$sock" && -S "$sock" ]] && podman_socket_healthy "$sock"; then
-    host_log "ok: podman.socket already present ($sock)"
-  else
-    host_log "step: enable podman.socket"
-    if [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" && "$(id -u)" -eq 0 && system_bus_available ]]; then
-      if systemctl enable --now podman.socket >/dev/null 2>&1; then
-        host_log "ok: podman.socket enabled (system)"
-        info "  ✓ podman.socket enabled (system)"
-      else
-        host_log "fail: systemctl enable --now podman.socket"
-        warn "  podman.socket could not be enabled — deploy orchestration will be limited."
-      fi
-    elif [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" && "$(id -u)" -ne 0 ]]; then
-      export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-      if user_bus_available && systemctl --user enable --now podman.socket >/dev/null 2>&1; then
-        host_log "ok: podman.socket enabled (user)"
-        info "  ✓ podman.socket enabled (user: $(id -un))"
-      else
-        host_log "fail: systemctl --user enable --now podman.socket"
-        warn "  podman.socket could not be enabled — deploy orchestration will be limited."
-      fi
-    fi
-    if [[ "$(uname -s)" == "Linux" ]]; then
-      start_podman_socket_without_systemd
-    fi
-  fi
-
-  # 2) Portas não-privilegiadas ≥ 80 — apps publicados na porta 80 (padrão)
-  #    falham ao iniciar em rootless sem este sysctl (bind: permission denied).
-  local cur
-  cur="$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo 1024)"
-  if [[ "${cur:-1024}" -le 80 ]]; then
-    host_log "ok: unprivileged ports start at $cur (<=80)"
-  else
-    host_log "step: set net.ipv4.ip_unprivileged_port_start=80 (currently $cur)"
-    if can_sudo; then
-      local out
-      out="$(run_sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80 2>&1)"
-      out+="$(run_sudo sh -c 'echo net.ipv4.ip_unprivileged_port_start=80 > /etc/sysctl.d/80-unpriv-ports.conf' 2>&1)"
-      if [[ $? -eq 0 ]] && sysctl -n net.ipv4.ip_unprivileged_port_start | grep -qx '80'; then
-        host_log "ok: unprivileged ports start at 80 (persisted)"
-        info "  ✓ net.ipv4.ip_unprivileged_port_start=80 (persisted in /etc/sysctl.d)"
-      else
-        host_log "fail: set sysctl 80 -> $out"
-        warn "  Could not set unprivileged ports to 80 — apps on port 80 will fail to start."
-      fi
-    else
-      host_log "fail: sudo required for sysctl (current $cur)"
-      warn "  Para apps na porta 80 (padrão) funcionarem, rode como root:"
-      warn "    sudo sh -c 'echo net.ipv4.ip_unprivileged_port_start=80 > /etc/sysctl.d/80-unpriv-ports.conf && sysctl -w net.ipv4.ip_unprivileged_port_start=80'"
-    fi
-  fi
-
-  # 3) Perfil seccomp do buildah — podman build falha sem
-  #    /etc/containers/seccomp.json (em várias distros ele fica em
-  #    /usr/share/containers/seccomp.json).
-  if [[ -e /etc/containers/seccomp.json ]]; then
-    host_log "ok: seccomp profile present"
-  else
-    local src=""
-    for src in /usr/share/containers/seccomp.json /usr/local/share/containers/seccomp.json; do
-      [[ -f "$src" ]] && break
-      src=""
-    done
-    if [[ -n "$src" ]]; then
-      if can_sudo; then
-        local out
-        out="$(run_sudo sh -c "mkdir -p /etc/containers && ln -sf '$src' /etc/containers/seccomp.json" 2>&1)"
-        if [[ $? -eq 0 ]]; then
-          host_log "ok: seccomp symlink $src -> /etc/containers/seccomp.json"
-          info "  ✓ seccomp profile linked (/etc/containers/seccomp.json)"
-        else
-          host_log "fail: seccomp symlink -> $out"
-          warn "  Could not create /etc/containers/seccomp.json — podman build may fail."
-        fi
-      else
-        host_log "fail: sudo required for seccomp symlink"
-        warn "  Para podman build funcionar, rode como root:"
-        warn "    sudo ln -sf '$src' /etc/containers/seccomp.json"
-      fi
-    else
-      host_log "warn: seccomp profile not found (/usr/share/containers, /usr/local/share/containers)"
-      warn "  Perfil de seccomp não encontrado no host — podman build pode falhar."
-    fi
-  fi
-
-  # 4) loginctl linger (rootless) — mantém o user manager vivo para que
-  #    containers com restart=unless-stopped subam sozinhos após logout/reboot.
-  if [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" && "$(id -u)" -ne 0 ]] && command_exists loginctl && system_bus_available; then
-    local linger
-    linger="$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || true)"
-    if [[ "$linger" == "yes" ]]; then
-      host_log "ok: linger already enabled"
-    elif can_sudo; then
-      if run_sudo loginctl enable-linger "$(id -un)" >/dev/null 2>&1; then
-        host_log "ok: linger enabled"
-        info "  ✓ loginctl linger enabled (containers restauram após reboot)"
-      else
-        host_log "fail: loginctl enable-linger"
-        warn "  loginctl enable-linger falhou — containers podem não subir sozinhos após reboot."
-      fi
-    else
-      host_log "fail: sudo required for linger"
-      warn "  Para containers subirem sozinhos após reboot, rode: sudo loginctl enable-linger $(id -un)"
-    fi
-  fi
-
-  host_log "=== host setup end ==="
-}
-
-configure_system_podman_service() {
-  [[ "$(uname -s)" == "Linux" ]] || return 0
-  [[ "$(id -u)" -eq 0 ]] || return 0
-  [[ "${AETHER_SKIP_SYSTEMD_SETUP:-false}" != "true" ]] || return 0
-  system_bus_available || return 0
-  command_exists systemctl || return 0
-  run_sudo mkdir -p /etc/systemd/system/podman.service.d
-  run_sudo sh -c 'printf "%s\n" "[Service]" "ExecStart=" "ExecStart=/usr/bin/podman system service --time=0" > /etc/systemd/system/podman.service.d/aether-timeout.conf'
-  run_sudo systemctl daemon-reload >/dev/null 2>&1 || return 0
-  run_sudo systemctl restart podman.socket >/dev/null 2>&1 || true
-  host_log "ok: podman.service configured without an API timeout"
-}
-
-podman_socket_healthy() {
-  local socket="$1"
-  curl --unix-socket "$socket" -fsS http://d/_ping >/dev/null 2>&1 \
-    || curl --unix-socket "$socket" -fsS http://d/libpod/_ping >/dev/null 2>&1
-}
-
-start_podman_socket_without_systemd() {
-  local socket
-  if [[ "$(id -u)" -eq 0 ]]; then
-    socket="/run/podman/podman.sock"
-    mkdir -p /run/podman
-  else
-    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-    socket="$XDG_RUNTIME_DIR/podman/podman.sock"
-    mkdir -p "$(dirname "$socket")"
-  fi
-  if podman_socket_healthy "$socket"; then
-    export AETHER_PODMAN_SOCKET="$socket"
-    return 0
-  fi
-  if [[ -S "$socket" ]]; then
-    rm -f -- "$socket"
-  fi
-  info "  Starting Podman API service directly on $socket..."
-  nohup podman system service --time=0 "unix://$socket" >/tmp/aether-podman-service.log 2>&1 &
-  local attempt
-  for attempt in {1..20}; do
-    if podman_socket_healthy "$socket"; then
-      export AETHER_PODMAN_SOCKET="$socket"
-      host_log "ok: podman API service started directly ($socket)"
-      info "  ✓ podman API service available ($socket)"
-      return 0
-    fi
-    sleep 1
-  done
-  host_log "fail: podman API service did not become ready ($socket)"
-  warn "  Podman API socket is unavailable — deploy orchestration will be limited."
-  return 1
-}
-
-podman_socket() {
-  if [[ -n "${AETHER_PODMAN_SOCKET:-}" && -S "$AETHER_PODMAN_SOCKET" ]]; then
-    echo "$AETHER_PODMAN_SOCKET"
-  elif [[ -S "/run/podman/podman.sock" ]]; then
-    echo "/run/podman/podman.sock"
-  elif [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]]; then
-    echo "$XDG_RUNTIME_DIR/podman/podman.sock"
-  elif [[ -S "/run/user/$(id -u)/podman/podman.sock" ]]; then
-    echo "/run/user/$(id -u)/podman/podman.sock"
-  elif [[ "$(uname -s)" == "Darwin" ]]; then
-    podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}' 2>/dev/null || echo ""
-  else
-    echo ""
-  fi
-}
-
-# podman_machine_socket — em podman machine (macOS), o daemon roda dentro da VM.
-# O source de um `-v` é resolvido dentro da VM, então devolvemos o caminho do
-podman_machine_socket() {
-  local uri
-  uri="$(podman system connection list --format '{{.Name}}|{{.URI}}|{{.Default}}' 2>/dev/null \
-    | awk -F'|' '$3=="true"{print $2; exit}')"
-  if [[ -n "$uri" && "$uri" == ssh://* ]]; then
-    echo "$uri" | sed -E 's#^ssh://[^/]+(/.*)$#\1#'
-  else
-    echo ""
+  host_log "docker info verified"
+  if [[ "$(uname -s)" == "Linux" && "$(id -u)" -ne 0 && ! -w /var/run/docker.sock ]]; then
+    warn "Docker socket permissions may require membership in the docker group."
   fi
 }
 
@@ -527,12 +302,32 @@ EOF
 }
 
 ensure_network() {
-  if ! $RUNTIME network exists "$NET_NAME" 2>/dev/null; then
-    info "Preparing the application network..."
-    $RUNTIME network create "$NET_NAME" >/dev/null
-  else
+  if $RUNTIME network inspect "$NET_NAME" >/dev/null 2>&1; then
     info "Application network already prepared."
+    return 0
   fi
+  info "Preparing the application network..."
+  if $RUNTIME network create "$NET_NAME" >/dev/null 2>&1; then
+    info "Application network prepared."
+    return 0
+  fi
+  if $RUNTIME network inspect "$NET_NAME" >/dev/null 2>&1; then
+    info "Application network already prepared."
+    return 0
+  fi
+  fail "Could not prepare the application network '$NET_NAME'."
+}
+
+ensure_ingress_image() {
+  if $RUNTIME image inspect "$TRAEFIK_IMAGE" >/dev/null 2>&1; then
+    info "Ingress image already available."
+    return 0
+  fi
+  info "Preparing the ingress image..."
+  if ! $RUNTIME pull "$TRAEFIK_IMAGE" >>"$INSTALL_LOG" 2>&1; then
+    fail "Could not download the ingress image '$TRAEFIK_IMAGE'."
+  fi
+  info "Ingress image prepared."
 }
 
 ensure_postgres() {
@@ -574,11 +369,15 @@ ensure_postgres() {
       running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$PG_CONTAINER" || true)"
       [[ "$running" -eq 0 ]] && $runtime start "$PG_CONTAINER"
     fi
-    $runtime exec "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER ROLE \"$DB_USER\" PASSWORD '$password';" >/dev/null 2>&1 \
+    $runtime exec -e "PGPASSWORD=$password" "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER ROLE \"$DB_USER\" PASSWORD '$password';" >/dev/null 2>&1 \
       && info "Password synced in PostgreSQL." \
       || warn "Could not sync the password — check the container."
   else
-    info "Initializing application data storage..."
+    if $runtime volume inspect aether-pg-data >/dev/null 2>&1; then
+      info "Existing PostgreSQL data volume found — reusing it without replacing data."
+    else
+      info "Initializing application data storage..."
+    fi
     $runtime run -d \
       --name "$PG_CONTAINER" \
       --network "$NET_NAME" \
@@ -600,6 +399,9 @@ ensure_postgres() {
     [[ $tries -gt 60 ]] && fail "PostgreSQL did not become ready in 60s."
     sleep 2
   done
+  if ! $runtime exec -e "PGPASSWORD=$password" "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -Atqc 'SELECT 1' >/dev/null 2>&1; then
+    fail "PostgreSQL is running, but the configured credentials do not match its existing data volume. Refusing to start the API. Preserve the volume and recover or explicitly reset it before retrying."
+  fi
   info "Application data storage ready."
 }
 
@@ -764,15 +566,10 @@ start_api() {
 
   build_api_image
 
-  local socket
-  socket="$(podman_socket || true)"
-
   mkdir -p "$STATE_DIR" "$STATE_DIR/data" "$STATE_DIR/certs" "$STATE_DIR/logs" \
     "$STATE_DIR/builds" "$STATE_DIR/cache" "$STATE_DIR/keys" "$STATE_DIR/logs/apps" \
     "$STATE_DIR/builds/sources" "$STATE_DIR/snapshots"
 
-  # volume compartilhado para o ingress (config Traefik + acme), montado na API
-  # e no container Traefik, evitando dependência de path do host.
   $RUNTIME volume create aether-traefik >/dev/null 2>&1 || true
   $RUNTIME volume create aether-pack-cache >/dev/null 2>&1 || true
 
@@ -813,32 +610,20 @@ start_api() {
     -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
     -e "DEV_MODE=$DEV_MODE"
     -e "AETHER_FREE_DOMAIN_PROVIDER=${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
+    -e "AETHER_TRAEFIK_IMAGE=$TRAEFIK_IMAGE"
     -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-false}"
     -e "AETHER_MODE=$MODE"
   )
-  # Monta o socket do podman para a API orquestrar deploys de apps.
-  # - Linux: socket unix do host (mountável diretamente).
-  # - macOS (podman machine): o daemon roda na VM; o source do `-v` é resolvido
-  #   dentro da VM, então usamos o caminho do socket rootless da VM.
   local sock_mount=0
-  local sock_src=""
-  if [[ -n "$socket" && -S "$socket" && ( "$socket" == "$HOME"/* || "$(uname -s)" == "Linux" ) ]]; then
-    sock_src="$socket"
-  elif [[ "$(uname -s)" == "Darwin" ]]; then
-    sock_src="$(podman_machine_socket)"
-  fi
-  if [[ -n "$sock_src" ]]; then
-    # Monta o socket no MESMO path do host/VM para que o podman dentro do
-    # container consiga re-exportar o socket em containers filhos (builds
-    # pack/buildpacks), já que o source de um -v é resolvido
-    # dentro da VM, não no container.
-    args+=( -v "$sock_src:$sock_src:ro" )
-    args+=( -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
+  local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
+  if [[ -S "$docker_socket" ]]; then
+    args+=( -v "$docker_socket:/var/run/docker.sock:ro" )
+    args+=( -e "DOCKER_HOST=unix:///var/run/docker.sock" -e "AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock" )
     sock_mount=1
-    info "  ✓ podman socket mounted (for app deployments): $sock_src"
+    info "  Docker socket mounted for application deployments."
   fi
   if [[ "$sock_mount" -eq 0 ]]; then
-    warn "  podman socket not mountable on this host — app deployment orchestration will be limited (core platform is unaffected)."
+    warn "  Docker socket is not mountable; application deployments will be unavailable."
   fi
 
   local api_started=0
@@ -853,17 +638,17 @@ start_api() {
   fi
   if [[ "$api_started" -eq 0 ]]; then
     if [[ "$sock_mount" -eq 1 ]]; then
-      warn "  Could not mount the podman socket — retrying without it."
+      warn "  Docker socket mount failed — retrying without it."
       remove_api_container
       local clean_args=()
       local index=0
       while [[ "$index" -lt "${#args[@]}" ]]; do
         local argument="${args[$index]}"
-        if [[ "$argument" == "-v" && "$((index + 1))" -lt "${#args[@]}" && "${args[$((index + 1))]}" == *"podman.sock:ro" ]]; then
+        if [[ "$argument" == "-v" && "$((index + 1))" -lt "${#args[@]}" && "${args[$((index + 1))]}" == *"docker.sock:ro" ]]; then
           index=$((index + 2))
           continue
         fi
-        if [[ "$argument" == "-e" && "$((index + 1))" -lt "${#args[@]}" && ( "${args[$((index + 1))]}" == "CONTAINER_HOST=unix://"* || "${args[$((index + 1))]}" == "DOCKER_HOST=unix://"* ) ]]; then
+        if [[ "$argument" == "-e" && "$((index + 1))" -lt "${#args[@]}" && ( "${args[$((index + 1))]}" == "DOCKER_HOST=unix://"* || "${args[$((index + 1))]}" == "AETHER_BUILD_DOCKER_HOST=unix://"* ) ]]; then
           index=$((index + 2))
           continue
         fi
@@ -892,14 +677,6 @@ start_auxiliary() {
   local container="$1"
   local binary="$2"
   $RUNTIME rm -f "$container" >/dev/null 2>&1 || true
-  local socket
-  socket="$(podman_socket || true)"
-  local sock_src=""
-  if [[ -n "$socket" && -S "$socket" && ( "$socket" == "$HOME"/* || "$(uname -s)" == "Linux" ) ]]; then
-    sock_src="$socket"
-  elif [[ "$(uname -s)" == "Darwin" ]]; then
-    sock_src="$(podman_machine_socket)"
-  fi
   local args=(run -d --name "$container" --entrypoint "/usr/local/bin/$binary" --network "$NET_NAME" --security-opt label=disable)
   args+=(
     -v "$STATE_DIR:/var/lib/aether"
@@ -928,9 +705,20 @@ start_auxiliary() {
   elif [[ "$binary" == "aether-monitoring" ]]; then
     args+=( -e "AETHER_MONITORING_HEALTH_ADDR=0.0.0.0:8082" -p "127.0.0.1:8082:8082" )
   fi
-  if [[ -n "$sock_src" ]]; then
-    args+=( -v "$sock_src:$sock_src:ro" )
-    args+=( -e "CONTAINER_HOST=unix://$sock_src" -e "DOCKER_HOST=unix://$sock_src" )
+  if [[ "$binary" == "aether-worker" ]]; then
+    local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
+    if [[ -S "$docker_socket" ]]; then
+      args+=( -v "$docker_socket:/var/run/docker.sock:ro" )
+      args+=( -e "DOCKER_HOST=unix:///var/run/docker.sock" -e "AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock" )
+    else
+      warn "Docker Engine socket is unavailable; the deployment worker cannot build or run images."
+    fi
+  else
+    local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
+    if [[ -S "$docker_socket" ]]; then
+      args+=( -v "$docker_socket:/var/run/docker.sock:ro" )
+      args+=( -e "DOCKER_HOST=unix:///var/run/docker.sock" -e "AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock" )
+    fi
   fi
   info "Starting $container..."
   $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start $container."
@@ -999,42 +787,29 @@ start_web() {
 }
 
 # ---------------------------------------------------------------------------
-# REGISTRY + CNB BUILDER — registry local (aether-registry:5000) e a imagem
-# do builder CNB (Paketo node + aether/spa-static), construída via podman
-# build (pack builder create não exporta corretamente para o podman).
+# REGISTRY + CNB BUILDER — local registry and Docker-backed CNB builder.
 REGISTRY_IMAGE="${AETHER_REGISTRY_IMAGE:-docker.io/library/registry:2}"
 REGISTRY_ADDR="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}"
 REGISTRY_CONTAINER="aether-registry"
+DOCKER_RUNTIME="${AETHER_DOCKER_CLI:-docker}"
 CNB_BUILDER="${AETHER_CNB_BUILDER:-${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa}"
 if [[ "$CNB_BUILDER" == "aether/builder:node-spa" || "$CNB_BUILDER" == "localhost/aether/builder:node-spa" ]]; then
   CNB_BUILDER="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}/builder:node-spa"
 fi
 
-ensure_insecure_registry() {
-  local conf="$HOME/.config/containers/registries.conf"
-  if [[ -f "$conf" ]] && grep -q "127.0.0.1:5000" "$conf"; then
-    return 0
-  fi
-  mkdir -p "$(dirname "$conf")"
-  {
-    [[ -f "$conf" ]] && cat "$conf"
-    printf '\n[[registry]]\nlocation = "127.0.0.1:5000"\ninsecure = true\n\n[[registry]]\nlocation = "localhost:5000"\ninsecure = true\n'
-  } > "$conf.tmp" && mv "$conf.tmp" "$conf"
-  info "registries.conf: registry local (127.0.0.1:5000) marcado como insecure."
-}
-
 ensure_registry() {
-  ensure_insecure_registry
+  command -v "$DOCKER_RUNTIME" >/dev/null || fail "Docker CLI is required for the image registry."
+  "$DOCKER_RUNTIME" info >/dev/null 2>&1 || fail "Docker Engine is unavailable for the image registry."
   local exists
-  exists="$($RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$REGISTRY_CONTAINER" || true)"
+  exists="$($DOCKER_RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$REGISTRY_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
     local running
-    running="$($RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -cx "$REGISTRY_CONTAINER" || true)"
-    [[ "$running" -eq 0 ]] && $RUNTIME start "$REGISTRY_CONTAINER" >/dev/null
+    running="$($DOCKER_RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -cx "$REGISTRY_CONTAINER" || true)"
+    [[ "$running" -eq 0 ]] && $DOCKER_RUNTIME start "$REGISTRY_CONTAINER" >/dev/null
     info "Registry already exists ($REGISTRY_CONTAINER) — using the existing one."
   else
     info "Creating registry ($REGISTRY_IMAGE) on $REGISTRY_ADDR..."
-    $RUNTIME run -d \
+    $DOCKER_RUNTIME run -d \
       --name "$REGISTRY_CONTAINER" \
       -p "$REGISTRY_ADDR:5000" \
       --restart unless-stopped \
@@ -1050,19 +825,20 @@ ensure_registry() {
 }
 
 ensure_builder() {
-  $RUNTIME pull "docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}" >/dev/null 2>&1 || true
-  $RUNTIME pull "${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04}" >/dev/null 2>&1 || true
+  command -v "$DOCKER_RUNTIME" >/dev/null || fail "Docker CLI is required for the CNB builder."
+  "$DOCKER_RUNTIME" pull "docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}" >/dev/null 2>&1 || true
+  "$DOCKER_RUNTIME" pull "${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04}" >/dev/null 2>&1 || true
   local source_stamp builder_stamp
   source_stamp="$(sha256sum "$PROJECT_ROOT/infra/buildpacks/node-server/bin/build" "$PROJECT_ROOT/infra/buildpacks/node-server/bin/detect" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/build" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/detect" "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" | sha256sum | awk '{print $1}')"
   builder_stamp="$STATE_DIR/cnb-builder.stamp"
-  if $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 && [[ -f "$builder_stamp" ]] && grep -qx "$source_stamp" "$builder_stamp"; then
+  if "$DOCKER_RUNTIME" image inspect "$CNB_BUILDER" >/dev/null 2>&1 && [[ -f "$builder_stamp" ]] && grep -qx "$source_stamp" "$builder_stamp"; then
     info "CNB builder already present ($CNB_BUILDER)."
     return 0
   fi
   info "Building CNB builder ($CNB_BUILDER) — aether buildpacks + ubuntu run image..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
   bash "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" >>"$INSTALL_LOG" 2>&1 || fail "The application build environment could not be prepared."
-  $RUNTIME image exists "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
+  "$DOCKER_RUNTIME" image inspect "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$builder_stamp"
   info "CNB builder ready."
@@ -1071,7 +847,7 @@ ensure_builder() {
 # ---------------------------------------------------------------------------
 # HOST AGENT (host machine — macOS or Linux)
 # The API runs inside a container; the host agent runs natively on the host
-# machine and writes the real host metrics to $STATE_DIR/host-stats.json
+# and writes the real host metrics to $STATE_DIR/host-stats.json
 # (mounted into the API container at /var/lib/aether). The watchdog couples
 # the agent to the API lifecycle: agent starts when the API is up, and is
 # terminated whenever the API goes down for any reason.
@@ -1214,6 +990,7 @@ main() {
       ensure_runtime
       start_agent
       ensure_network
+      ensure_ingress_image
       ensure_postgres
       ensure_nats
       ensure_registry
@@ -1238,6 +1015,7 @@ main() {
 
   progress_step 3 "Preparing application services"
   ensure_network
+  ensure_ingress_image
   ensure_postgres
   ensure_nats
 

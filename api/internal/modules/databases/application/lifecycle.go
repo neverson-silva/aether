@@ -210,19 +210,26 @@ func (d *Databases) allocHostPort(stored int) int {
 }
 
 func (d *Databases) Deploy(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
-	return d.deployWithTrigger(ctx, id, orgID, "deploy")
+	return d.deployWithTrigger(ctx, id, orgID, "deploy", true)
 }
 
 func (d *Databases) Rebuild(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
-	return d.deployWithTrigger(ctx, id, orgID, "rebuild")
+	return d.deployWithTrigger(ctx, id, orgID, "rebuild", true)
 }
 
-func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, trigger string) (*domain.Database, error) {
+func (d *Databases) DeployForWorker(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
+	return d.deployWithTrigger(ctx, id, orgID, "deploy", false)
+}
+
+func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, trigger string, record bool) (*domain.Database, error) {
 	db, err := d.Get(ctx, id, orgID)
 	if err != nil {
 		return nil, err
 	}
-	dep := d.recordDeployment(ctx, db, trigger, deploydomain.StatusStarting, "", "")
+	var dep *deploydomain.Deployment
+	if record {
+		dep = d.recordDeployment(ctx, db, trigger, deploydomain.StatusStarting, "", "")
+	}
 	if dep != nil && d.Notifier != nil {
 		d.Notifier.NotifyDeploy(ctx, deploydomain.DeployEvent{AppID: dep.AppID, ServiceID: dep.ServiceID, DepID: dep.ID, Status: string(deploydomain.StatusStarting), Detail: "Database deployment started"})
 	}

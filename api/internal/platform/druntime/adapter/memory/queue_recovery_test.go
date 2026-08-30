@@ -74,3 +74,85 @@ func TestNackMovesJobToDeadLetterQueueAfterRetryLimit(t *testing.T) {
 		t.Fatalf("expected one dead-lettered job, got %d", length)
 	}
 }
+
+func TestConsumerDeliversJobsInEnqueueOrder(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	q := NewQueue()
+	consumer, err := q.NewConsumer(ctx, "deployments", "workers", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"first", "second", "third"} {
+		if err := q.Enqueue(ctx, "deployments", queue.Job{ID: id, Type: "deployment.execute"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, want := range []string{"first", "second", "third"} {
+		job, err := consumer.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.ID != want {
+			t.Fatalf("job order = %q, want %q", job.ID, want)
+		}
+		if err := consumer.Ack(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestQueueDeduplicatesJobID(t *testing.T) {
+	ctx := context.Background()
+	q := NewQueue()
+	consumer, err := q.NewConsumer(ctx, "deployments", "workers", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := queue.Job{ID: "duplicate", Type: "deployment.execute"}
+	if err := q.Enqueue(ctx, "deployments", job); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Enqueue(ctx, "deployments", job); err != nil {
+		t.Fatal(err)
+	}
+	first, err := consumer.Next(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := consumer.Ack(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	shortCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	if _, err := consumer.Next(shortCtx); err == nil {
+		t.Fatal("duplicate job was delivered")
+	}
+}
+
+func TestQueueCancellationNotifiesWatchers(t *testing.T) {
+	q := NewQueue()
+	ctx := context.Background()
+	cancelled := make(chan string, 1)
+	stop, err := q.WatchCancellations(ctx, "deployments", func(id string) {
+		cancelled <- id
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if err := q.Enqueue(ctx, "deployments", queue.Job{ID: "deployment-1", Type: "deployment.execute"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Cancel(ctx, "deployments", "deployment-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case id := <-cancelled:
+		if id != "deployment-1" {
+			t.Fatalf("cancelled id = %q", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancellation watcher was not notified")
+	}
+}

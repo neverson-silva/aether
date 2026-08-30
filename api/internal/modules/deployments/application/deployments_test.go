@@ -65,15 +65,15 @@ func TestDeployLifecycle(t *testing.T) {
 		t.Fatalf("deploy inesperado: number=%d status=%s", dep.Number, dep.Status)
 	}
 
-	if _, err := e.svc.Deploy(e.ctx, e.appID, e.orgID, DeployOpts{Trigger: "webhook"}); err != nil {
-		t.Fatalf("deploy 2: %v", err)
+	if _, err := e.svc.Deploy(e.ctx, e.appID, e.orgID, DeployOpts{Trigger: "webhook"}); !errors.Is(err, deploydomain.ErrConflict) {
+		t.Fatalf("deploy 2 should be rejected while the first is active: %v", err)
 	}
 	list, err := e.svc.List(e.ctx, e.appID, e.orgID, 25)
-	if err != nil || len(list) != 2 {
+	if err != nil || len(list) != 1 {
 		t.Fatalf("list: %v %d", err, len(list))
 	}
-	if list[0].Number != 2 {
-		t.Fatalf("ordenacao deveria ser DESC, got %d primeiro", list[0].Number)
+	if list[0].Number != 1 {
+		t.Fatalf("unexpected deployment number: %d", list[0].Number)
 	}
 }
 

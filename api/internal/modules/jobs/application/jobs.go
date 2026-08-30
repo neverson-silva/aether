@@ -3,8 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/google/uuid"
@@ -13,6 +11,7 @@ import (
 	appsdomain "aether/internal/modules/apps/domain"
 	"aether/internal/modules/jobs/domain"
 	variablesApp "aether/internal/modules/variables/application"
+	"aether/internal/platform/worker"
 )
 
 type Jobs struct {
@@ -26,7 +25,6 @@ type AppStore interface {
 	GetApp(ctx context.Context, id, orgID uuid.UUID) (*appsdomain.App, error)
 }
 
-// Runtime orquestra containers de workers. Executa podman no host.
 type Runtime interface {
 	Run(ctx context.Context, name, image, command string, env []string) (string, error)
 	Stop(ctx context.Context, containerID string) error
@@ -37,44 +35,32 @@ type OneShotRuntime interface {
 	RunOnce(ctx context.Context, name, image, command string, env []string) (string, error)
 }
 
-type podmanRuntime struct{}
+type dockerRuntime struct{ engine worker.Runtime }
 
-func NewRuntime() Runtime { return podmanRuntime{} }
+func NewRuntime(engine worker.Runtime) Runtime { return dockerRuntime{engine: engine} }
 
-func (podmanRuntime) Run(ctx context.Context, name, image, command string, env []string) (string, error) {
-	args := []string{"run", "-d", "--name", name}
-	for _, e := range env {
-		args = append(args, "-e", e)
+func (r dockerRuntime) Run(ctx context.Context, name, image, command string, env []string) (string, error) {
+	commandRuntime, ok := r.engine.(worker.CommandRuntime)
+	if !ok {
+		return "", errors.New("command runtime unavailable")
 	}
-	args = append(args, image, "sh", "-c", command)
-	out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
-	}
-	return strings.TrimSpace(string(out)), nil
+	return commandRuntime.RunCommand(ctx, name, image, command, env, false)
 }
 
-func (podmanRuntime) RunOnce(ctx context.Context, name, image, command string, env []string) (string, error) {
-	args := []string{"run", "--rm", "--name", name}
-	for _, e := range env {
-		args = append(args, "-e", e)
+func (r dockerRuntime) RunOnce(ctx context.Context, name, image, command string, env []string) (string, error) {
+	commandRuntime, ok := r.engine.(worker.CommandRuntime)
+	if !ok {
+		return "", errors.New("command runtime unavailable")
 	}
-	args = append(args, image, "sh", "-c", command)
-	out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput()
-	if err != nil {
-		return strings.TrimSpace(string(out)), fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
-	}
-	return strings.TrimSpace(string(out)), nil
+	return commandRuntime.RunCommand(ctx, name, image, command, env, true)
 }
 
-func (podmanRuntime) Stop(ctx context.Context, containerID string) error {
-	_, err := exec.CommandContext(ctx, "podman", "stop", containerID).CombinedOutput()
-	return err
+func (r dockerRuntime) Stop(ctx context.Context, containerID string) error {
+	return r.engine.Stop(ctx, containerID)
 }
 
-func (podmanRuntime) Remove(ctx context.Context, containerID string) error {
-	_, err := exec.CommandContext(ctx, "podman", "rm", "-f", containerID).CombinedOutput()
-	return err
+func (r dockerRuntime) Remove(ctx context.Context, containerID string) error {
+	return r.engine.Remove(ctx, containerID)
 }
 
 func (j *Jobs) CreateCronJob(ctx context.Context, appID, orgID uuid.UUID, name, schedule, command string) (*domain.CronJob, error) {

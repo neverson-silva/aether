@@ -12,10 +12,6 @@ import (
 	"aether/internal/modules/backups/application"
 )
 
-func init() {
-	application.RegisterBackupAdapter(New(container.NewPodman()))
-}
-
 const queryFile = "/tmp/aether-dpdir.sql"
 
 var errDataPumpDirNotFound = errors.New("DATA_PUMP_DIR directory object not found in the database")

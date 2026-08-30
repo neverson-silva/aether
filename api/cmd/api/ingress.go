@@ -2,40 +2,67 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"aether/internal/platform/config"
+	"aether/internal/platform/worker"
 )
 
-func ensureIngress(ctx context.Context, cfg *config.Config) {
-	if _, err := exec.CommandContext(ctx, "podman", "network", "exists", cfg.IngressNetwork).CombinedOutput(); err != nil {
-		_ = exec.CommandContext(ctx, "podman", "network", "create", cfg.IngressNetwork).Run()
+func ensureIngress(ctx context.Context, cfg *config.Config, runtime worker.Runtime) error {
+	if runtime == nil {
+		return worker.ErrRuntimeUnavailable
+	}
+	networkRuntime, ok := runtime.(worker.NetworkRuntime)
+	if !ok {
+		return fmt.Errorf("Docker network runtime is unavailable")
+	}
+	if err := networkRuntime.EnsureNetwork(ctx, cfg.IngressNetwork, map[string]string{"io.aether.component": "ingress"}); err != nil {
+		return fmt.Errorf("ensure ingress network: %w", err)
 	}
 
 	dir := filepath.Join(cfg.StateDir, "traefik")
-	_ = os.MkdirAll(filepath.Join(dir, "dynamic"), 0o755)
-	_ = os.MkdirAll(filepath.Join(dir, "acme"), 0o700)
+	if err := os.MkdirAll(filepath.Join(dir, "dynamic"), 0o755); err != nil {
+		return fmt.Errorf("prepare ingress dynamic directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "acme"), 0o700); err != nil {
+		return fmt.Errorf("prepare ingress certificate directory: %w", err)
+	}
 
 	traefikYml := filepath.Join(dir, "traefik.yml")
-	_ = os.WriteFile(traefikYml, []byte(staticTraefikConfig(cfg)), 0o644)
+	if err := os.WriteFile(traefikYml, []byte(staticTraefikConfig(cfg)), 0o644); err != nil {
+		return fmt.Errorf("write ingress configuration: %w", err)
+	}
 
-	out, err := exec.CommandContext(ctx, "podman", "ps", "-a", "--filter", "name=aether-traefik", "--format", "{{.Names}}").CombinedOutput()
-	if err == nil && strings.TrimSpace(string(out)) != "" {
-		return
+	for _, item := range mustListContainers(ctx, runtime) {
+		if item.Name == "aether-traefik" {
+			return nil
+		}
 	}
-	args := []string{
-		"run", "-d", "--name", "aether-traefik",
-		"--network", cfg.IngressNetwork,
-		"--label", "io.aether.component=traefik",
-		"-p", "80:80", "-p", "443:443",
-		"-v", "aether-traefik:/etc/traefik",
-		cfg.TraefikImage,
-		"--configFile=/etc/traefik/traefik.yml",
+	if _, err := runtime.Pull(ctx, cfg.TraefikImage); err != nil {
+		return fmt.Errorf("pull ingress image %q: %w", cfg.TraefikImage, err)
 	}
-	_ = exec.CommandContext(ctx, "podman", args...).Run()
+	if _, err := runtime.Run(ctx, worker.RunSpec{
+		Name: "aether-traefik", Image: cfg.TraefikImage, Network: cfg.IngressNetwork,
+		NetworkAlias: "traefik",
+		Labels:       map[string]string{"io.aether.component": "traefik", "io.aether.managed": "true"},
+		Command:      []string{"--configFile=/etc/traefik/traefik.yml"},
+		Mounts:       []worker.MountSpec{{Source: dir, Target: "/etc/traefik"}},
+		Ports:        []worker.PortSpec{{HostPort: 80, ContainerPort: 80}, {HostPort: 443, ContainerPort: 443}},
+	}); err != nil {
+		return fmt.Errorf("start ingress: %w", err)
+	}
+	return nil
+}
+
+func mustListContainers(ctx context.Context, runtime worker.Runtime) []worker.ContainerInfo {
+	items, err := runtime.ListContainers(ctx)
+	if err != nil {
+		return nil
+	}
+	return items
 }
 
 func staticTraefikConfig(cfg *config.Config) string {

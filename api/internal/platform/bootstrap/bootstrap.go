@@ -23,8 +23,7 @@ import (
 	authdomain "aether/internal/modules/auth/domain"
 	authhttp "aether/internal/modules/auth/http"
 	"aether/internal/modules/auth/infra"
-	container "aether/internal/modules/backups/adapters/container"
-	_ "aether/internal/modules/backups/adapters/engine"
+	backupsEngine "aether/internal/modules/backups/adapters/engine"
 	backupsApp "aether/internal/modules/backups/application"
 	backupshttp "aether/internal/modules/backups/http"
 	backupsInfra "aether/internal/modules/backups/infra"
@@ -91,6 +90,7 @@ import (
 	webhookshttp "aether/internal/modules/webhooks/http"
 	webhooksInfra "aether/internal/modules/webhooks/infra"
 	apihttp "aether/internal/platform/api"
+	composeengine "aether/internal/platform/compose"
 	"aether/internal/platform/config"
 	"aether/internal/platform/druntime"
 	"aether/internal/platform/druntime/adapter"
@@ -120,7 +120,20 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	deployStore := deployInfra.NewStore(pool)
 	deploySvc := &deployApp.Deployments{Store: deployStore, Apps: appsStore}
-	deployWorkerRuntime := worker.NewPodmanRuntime()
+	deployWorkerRuntime, err := worker.NewDockerRuntime(cfg.DockerHost)
+	if err != nil {
+		logger.Error("create Docker runtime", "err", err)
+		stop()
+		return
+	}
+	defer deployWorkerRuntime.Close()
+	imageRuntime, err := worker.NewDockerRuntime(cfg.BuildDockerHost)
+	if err != nil {
+		logger.Error("create Docker image runtime", "err", err)
+		return
+	}
+	defer imageRuntime.Close()
+	backupsEngine.Register(deployWorkerRuntime)
 	appOps := &deployApp.AppOps{Deployments: deploySvc, Runtime: deployWorkerRuntime}
 
 	appsSvc := &appsApp.Apps{Store: appsStore, Secrets: appsSecrets, Containers: appOps}
@@ -154,14 +167,16 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 			TraefikDir:         filepath.Join(cfg.StateDir, "traefik"),
 			FreeDomainBase:     cfg.FreeDomainBase,
 			FreeDomainProvider: cfg.FreeDomainProvider,
-			TraefikBin:         cfg.TraefikBin,
+			Runtime:            deployWorkerRuntime,
 		},
 	}
 	domainsHandler := domainshttp.New(domainsSvc)
-	ensureIngress(ctx, cfg)
+	if err := ensureIngress(ctx, cfg, deployWorkerRuntime); err != nil {
+		slog.Error("bootstrap ingress failed", "error", err)
+	}
 
 	jobsStore := jobsInfra.NewStore(pool)
-	jobsSvc := &jobsApp.Jobs{Store: jobsStore, Apps: appsStore, Runtime: jobsApp.NewRuntime()}
+	jobsSvc := &jobsApp.Jobs{Store: jobsStore, Apps: appsStore, Runtime: jobsApp.NewRuntime(deployWorkerRuntime)}
 	jobsHandler := jobshttp.New(jobsSvc)
 
 	dbCipher, err := databasesInfra.NewPasswordCipher(secretKey)
@@ -172,6 +187,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
 	databasesStudio := &databasesApp.Studio{Databases: databasesSvc, Timeout: 30 * time.Second, MaxRows: 1000}
 	databasesHandler := databaseshttp.New(databasesSvc, databasesStudio)
+	databasesHandler.WithRuntime(deployWorkerRuntime)
 
 	backupsStore := backupsInfra.NewStore(pool)
 	backupsSvc := &backupsApp.Backups{Store: backupsStore, Databases: databasesStore}
@@ -179,7 +195,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	templatesStore := templatesInfra.NewStore(pool)
 	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore}
-	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir}
+	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
 	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
@@ -190,6 +206,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	deployHandler.WithCompose(composeSvc)
 	domainsSvc.Compose = composeSvc
 	templatesHandler := templateshttp.New(templatesSvc, composeSvc)
+	templatesHandler.WithRuntime(deployWorkerRuntime)
 
 	gitopsStore := gitopsInfra.NewStore(pool)
 	gitopsSvc := &gitopsApp.GitOps{Store: gitopsStore}
@@ -206,12 +223,12 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	snapshotsHandler := snapshotshttp.New(snapshotsSvc)
 
 	clustersStore := clustersInfra.NewStore(pool)
-	clustersSvc := &clustersApp.Clusters{Store: clustersStore}
+	clustersSvc := &clustersApp.Clusters{Store: clustersStore, Runtime: imageRuntime}
 	clustersHandler := clustershttp.New(clustersSvc)
 
 	pipelinesStore := pipelinesInfra.NewStore(pool)
 	pipelinesSvc := &pipelinesApp.Pipelines{
-		Store: pipelinesStore, Apps: appsStore, StageRunner: pipelinesApp.PodmanStageRunner{},
+		Store: pipelinesStore, Apps: appsStore, StageRunner: pipelinesApp.NewStageRunner(deployWorkerRuntime),
 		Services: pipelinesApp.ServiceStoreFunc(func(ctx context.Context, serviceID, orgID uuid.UUID) error {
 			var found uuid.UUID
 			return pool.QueryRow(ctx, `SELECT id FROM services WHERE id = $1 AND org_id = $2`, serviceID, orgID).Scan(&found)
@@ -243,7 +260,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	webhooksHandler := webhookshttp.New(webhooksSvc, webhookProviders)
 
 	mirrorsStore := mirrorsInfra.NewStore(pool)
-	mirrorsSvc := &mirrorsApp.Mirrors{Store: mirrorsStore}
+	mirrorsSvc := &mirrorsApp.Mirrors{Store: mirrorsStore, Runtime: imageRuntime}
 	mirrorsHandler := mirrorshttp.New(mirrorsSvc)
 
 	volumesStore := volumesInfra.NewStore(pool)
@@ -273,7 +290,9 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	statsSvc := &statsApp.Stats{Apps: appsStore, Deployments: deployStore, Databases: databasesStore, Runtime: deployWorkerRuntime}
 	statsHandler := statshttp.New(statsSvc)
 	servicesHandler := serviceshttp.New(pool)
+	servicesHandler.WithRuntime(deployWorkerRuntime)
 	servicesHandler.WithRuntimes(deploySvc, appOps, composeSvc, composeSvc, databasesSvc)
+	databasesHandler.WithDeploymentEnqueuer(servicesHandler)
 	servicesHandler.WithAppWebhook(appsSvc)
 	servicesHandler.WithDomains(domainsSvc)
 	servicesHandler.WithEnvironment(appsSvc)
@@ -309,6 +328,9 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		os.Exit(1)
 	}
 	servicesHandler.WithDeploymentQueue(rtRuntime.Queue)
+	deploySvc.Canceller = deployApp.QueueDeploymentCanceller{Queue: rtRuntime.Queue}
+	servicesHandler.WithDeploymentCanceller(deploySvc.Canceller)
+	templatesHandler.WithDeploymentEnqueuer(servicesHandler)
 	var eventLog realtimeApp.EventLog
 	if sharedNATS != nil {
 		eventLog, err = realtimeInfra.NewNATSEventLogWithConn(sharedNATS)
@@ -322,7 +344,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		DB:       pool,
 		Presence: rtRuntime.Presence, PubSub: rtRuntime.PubSub,
 		Queue: rtRuntime.Queue,
-		Apps:  appsStore, Deployments: deployStore, Ports: deployWorkerRuntime,
+		Apps:  appsStore, Deployments: deployStore, Ports: deployWorkerRuntime, Runtime: deployWorkerRuntime,
 		Log: eventLog, Notifications: notificationsSvc,
 	}
 	servicesHandler.WithNotifier(realtimeSvc)
@@ -339,7 +361,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Databases:    databasesSvc,
 		Passwords:    dbCipher,
 		Destinations: settingsDestProvider{s: settingsSvc},
-		Exec:         container.NewPodman(),
+		Exec:         deployWorkerRuntime,
 		Queue:        rtRuntime.Queue,
 		Scheduler:    rtRuntime.Scheduler,
 		Locks:        rtRuntime.Locks,
@@ -391,6 +413,8 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets,
 		PublicURL: cfg.PublicURL, APIURL: cfg.GitHubAPIURL,
 	}
+	composeSvc.Source = sourceStore
+	composeSvc.Clone = composeGitClone{connections: sourceConnections}
 	sourceService := &sourcecontrolApp.Service{
 		Sources: sourceStore, Deliveries: sourceStore, Deploy: webhookDeployer{svc: deploySvc}, ServiceDeploy: servicesHandler,
 		Templates: sourceConnections, Apps: servicesHandler,

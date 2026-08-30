@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# build-builder.sh — monta o builder CNB do Aether (todos os buildpacks)
+# build-builder.sh — builds and publishes the Aether CNB builder.
 #
-# Estratégia: `pack builder create` não exporta corretamente para o podman
-# ("duplicate paths"), então o builder é montado via `podman build` com a
-# estrutura CNB canônica (/cnb/lifecycle, /cnb/buildpacks, order.toml,
-# stack.toml + labels) e publicado no registry local `127.0.0.1:5000`.
-#
-# Uso:  ./build-builder.sh [arm64|x64]
-# Depois: pack build my-app -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit
+# Usage: ./build-builder.sh [arm64|x64]
 # ============================================================================
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -16,9 +10,9 @@ ROOT="$(pwd)"
 
 ARCH="${1:-$(uname -m)}"
 case "$ARCH" in
-  x86_64|amd64) LIFE_ARCH="x86-64"; REG_ARCH="" ;;
-  aarch64|arm64) LIFE_ARCH="arm64"; REG_ARCH="" ;;
-  *) echo "arch não suportada: $ARCH"; exit 1 ;;
+  x86_64|amd64) LIFE_ARCH="x86-64"; TARGET_ARCH="amd64" ;;
+  aarch64|arm64) LIFE_ARCH="arm64"; TARGET_ARCH="arm64" ;;
+  *) echo "unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
 REGISTRY="${AETHER_REGISTRY_ADDR:-127.0.0.1:5000}"
@@ -40,22 +34,21 @@ ORDER_BPS=(php-server ruby-server dotnet-server go-server rust-server jvm-server
 
 info() { printf '\033[0;32m[builder]\033[0m %s\n' "$*"; }
 
-command -v podman >/dev/null || { echo "podman é necessário"; exit 1; }
+command -v docker >/dev/null || { echo "docker is required"; exit 1; }
 info "host distro: $HOST_DISTRO; builder base: $BUILDER_BASE_IMAGE"
 
 # ---------------------------------------------------------------------------
-# 1. Registry local (podman machine: host network = VM localhost, visível aos
-#    lifecycle containers via --docker-host=inherit)
+# 1. Local registry
 # ---------------------------------------------------------------------------
-if ! podman ps --format '{{.Names}}' | grep -qx aether-registry; then
-  info "subindo aether-registry (host network, :5000)..."
-  if podman ps -a --format '{{.Names}}' | grep -qx aether-registry; then
-    podman rm -f aether-registry >/dev/null
+if ! docker ps --format '{{.Names}}' | grep -qx aether-registry; then
+  info "starting aether-registry on :5000..."
+  if docker ps -a --format '{{.Names}}' | grep -qx aether-registry; then
+    docker rm -f aether-registry >/dev/null
   fi
-  podman run -d --name aether-registry --network host docker.io/library/registry:2 >/dev/null
+  docker run -d --name aether-registry --network host docker.io/library/registry:2 >/dev/null
   sleep 3
 fi
-info "registry em http://127.0.0.1:5000/v2/ -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/v2/ || echo falha)"
+info "registry at http://127.0.0.1:5000/v2/ -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/v2/ || echo unavailable)"
 
 # ---------------------------------------------------------------------------
 # 2. Contexto de build
@@ -66,7 +59,7 @@ mkdir -p "$CTX/cnb/lifecycle" "$CTX/cnb/buildpacks"
 
 # 2.1 lifecycle (CNB)
 LIF_VER_FULL="${LIFECYCLE_VER#v}"
-info "baixando lifecycle $LIF_VER_FULL ($LIFE_ARCH)..."
+info "downloading lifecycle $LIF_VER_FULL ($LIFE_ARCH)..."
 curl -fsSLo /tmp/lifecycle.tgz "https://github.com/buildpacks/lifecycle/releases/download/v$LIF_VER_FULL/lifecycle-v$LIF_VER_FULL+linux.$LIFE_ARCH.tgz"
 tar -xzf /tmp/lifecycle.tgz -C "$CTX/cnb"
 rm -f /tmp/lifecycle.tgz
@@ -164,13 +157,14 @@ EOF
 # ---------------------------------------------------------------------------
 # 3. Build + push
 # ---------------------------------------------------------------------------
-info "buildando $BUILDER_TAG..."
-podman build \
+info "building $BUILDER_TAG..."
+docker build \
+  --platform "linux/$TARGET_ARCH" \
   --build-arg BUILDER_META="$BUILDER_META" \
   --build-arg STACK_META="$STACK_META" \
   -t "$BUILDER_TAG" -f "$CTX/Dockerfile" "$CTX"
-info "publicando no registry local..."
-podman push "$BUILDER_TAG"
+info "publishing to the local registry..."
+docker push "$BUILDER_TAG"
 
-info "pronto: $BUILDER_TAG"
+info "ready: $BUILDER_TAG"
 info "use: pack build my-app -B 127.0.0.1:5000/builder:node-spa --docker-host=inherit --platform linux/$(uname -m)"

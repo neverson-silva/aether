@@ -10,6 +10,7 @@ const statusDot = tv({
       failed: 'bg-status-danger',
       paused: 'bg-muted-foreground',
       unknown: 'bg-muted-foreground',
+      validating: 'bg-primary animate-pulse',
       offline: 'bg-status-danger',
     },
   },
@@ -22,6 +23,7 @@ export type RuntimeStatusValue =
   | 'failed'
   | 'paused'
   | 'unknown'
+  | 'validating'
   | 'offline'
 export interface RuntimeStatusProps extends VariantProps<typeof statusDot> {
   label?: string

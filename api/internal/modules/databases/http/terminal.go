@@ -3,14 +3,13 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"os/exec"
 
-	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"nhooyr.io/websocket"
 
 	"aether/internal/modules/databases/domain"
+	"aether/internal/platform/worker"
 )
 
 func (h *Handler) DbTerminal(c *gin.Context) {
@@ -36,15 +35,18 @@ func (h *Handler) DbTerminal(c *gin.Context) {
 	default:
 		shell = "sh"
 	}
-	cmd := exec.Command("podman", "exec", "-it", containerID, shell)
-	ptmx, err := pty.Start(cmd)
+	runtime, ok := h.runtime.(worker.InteractiveRuntime)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "interactive terminal unavailable"})
+		return
+	}
+	session, err := runtime.OpenInteractive(c.Request.Context(), containerID, shell)
 	if err != nil {
 		conn.Close(websocket.StatusInternalError, "terminal unavailable")
 		return
 	}
 	defer func() {
-		_ = ptmx.Close()
-		_ = cmd.Wait()
+		_ = session.Close()
 	}()
 
 	ctx := c.Request.Context()
@@ -53,7 +55,7 @@ func (h *Handler) DbTerminal(c *gin.Context) {
 		defer close(done)
 		buf := make([]byte, 4096)
 		for {
-			n, rerr := ptmx.Read(buf)
+			n, rerr := session.Read(buf)
 			if n > 0 {
 				if werr := conn.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
 					return
@@ -77,10 +79,10 @@ func (h *Handler) DbTerminal(c *gin.Context) {
 				Rows uint16 `json:"rows"`
 			}
 			if json.Unmarshal(data, &ctrl) == nil && ctrl.Type == "resize" && ctrl.Cols > 0 && ctrl.Rows > 0 {
-				_ = pty.Setsize(ptmx, &pty.Winsize{Cols: ctrl.Cols, Rows: ctrl.Rows})
+				_ = session.Resize(ctx, ctrl.Cols, ctrl.Rows)
 			}
 			continue
 		}
-		_, _ = ptmx.Write(data)
+		_, _ = session.Write(data)
 	}
 }

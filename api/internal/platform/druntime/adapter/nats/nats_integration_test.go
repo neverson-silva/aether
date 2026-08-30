@@ -116,6 +116,52 @@ func TestNATSRuntimeIntegration(t *testing.T) {
 	}
 }
 
+func TestNATSDeploymentQueueIsFIFOAndIdempotent(t *testing.T) {
+	url := os.Getenv("AETHER_NATS_TEST_URL")
+	if url == "" {
+		t.Skip("AETHER_NATS_TEST_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	rt, err := New(ctx, druntime.Config{Backend: "nats", NATSURL: url, NATSName: "aether-deployment-fifo-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rt.Close(context.Background()) }()
+	group := fmt.Sprintf("deployment-fifo-%d", time.Now().UnixNano())
+	consumer, err := rt.Queue.NewConsumer(ctx, "deployments", group, "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	jobIDs := []string{"deployment-1-" + group, "deployment-2-" + group, "deployment-3-" + group}
+	for _, id := range jobIDs {
+		if err := rt.Queue.Enqueue(ctx, "deployments", queue.Job{ID: id, Type: "deployment.execute"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rt.Queue.Enqueue(ctx, "deployments", queue.Job{ID: jobIDs[0], Type: "deployment.execute"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range jobIDs {
+		job, err := consumer.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.ID != want {
+			t.Fatalf("job order = %q, want %q", job.ID, want)
+		}
+		if err := consumer.Ack(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shortCtx, shortCancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer shortCancel()
+	if _, err := consumer.Next(shortCtx); err == nil {
+		t.Fatal("duplicate deployment job was delivered")
+	}
+}
+
 func TestNATSAuthenticatedRuntimeIntegration(t *testing.T) {
 	url := os.Getenv("AETHER_NATS_AUTH_TEST_URL")
 	user := os.Getenv("AETHER_NATS_AUTH_TEST_USER")

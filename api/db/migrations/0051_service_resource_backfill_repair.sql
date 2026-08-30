@@ -1,3 +1,5 @@
+DROP INDEX IF EXISTS idx_deployments_one_active_service;
+
 UPDATE deployments AS d
 SET service_id = a.service_id
 FROM apps AS a

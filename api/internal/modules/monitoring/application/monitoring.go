@@ -14,7 +14,6 @@ import (
 	"aether/internal/platform/worker"
 )
 
-// Runtime is the narrow podman-facing dependency of the collector.
 type Runtime interface {
 	ListContainers(ctx context.Context) ([]worker.ContainerInfo, error)
 }
@@ -153,8 +152,6 @@ func (m *Monitoring) Collect(ctx context.Context) {
 
 	now := time.Now()
 
-	// Storage attribution is expensive (podman system df -v computes writable
-	// layers), so it runs on a slow cadence and is cached between scans.
 	if now.Sub(m.lastStorageScan) >= 5*time.Minute {
 		sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		sizes, err := m.storageScan(sctx)

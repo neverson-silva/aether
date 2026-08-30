@@ -34,6 +34,19 @@ type fakeRuntime struct {
 	containerErr   error
 }
 
+type imageRuntimeSpy struct {
+	pulled []string
+}
+
+func (s *imageRuntimeSpy) Pull(ctx context.Context, image string) (string, error) {
+	s.pulled = append(s.pulled, image)
+	return "pulled " + image, nil
+}
+
+func (s *imageRuntimeSpy) ExposedPort(ctx context.Context, image string) (int, error) {
+	return 8080, nil
+}
+
 func (f *fakeRuntime) Pull(ctx context.Context, image string) (string, error) {
 	f.pulled = append(f.pulled, image)
 	if f.pullWait {
@@ -233,6 +246,65 @@ func TestWorkerDeployTimeoutMarksDeploymentFailed(t *testing.T) {
 	}
 }
 
+func TestWorkerMaterializesNonAppDeploymentThroughQueueLifecycle(t *testing.T) {
+	store := &fakeStore{}
+	dep := newDeployment(t, false)
+	dep.ServiceID = uuid.New()
+	store.dep = dep
+	var calls int
+	w := &Worker{
+		Store: store,
+		ServiceDeploy: func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error) {
+			calls++
+			return "compose-container", nil
+		},
+	}
+	if err := w.processServiceQueueJob(context.Background(), dep, "compose", dep.ServiceID, uuid.New(), uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("materializer calls = %d", calls)
+	}
+	if len(store.updates) != 4 || store.updates[len(store.updates)-1].Status != deploydomain.StatusReady {
+		t.Fatalf("unexpected lifecycle updates: %+v", store.updates)
+	}
+}
+
+func TestWorkerMaterializerCancellationStopsRunningDeployment(t *testing.T) {
+	store := &fakeStore{}
+	dep := newDeployment(t, false)
+	dep.ServiceID = uuid.New()
+	store.dep = dep
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	w := &Worker{
+		Store: store,
+		ServiceDeploy: func(ctx context.Context, _ string, _ uuid.UUID, _ uuid.UUID, _ uuid.UUID) (string, error) {
+			close(started)
+			<-ctx.Done()
+			close(cancelled)
+			return "", ctx.Err()
+		},
+	}
+	finished := make(chan error, 1)
+	go func() {
+		finished <- w.processServiceQueueJob(context.Background(), dep, "database", dep.ServiceID, uuid.New(), uuid.New())
+	}()
+	<-started
+	dep.Status = deploydomain.StatusCancelled
+	if !w.CancelDeployment(dep.ID) {
+		t.Fatal("deployment cancellation was not registered")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("materializer did not receive cancellation")
+	}
+	if err := <-finished; err != nil {
+		t.Fatalf("cancelled deployment returned error: %v", err)
+	}
+}
+
 func (f *fakeRuntime) ContainerState(ctx context.Context, containerID string) (string, error) {
 	if f.containerErr != nil {
 		return "", f.containerErr
@@ -244,7 +316,7 @@ func (f *fakeRuntime) ContainerState(ctx context.Context, containerID string) (s
 }
 
 func TestWatcherIgnoresTransientContainerStateError(t *testing.T) {
-	rt := &fakeRuntime{containerErr: errors.New("podman socket unavailable")}
+	rt := &fakeRuntime{containerErr: errors.New("Docker Engine unavailable")}
 	dep := newDeployment(t, false)
 	dep.Status = deploydomain.StatusReady
 	dep.ContainerID = "container-1"
@@ -326,6 +398,26 @@ func TestWorkerDeployGitBuildFails(t *testing.T) {
 	last := store.updates[len(store.updates)-1]
 	if last.Status != deploydomain.StatusFailed || last.Error == "" {
 		t.Fatalf("build falho deveria levar a failed: %+v", last)
+	}
+}
+
+func TestWorkerUsesDedicatedImageRuntime(t *testing.T) {
+	runtime := &fakeRuntime{healthOK: true, portVal: "8080"}
+	images := &imageRuntimeSpy{}
+	store := &fakeStore{}
+	spec, _ := json.Marshal(map[string]any{
+		"name": "api", "image": "docker.io/library/alpine:3.20", "port": 8080,
+	})
+	dep := &deploydomain.Deployment{
+		ID: uuid.New(), AppID: uuid.New(), Number: 1, Status: deploydomain.StatusQueued,
+		DeploySpec: spec, EnvSnapshot: []byte(`{}`),
+	}
+	w := &Worker{Store: store, Runtime: runtime, Images: images}
+	if err := w.deploy(context.Background(), dep); err != nil {
+		t.Fatal(err)
+	}
+	if len(images.pulled) != 1 || len(runtime.pulled) != 0 {
+		t.Fatalf("image runtime usage = dedicated=%v lifecycle=%v", images.pulled, runtime.pulled)
 	}
 }
 

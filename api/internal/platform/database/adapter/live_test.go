@@ -20,7 +20,7 @@ func (liveRunner) Exec(ctx context.Context, containerID string, env []string, ar
 	}
 	pa = append(pa, containerID)
 	pa = append(pa, args...)
-	cmd := exec.CommandContext(ctx, "podman", pa...)
+	cmd := exec.CommandContext(ctx, "docker", pa...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

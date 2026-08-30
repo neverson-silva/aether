@@ -2,16 +2,18 @@ package application
 
 import (
 	"context"
-	"os/exec"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"aether/internal/modules/mirrors/domain"
+	"aether/internal/platform/worker"
 )
 
 type Mirrors struct {
-	Store domain.Store
+	Store   domain.Store
+	Runtime worker.ImageRegistryRuntime
 }
 
 func (m *Mirrors) Create(ctx context.Context, name, source, dest string, destTLSVerify bool, tagsFilter, schedule string) (*domain.Mirror, error) {
@@ -43,32 +45,28 @@ func (m *Mirrors) Run(ctx context.Context, id uuid.UUID) error {
 	if err := m.Store.SetStatus(ctx, id, "syncing"); err != nil {
 		return err
 	}
-	if err := copyImage(ctx, mirror.Source, mirror.Dest, mirror.DestTLSVerify); err != nil {
+	if err := m.copyImage(ctx, mirror.Source, mirror.Dest, mirror.DestTLSVerify); err != nil {
 		_ = m.Store.SetStatus(ctx, id, "error")
 		return err
 	}
 	return m.Store.SetStatus(ctx, id, "synced")
 }
 
-func copyImage(ctx context.Context, source, dest string, tlsVerify bool) error {
-	pull := exec.CommandContext(ctx, "podman", "pull", source)
-	if out, err := pull.CombinedOutput(); err != nil {
-		return errWith(out, err)
+func (m *Mirrors) copyImage(ctx context.Context, source, dest string, tlsVerify bool) error {
+	if m.Runtime == nil {
+		return domain.ErrValidation
 	}
-	args := []string{"push", source, dest}
 	if !tlsVerify {
-		args = append(args, "--tls-verify=false")
+		return fmt.Errorf("per-mirror TLS verification is not supported by the configured Docker client")
 	}
-	push := exec.CommandContext(ctx, "podman", args...)
-	if out, err := push.CombinedOutput(); err != nil {
-		return errWith(out, err)
+	if _, err := m.Runtime.Pull(ctx, source); err != nil {
+		return err
+	}
+	if err := m.Runtime.Tag(ctx, source, dest); err != nil {
+		return err
+	}
+	if _, err := m.Runtime.Push(ctx, dest); err != nil {
+		return err
 	}
 	return nil
-}
-
-func errWith(out []byte, err error) error {
-	if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
-		return &exec.ExitError{Stderr: []byte(trimmed)}
-	}
-	return err
 }

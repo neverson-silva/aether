@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -12,15 +13,32 @@ import (
 	"aether/internal/modules/databases/application"
 	"aether/internal/modules/databases/domain"
 	"aether/internal/platform/hostinfo"
+	"aether/internal/platform/worker"
 )
 
 type Handler struct {
 	databases *application.Databases
 	studio    *application.Studio
+	runtime   worker.Runtime
+	enqueuer  ServiceDeploymentEnqueuer
+}
+
+type ServiceDeploymentEnqueuer interface {
+	EnqueueServiceDeployment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)
 }
 
 func New(databases *application.Databases, studio *application.Studio) *Handler {
 	return &Handler{databases: databases, studio: studio}
+}
+
+func (h *Handler) WithRuntime(runtime worker.Runtime) *Handler {
+	h.runtime = runtime
+	return h
+}
+
+func (h *Handler) WithDeploymentEnqueuer(enqueuer ServiceDeploymentEnqueuer) *Handler {
+	h.enqueuer = enqueuer
+	return h
 }
 
 type createDBReq struct {
@@ -118,12 +136,21 @@ func (h *Handler) Deploy(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	db, err := h.databases.Deploy(c.Request.Context(), id, orgID(c))
+	if h.enqueuer == nil {
+		abort(c, domain.ErrDatabaseUnavailable)
+		return
+	}
+	db, err := h.databases.Get(c.Request.Context(), id, orgID(c))
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, databaseDTO(db))
+	deploymentID, err := h.enqueuer.EnqueueServiceDeployment(c.Request.Context(), db.ServiceID, id, orgID(c), "database", "deploy")
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"database": databaseDTO(db), "deployment_id": deploymentID})
 }
 
 func (h *Handler) Rebuild(c *gin.Context) {
@@ -132,12 +159,21 @@ func (h *Handler) Rebuild(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	db, err := h.databases.Rebuild(c.Request.Context(), id, orgID(c))
+	if h.enqueuer == nil {
+		abort(c, domain.ErrDatabaseUnavailable)
+		return
+	}
+	db, err := h.databases.Get(c.Request.Context(), id, orgID(c))
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, databaseDTO(db))
+	deploymentID, err := h.enqueuer.EnqueueServiceDeployment(c.Request.Context(), db.ServiceID, id, orgID(c), "database", "rebuild")
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"database": databaseDTO(db), "deployment_id": deploymentID})
 }
 
 func (h *Handler) Start(c *gin.Context) {

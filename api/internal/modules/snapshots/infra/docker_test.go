@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestPodmanExecutorRejectsUnsafeSources(t *testing.T) {
-	executor := PodmanExecutor{OutputDir: t.TempDir()}
+func TestDockerExecutorRejectsUnsafeSources(t *testing.T) {
+	executor := DockerExecutor{OutputDir: t.TempDir()}
 	if _, _, err := executor.Create(context.Background(), "volume/name", "snapshot"); err == nil {
 		t.Fatal("expected unsafe volume to be rejected")
 	}
@@ -17,9 +17,9 @@ func TestPodmanExecutorRejectsUnsafeSources(t *testing.T) {
 	}
 }
 
-func TestPodmanExecutorDeleteOnlyRemovesOutputFile(t *testing.T) {
+func TestDockerExecutorDeleteOnlyRemovesOutputFile(t *testing.T) {
 	directory := t.TempDir()
-	executor := PodmanExecutor{OutputDir: directory}
+	executor := DockerExecutor{OutputDir: directory}
 	path := filepath.Join(directory, "snapshot.tar.gz")
 	if err := os.WriteFile(path, []byte("snapshot"), 0o600); err != nil {
 		t.Fatal(err)

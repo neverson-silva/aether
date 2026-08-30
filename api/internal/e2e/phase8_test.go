@@ -472,7 +472,7 @@ func TestPhase8CanonicalComposeLifecycle(t *testing.T) {
 	if err := client.request(ctx, http.MethodGet, baseURL+"/api/v1/services/"+serviceID+"/logs?container="+url.QueryEscape(worker), me.Org.ID, nil, &selectedLogs); err != nil {
 		t.Fatal(err)
 	}
-	if output, err := exec.CommandContext(ctx, "podman", "stop", worker).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, "docker", "stop", worker).CombinedOutput(); err != nil {
 		t.Fatalf("stop compose worker: %v: %s", err, output)
 	}
 	if err := client.request(ctx, http.MethodGet, baseURL+"/api/v1/services/"+serviceID, me.Org.ID, nil, &service); err != nil {
@@ -481,7 +481,7 @@ func TestPhase8CanonicalComposeLifecycle(t *testing.T) {
 	if service.Status != "degraded" {
 		t.Fatalf("expected degraded compose service, got %s", service.Status)
 	}
-	if output, err := exec.CommandContext(ctx, "podman", "start", worker).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, "docker", "start", worker).CombinedOutput(); err != nil {
 		t.Fatalf("start compose worker: %v: %s", err, output)
 	}
 	deadline = time.Now().Add(30 * time.Second)
@@ -691,7 +691,7 @@ func TestPhase8RestartRecovery(t *testing.T) {
 			t.Fatalf("AETHER_E2E_%s_HEALTH_URL is required", strings.ToUpper(item.name))
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-		command := exec.CommandContext(ctx, "podman", "restart", item.unit)
+		command := exec.CommandContext(ctx, "docker", "restart", item.unit)
 		if output, err := command.CombinedOutput(); err != nil {
 			cancel()
 			t.Fatalf("restart %s: %v: %s", item.name, err, output)
@@ -832,7 +832,7 @@ func assertServiceDeleted(ctx context.Context, client *e2eClient, baseURL, servi
 	if err := client.request(ctx, http.MethodPost, baseURL+"/api/v1/services/"+serviceID+"/delete", orgID, nil, nil); err != nil {
 		return err
 	}
-	containers, err := exec.CommandContext(ctx, "podman", "ps", "-aq", "--filter", "label=aether.service-id="+serviceID).Output()
+	containers, err := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "label=aether.service-id="+serviceID).Output()
 	if err != nil {
 		return fmt.Errorf("inspect deleted service containers: %w", err)
 	}

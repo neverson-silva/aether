@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +20,8 @@ import (
 	sourcedomain "aether/internal/modules/sourcecontrol/domain"
 	"aether/internal/modules/templates/domain"
 	variablesDomain "aether/internal/modules/variables/domain"
+	composeengine "aether/internal/platform/compose"
+	"aether/internal/platform/worker"
 )
 
 type Compose struct {
@@ -30,6 +30,8 @@ type Compose struct {
 	Deployments     DeploymentStore
 	ServiceIdentity func(context.Context, uuid.UUID) (uuid.UUID, error)
 	DataDir         string
+	Runtime         worker.Runtime
+	ComposeRuntime  composeengine.Executor
 	ProjectVars     ProjectVarStore
 	Events          EventLog
 	Source          ComposeSource
@@ -58,6 +60,43 @@ type EventLog interface {
 
 type ProjectVarStore interface {
 	ListVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]variablesDomain.Variable, error)
+}
+
+func (c *Compose) Environment(ctx context.Context, id, orgID uuid.UUID) ([]variablesDomain.Variable, error) {
+	app, err := c.Get(ctx, id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if c.ProjectVars == nil {
+		return []variablesDomain.Variable{}, nil
+	}
+	merged := map[string]variablesDomain.Variable{}
+	project, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, uuid.Nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, variable := range project {
+		merged[variable.Key] = variable
+	}
+	if app.EnvironmentID != nil {
+		environment, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, *app.EnvironmentID)
+		if err != nil {
+			return nil, err
+		}
+		for _, variable := range environment {
+			merged[variable.Key] = variable
+		}
+	}
+	keys := make([]string, 0, len(merged))
+	for key := range merged {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]variablesDomain.Variable, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, merged[key])
+	}
+	return result, nil
 }
 
 type AppStore interface {
@@ -110,7 +149,7 @@ func (c *Compose) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	if err := c.Store.SetComposeStatus(ctx, id, "deploying"); err != nil {
 		return err
 	}
-	if err := c.runCompose(ctx, app, "up", "-d"); err != nil {
+	if _, err := c.runCompose(ctx, app, true, "up", "-d"); err != nil {
 		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
@@ -126,10 +165,7 @@ func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if err := c.Store.SetComposeStatus(ctx, id, "deploying"); err != nil {
-		return err
-	}
-	if err := c.runCompose(ctx, app, "down"); err != nil {
+	if _, err := c.runCompose(ctx, app, false, "down"); err != nil {
 		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
@@ -140,12 +176,60 @@ func (c *Compose) Down(ctx context.Context, id, orgID uuid.UUID) error {
 	return nil
 }
 
+func (c *Compose) Start(ctx context.Context, id, orgID uuid.UUID) error {
+	app, err := c.Get(ctx, id, orgID)
+	if err != nil {
+		return err
+	}
+	if _, err := c.runCompose(ctx, app, false, "start"); err != nil {
+		_ = c.Store.SetComposeStatus(ctx, id, "error")
+		return err
+	}
+	if err := c.Store.SetComposeStatus(ctx, id, "running"); err != nil {
+		return err
+	}
+	c.recordEvent(ctx, app, "compose.running")
+	return nil
+}
+
+func (c *Compose) Stop(ctx context.Context, id, orgID uuid.UUID) error {
+	app, err := c.Get(ctx, id, orgID)
+	if err != nil {
+		return err
+	}
+	if _, err := c.runCompose(ctx, app, false, "stop"); err != nil {
+		_ = c.Store.SetComposeStatus(ctx, id, "error")
+		return err
+	}
+	if err := c.Store.SetComposeStatus(ctx, id, "stopped"); err != nil {
+		return err
+	}
+	c.recordEvent(ctx, app, "compose.stopped")
+	return nil
+}
+
+func (c *Compose) Restart(ctx context.Context, id, orgID uuid.UUID) error {
+	app, err := c.Get(ctx, id, orgID)
+	if err != nil {
+		return err
+	}
+	if _, err := c.runCompose(ctx, app, false, "restart"); err != nil {
+		_ = c.Store.SetComposeStatus(ctx, id, "error")
+		return err
+	}
+	if err := c.Store.SetComposeStatus(ctx, id, "running"); err != nil {
+		return err
+	}
+	c.recordEvent(ctx, app, "compose.running")
+	return nil
+}
+
 func (c *Compose) Delete(ctx context.Context, id, orgID uuid.UUID) error {
 	app, err := c.Get(ctx, id, orgID)
 	if err != nil {
 		return err
 	}
-	if err := c.runCompose(ctx, app, "down"); err != nil {
+	if _, err := c.runCompose(ctx, app, false, "down"); err != nil {
 		return err
 	}
 	return c.Store.DeleteComposeApp(ctx, id, orgID)
@@ -190,8 +274,21 @@ func (c *Compose) Timeline(ctx context.Context, id, orgID uuid.UUID) ([]realtime
 }
 
 func (c *Compose) ContainerID(ctx context.Context, id, orgID uuid.UUID) (string, error) {
-	if _, err := c.Get(ctx, id, orgID); err != nil {
+	containers, err := c.ContainerIDs(ctx, id, orgID)
+	if err != nil {
 		return "", err
+	}
+	for _, item := range containers {
+		if item.State == "running" || item.State == "restarting" {
+			return item.ID, nil
+		}
+	}
+	return "", errors.New("no active container")
+}
+
+func (c *Compose) ContainerIDs(ctx context.Context, id, orgID uuid.UUID) ([]worker.ContainerInfo, error) {
+	if _, err := c.Get(ctx, id, orgID); err != nil {
+		return nil, err
 	}
 	serviceID, err := c.GetServiceID(ctx, id)
 	if err != nil {
@@ -201,17 +298,26 @@ func (c *Compose) ContainerID(ctx context.Context, id, orgID uuid.UUID) (string,
 	if id != serviceID {
 		values = append(values, id)
 	}
-	for _, value := range values {
-		out, queryErr := exec.CommandContext(ctx, "podman", "ps", "-q", "--filter", "label=aether.service-id="+value.String(), "--filter", "status=running").Output()
-		if queryErr != nil {
-			return "", fmt.Errorf("resolve compose container: %w", queryErr)
-		}
-		containerID := strings.TrimSpace(string(out))
-		if containerID != "" {
-			return strings.Split(containerID, "\n")[0], nil
+	if c.Runtime == nil {
+		return nil, errors.New("container runtime unavailable")
+	}
+	containers, queryErr := c.Runtime.ListContainers(ctx)
+	if queryErr != nil {
+		return nil, fmt.Errorf("resolve compose containers: %w", queryErr)
+	}
+	matched := make([]worker.ContainerInfo, 0)
+	for _, item := range containers {
+		for _, value := range values {
+			if item.Labels["aether.service-id"] == value.String() || item.Labels["aether.spec-id"] == value.String() {
+				matched = append(matched, item)
+				break
+			}
 		}
 	}
-	return "", errors.New("no active container")
+	if len(matched) == 0 {
+		return nil, errors.New("no compose containers")
+	}
+	return matched, nil
 }
 
 type ComposeValidation struct {
@@ -347,55 +453,79 @@ func (c *Compose) DeploymentCompose(ctx context.Context, depID uuid.UUID) (strin
 	return c.Deployments.GetDeploymentCompose(ctx, depID)
 }
 
-func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args ...string) error {
+func (c *Compose) Logs(ctx context.Context, id, orgID uuid.UUID, follow bool) (string, error) {
+	app, err := c.Get(ctx, id, orgID)
+	if err != nil {
+		return "", err
+	}
+	args := []string{"logs", "--no-color"}
+	if follow {
+		args = append(args, "--follow")
+	}
+	return c.runCompose(ctx, app, false, args...)
+}
+
+func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, refresh bool, args ...string) (string, error) {
 	if c.DataDir == "" {
-		return fmt.Errorf("data dir not configured")
+		return "", fmt.Errorf("data dir not configured")
+	}
+	if c.ComposeRuntime == nil {
+		return "", errors.New("compose runtime unavailable")
 	}
 	dir := filepath.Join(c.DataDir, "compose", app.ID.String())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	workDir := dir
 	file := filepath.Join(dir, "docker-compose.yml")
 	content := app.Compose
-	if c.Source != nil && c.Clone != nil && len(args) > 0 && args[0] == "up" {
+	if c.Source != nil && c.Clone != nil {
 		serviceID, err := c.GetServiceID(ctx, app.ID)
 		if err != nil {
-			return err
+			return "", err
 		}
 		source, err := c.Source.GetByService(ctx, serviceID, app.OrgID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
+			return "", err
 		}
 		if source != nil {
-			if c.Clone == nil {
-				return errors.New("git source deployment is not configured")
-			}
 			checkoutPath := filepath.Join(dir, "checkout")
-			if err := os.RemoveAll(checkoutPath); err != nil {
-				return err
+			if refresh {
+				if err := os.RemoveAll(checkoutPath); err != nil {
+					return "", err
+				}
 			}
-			checkout, err := c.Clone.Clone(ctx, source, checkoutPath)
+			checkout := checkoutPath
+			if _, statErr := os.Stat(checkoutPath); errors.Is(statErr, os.ErrNotExist) {
+				checkout, err = c.Clone.Clone(ctx, source, checkoutPath)
+				if err != nil {
+					return "", err
+				}
+			}
+			root, err := repositoryPath(source.RootDirectory)
 			if err != nil {
-				return err
+				return "", fmt.Errorf("invalid compose root directory: %w", err)
 			}
-			root := source.RootDirectory
-			if root == "" || root == "." {
-				root = ""
+			projectRoot := filepath.Join(checkout, root)
+			if !pathWithin(checkout, projectRoot) {
+				return "", errors.New("compose root directory escapes repository checkout")
 			}
-			workDir = filepath.Join(checkout, root)
 			composeFile := source.ComposeFile
 			if composeFile == "" {
 				composeFile = "docker-compose.yml"
 			}
-			file = filepath.Join(workDir, composeFile)
+			composeFile, err = repositoryPath(composeFile)
+			if err != nil {
+				return "", fmt.Errorf("invalid compose file path: %w", err)
+			}
+			file = filepath.Join(projectRoot, composeFile)
 			if !pathWithin(checkout, file) {
-				return errors.New("compose file escapes repository checkout")
+				return "", errors.New("compose file escapes repository checkout")
 			}
 			workDir = filepath.Dir(file)
 			data, err := os.ReadFile(file)
 			if err != nil {
-				return fmt.Errorf("read compose file from checkout: %w", err)
+				return "", fmt.Errorf("read compose file from checkout: %w", err)
 			}
 			content = string(data)
 		}
@@ -405,102 +535,44 @@ func (c *Compose) runCompose(ctx context.Context, app *domain.ComposeApp, args .
 		if err != nil {
 			serviceID = app.ID
 		}
-		if injected, err := injectComposeLabels(content, map[string]string{
+		injected, err := injectComposeLabels(content, map[string]string{
 			"aether.owner":        "user",
 			"aether.service-type": "compose",
 			"aether.service-id":   serviceID.String(),
 			"aether.spec-id":      app.ID.String(),
 			"aether.project-id":   app.ProjectID.String(),
 			"aether.service-name": app.Name,
-		}); err == nil {
-			content = injected
+		})
+		if err != nil {
+			return "", fmt.Errorf("inject compose labels: %w", err)
+		}
+		content = injected
+		overlay := filepath.Join(dir, "compose.generated.yml")
+		if err := os.WriteFile(overlay, []byte(content), 0o644); err != nil {
+			return "", err
+		}
+		file = overlay
+	}
+	envFile := filepath.Join(dir, ".env")
+	if err := c.writeEnvFile(ctx, dir, workDir, app); err != nil {
+		return "", err
+	}
+	if len(args) == 0 || args[0] != "up" {
+		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+			if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+				return "", err
+			}
 		}
 	}
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		return err
+	project := composeengine.Project{Directory: workDir, File: file, Name: "aether-" + app.ID.String()[:8]}
+	if _, err := os.Stat(envFile); err == nil {
+		project.EnvFile = envFile
 	}
-	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
-		return err
-	}
-	if c.ProjectVars != nil {
-		c.writeEnvFile(ctx, workDir, app)
-	}
-	if err := qualifyComposeDockerfiles(workDir, content); err != nil {
-		return err
-	}
-	if err := configurePodmanRegistries(); err != nil {
-		return err
-	}
-	c.prepareConfig(ctx, workDir, content)
-	cmdArgs := append([]string{"compose", "-f", file}, args...)
-	cmd := exec.CommandContext(ctx, "podman", cmdArgs...)
-	cmd.Dir = workDir
-	out, err := cmd.CombinedOutput()
+	output, err := c.ComposeRuntime.Execute(ctx, project, args...)
 	if err != nil {
-		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+		return "", err
 	}
-	return nil
-}
-
-func qualifyComposeDockerfiles(workDir, compose string) error {
-	var document struct {
-		Services map[string]struct {
-			Build any `yaml:"build"`
-		} `yaml:"services"`
-	}
-	if err := yaml.Unmarshal([]byte(compose), &document); err != nil {
-		return err
-	}
-	for _, service := range document.Services {
-		build, ok := service.Build.(map[string]any)
-		if !ok {
-			continue
-		}
-		contextPath := "."
-		if value, ok := build["context"].(string); ok && value != "" {
-			contextPath = value
-		}
-		dockerfile := "Dockerfile"
-		if value, ok := build["dockerfile"].(string); ok && value != "" {
-			dockerfile = value
-		}
-		path := filepath.Join(workDir, contextPath, dockerfile)
-		if err := qualifyDockerfile(path); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func qualifyDockerfile(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read Dockerfile: %w", err)
-	}
-	pattern := regexp.MustCompile(`(?m)^(\s*FROM\s+)([A-Za-z0-9._-]+:[A-Za-z0-9._-]+)(\s+AS\s+|\s*$)`)
-	updated := pattern.ReplaceAllStringFunc(string(data), func(line string) string {
-		matches := pattern.FindStringSubmatch(line)
-		if strings.Contains(matches[2], "/") {
-			return line
-		}
-		return matches[1] + "docker.io/library/" + matches[2] + matches[3]
-	})
-	if updated == string(data) {
-		return nil
-	}
-	return os.WriteFile(path, []byte(updated), 0o644)
-}
-
-func configurePodmanRegistries() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	dir := filepath.Join(home, ".config", "containers")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, "registries.conf"), []byte("unqualified-search-registries = [\"docker.io\"]\n"), 0o600)
+	return output, nil
 }
 
 func pathWithin(root, candidate string) bool {
@@ -514,6 +586,17 @@ func pathWithin(root, candidate string) bool {
 	}
 	relative, err := filepath.Rel(root, candidate)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
+}
+
+func repositoryPath(value string) (string, error) {
+	value = filepath.Clean(strings.TrimSpace(value))
+	if value == "." {
+		return "", nil
+	}
+	if filepath.IsAbs(value) || value == ".." || strings.HasPrefix(value, ".."+string(os.PathSeparator)) {
+		return "", errors.New("path must stay inside the repository")
+	}
+	return value, nil
 }
 
 func injectComposeLabels(content string, labels map[string]string) (string, error) {
@@ -565,10 +648,31 @@ func injectServiceLabels(svc *yaml.Node, labels map[string]string) *yaml.Node {
 		switch existing.Kind {
 		case yaml.MappingNode:
 			for k, v := range labels {
-				existing.Content = append(existing.Content, keyNode(k), valueNode(v))
+				updated := false
+				for j := 0; j+1 < len(existing.Content); j += 2 {
+					if existing.Content[j].Value == k {
+						existing.Content[j+1] = valueNode(v)
+						updated = true
+						break
+					}
+				}
+				if !updated {
+					existing.Content = append(existing.Content, keyNode(k), valueNode(v))
+				}
 			}
 		case yaml.SequenceNode:
 			for k, v := range labels {
+				found := false
+				for _, item := range existing.Content {
+					if item.Value == k+"="+v || strings.HasPrefix(item.Value, k+"=") {
+						item.Value = k + "=" + v
+						found = true
+						break
+					}
+				}
+				if found {
+					continue
+				}
 				existing.Content = append(existing.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k + "=" + v})
 			}
 		}
@@ -585,25 +689,57 @@ func injectServiceLabels(svc *yaml.Node, labels map[string]string) *yaml.Node {
 func keyNode(k string) *yaml.Node   { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k} }
 func valueNode(v string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v} }
 
-func (c *Compose) writeEnvFile(ctx context.Context, dir string, app *domain.ComposeApp) {
+func (c *Compose) writeEnvFile(ctx context.Context, dir, sourceDir string, app *domain.ComposeApp) error {
 	merged := map[string]string{}
+	if data, err := os.ReadFile(filepath.Join(sourceDir, ".env")); err == nil {
+		for key, value := range parseEnvFile(string(data)) {
+			merged[key] = value
+		}
+	}
+	if c.ProjectVars == nil {
+		return writeEnvValues(filepath.Join(dir, ".env"), merged)
+	}
 	project, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, uuid.Nil)
 	if err != nil {
-		return
+		return err
 	}
 	for _, v := range project {
 		merged[v.Key] = v.Value
 	}
 	if app.EnvironmentID != nil {
 		env, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, *app.EnvironmentID)
-		if err == nil {
-			for _, v := range env {
-				merged[v.Key] = v.Value
-			}
+		if err != nil {
+			return err
+		}
+		for _, v := range env {
+			merged[v.Key] = v.Value
 		}
 	}
 	if len(merged) == 0 {
-		return
+		return nil
+	}
+	return writeEnvValues(filepath.Join(dir, ".env"), merged)
+}
+
+func parseEnvFile(content string) map[string]string {
+	values := map[string]string{}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			continue
+		}
+		values[strings.TrimSpace(key)] = value
+	}
+	return values
+}
+
+func writeEnvValues(path string, merged map[string]string) error {
+	if len(merged) == 0 {
+		return nil
 	}
 	var sb strings.Builder
 	keys := make([]string, 0, len(merged))
@@ -614,28 +750,7 @@ func (c *Compose) writeEnvFile(ctx context.Context, dir string, app *domain.Comp
 	for _, k := range keys {
 		sb.WriteString(k + "=" + merged[k] + "\n")
 	}
-	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte(sb.String()), 0o600)
-}
-
-func (c *Compose) prepareConfig(ctx context.Context, dir, compose string) {
-	if !strings.Contains(compose, "/root/.affine/config") {
-		return
-	}
-	cfg := `{
-  "$schema": "https://github.com/toeverything/affine/releases/latest/download/config.schema.json",
-  "server": {
-    "name": "AFFiNE Self-hosted",
-    "externalUrl": "http://localhost:3010"
-  },
-  "copilot": { "enabled": true, "byok": { "enabled": true } }
-}
-`
-	cmd := exec.CommandContext(ctx, "podman", "run", "--rm",
-		"-v", "aether-affine-config:/cfg",
-		"docker.io/library/alpine:3.20",
-		"sh", "-c", "cat > /cfg/config.json")
-	cmd.Stdin = strings.NewReader(cfg)
-	_ = cmd.Run()
+	return os.WriteFile(path, []byte(sb.String()), 0o600)
 }
 
 func validYAML(content string) bool {

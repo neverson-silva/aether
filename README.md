@@ -34,12 +34,12 @@ get in building something that resembles Coolify/Dokploy/Railway?" — and it go
 | **Database** | PostgreSQL 16 (source of truth), `pgx` + `sqlc` generated queries, versioned SQL migrations |
 | **Messaging / events** | NATS 2.14+ — **Core NATS** (ephemeral realtime, live signals) + **JetStream** (durable jobs, event log, replay, scheduler, KV locks/state, DLQ) via `github.com/nats-io/nats.go` |
 | **Queue / worker model** | JetStream durable consumers, pull-based, ACK/NAK with backoff, dead-letter queue, transactional outbox in Postgres |
-| **Container runtime** | Podman (rootless) with crun, Buildah, Skopeo, Quadlet, conmon; CNB buildpacks (100% own buildpacks, no Paketo) |
+| **Container runtime** | Docker Engine with Docker Compose; CNB buildpacks (100% own buildpacks, no Paketo) |
 | **Builds** | `pack` (Cloud Native Buildpacks) with a custom local builder (`ubuntu:24.04` base, `aether/*` buildpacks) + Dockerfile builds + custom command builds |
 | **Ingress / TLS** | Traefik (dynamic config, HTTP/3, ACME/Let's Encrypt, middlewares) |
 | **Frontend** | React 18 + TypeScript, Vite 5, TanStack Router, TanStack Query, Zustand, Tailwind CSS v4 + custom design system (`@aether/design-system`), Monaco editor, Phosphor icons |
 | **Realtime UI** | Single WebSocket (`/api/v1/ws/realtime`) with seq/replay, heartbeat, ephemeral events; Zustand stores for global state |
-| **Infra scripts** | `install.sh` (Linux production-ish), `install-dev.sh` (macOS podman-machine), Podman `docker-compose` as an alternative, local image registry |
+| **Infra scripts** | `install.sh` (Linux), `install-dev.sh` (Docker Engine/Desktop), Docker Compose infrastructure, local image registry |
 | **Observability** | Per-process health servers (`/health`, `/ready`, `/metrics`), job/queue/collection metrics |
 | **Studio** | SQL engine for managed databases (introspection, query editor, object explorer, SQL autocomplete with an "intelligence" engine on IndexedDB) |
 
@@ -86,7 +86,7 @@ Three binaries, clean responsibilities:
 ## Quick start
 
 ```bash
-# Linux server (or macOS with podman machine)
+# Linux server or macOS with Docker Desktop
 ./install.sh start
 
 # macOS dev loop (API on :8090 with hot reload)

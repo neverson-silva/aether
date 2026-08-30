@@ -52,11 +52,11 @@ services:
       AETHER_NATS_URL: nats://nats:4222
       AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
-      CONTAINER_HOST: unix:///run/podman/podman.sock
-      DOCKER_HOST: unix:///run/podman/podman.sock
+      DOCKER_HOST: unix:///var/run/docker.sock
+      AETHER_BUILD_DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - aether-state:/var/lib/aether
-      - ${AETHER_PODMAN_SOCKET:-/run/podman/podman.sock}:/run/podman/podman.sock
+      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -95,11 +95,11 @@ services:
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
       AETHER_SNAPSHOT_HOST_DIR: /var/lib/aether/snapshots
       AETHER_WORKER_HEALTH_ADDR: 0.0.0.0:8081
-      CONTAINER_HOST: unix:///run/podman/podman.sock
-      DOCKER_HOST: unix:///run/podman/podman.sock
+      DOCKER_HOST: unix:///var/run/docker.sock
+      AETHER_BUILD_DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - aether-state:/var/lib/aether
-      - ${AETHER_PODMAN_SOCKET:-/run/podman/podman.sock}:/run/podman/podman.sock
+      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/ready"]
@@ -130,11 +130,11 @@ services:
       AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
       AETHER_MONITORING_HEALTH_ADDR: 0.0.0.0:8082
-      CONTAINER_HOST: unix:///run/podman/podman.sock
-      DOCKER_HOST: unix:///run/podman/podman.sock
+      DOCKER_HOST: unix:///var/run/docker.sock
+      AETHER_BUILD_DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - aether-state:/var/lib/aether
-      - ${AETHER_PODMAN_SOCKET:-/run/podman/podman.sock}:/run/podman/podman.sock
+      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/ready"]

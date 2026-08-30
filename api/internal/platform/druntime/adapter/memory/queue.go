@@ -18,6 +18,7 @@ var ErrQueueClosed = errors.New("queue closed")
 type qJob struct {
 	job      queue.Job
 	inFlight string
+	sequence int64
 }
 
 type groupState struct {
@@ -32,13 +33,14 @@ type streamState struct {
 }
 
 type Queue struct {
-	mu      sync.Mutex
-	streams map[string]*streamState
-	seq     int64
+	mu       sync.Mutex
+	streams  map[string]*streamState
+	seq      int64
+	watchers map[string]map[int]func(string)
 }
 
 func NewQueue() *Queue {
-	return &Queue{streams: map[string]*streamState{}}
+	return &Queue{streams: map[string]*streamState{}, watchers: map[string]map[int]func(string){}}
 }
 
 func (q *Queue) stream(name string) *streamState {
@@ -61,7 +63,11 @@ func (q *Queue) Enqueue(_ context.Context, stream string, job queue.Job) error {
 		job.CreatedAt = time.Now()
 	}
 	s := q.stream(stream)
-	j := &qJob{job: job}
+	if _, exists := s.jobs[job.ID]; exists {
+		return nil
+	}
+	q.seq++
+	j := &qJob{job: job, sequence: q.seq}
 	s.jobs[job.ID] = j
 	for _, g := range s.groups {
 		g.pending[job.ID] = j
@@ -114,7 +120,7 @@ func (c *consumer) Next(ctx context.Context) (*queue.Job, error) {
 			if j.inFlight != "" {
 				continue
 			}
-			if best == nil || qLess(j.job, best.job) {
+			if best == nil || qLess(j, best) {
 				best = j
 			}
 		}
@@ -232,9 +238,9 @@ func (q *Queue) QueueMetrics(_ context.Context, stream, group string) (queue.Met
 
 func (q *Queue) Cancel(_ context.Context, stream, jobID string) error {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	s := q.stream(stream)
 	if _, ok := s.jobs[jobID]; !ok {
+		q.mu.Unlock()
 		return nil
 	}
 	for _, g := range s.groups {
@@ -242,14 +248,38 @@ func (q *Queue) Cancel(_ context.Context, stream, jobID string) error {
 		delete(g.inflight, jobID)
 	}
 	delete(s.jobs, jobID)
+	callbacks := make([]func(string), 0, len(q.watchers[stream]))
+	for _, callback := range q.watchers[stream] {
+		callbacks = append(callbacks, callback)
+	}
+	q.mu.Unlock()
+	for _, callback := range callbacks {
+		callback(jobID)
+	}
 	return nil
 }
 
-func qLess(a, b queue.Job) bool {
-	if a.Priority != b.Priority {
-		return a.Priority > b.Priority
+func (q *Queue) WatchCancellations(_ context.Context, stream string, handler func(string)) (func(), error) {
+	q.mu.Lock()
+	if q.watchers[stream] == nil {
+		q.watchers[stream] = map[int]func(string){}
 	}
-	return a.CreatedAt.Before(b.CreatedAt)
+	q.seq++
+	id := int(q.seq)
+	q.watchers[stream][id] = handler
+	q.mu.Unlock()
+	return func() {
+		q.mu.Lock()
+		delete(q.watchers[stream], id)
+		q.mu.Unlock()
+	}, nil
+}
+
+func qLess(a, b *qJob) bool {
+	if a.job.Priority != b.job.Priority {
+		return a.job.Priority > b.job.Priority
+	}
+	return a.sequence < b.sequence
 }
 
 func itoa(v int64) string {

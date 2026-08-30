@@ -80,7 +80,13 @@ func (s *Store) CreateDeploymentAndOutbox(ctx context.Context, dep *domain.Deplo
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	job, err := json.Marshal(queue.Job{ID: row.ID.String(), DeploymentID: row.ID.String(), AppID: uuidValue(row.AppID).String(), OrgID: orgID.String()})
+	jobPayload, err := json.Marshal(map[string]string{
+		"kind": "app", "service_id": uuidValue(row.ServiceID).String(), "spec_id": uuidValue(row.AppID).String(), "org_id": orgID.String(), "deployment_id": row.ID.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	job, err := json.Marshal(queue.Job{ID: row.ID.String(), Type: "deployment.execute", Payload: jobPayload, DeploymentID: row.ID.String(), AppID: uuidValue(row.AppID).String(), OrgID: orgID.String()})
 	if err != nil {
 		return nil, err
 	}
