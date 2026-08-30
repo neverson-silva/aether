@@ -136,7 +136,7 @@ func (s *Service) ImportTemplate(ctx context.Context, source *domain.ServiceSour
 	if err != nil {
 		return 0, false, nil
 	}
-	count, err := s.Apps.ImportMissingEnvVars(ctx, source.ServiceID, source.OrganizationID, parseEnvironmentKeys(content))
+	count, err := s.Apps.ImportMissingEnvVars(ctx, source.ServiceID, source.OrganizationID, ParseEnvironmentKeys(content))
 	return count, true, err
 }
 
@@ -170,7 +170,7 @@ func safeRepositoryPath(value string) (string, error) {
 	return clean, nil
 }
 
-func parseEnvironmentKeys(content string) []string {
+func ParseEnvironmentKeys(content string) []string {
 	keys := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, raw := range strings.Split(content, "\n") {
@@ -191,4 +191,8 @@ func parseEnvironmentKeys(content string) []string {
 		keys = append(keys, name)
 	}
 	return keys
+}
+
+func parseEnvironmentKeys(content string) []string {
+	return ParseEnvironmentKeys(content)
 }

@@ -158,7 +158,12 @@ func (h *Handler) GetRepositoryFile(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"path": path, "ref": ref, "content": content})
+	keys := application.ParseEnvironmentKeys(content)
+	variables := make([]gin.H, 0, len(keys))
+	for _, key := range keys {
+		variables = append(variables, gin.H{"key": key, "value": "", "secret": strings.Contains(strings.ToLower(key), "password") || strings.Contains(strings.ToLower(key), "secret") || strings.Contains(strings.ToLower(key), "key") || strings.Contains(strings.ToLower(key), "token")})
+	}
+	c.JSON(http.StatusOK, gin.H{"path": path, "ref": ref, "content": content, "variables": variables})
 }
 
 func (h *Handler) StartGitHubManifest(c *gin.Context) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CaretDown, Check, CheckCircle, Code, Database, FileArrowUp, FileText, FolderOpen, Gear, Globe, Info, LinkSimple, MagnifyingGlass, Package, Pulse, SpinnerGap, Warning, Wrench } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlFile, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
 import { ApiError, apiPut, getServer } from "../api/client";
 import { TechIcon } from "./TechIcon";
 import { AdvancedSettings } from "./AdvancedSettings";
@@ -39,12 +39,13 @@ function parseEnvVariables(): VariableRow[] | undefined {
   return pasted.split("\n").flatMap((raw, index) => {
     const line = raw.trim();
     if (!line || line.startsWith("#")) return [];
-    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    const normalized = line.startsWith("export ") ? line.slice(7).trim() : line;
+    const match = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) return [];
     return [{
       id: `imported-${index}-${match[1]}`,
       key: match[1],
-      value: match[2].replace(/^"|"$/g, ""),
+      value: match[2].replace(/^"|"$/g, "").replace(/^'|'$/g, ""),
       secret: /password|secret|key|token/i.test(match[1]),
     }];
   });
@@ -121,6 +122,8 @@ export function ApplicationWizard({
   const [plan, setPlan] = useState<DetectedPlan | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [creating, setCreating] = useState(false);
+  const environmentFilePath = [rootFolder.trim().replace(/^\.\//, "").replace(/\/$/, ""), environmentTemplatePath.trim() || ".env.example"].filter(Boolean).join("/");
+  const { data: environmentTemplate } = useSourceControlFile(selectedRepo ?? undefined, githubConnection?.installation_id, environmentFilePath, branch, sourceMode === "git" && !!selectedRepo);
 
   const [cpu, setCpu] = useState("0.5");
   const [memMB, setMemMB] = useState(512);
@@ -150,6 +153,11 @@ export function ApplicationWizard({
     }, 400);
     return () => clearTimeout(t);
   }, [port, buildType]);
+
+  useEffect(() => {
+    if (!environmentTemplate?.variables) return;
+    setEnvRows(environmentTemplate.variables.map((variable, index) => ({ ...variable, id: `template-${index}-${variable.key}` })));
+  }, [environmentTemplate?.path, environmentTemplate?.ref, environmentTemplate?.variables]);
 
   useEffect(() => {
     if (open) {
@@ -261,7 +269,7 @@ export function ApplicationWizard({
           root_folder: rootFolder,
           dist_folder: distFolder,
           watch_paths: watchPaths,
-          port,
+          ...(buildType !== "compose" ? { port } : {}),
           resources: { cpus: cpu, mem_mb: memMB, storage_mb: storageMB },
           health_check: { enabled: healthEnabled, path: healthPath, interval_ms: 5000, timeout_ms: 2000, retries: 3 },
           plan: plan
@@ -589,7 +597,7 @@ export function ApplicationWizard({
                 )}
               </section>
 
-              <section className="bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative">
+              {buildType !== "compose" && <section className="bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative">
                 <div className="flex items-center gap-sm mb-xs">
                   <Globe size={20} className="text-primary" />
                   <h2 className="font-label-caps text-label-caps text-on-surface">Public Port</h2>
@@ -606,7 +614,7 @@ export function ApplicationWizard({
                   />
                   <span className="font-body-sm text-body-sm text-on-surface-variant">0 = random free port</span>
                 </div>
-              </section>
+              </section>}
 
               <section className={`bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative ${buildType === "custom" ? "" : "opacity-50 pointer-events-none"}`}>
                 <div className="flex items-center justify-between mb-xs">
@@ -662,7 +670,7 @@ export function ApplicationWizard({
                       ["Package Manager", plan.package_manager],
                       ["Build Command", plan.build_command], ["Output", plan.output_dir],
                       ["Application Type", plan.app_type], ["Web Server", plan.web_server],
-                      ["Container Port", String(port)], ["SPA Fallback", plan.spa_fallback ? "Enabled" : "Disabled"],
+                      ["Container Port", buildType === "compose" ? "From Compose file" : String(port)], ["SPA Fallback", plan.spa_fallback ? "Enabled" : "Disabled"],
                     ].map(([k, v]) => (
                       <div key={k} className="flex flex-col">
                         <span className="font-label-caps text-[9px] text-on-surface-variant/60 uppercase tracking-wider">{k}</span>

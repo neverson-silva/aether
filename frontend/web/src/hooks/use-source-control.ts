@@ -152,7 +152,7 @@ export function useSourceControlBranches(repositoryID: string | undefined, insta
 export function useSourceControlFile(repositoryID: string | undefined, installationID: string | undefined, path: string, ref: string, enabled = true) {
   return useQuery({
     queryKey: ["source-control", "file", repositoryID, installationID, path, ref],
-    queryFn: () => apiGet<{ path: string; ref: string; content: string }>(`/api/v1/source-control/github/repositories/${encodeURIComponent(repositoryID ?? "")}/file?installation_id=${encodeURIComponent(installationID ?? "")}&path=${encodeURIComponent(path)}&ref=${encodeURIComponent(ref)}`),
+    queryFn: () => apiGet<{ path: string; ref: string; content: string; variables?: Array<{ key: string; value: string; secret: boolean }> }>(`/api/v1/source-control/github/repositories/${encodeURIComponent(repositoryID ?? "")}/file?installation_id=${encodeURIComponent(installationID ?? "")}&path=${encodeURIComponent(path)}&ref=${encodeURIComponent(ref)}`),
     enabled: enabled && !!repositoryID && !!installationID && !!path && !!ref,
   });
 }
