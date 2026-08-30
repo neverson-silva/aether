@@ -103,6 +103,24 @@ HOST_LOG="$STATE_DIR/logs/host-setup.log"
 INSTALL_LOG="${AETHER_INSTALL_LOG:-/dev/stderr}"
 FORCE_API_RECREATE=0
 
+content_fingerprint() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    find "$@" -type f \
+      ! -path '*/node_modules/*' \
+      ! -path '*/dist/*' \
+      ! -path '*/.git/*' \
+      -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
+    return
+  fi
+  find "$@" -type f \
+    ! -path '*/node_modules/*' \
+    ! -path '*/dist/*' \
+    ! -path '*/.git/*' \
+    -print | LC_ALL=C sort | while IFS= read -r file; do
+      shasum -a 256 "$file"
+    done | shasum -a 256 | awk '{print $1}'
+}
+
 is_true() {
   [[ "$1" == "1" || "$1" == "true" || "$1" == "TRUE" || "$1" == "yes" ]]
 }
@@ -599,10 +617,19 @@ ensure_master_key() {
 build_api_image() {
   [[ -f "$PROJECT_ROOT/infra/Dockerfile" ]] || fail "Dockerfile not found. Run from inside the project directory."
   [[ -f "$PROJECT_ROOT/api/cmd/api/main.go" ]] || fail "API source not found in ./api/cmd/api."
+  local image_stamp="$STATE_DIR/.api-image.stamp"
+  local source_stamp
+  source_stamp="$(content_fingerprint "$PROJECT_ROOT/api" "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT/.dockerignore")|$API_IMAGE"
+  if $RUNTIME image inspect "$API_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
+    info "Application services unchanged — reusing the cached image."
+    return 0
+  fi
   info "Preparing the application services..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
   $RUNTIME build -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT" \
     >>"$INSTALL_LOG" 2>&1 || fail "The application services could not be prepared."
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$source_stamp" > "$image_stamp"
   info "Application services prepared."
 }
 
@@ -622,6 +649,14 @@ ensure_web_image() {
       mv "$backup_env" "$build_env"
     fi
   }
+  local image_stamp="$STATE_DIR/.web-image.stamp"
+  local source_stamp
+  source_stamp="$(content_fingerprint "$PROJECT_ROOT/frontend/aether_ds" "$PROJECT_ROOT/frontend/web" "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT/infra/nginx.conf")|$WEB_IMAGE|$AETHER_API_PUBLIC_URL|$AETHER_PUBLIC_URL"
+  if $RUNTIME image inspect "$WEB_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
+    cleanup_web_build_env
+    info "Application interface unchanged — reusing the cached image."
+    return 0
+  fi
   info "Preparing the application interface..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
   if ! $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" >>"$INSTALL_LOG" 2>&1; then
@@ -629,6 +664,8 @@ ensure_web_image() {
     fail "The application interface could not be prepared."
   fi
   cleanup_web_build_env
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$source_stamp" > "$image_stamp"
   info "Application interface prepared."
 }
 
@@ -918,10 +955,16 @@ ensure_registry() {
 
 ensure_builder() {
   command -v "$DOCKER_RUNTIME" >/dev/null || fail "Docker CLI is required for the CNB builder."
-  "$DOCKER_RUNTIME" pull "docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}" >/dev/null 2>&1 || true
-  "$DOCKER_RUNTIME" pull "${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04}" >/dev/null 2>&1 || true
+  local lifecycle_image="docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}"
+  local run_image="${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
+  if ! "$DOCKER_RUNTIME" image inspect "$lifecycle_image" >/dev/null 2>&1; then
+    "$DOCKER_RUNTIME" pull "$lifecycle_image" >/dev/null 2>&1 || true
+  fi
+  if ! "$DOCKER_RUNTIME" image inspect "$run_image" >/dev/null 2>&1; then
+    "$DOCKER_RUNTIME" pull "$run_image" >/dev/null 2>&1 || true
+  fi
   local source_stamp builder_stamp
-  source_stamp="$(sha256sum "$PROJECT_ROOT/infra/buildpacks/node-server/bin/build" "$PROJECT_ROOT/infra/buildpacks/node-server/bin/detect" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/build" "$PROJECT_ROOT/infra/buildpacks/spa-static/bin/detect" "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" | sha256sum | awk '{print $1}')"
+  source_stamp="$(content_fingerprint "$PROJECT_ROOT/infra/buildpacks")|$CNB_BUILDER|$run_image|$lifecycle_image|${AETHER_BUILDER_BASE_IMAGE:-}"
   builder_stamp="$STATE_DIR/cnb-builder.stamp"
   if "$DOCKER_RUNTIME" image inspect "$CNB_BUILDER" >/dev/null 2>&1 && [[ -f "$builder_stamp" ]] && grep -qx "$source_stamp" "$builder_stamp"; then
     info "CNB builder already present ($CNB_BUILDER)."

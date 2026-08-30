@@ -97,6 +97,13 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 	if image == "" {
 		return "", fmt.Errorf("%w: unsupported engine %s", domain.ErrValidation, db.Engine)
 	}
+	if puller, ok := d.Runtime.(interface {
+		Pull(context.Context, string) (string, error)
+	}); ok {
+		if _, err := puller.Pull(ctx, image); err != nil {
+			return "", fmt.Errorf("pull database image %q: %w", image, err)
+		}
+	}
 	pass, err := d.Passwords.Decrypt(db.PassEnc)
 	if err != nil {
 		return "", domain.ErrValidation
