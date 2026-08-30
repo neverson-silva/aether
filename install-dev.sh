@@ -442,6 +442,8 @@ ensure_ingress_image() {
 
 ensure_postgres() {
   local runtime="$RUNTIME"
+  local expected_port="${AETHER_PG_PORT:-15432}"
+  PG_PORT="$expected_port"
   load_db_credentials
   local password="$DB_PASSWORD"
 
