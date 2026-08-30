@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { getServer } from "../../../../api/client";
 import { LogViewer, type LogLine as DesignLogLine } from "@aether/design-system";
+import { useServiceDeploymentLog } from "../../../../hooks";
 
 const ANSI_RE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/;
@@ -40,12 +41,19 @@ export function classify(line: string): LogRow {
   return { id: ROW_ID, text, json, ts: tsMatch ? tsMatch[0] : "", level, tag: tagMatch ? tagMatch[1].toLowerCase() : "" };
 }
 
-export function LiveLogs({ serviceId, enabled = true, endpoint }: { serviceId: string; enabled?: boolean; endpoint?: string }) {
+export function LiveLogs({ serviceId, enabled = true, endpoint, deploymentId }: { serviceId: string; enabled?: boolean; endpoint?: string; deploymentId?: string | null }) {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [follow, setFollow] = useState(true);
+  const deploymentLog = useServiceDeploymentLog(serviceId, deploymentId ?? null);
 
   useEffect(() => {
-    if (!enabled || !serviceId) return;
+    if (!deploymentId) return;
+    const content = deploymentLog.data?.content ?? "";
+    setRows(content.split("\n").filter((line) => line.trim() !== "").map((line) => classify(line)));
+  }, [deploymentId, deploymentLog.data?.content]);
+
+  useEffect(() => {
+    if (!enabled || !serviceId || deploymentId) return;
     const server = getServer();
     const es = new EventSource(server + (endpoint ?? "/api/v1/services/" + serviceId + "/logs?follow=1"), { withCredentials: true });
     es.onmessage = (ev) => {
@@ -54,7 +62,7 @@ export function LiveLogs({ serviceId, enabled = true, endpoint }: { serviceId: s
       setRows((prev) => [...prev.slice(-1000), ...newRows].slice(-1500));
     };
     return () => es.close();
-  }, [serviceId, enabled, endpoint]);
+  }, [serviceId, enabled, endpoint, deploymentId]);
 
   const viewerLines = useMemo<DesignLogLine[]>(
     () => rows.map((row) => ({

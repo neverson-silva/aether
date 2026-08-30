@@ -680,12 +680,6 @@ func (h *Handler) EnqueueServiceDeployment(ctx context.Context, serviceID, specI
 		return uuid.Nil, err
 	}
 	defer tx.Rollback(ctx)
-	var active uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT id FROM deployments WHERE service_id = $1 AND status IN ('queued', 'building', 'starting', 'health_checking') ORDER BY created_at, id LIMIT 1`, serviceID).Scan(&active); err == nil {
-		return uuid.Nil, deploydomain.ErrConflict
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, err
-	}
 	var deploymentID uuid.UUID
 	appID := any(nil)
 	composeYAML := ""

@@ -395,7 +395,8 @@ function AppDetail() {
   const containerState = canonicalStats?.state && canonicalStats.state !== "unknown"
     ? canonicalStats.state
     : serviceContainers?.[0]?.status ?? service?.status ?? "unknown";
-  const activeDeployment = latest && ["queued", "building", "starting", "health_checking"].includes(latest.status) ? latest.status : undefined;
+  const activeDeploymentRecord = latest && ["queued", "building", "starting", "health_checking"].includes(latest.status) ? latest : undefined;
+  const activeDeployment = activeDeploymentRecord?.status;
   const runtimeStatus = mapRuntimeStatus(containerState, activeDeployment);
   const running = containerState === "running" || containerState === "healthy";
 
@@ -1134,7 +1135,7 @@ function AppDetail() {
                 )}
               </div>
 
-              <LiveLogs serviceId={logsID} enabled={Boolean(serviceContainers?.length)} endpoint={serviceLogsEndpoint} />
+              <LiveLogs serviceId={logsID} enabled={Boolean(service)} deploymentId={activeDeploymentRecord?.id} endpoint={serviceLogsEndpoint} />
             </div>
           </div>
         </>
@@ -1189,7 +1190,7 @@ function AppDetail() {
             )}
           </div>
           <div className="mt-md">
-            <LiveLogs serviceId={logsID} enabled={Boolean(serviceContainers?.length)} endpoint={serviceLogsEndpoint} />
+            <LiveLogs serviceId={logsID} enabled={Boolean(service)} deploymentId={activeDeploymentRecord?.id} endpoint={serviceLogsEndpoint} />
           </div>
           <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mt-lg mb-md">
             Event timeline
