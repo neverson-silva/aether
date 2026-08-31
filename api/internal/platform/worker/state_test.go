@@ -124,6 +124,19 @@ func TestWatcherProjectsPendingAndDeployingWithoutContainers(t *testing.T) {
 	store.mu.Unlock()
 }
 
+func TestWatcherUsesLatestDeploymentWithoutContainer(t *testing.T) {
+	serviceID := uuid.New()
+	store := &fakeServiceStateStore{targets: []RuntimeServiceTarget{{ID: serviceID, Kind: "app", EverDeployed: true, LatestDeployment: "ready"}}}
+	watcher := &Watcher{Runtime: &stateRuntime{}, ServiceStore: store}
+
+	watcher.reconcile(context.Background())
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if got := store.status[serviceID]; got != "running" {
+		t.Fatalf("latest deployment status = %q, want running", got)
+	}
+}
+
 func TestWatcherReconcilesAfterRuntimeEventStreamCloses(t *testing.T) {
 	serviceID := uuid.New()
 	store := &fakeServiceStateStore{targets: []RuntimeServiceTarget{{ID: serviceID, Kind: "app"}}}

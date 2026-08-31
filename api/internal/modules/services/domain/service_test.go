@@ -71,8 +71,28 @@ func TestNormalizeAppStatusMatrix(t *testing.T) {
 	if got := NormalizeApp("failed", "", nil); got != StatusFailed {
 		t.Fatalf("expected %q, got %q", StatusFailed, got)
 	}
-	if got := NormalizeApp("success", "", nil); got != StatusUnknown {
-		t.Fatalf("expected %q, got %q", StatusUnknown, got)
+	if got := NormalizeApp("success", "", nil); got != StatusRunning {
+		t.Fatalf("expected %q, got %q", StatusRunning, got)
+	}
+}
+
+func TestProjectStatusUsesLatestDeploymentWithoutContainer(t *testing.T) {
+	tests := []struct {
+		name       string
+		deployment string
+		want       Status
+	}{
+		{name: "ready", deployment: "ready", want: StatusRunning},
+		{name: "failed", deployment: "failed", want: StatusFailed},
+		{name: "cancelled", deployment: "cancelled", want: StatusStopped},
+		{name: "building", deployment: "building", want: StatusDeploying},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ProjectStatusWithDeployment(KindApp, nil, test.deployment, false, true); got != test.want {
+				t.Fatalf("status = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

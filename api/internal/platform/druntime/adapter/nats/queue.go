@@ -3,7 +3,6 @@ package nats
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -70,43 +69,36 @@ func (c *consumer) Next(ctx context.Context) (*queue.Job, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		batch, err := c.consumer.Fetch(1, jetstream.FetchMaxWait(500*time.Millisecond))
+		fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		msg, err := c.consumer.Next(jetstream.FetchContext(fetchCtx))
+		cancel()
 		if err != nil {
-			if errors.Is(err, natsgo.ErrTimeout) {
-				continue
-			}
 			return nil, err
 		}
-		for msg := range batch.Messages() {
-			metadata, metadataErr := msg.Metadata()
-			if metadataErr == nil && metadata.NumDelivered >= maxJobDeliveries {
-				if err := c.publishDLQ(msg, metadata, "maximum delivery attempts exceeded"); err != nil {
-					return nil, err
-				}
-				if err := msg.TermWithReason("maximum delivery attempts exceeded"); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			job, err := decodeJob(msg.Data())
-			if err != nil {
-				_ = msg.TermWithReason("invalid job payload")
-				continue
-			}
-			metadata, err = msg.Metadata()
-			if err != nil {
+		metadata, metadataErr := msg.Metadata()
+		if metadataErr != nil {
+			return nil, metadataErr
+		}
+		if metadata.NumDelivered >= maxJobDeliveries {
+			if err := c.publishDLQ(msg, metadata, "maximum delivery attempts exceeded"); err != nil {
 				return nil, err
 			}
-			job.DeliveryID = fmt.Sprintf("%d", metadata.Sequence.Consumer)
-			job.Attempt = int(metadata.NumDelivered) - 1
-			c.mu.Lock()
-			c.pending[job.DeliveryID] = msg
-			c.mu.Unlock()
-			return &job, nil
+			if err := msg.TermWithReason("maximum delivery attempts exceeded"); err != nil {
+				return nil, err
+			}
+			continue
 		}
-		if err := batch.Error(); err != nil && !errors.Is(err, natsgo.ErrTimeout) {
-			return nil, err
+		job, err := decodeJob(msg.Data())
+		if err != nil {
+			_ = msg.TermWithReason("invalid job payload")
+			continue
 		}
+		job.DeliveryID = fmt.Sprintf("%d", metadata.Sequence.Consumer)
+		job.Attempt = int(metadata.NumDelivered) - 1
+		c.mu.Lock()
+		c.pending[job.DeliveryID] = msg
+		c.mu.Unlock()
+		return &job, nil
 	}
 }
 

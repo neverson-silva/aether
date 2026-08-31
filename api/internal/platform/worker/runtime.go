@@ -129,6 +129,7 @@ type RuntimeServiceTarget struct {
 	Status           string
 	EverDeployed     bool
 	ActiveDeployment bool
+	LatestDeployment string
 }
 
 type ServiceStateStore interface {

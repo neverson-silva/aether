@@ -114,7 +114,7 @@ func (w *Watcher) reconcile(ctx context.Context) {
 		byService[serviceID] = append(byService[serviceID], servicesdomain.ContainerState{ID: item.ID, Name: item.Name, Status: item.State, Healthy: item.Healthy})
 	}
 	for _, target := range targets {
-		state := servicesdomain.ProjectStatus(servicesdomain.Kind(target.Kind), byService[target.ID], target.ActiveDeployment, target.EverDeployed)
+		state := servicesdomain.ProjectStatusWithDeployment(servicesdomain.Kind(target.Kind), byService[target.ID], target.LatestDeployment, target.ActiveDeployment, target.EverDeployed)
 		changed, err := w.ServiceStore.UpdateRuntimeStatus(ctx, target.ID, string(state))
 		if err != nil {
 			w.log(ctx, "persist runtime service status", err)

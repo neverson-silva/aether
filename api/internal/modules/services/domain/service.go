@@ -48,12 +48,19 @@ type ContainerState struct {
 }
 
 func ProjectStatus(kind Kind, states []ContainerState, activeDeployment, everDeployed bool) Status {
+	return ProjectStatusWithDeployment(kind, states, "", activeDeployment, everDeployed)
+}
+
+func ProjectStatusWithDeployment(kind Kind, states []ContainerState, deploymentStatus string, activeDeployment, everDeployed bool) Status {
 	if activeDeployment {
 		return StatusDeploying
 	}
 	if len(states) == 0 {
 		if !everDeployed {
 			return StatusPending
+		}
+		if deploymentStatus != "" {
+			return StatusFromDeployment(deploymentStatus)
 		}
 		return StatusUnknown
 	}
@@ -102,6 +109,21 @@ func NormalizeApp(deployment, container string, healthy *bool) Status {
 		return statusFromDeployment(deployment)
 	}
 	return normalizeContainer(container, healthy)
+}
+
+func StatusFromDeployment(raw string) Status {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "queued", "pending", "building", "deploying", "starting", "health_checking":
+		return StatusDeploying
+	case "success", "succeeded", "ready", "running":
+		return StatusRunning
+	case "failed", "error", "rolled_back":
+		return StatusFailed
+	case "stopped", "cancelled", "canceled":
+		return StatusStopped
+	default:
+		return StatusUnknown
+	}
 }
 
 func NormalizeDatabase(container string, healthy *bool) Status {
@@ -192,18 +214,7 @@ func normalizeContainer(raw string, healthy *bool) Status {
 }
 
 func statusFromDeployment(raw string) Status {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "queued", "pending", "building", "deploying", "starting":
-		return StatusDeploying
-	case "success", "succeeded", "ready", "running":
-		return StatusUnknown
-	case "failed", "error":
-		return StatusFailed
-	case "stopped", "cancelled", "canceled":
-		return StatusStopped
-	default:
-		return StatusUnknown
-	}
+	return StatusFromDeployment(raw)
 }
 
 func isTransition(raw string) bool {

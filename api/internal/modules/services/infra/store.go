@@ -21,7 +21,8 @@ func (s *Store) ListRuntimeServiceTargets(ctx context.Context) ([]worker.Runtime
 	rows, err := s.db.Query(ctx, `
 SELECT s.id, s.org_id, s.kind, s.status,
        EXISTS (SELECT 1 FROM deployments d WHERE d.service_id = s.id) AS ever_deployed,
-       EXISTS (SELECT 1 FROM deployments d WHERE d.service_id = s.id AND d.status IN ('queued', 'building', 'starting', 'health_checking')) AS active_deployment
+       EXISTS (SELECT 1 FROM deployments d WHERE d.service_id = s.id AND d.status IN ('queued', 'building', 'starting', 'health_checking')) AS active_deployment,
+       COALESCE((SELECT d.status FROM deployments d WHERE d.service_id = s.id ORDER BY d.number DESC LIMIT 1), '') AS latest_deployment
 FROM services s
 WHERE s.deleted_at IS NULL
 ORDER BY s.created_at, s.id`)
@@ -32,7 +33,7 @@ ORDER BY s.created_at, s.id`)
 	targets := make([]worker.RuntimeServiceTarget, 0)
 	for rows.Next() {
 		var target worker.RuntimeServiceTarget
-		if err := rows.Scan(&target.ID, &target.OrganizationID, &target.Kind, &target.Status, &target.EverDeployed, &target.ActiveDeployment); err != nil {
+		if err := rows.Scan(&target.ID, &target.OrganizationID, &target.Kind, &target.Status, &target.EverDeployed, &target.ActiveDeployment, &target.LatestDeployment); err != nil {
 			return nil, err
 		}
 		targets = append(targets, target)

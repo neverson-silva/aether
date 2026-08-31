@@ -261,6 +261,7 @@ ORDER BY created_at, name`
 		if specID, ok := service["spec_id"].(*uuid.UUID); ok && specID != nil {
 			if serviceStatus, statusOK := service["status"].(string); statusOK {
 				serviceID := service["id"].(uuid.UUID)
+				latestDeployment, deploymentCount := h.latestDeploymentStatus(c, serviceID)
 				states, statesErr := runtimeContainerStates(c, h.runtime, serviceID, *specID)
 				if statesErr == nil && len(states) > 0 {
 					containers := make([]gin.H, 0, len(states))
@@ -268,9 +269,13 @@ ORDER BY created_at, name`
 						containers = append(containers, gin.H{"id": state.ID, "name": state.Name, "status": state.Status, "healthy": state.Healthy})
 					}
 					service["runtime"] = gin.H{"containers": containers}
-					service["status"] = string(servicedomain.ProjectStatus(servicedomain.Kind(service["kind"].(string)), states, serviceStatus == string(servicedomain.StatusDeploying), true))
+					service["status"] = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(service["kind"].(string)), states, latestDeployment, deploymentInProgress(latestDeployment), deploymentCount > 0))
 				} else {
-					service["status"] = serviceStatus
+					if latestDeployment != "" {
+						service["status"] = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(service["kind"].(string)), nil, latestDeployment, false, true))
+					} else {
+						service["status"] = serviceStatus
+					}
 				}
 			}
 			h.enrichSpec(c, service, servicedomain.Kind(service["kind"].(string)), *specID)
@@ -336,6 +341,9 @@ func (h *Handler) projectedServiceStatus(c *gin.Context, serviceID, specID uuid.
 	if active {
 		return servicedomain.StatusDeploying
 	}
+	if latestStatus != "" {
+		return servicedomain.StatusFromDeployment(latestStatus)
+	}
 	switch strings.ToLower(storedStatus) {
 	case "pending", "creating", "validating", "unknown":
 		if deployments == 0 {
@@ -349,6 +357,24 @@ func (h *Handler) projectedServiceStatus(c *gin.Context, serviceID, specID uuid.
 		return servicedomain.StatusFailed
 	}
 	return servicedomain.StatusPending
+}
+
+func deploymentInProgress(status string) bool {
+	switch status {
+	case "queued", "building", "starting", "health_checking":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Handler) latestDeploymentStatus(c *gin.Context, serviceID uuid.UUID) (string, int) {
+	var status string
+	var count int
+	if err := h.db.QueryRow(c.Request.Context(), `SELECT COUNT(*), COALESCE((SELECT status FROM deployments WHERE service_id = $1 ORDER BY number DESC LIMIT 1), '') FROM deployments WHERE service_id = $1`, serviceID).Scan(&count, &status); err != nil {
+		return "", 0
+	}
+	return status, count
 }
 
 func (h *Handler) Update(c *gin.Context) {

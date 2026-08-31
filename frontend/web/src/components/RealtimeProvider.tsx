@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useRealtimeStore } from "../stores/realtime";
 import { ApiError, apiGet, clearToken, getServer, isPublicRoute } from "../api/client";
+import type { Deployment } from "../api/types";
 import type { EventEnvelope, RealtimeInbound } from "../hooks/types";
 
 interface RealtimeContextValue {
@@ -109,6 +110,27 @@ function resourceKeys(ev: EventEnvelope): unknown[][] {
 }
 
 function applyInvalidation(qc: QueryClient, ev: EventEnvelope) {
+  if (ev.type.startsWith("deploy.") && ev.type !== "deploy.build.log") {
+    const deploymentID = ev.resource_id || (ev.payload?.deployment_id as string | undefined);
+    const status = (ev.payload?.status as string | undefined) || ev.type.slice("deploy.".length);
+    const detail = (ev.payload?.detail as string | undefined) || "";
+    if (deploymentID && status) {
+      qc.setQueriesData<Deployment[]>({ queryKey: ["service-deployments"] }, (deployments) =>
+        deployments?.map((deployment) =>
+          deployment.id === deploymentID
+            ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+            : deployment,
+        ),
+      );
+      qc.setQueriesData<Deployment[]>({ queryKey: ["deployments"] }, (deployments) =>
+        deployments?.map((deployment) =>
+          deployment.id === deploymentID
+            ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+            : deployment,
+        ),
+      );
+    }
+  }
   for (const key of resourceKeys(ev)) {
     qc.invalidateQueries({ queryKey: key });
   }
