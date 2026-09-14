@@ -29,7 +29,11 @@ if [[ -f "$CRED_FILE" ]]; then
 fi
 export DATABASE_NAME="${DATABASE_NAME:-${DB_NAME:-aether_dev}}"
 export DATABASE_USER="${DATABASE_USER:-${DB_USER:-aether}}"
-export DATABASE_PASSWORD="${DATABASE_PASSWORD:-${DB_PASSWORD:-aether_dev_pass}}"
+export DATABASE_PASSWORD="${DATABASE_PASSWORD:-${DB_PASSWORD:-}}"
+if [[ -z "$DATABASE_PASSWORD" ]]; then
+  echo "error: DATABASE_PASSWORD must be set or provided by $CRED_FILE" >&2
+  exit 1
+fi
 
 export AETHER_STATE="${AETHER_STATE:-$HOME/.aether}"
 export DEV_MODE="${DEV_MODE:-true}"
@@ -52,7 +56,11 @@ export DATABASE_PORT="${DATABASE_PORT:-${PG_PORT:-5432}}"
 export DATABASE_SSL_MODE="${DATABASE_SSL_MODE:-disable}"
 export DATABASE_MIGRATE_ON_START="${DATABASE_MIGRATE_ON_START:-true}"
 export AETHER_MODE="${AETHER_MODE:-dev}"
-export AETHER_COOKIE_SECURE="${AETHER_COOKIE_SECURE:-false}"
+COOKIE_SECURE_DEFAULT=true
+if [[ "$DEV_MODE" == "1" || "$DEV_MODE" == "true" || "$DEV_MODE" == "TRUE" || "$DEV_MODE" == "yes" ]]; then
+  COOKIE_SECURE_DEFAULT=false
+fi
+export AETHER_COOKIE_SECURE="${AETHER_COOKIE_SECURE:-$COOKIE_SECURE_DEFAULT}"
 
 # Credenciais NATS (geradas/persistidas pelo install.sh/install-dev.sh)
 export AETHER_NATS_URL="${AETHER_NATS_URL:-nats://127.0.0.1:4222}"
@@ -94,8 +102,18 @@ if [[ "${AETHER_FREE_DOMAIN_PROVIDER}" == "ngrok" ]]; then
 fi
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  export AETHER_BUILD_DOCKER_HOST="${AETHER_BUILD_DOCKER_HOST:-unix:///var/run/docker.sock}"
-  echo "AETHER_BUILD_DOCKER_HOST set for SmartBuild"
+  if [[ -z "${AETHER_BUILD_DOCKER_HOST:-}" ]]; then
+    if [[ -S /var/run/docker.sock ]]; then
+      export AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock
+    elif [[ -S "$HOME/.docker/run/docker.sock" ]]; then
+      export AETHER_BUILD_DOCKER_HOST="unix://$HOME/.docker/run/docker.sock"
+    fi
+  fi
+  if [[ -n "${AETHER_BUILD_DOCKER_HOST:-}" ]]; then
+    echo "AETHER_BUILD_DOCKER_HOST set for SmartBuild"
+  else
+    echo "warning: Docker socket path is unavailable; SmartBuild app deploys may fail." >&2
+  fi
 else
   echo "warning: Docker Engine is unavailable — SmartBuild app deploys will fail." >&2
 fi

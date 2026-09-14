@@ -1,0 +1,13 @@
+services:
+  directory-lister:
+    image: directorylister/directorylister@sha256:5f704fe5c5a49f4eaf8b58786228a1bd3c5c2aecd9a90bdd39a07a8ff44f7f7c
+    restart: unless-stopped
+    expose:
+      - 80
+    volumes:
+      # Mounts a persistent named volume to store directory data.
+      - directory-lister-data:/data
+
+volumes:
+  # Defines the Docker-managed volume for data persistence.
+  directory-lister-data: {}

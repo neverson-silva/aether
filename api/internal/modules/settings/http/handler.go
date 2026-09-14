@@ -14,16 +14,22 @@ import (
 )
 
 type Handler struct {
-	settings *application.Settings
-	login    func(ctx context.Context, email, name string) (user any, token string, err error)
+	settings     *application.Settings
+	login        func(ctx context.Context, email, name string) (user any, token, refresh string, err error)
+	cookieSecure bool
 }
 
 func New(settings *application.Settings) *Handler {
 	return &Handler{settings: settings}
 }
 
-func (h *Handler) WithSSOLogin(login func(ctx context.Context, email, name string) (user any, token string, err error)) *Handler {
+func (h *Handler) WithSSOLogin(login func(ctx context.Context, email, name string) (user any, token, refresh string, err error)) *Handler {
 	h.login = login
+	return h
+}
+
+func (h *Handler) WithCookieSecure(secure bool) *Handler {
+	h.cookieSecure = secure
 	return h
 }
 
@@ -302,7 +308,7 @@ func (h *Handler) SSOCallback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing code: " + c.Query("error")})
 		return
 	}
-	oidcUser, err := h.settings.OIDCCallback(c.Request.Context(), id, code)
+	oidcUser, err := h.settings.OIDCCallback(c.Request.Context(), id, code, c.Query("state"))
 	if err != nil {
 		abort(c, err)
 		return
@@ -311,12 +317,19 @@ func (h *Handler) SSOCallback(c *gin.Context) {
 		abort(c, errors.New("login unavailable"))
 		return
 	}
-	user, token, err := h.login(c.Request.Context(), oidcUser.Email, oidcUser.Name)
+	user, token, refresh, err := h.login(c.Request.Context(), oidcUser.Email, oidcUser.Name)
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token, "user": user, "org_id": id})
+	h.setAuthCookies(c, token, refresh)
+	c.JSON(http.StatusOK, gin.H{"user": user, "org_id": id})
+}
+
+func (h *Handler) setAuthCookies(c *gin.Context, access, refresh string) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("aether_token", access, 600, "/", "", h.cookieSecure, true)
+	c.SetCookie("aether_refresh", refresh, 1200, "/api/v1/auth", "", h.cookieSecure, true)
 }
 
 func brandingDTO(b *domain.Branding) gin.H {

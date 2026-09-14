@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight, CaretDown, Check, List, MagnifyingGlass, NotePencil, ShoppingBag } from "@phosphor-icons/react";
 import { Button, Input, Modal, NativeSelect, VariableEditor, useToast } from "@aether/design-system";
 import { useCreateApp, useInstallTemplate, useProjects, useTemplateCategories, useTemplatesFiltered } from "../hooks";
 import type { TemplateItem } from "../hooks";
-import { TechIcon } from "./TechIcon";
+import { TemplateIcon } from "./TemplateIcon";
 
 interface ParsedDef {
   services: { name: string; image: string; port: number; versions?: string[]; env?: Record<string, string> }[];
@@ -12,7 +12,10 @@ interface ParsedDef {
 
 function parseDef(t: TemplateItem): ParsedDef {
   try {
-    return JSON.parse(t.definition || "{}") as ParsedDef;
+    const parsed: unknown = JSON.parse(t.definition || "{}");
+    if (!parsed || typeof parsed !== "object") return { services: [] };
+    const services = (parsed as Record<string, unknown>).services;
+    return { services: Array.isArray(services) ? services as ParsedDef["services"] : [] };
   } catch {
     return { services: [] };
   }
@@ -37,21 +40,23 @@ function resolveValue(v: string): string {
   return v;
 }
 
-function iconBg(t: TemplateItem): string {
-  const cat = t.category.toLowerCase();
-  if (cat === "database" || cat === "cache") return "rgba(86,141,255,0.1)";
-  if (cat === "monitoring" || cat === "logging" || cat === "analytics") return "rgba(192,193,255,0.1)";
-  if (cat === "ai" || cat === "automation") return "rgba(243,100,32,0.1)";
-  if (cat === "security" || cat === "identity") return "rgba(140,144,161,0.1)";
-  return "rgba(176,198,255,0.1)";
+function resolveEnvironmentValue(name: string, value: string): string {
+  if (value) return resolveValue(value);
+  return /password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential/i.test(name) ? genPassword() : "";
 }
-function iconColor(t: TemplateItem): string {
+
+function templateEnvironment(t: TemplateItem): { name: string; value: string }[] {
+  if (t.environment?.length) return t.environment.map((entry) => ({ name: entry.name, value: resolveEnvironmentValue(entry.name, entry.value) }));
+  const svc = parseDef(t).services[0];
+  return Object.entries(svc?.env ?? {}).map(([name, value]) => ({ name, value: resolveEnvironmentValue(name, value) }));
+}
+
+function iconTone(t: TemplateItem): string {
   const cat = t.category.toLowerCase();
-  if (cat === "database" || cat === "cache") return "#568dff";
-  if (cat === "monitoring" || cat === "logging" || cat === "analytics") return "#c0c1ff";
-  if (cat === "ai" || cat === "automation") return "#f36420";
-  if (cat === "security" || cat === "identity") return "#8c90a1";
-  return "#b0c6ff";
+  if (cat === "monitoring" || cat === "logging" || cat === "analytics") return "bg-secondary/10 text-secondary";
+  if (cat === "ai" || cat === "automation") return "bg-tertiary-container/20 text-tertiary-container";
+  if (cat === "security" || cat === "identity") return "bg-surface-container-high text-on-surface-variant";
+  return "bg-primary/10 text-primary";
 }
 
 const CPU_SEGS = [".25", ".5", "1", "2", "4", "8"];
@@ -82,6 +87,7 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
   const [ram, setRam] = useState(".5");
   const [vol, setVol] = useState("∞");
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -101,29 +107,25 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
     setVersion(svc?.versions?.[0] ?? "");
     setStep(2);
     setName(t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.floor(Math.random() * 900 + 100));
-    const envList: { name: string; value: string }[] = [];
-    if (svc?.env) {
-      for (const [k, v] of Object.entries(svc.env)) {
-        envList.push({ name: k, value: resolveValue(v) });
-      }
-    }
-    setEnvs(envList);
+    setEnvs(templateEnvironment(t));
   };
 
   const envCount = (t: TemplateItem): number => {
-    const svc = parseDef(t).services[0];
-    return svc?.env ? Object.keys(svc.env).length : 0;
+    if (t.environment?.length) return t.environment.length;
+    return Object.keys(parseDef(t).services[0]?.env ?? {}).length;
   };
 
   const create = async () => {
+    if (creatingRef.current) return;
     if (!selected || !projectId || !name.trim()) {
       add({ title: "Select a project and set a name", tone: "error" });
       return;
     }
+    creatingRef.current = true;
     setCreating(true);
     try {
-      if (selected.compose_yaml) {
-        await installTemplate.mutateAsync({ id: selected.id, project_id: projectId, name });
+      if (selected.compose_yaml || selected.remote_id) {
+        await installTemplate.mutateAsync({ id: selected.id, project_id: projectId, name, overrides: Object.fromEntries(envs.filter((entry) => entry.name.trim()).map((entry) => [entry.name.trim(), entry.value])) });
         add({ title: "Deploy it manually from the services page", tone: "info" });
         onClose();
         navigate({ to: "/apps" } as never);
@@ -152,18 +154,19 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
     } catch (err) {
       add({ title: err instanceof Error ? err.message : "Failed to create service", tone: "error" });
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };
 
   const svcOfSelected = selected ? parseDef(selected).services[0] : null;
-  const isCompose = !!selected?.compose_yaml;
+  const isCompose = !!selected?.compose_yaml || !!selected?.remote_id;
 
   return (
     <Modal open={open} onOpenChange={(value) => { if (!value) onClose(); }} title={step === 1 ? "Templates · Choose one to configure" : `${selected?.name} · Configure`} description={step === 1 ? "One-click templates with default environment variables, ready to configure and deploy." : "Pre-filled with the template's default environment variables — adjust as needed."} size="wizard">
       <div className="max-h-[75vh] overflow-y-auto">
 
-        <div className="px-lg py-md border-b border-surface-variant flex flex-col gap-sm shrink-0" style={{ borderColor: "#353534" }}>
+        <div className="px-lg py-md border-b border-outline-variant flex flex-col gap-sm shrink-0">
           <div className="flex justify-between items-start">
             <div>
               <h1 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-sm">
@@ -182,7 +185,7 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
               <div className={`w-5 h-5 rounded-full flex items-center justify-center border ${step === 1 ? "bg-primary/20 border-primary/30" : "border-surface-variant"}`}>{step === 1 ? "1" : "✓"}</div>
               <span>Browse</span>
             </div>
-            <div className="w-8 h-[1px]" style={{ background: "#353534" }} />
+            <div className="w-8 h-px bg-outline-variant" />
             <div className={`flex items-center gap-1 ${step === 2 ? "text-primary" : "text-on-surface-variant"}`}>
               <div className="w-5 h-5 rounded-full border border-surface-variant flex items-center justify-center">2</div>
               <span>Configure</span>
@@ -190,15 +193,14 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
           </div>
         </div>
 
-        <div className="px-lg py-md border-b flex items-center gap-md shrink-0" style={{ borderColor: "#353534", background: "rgba(19,19,19,0.5)" }}>
+        <div className="px-lg py-md border-b border-outline-variant bg-surface-container-low/50 flex items-center gap-md shrink-0">
           <div className="relative w-full md:w-64">
             <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search templates..."
-              className="w-full bg-surface-container-low border rounded-md font-body-sm text-body-sm text-on-surface pl-9 pr-3 py-1.5 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all"
-              style={{ borderColor: "#353534" }}
+              className="w-full bg-surface-container-low border border-outline-variant rounded-md font-body-sm text-body-sm text-on-surface pl-9 pr-3 py-1.5 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all"
             />
           </div>
           <div className="relative">
@@ -216,14 +218,13 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
                     key={t.id}
                     onClick={() => pick(t)}
                     className="bg-surface-container-low border border-surface-variant rounded-lg p-md flex flex-col justify-between h-[180px] card-hover transition-all cursor-pointer group relative"
-                    style={{ borderColor: "#353534" }}
                   >
                     {t.featured && (
                       <div className="absolute top-2 right-2 bg-tertiary-container/20 text-tertiary-container font-label-caps text-[9px] px-1.5 py-0.5 rounded">FEATURED</div>
                     )}
                     <div className="flex flex-col items-center text-center">
-                      <div className="w-14 h-14 rounded-xl flex items-center justify-center mb-3" style={{ background: iconBg(t), color: iconColor(t) }}>
-                        <TechIcon name={t.icon} size={30} className="" />
+                      <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-3 ${iconTone(t)}`}>
+                        <TemplateIcon template={t} size={30} />
                       </div>
                       <h3 className="font-body-md text-body-md font-semibold text-on-surface truncate w-full">{t.name}</h3>
                       <p className="font-body-sm text-body-sm text-on-surface-variant line-clamp-2 mt-1">{t.description}</p>
@@ -264,7 +265,7 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
               {isCompose ? (
                 <div className="flex flex-col gap-3">
                   <p className="font-label-caps text-[10px] text-primary/70 tracking-[0.2em] uppercase">Managed stack</p>
-                  <div className="bg-[#050505] border border-white/10 rounded-lg p-md">
+                  <div className="bg-surface-container-low border border-outline-variant rounded-lg p-md">
                     <p className="font-body-sm text-body-sm text-on-surface-variant">
                       This template deploys a full multi-service stack using its official Docker Compose (application + database + cache). Just pick a project and a name — the stack runs as-is. Start it from the services page afterwards.
                     </p>

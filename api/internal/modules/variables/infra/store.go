@@ -76,6 +76,23 @@ func (s *Store) ListVariables(ctx context.Context, projectID, environmentID uuid
 	return out, nil
 }
 
+func (s *Store) ListResolvedVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]domain.Variable, error) {
+	variables, err := s.ListVariables(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range variables {
+		if !variables[i].IsSecret || variables[i].Value == "" || s.Cipher == nil {
+			continue
+		}
+		value, decryptErr := s.Cipher.Decrypt(variables[i].Value)
+		if decryptErr == nil {
+			variables[i].Value = value
+		}
+	}
+	return variables, nil
+}
+
 func (s *Store) DeleteVariable(ctx context.Context, projectID, environmentID uuid.UUID, key string) error {
 	if environmentID == uuid.Nil {
 		return mapErr(s.q.DeleteProjectVariable(ctx, gen.DeleteProjectVariableParams{ProjectID: projectID, Key: key}))

@@ -1,0 +1,11 @@
+services:
+  plark:
+    image: plarkinc/plark@sha256:b28fd19eec1f5bcc88865016aa230c7c7bbf51874f71d64f191d1d461f151e8d
+    pull_policy: always
+    restart: unless-stopped
+    expose:
+      - "80"
+    volumes:
+      - plark-data:/var/data
+volumes:
+  plark-data:

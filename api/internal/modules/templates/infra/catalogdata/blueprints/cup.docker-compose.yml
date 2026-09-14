@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  cup:
+    image: ghcr.io/sergi0g/cup@sha256:badd075d6bf325cf21c98a95f08cef275bbe7a0d4f2abad6bd1fbc822e94d419
+    restart: unless-stopped
+    command: serve
+    expose:
+      - "8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -15,6 +15,7 @@ import (
 	"aether/internal/modules/deployments/application"
 	deploydomain "aether/internal/modules/deployments/domain"
 	templatesdomain "aether/internal/modules/templates/domain"
+	"aether/internal/platform/security"
 )
 
 type Handler struct {
@@ -23,6 +24,7 @@ type Handler struct {
 	appOps      *application.AppOps
 	logsDir     string
 	runtime     LogFollower
+	streams     *security.StreamLimiter
 	compose     interface {
 		Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
 	}
@@ -37,7 +39,7 @@ type LogFollower interface {
 }
 
 func New(deployments *application.Deployments, apps AppReader, appOps *application.AppOps, logsDir string, runtime LogFollower) *Handler {
-	return &Handler{deployments: deployments, apps: apps, appOps: appOps, logsDir: logsDir, runtime: runtime}
+	return &Handler{deployments: deployments, apps: apps, appOps: appOps, logsDir: logsDir, runtime: runtime, streams: security.NewStreamLimiter(32)}
 }
 
 func (h *Handler) WithCompose(reader interface {

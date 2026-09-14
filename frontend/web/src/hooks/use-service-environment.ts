@@ -8,10 +8,10 @@ export interface ServiceEnvironmentVariable {
   secret: boolean;
 }
 
-export function useServiceEnvironment(serviceId: string, enabled = true) {
+export function useServiceEnvironment(serviceId: string, enabled = true, includeSecrets = false) {
   return useQuery({
-    queryKey: qk.serviceEnvironment(serviceId),
-    queryFn: () => apiGet<{ env: ServiceEnvironmentVariable[] }>(`/api/v1/services/${serviceId}/environment`),
+    queryKey: [...qk.serviceEnvironment(serviceId), includeSecrets],
+    queryFn: () => apiGet<{ env: ServiceEnvironmentVariable[] }>(`/api/v1/services/${serviceId}/environment${includeSecrets ? "?secrets=1" : ""}`),
     enabled: enabled && !!serviceId,
   });
 }

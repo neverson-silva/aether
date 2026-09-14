@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  web:
+    image: ghcr.io/seanmorley15/adventurelog-frontend@sha256:51ee22428b4192f4372b54f84c8b90cd710311ad99993c5045f53b51717dd3f7
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      # Frontend needs to know where the backend is
+      PUBLIC_SERVER_URL: ${PUBLIC_SERVER_URL}
+      ORIGIN: ${ORIGIN}
+      BODY_SIZE_LIMIT: ${BODY_SIZE_LIMIT}
+
+  db:
+    image: postgis/postgis:16-3.5
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  server:
+    image: ghcr.io/seanmorley15/adventurelog-backend@sha256:418e82260939d70783f76dc0a10b7a1c32362dad5663b561dbad6a27dd4a6a7d
+    restart: unless-stopped
+    depends_on:
+      - db
+    volumes:
+      - adventurelog_media:/code/media/
+    environment:
+      # DB settings for Django
+      PGHOST: ${PGHOST}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Django app settings
+      SECRET_KEY: ${SECRET_KEY}
+      DJANGO_ADMIN_USERNAME: ${DJANGO_ADMIN_USERNAME}
+      DJANGO_ADMIN_PASSWORD: ${DJANGO_ADMIN_PASSWORD}
+      DJANGO_ADMIN_EMAIL: ${DJANGO_ADMIN_EMAIL}
+      DEBUG: ${DEBUG}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
+      FRONTEND_URL: ${FRONTEND_URL}
+      PUBLIC_URL: ${PUBLIC_URL}
+
+volumes:
+  postgres_data: {}
+  adventurelog_media: {}

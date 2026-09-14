@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +26,64 @@ func NewStore(pool *pgxpool.Pool) *Store {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+func (s *Store) CreateSession(ctx context.Context, userID, orgID uuid.UUID, expiresAt time.Time) (uuid.UUID, error) {
+	id := uuid.New()
+	err := s.db.QueryRowContext(ctx, `INSERT INTO auth_sessions (id, user_id, org_id, expires_at) VALUES ($1, $2, $3, $4) RETURNING id`, id, userID, orgID, expiresAt).Scan(&id)
+	return id, err
+}
+
+func (s *Store) GetSession(ctx context.Context, id uuid.UUID) (*domain.AuthSession, error) {
+	session := &domain.AuthSession{ID: id}
+	var revokedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT user_id, org_id, expires_at, revoked_at FROM auth_sessions WHERE id = $1`, id).Scan(&session.UserID, &session.OrgID, &session.ExpiresAt, &revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if revokedAt.Valid {
+		session.RevokedAt = &revokedAt.Time
+	}
+	return session, nil
+}
+
+func (s *Store) RevokeSession(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE id = $1`, id)
+	return err
+}
+
+func (s *Store) RevokeUserSessions(ctx context.Context, userID uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+	return err
+}
+
+func (s *Store) RevokeOrgUserSessions(ctx context.Context, orgID, userID uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE org_id = $1 AND user_id = $2 AND revoked_at IS NULL`, orgID, userID)
+	return err
+}
+
+func (s *Store) CreateRefreshToken(ctx context.Context, sessionID, tokenID uuid.UUID, tokenHash string, expiresAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO auth_refresh_tokens (id, session_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)`, tokenID, sessionID, tokenHash, expiresAt)
+	return err
+}
+
+func (s *Store) ConsumeRefreshToken(ctx context.Context, tokenHash string) (*domain.AuthSession, error) {
+	session := &domain.AuthSession{}
+	var revokedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `UPDATE auth_refresh_tokens rt SET used_at = now() FROM auth_sessions s WHERE rt.token_hash = $1 AND rt.used_at IS NULL AND rt.expires_at > now() AND s.id = rt.session_id AND s.revoked_at IS NULL AND s.expires_at > now() RETURNING s.id, s.user_id, s.org_id, s.expires_at, s.revoked_at`, tokenHash).Scan(&session.ID, &session.UserID, &session.OrgID, &session.ExpiresAt, &revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrUnauthorized
+	}
+	if err != nil {
+		return nil, err
+	}
+	if revokedAt.Valid {
+		session.RevokedAt = &revokedAt.Time
+	}
+	return session, nil
 }
 
 func (s *Store) CreateUser(ctx context.Context, email, name, passwordHash, globalRole string) (*domain.User, error) {
@@ -61,6 +120,18 @@ func (s *Store) GetUserWithSecret(ctx context.Context, id uuid.UUID) (*domain.Us
 	return userFromSecretRow(row), nil
 }
 
+func (s *Store) UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`, userID, passwordHash)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count != 1 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) HasUsers(ctx context.Context) (bool, error) {
 	return s.q.HasUsers(ctx)
 }
@@ -86,7 +157,17 @@ func (s *Store) Register(ctx context.Context, email, name, passwordHash, globalR
 		return nil, nil, err
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(817463921)`); err != nil {
+		return nil, nil, err
+	}
 	q := gen.New(tx)
+	hasUsers, err := q.HasUsers(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !hasUsers {
+		globalRole = "admin"
+	}
 	userRow, err := q.CreateUser(ctx, gen.CreateUserParams{
 		Email: email, Name: name, PasswordHash: passwordHash, GlobalRole: globalRole,
 	})

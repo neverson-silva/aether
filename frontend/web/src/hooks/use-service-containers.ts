@@ -6,6 +6,7 @@ export type ServiceContainer = {
   id: string;
   name: string;
   status: string;
+  healthy?: boolean;
 };
 
 export function useServiceContainers(id: string, enabled = true) {

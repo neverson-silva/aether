@@ -1,0 +1,16 @@
+services:
+  browserless:
+    image: ghcr.io/browserless/chromium@sha256:17c883e9d3fb464b3acaa53952ff3facc09f8d18b2c08155bdccb6371bf5c340
+    environment:
+      TOKEN: ${BROWSERLESS_TOKEN}
+    expose:
+      - 3000
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - '-f'
+        - 'http://127.0.0.1:3000/docs'
+      interval: 2s
+      timeout: 10s
+      retries: 15

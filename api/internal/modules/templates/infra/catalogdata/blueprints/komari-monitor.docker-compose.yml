@@ -1,0 +1,13 @@
+version: "3.8"
+services:
+  komari:
+    image: ghcr.io/komari-monitor/komari@sha256:a3278c88b14ad4e4250973586f08e1f71715e291f53feafe7ac7a788adcc3323
+    restart: unless-stopped
+    volumes:
+      - komari-data:/app/data
+    environment:
+      - ADMIN_USERNAME
+      - ADMIN_PASSWORD
+
+volumes:
+  komari-data: {}

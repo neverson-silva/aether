@@ -54,6 +54,15 @@ for f in build.gradle build.gradle.kts; do
 done
 echo "aether/jvm-server: Java major=$JAVA_MAJOR graalvm=$GRAALVM arch=$ARCH"
 
+download_temurin() {
+  local metadata link checksum
+  metadata="$(curl -fsSL "https://api.adoptium.net/v3/assets/latest/$JAVA_MAJOR/hotspot?architecture=$ARCH&image_type=jdk&os=linux&vendor=eclipse")"
+  link="$(printf '%s' "$metadata" | jq -er '.[0].binary.package.link')"
+  checksum="$(printf '%s' "$metadata" | jq -er '.[0].binary.package.checksum')"
+  curl -fsSLo /tmp/jdk.tar.gz "$link"
+  echo "$checksum  /tmp/jdk.tar.gz" | sha256sum -c -
+}
+
 # ---------------------------------------------------------------------------
 # JDK
 # ---------------------------------------------------------------------------
@@ -64,17 +73,18 @@ if [ "$GRAALVM" = 1 ]; then
   GTAG="$(echo "$RELEASES" | grep -oE '"tag_name": *"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"/\1/' || true)"
   if [ -z "$GASSET" ] || [ -z "$GTAG" ]; then
     echo "aether/jvm-server: GraalVM não encontrado para $ARCH — fallback Temurin"
-    curl -fsSLo /tmp/jdk.tar.gz "https://api.adoptium.net/v3/binary/latest/$JAVA_MAJOR/ga/linux/$ARCH/jdk/hotspot/normal/eclipse"
+    download_temurin
   else
     echo "aether/jvm-server: GraalVM asset $GASSET"
     curl -fsSLo /tmp/jdk.tar.gz "https://github.com/graalvm/graalvm-ce-builds/releases/download/$GTAG/$GASSET"
+    curl -fsSL "https://github.com/graalvm/graalvm-ce-builds/releases/download/$GTAG/$GASSET.sha256" | awk '{print $1 "  /tmp/jdk.tar.gz"}' | sha256sum -c -
   fi
   mkdir -p "$jdk_layer"
   tar -xzf /tmp/jdk.tar.gz -C "$jdk_layer" --strip-components=1
   rm -f /tmp/jdk.tar.gz
 else
   echo "aether/jvm-server: instalando Temurin JDK $JAVA_MAJOR..."
-  curl -fsSLo /tmp/jdk.tar.gz "https://api.adoptium.net/v3/binary/latest/$JAVA_MAJOR/ga/linux/$ARCH/jdk/hotspot/normal/eclipse"
+  download_temurin
   mkdir -p "$jdk_layer"
   tar -xzf /tmp/jdk.tar.gz -C "$jdk_layer" --strip-components=1
   rm -f /tmp/jdk.tar.gz
@@ -106,6 +116,7 @@ if [ "$USE_GRADLE" = 1 ]; then
     GVER="$(curl -fsSL https://services.gradle.org/versions/current | grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"/\1/' || true)"
     GVER="${GVER:-8.14.3}"
     curl -fsSLo /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-$GVER-bin.zip"
+    curl -fsSL "https://services.gradle.org/distributions/gradle-$GVER-bin.zip.sha256" | awk '{print $1 "  /tmp/gradle.zip"}' | sha256sum -c -
     unzip -q /tmp/gradle.zip -d "$tools_layer"
     rm -f /tmp/gradle.zip
     ln -sf "$tools_layer"/gradle-*/bin/gradle "$tools_layer/bin/gradle"
@@ -144,6 +155,7 @@ else
   echo "aether/jvm-server: baixando Maven..."
   MVER="3.9.11"
   curl -fsSLo /tmp/mvn.tgz "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/$MVER/apache-maven-$MVER-bin.tar.gz"
+  curl -fsSL "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/$MVER/apache-maven-$MVER-bin.tar.gz.sha512" | awk '{print $1 "  /tmp/mvn.tgz"}' | sha512sum -c -
   tar -xzf /tmp/mvn.tgz -C "$tools_layer" --strip-components=1
   rm -f /tmp/mvn.tgz
   export MAVEN_OPTS="-Dmaven.repo.local=$tools_layer/.m2"

@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  peppermint-postgres:
+    image: postgres@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    restart: always
+
+    volumes:
+      - peppermint-postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: peppermint
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: peppermint
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U peppermint"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  peppermint-app:
+    image: pepperlabs/peppermint@sha256:d13932713561c8d69baea49820ba2d42ea145b28193b6a7e33950a05812406fd
+    restart: always
+
+    depends_on:
+      peppermint-postgres:
+        condition: service_healthy
+    environment:
+      DB_USERNAME: "peppermint"
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: "peppermint-postgres"
+      SECRET: ${SECRET}
+
+volumes:
+  peppermint-postgres-data: 

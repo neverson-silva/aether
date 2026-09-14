@@ -1,0 +1,10 @@
+services:
+  dumbdrop:
+    image: dumbwareio/dumbdrop@sha256:8a377413d4e041410ec734deb1ad085caa3adfeebeab0f6f342272d234b86e52
+    restart: unless-stopped
+    expose:
+      - 3000
+    volumes:
+      - dumbdrop-uploads:/app/uploads
+volumes:
+  dumbdrop-uploads: {}

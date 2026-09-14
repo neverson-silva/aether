@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  apprise-api:
+    image: linuxserver/apprise-api@sha256:72b172a2953b423d1693cf0da946436616f0e3ef10d748dd36c13e08d2fa26c6
+    restart: unless-stopped
+    expose:
+      - 8000
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - config:/config
+
+volumes:
+  config: {} 

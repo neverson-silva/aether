@@ -29,6 +29,7 @@ type Auth struct {
 	Tokens   domain.TokenSigner
 	Hash     domain.PasswordHasher
 	SSO      SSOProviderLister
+	Sessions domain.SessionStore
 
 	TokenTTL time.Duration
 }
@@ -101,20 +102,72 @@ func (a *Auth) Refresh(ctx context.Context, raw string) (string, string, error) 
 	if err != nil || token.Kind != "refresh" {
 		return "", "", domain.ErrUnauthorized
 	}
-	access, err := a.Tokens.Sign(ctx, token.Subject, token.OrgID, token.Role, token.Global, 10*time.Minute)
+	if a.Sessions != nil {
+		if token.SessionID == uuid.Nil || token.TokenID == uuid.Nil {
+			return "", "", domain.ErrUnauthorized
+		}
+		session, err := a.Sessions.ConsumeRefreshToken(ctx, hashKey(raw))
+		if err != nil || session.ID != token.SessionID {
+			return "", "", domain.ErrUnauthorized
+		}
+	}
+	user, member, err := a.currentIdentity(ctx, token)
 	if err != nil {
 		return "", "", err
 	}
-	refresh, err := a.Tokens.SignRefreshUntil(ctx, token.Subject, token.OrgID, token.Role, token.Global, token.Expires)
+	access, err := a.signSession(ctx, token.SessionID, user, token.OrgID, member.Role)
+	if err != nil {
+		return "", "", err
+	}
+	refresh, err := a.issueRefreshSession(ctx, token.SessionID, user, token.OrgID, member.Role, token.Expires)
 	return access, refresh, err
 }
 
 func (a *Auth) CreateRefresh(ctx context.Context, raw string) (string, error) {
 	token, err := a.Tokens.Verify(ctx, raw)
-	if err != nil {
+	if err != nil || token.Kind != "access" {
 		return "", domain.ErrUnauthorized
 	}
-	return a.Tokens.SignRefresh(ctx, token.Subject, token.OrgID, token.Role, token.Global, 20*time.Minute)
+	if _, _, err := a.currentIdentity(ctx, token); err != nil {
+		return "", err
+	}
+	return a.issueRefreshSession(ctx, token.SessionID, &domain.User{ID: token.Subject, GlobalRole: token.Global}, token.OrgID, token.Role, time.Now().Add(20*time.Minute))
+}
+
+func (a *Auth) ValidateAccessToken(ctx context.Context, token *domain.AuthToken) error {
+	if token == nil || token.Kind != "access" {
+		return domain.ErrUnauthorized
+	}
+	_, _, err := a.currentIdentity(ctx, token)
+	return err
+}
+
+func (a *Auth) RevokeSession(ctx context.Context, sessionID uuid.UUID) error {
+	if a.Sessions == nil || sessionID == uuid.Nil {
+		return nil
+	}
+	return a.Sessions.RevokeSession(ctx, sessionID)
+}
+
+func (a *Auth) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error {
+	if len(newPassword) < 8 || currentPassword == "" || currentPassword == newPassword {
+		return domain.ErrValidation
+	}
+	user, err := a.Users.GetUserWithSecret(ctx, userID)
+	if err != nil || !a.Hash.Verify(ctx, currentPassword, user.PasswordHash) {
+		return domain.ErrInvalidCredentials
+	}
+	hash, err := a.Hash.Hash(ctx, newPassword)
+	if err != nil {
+		return err
+	}
+	if err := a.Users.UpdatePassword(ctx, userID, hash); err != nil {
+		return err
+	}
+	if a.Sessions != nil {
+		return a.Sessions.RevokeUserSessions(ctx, userID)
+	}
+	return nil
 }
 
 func (a *Auth) SSOLogin(ctx context.Context, email, name string) (*domain.User, string, error) {
@@ -203,7 +256,13 @@ func (a *Auth) UpdateMemberRole(ctx context.Context, orgID, actorID, targetID uu
 	if !role.Valid() {
 		return domain.ErrValidation
 	}
-	return a.Members.UpdateRole(ctx, orgID, targetID, role)
+	if err := a.Members.UpdateRole(ctx, orgID, targetID, role); err != nil {
+		return err
+	}
+	if a.Sessions != nil {
+		return a.Sessions.RevokeOrgUserSessions(ctx, orgID, targetID)
+	}
+	return nil
 }
 
 func (a *Auth) Status(ctx context.Context, userID uuid.UUID) (bool, error) {
@@ -298,11 +357,85 @@ func (a *Auth) VerifyTOTP(ctx context.Context, userID uuid.UUID, code string) er
 }
 
 func (a *Auth) DisableTOTP(ctx context.Context, userID uuid.UUID) error {
-	return a.Users.DisableTOTP(ctx, userID)
+	if err := a.Users.DisableTOTP(ctx, userID); err != nil {
+		return err
+	}
+	if a.Sessions != nil {
+		return a.Sessions.RevokeUserSessions(ctx, userID)
+	}
+	return nil
 }
 
 func (a *Auth) sign(ctx context.Context, user *domain.User, orgID uuid.UUID, role domain.Role) (string, error) {
+	if a.Sessions == nil {
+		return a.Tokens.Sign(ctx, user.ID, orgID, role, user.GlobalRole, a.TokenTTL)
+	}
+	sessionID, err := a.Sessions.CreateSession(ctx, user.ID, orgID, time.Now().Add(20*time.Minute))
+	if err != nil {
+		return "", err
+	}
+	return a.signSession(ctx, sessionID, user, orgID, role)
+}
+
+func (a *Auth) signSession(ctx context.Context, sessionID uuid.UUID, user *domain.User, orgID uuid.UUID, role domain.Role) (string, error) {
+	if signer, ok := a.Tokens.(domain.SessionTokenSigner); ok {
+		return signer.SignWithSession(ctx, sessionID, user.ID, orgID, role, user.GlobalRole, a.TokenTTL)
+	}
 	return a.Tokens.Sign(ctx, user.ID, orgID, role, user.GlobalRole, a.TokenTTL)
+}
+
+func (a *Auth) signRefreshSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	if signer, ok := a.Tokens.(domain.SessionTokenSigner); ok {
+		return signer.SignRefreshWithSession(ctx, sessionID, subject, orgID, role, global, ttl)
+	}
+	return a.Tokens.SignRefresh(ctx, subject, orgID, role, global, ttl)
+}
+
+func (a *Auth) signRefreshSessionUntil(ctx context.Context, sessionID uuid.UUID, user *domain.User, orgID uuid.UUID, role domain.Role, expiresAt time.Time) (string, error) {
+	if signer, ok := a.Tokens.(domain.SessionTokenSigner); ok {
+		return signer.SignRefreshUntilWithSession(ctx, sessionID, user.ID, orgID, role, user.GlobalRole, expiresAt)
+	}
+	return a.Tokens.SignRefreshUntil(ctx, user.ID, orgID, role, user.GlobalRole, expiresAt)
+}
+
+func (a *Auth) issueRefreshSession(ctx context.Context, sessionID uuid.UUID, user *domain.User, orgID uuid.UUID, role domain.Role, expiresAt time.Time) (string, error) {
+	issuer, ok := a.Tokens.(domain.RefreshTokenIssuer)
+	if !ok || a.Sessions == nil || sessionID == uuid.Nil {
+		return a.signRefreshSessionUntil(ctx, sessionID, user, orgID, role, expiresAt)
+	}
+	token, tokenID, err := issuer.IssueRefreshWithSession(ctx, sessionID, user.ID, orgID, role, user.GlobalRole, expiresAt)
+	if err != nil {
+		return "", err
+	}
+	if err := a.Sessions.CreateRefreshToken(ctx, sessionID, tokenID, hashKey(token), expiresAt); err != nil {
+		_ = a.Sessions.RevokeSession(ctx, sessionID)
+		return "", err
+	}
+	return token, nil
+}
+
+func (a *Auth) currentIdentity(ctx context.Context, token *domain.AuthToken) (*domain.User, *domain.Member, error) {
+	if a.Users == nil || a.Members == nil {
+		return nil, nil, domain.ErrUnauthorized
+	}
+	user, err := a.Users.GetUserByID(ctx, token.Subject)
+	if err != nil {
+		return nil, nil, domain.ErrUnauthorized
+	}
+	member, err := a.Members.GetMember(ctx, token.OrgID, token.Subject)
+	if err != nil || member.Role != token.Role || user.GlobalRole != token.Global {
+		return nil, nil, domain.ErrUnauthorized
+	}
+	if a.Sessions != nil {
+		if token.SessionID == uuid.Nil {
+			return nil, nil, domain.ErrUnauthorized
+		}
+		session, err := a.Sessions.GetSession(ctx, token.SessionID)
+		if err != nil || session.UserID != token.Subject || session.OrgID != token.OrgID || session.RevokedAt != nil || !session.ExpiresAt.After(time.Now()) {
+			return nil, nil, domain.ErrUnauthorized
+		}
+	}
+	return user, member, nil
 }
 
 func validateAuth(email, name, password string) error {

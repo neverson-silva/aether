@@ -1,25 +1,27 @@
 import axios, { AxiosError } from "axios";
 
-const TOKEN_KEY = "aether_token";
-const REFRESH_KEY = "aether_refresh_token";
 const ORG_KEY = "aether_org";
-let refreshPromise: Promise<string> | null = null;
+let refreshPromise: Promise<void> | null = null;
 
 export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || "";
+	return "";
 }
 
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
+export function setToken(_token: string) {}
 
-export function setRefreshToken(token: string) { localStorage.setItem(REFRESH_KEY, token); }
-export function getRefreshToken(): string { return localStorage.getItem(REFRESH_KEY) || ""; }
+export function setRefreshToken(_token: string) {}
+export function getRefreshToken(): string { return ""; }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-  localStorage.removeItem(ORG_KEY);
+	localStorage.removeItem(ORG_KEY);
+}
+
+export async function logout() {
+  try {
+    await http.post("/api/v1/auth/logout");
+  } finally {
+    clearToken();
+  }
 }
 
 export function getServer(): string {
@@ -42,17 +44,13 @@ export function isPublicRoute(): boolean {
   return p === "/login" || p === "/onboarding";
 }
 
-async function refreshAccessToken(): Promise<string> {
+async function refreshAccessToken(): Promise<void> {
   if (!refreshPromise) {
-    refreshPromise = http.post<{ token: string; refresh_token: string }>("/api/v1/auth/refresh", { refresh_token: getRefreshToken() })
-      .then((response) => {
-        setToken(response.data.token);
-        setRefreshToken(response.data.refresh_token);
-        return response.data.token;
-      })
+    refreshPromise = http.post("/api/v1/auth/refresh")
+      .then(() => undefined)
       .finally(() => { refreshPromise = null; });
   }
-  return refreshPromise;
+  return refreshPromise as Promise<void>;
 }
 
 export class ApiError extends Error {
@@ -70,10 +68,6 @@ http.interceptors.request.use((config) => {
   if (orgId) {
     config.headers["X-Aether-Org"] = orgId;
   }
-  const token = getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
   return config;
 });
 
@@ -81,11 +75,10 @@ http.interceptors.response.use(
   (res) => res,
   async (err: AxiosError<{ error?: string }>) => {
     const config = err.config as (typeof err.config & { _retry?: boolean }) | undefined;
-    if (err.response?.status === 401 && config && !config._retry && getRefreshToken() && !config.url?.endsWith("/auth/refresh")) {
+    if (err.response?.status === 401 && config && !config._retry && !config.url?.endsWith("/auth/refresh")) {
       config._retry = true;
       try {
-        const token = await refreshAccessToken();
-        config.headers.Authorization = `Bearer ${token}`;
+        await refreshAccessToken();
         return http.request(config);
       } catch { clearToken(); }
     }

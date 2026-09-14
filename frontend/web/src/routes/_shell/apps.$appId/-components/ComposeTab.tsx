@@ -62,7 +62,7 @@ export function ComposeTab({ appID, initialCompose, canonicalService = false, ex
           <Code size={16} className="text-primary" />
           <span className="font-code-md text-[12px] text-on-surface">docker-compose.yml</span>
           <span className="font-code-md text-[11px] text-on-surface-variant/60">{lines} lines</span>
-          <span className="px-1.5 py-0.5 rounded bg-[#4ade80]/10 border border-[#4ade80]/20 font-code-md text-[10px] text-[#4ade80]">
+          <span className="px-1.5 py-0.5 rounded bg-status-success-container/20 border border-status-success/30 font-code-md text-[10px] text-status-success">
             generated from spec
           </span>
         </div>
@@ -80,11 +80,11 @@ export function ComposeTab({ appID, initialCompose, canonicalService = false, ex
           </button>
           {showRuntimeExports && exportID && (
             <>
-              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=kubernetes`, "_blank")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Kubernetes manifest">
+              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=kubernetes`, "_blank", "noopener,noreferrer")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Kubernetes manifest">
                 <Export size={14} />
                 Kubernetes
               </button>
-              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=nomad`, "_blank")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Nomad job">
+              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=nomad`, "_blank", "noopener,noreferrer")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Nomad job">
                 <TerminalWindow size={14} />
                 Nomad
               </button>

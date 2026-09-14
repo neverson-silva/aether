@@ -22,6 +22,9 @@ import (
 )
 
 func (s *DatabaseBackups) RequestRestore(ctx context.Context, backupID, targetDBID, orgID uuid.UUID) (*domain.RestoreJob, error) {
+	if err := s.ensureOrganizationCapacity(ctx, orgID); err != nil {
+		return nil, err
+	}
 	backup, err := s.GetBackup(ctx, backupID, orgID)
 	if err != nil {
 		return nil, err
@@ -60,6 +63,9 @@ func (s *DatabaseBackups) RequestRestore(ctx context.Context, backupID, targetDB
 }
 
 func (s *DatabaseBackups) CreateUploadRestore(ctx context.Context, dbID, orgID uuid.UUID, filename string) (*domain.RestoreJob, error) {
+	if err := s.ensureOrganizationCapacity(ctx, orgID); err != nil {
+		return nil, err
+	}
 	target, err := s.Databases.Get(ctx, dbID, orgID)
 	if err != nil {
 		return nil, err
@@ -91,6 +97,9 @@ func (s *DatabaseBackups) WriteUpload(ctx context.Context, dbID, restoreID, orgI
 		_ = s.failUploadRestore(ctx, job, "RESTORE_UPLOAD_TOO_LARGE", fmt.Sprintf("file exceeds the maximum upload size of %d bytes", maxBytes))
 		return job, domain.ErrValidation
 	}
+	if err := s.ensureUploadCapacity(ctx, orgID, expectedSize); err != nil {
+		return nil, err
+	}
 	if expectedSize > 0 {
 		if err := s.ensureDiskSpace(ctx, expectedSize); err != nil {
 			_ = s.failUploadRestore(ctx, job, "RESTORE_DISK_FULL", err.Error())
@@ -110,7 +119,7 @@ func (s *DatabaseBackups) WriteUpload(ctx context.Context, dbID, restoreID, orgI
 		return job, err
 	}
 	hash := sha256.New()
-	file, err := os.Create(s.uploadArtifactPath(job.ID))
+	file, err := os.OpenFile(s.uploadArtifactPath(job.ID), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		_ = s.failUploadRestore(ctx, job, "RESTORE_UPLOAD_STORAGE_FAILED", err.Error())
 		return job, err
@@ -122,6 +131,9 @@ func (s *DatabaseBackups) WriteUpload(ctx context.Context, dbID, restoreID, orgI
 	for {
 		n, readErr := src.Read(buffer)
 		if n > 0 {
+			if err := s.ensureUploadCapacity(ctx, orgID, uploaded+int64(n)); err != nil {
+				return nil, err
+			}
 			if uploaded+int64(n) > maxBytes {
 				s.removeUploadArtifact(job.ID)
 				_ = s.failUploadRestore(ctx, job, "RESTORE_UPLOAD_TOO_LARGE", fmt.Sprintf("file exceeds the maximum upload size of %d bytes", maxBytes))
@@ -376,7 +388,7 @@ func validateUploadEngine(engine string) error {
 
 func (s *DatabaseBackups) maxUploadBytes() int64 {
 	if s.MaxUploadBytes <= 0 {
-		return 20 << 30
+		return 2 << 30
 	}
 	return s.MaxUploadBytes
 }

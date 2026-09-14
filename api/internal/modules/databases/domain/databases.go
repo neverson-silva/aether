@@ -83,3 +83,7 @@ type Store interface {
 	UpdateDatabasePort(ctx context.Context, id uuid.UUID, port int) error
 	DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error
 }
+
+type OrganizationStorageUsage interface {
+	OrganizationStorageMB(ctx context.Context, orgID uuid.UUID) (int, error)
+}

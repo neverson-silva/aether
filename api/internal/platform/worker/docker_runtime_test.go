@@ -109,6 +109,15 @@ func TestDockerContextContainsRelativeFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "nested", "app.txt"), []byte("ok"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("SECRET=leak"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git", "config"), []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	archive, err := dockerContext(root)
 	if err != nil {
 		t.Fatal(err)
@@ -133,12 +142,37 @@ func TestDockerContextContainsRelativeFiles(t *testing.T) {
 	if entries["Dockerfile"] != "FROM alpine\n" || entries["nested/app.txt"] != "ok" {
 		t.Fatalf("archive entries = %+v", entries)
 	}
+	if _, ok := entries[".env"]; ok {
+		t.Fatal("archive included .env")
+	}
+	if _, ok := entries[".git/config"]; ok {
+		t.Fatal("archive included .git/config")
+	}
 }
 
 func TestDockerContextRejectsMissingDirectory(t *testing.T) {
 	_, err := dockerContext(filepath.Join(t.TempDir(), "missing"))
 	if err == nil {
 		t.Fatal("expected missing build context error")
+	}
+}
+
+func TestDockerContextRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "outside.txt"), []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "outside.txt"), filepath.Join(root, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := dockerContext(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	_, err = io.ReadAll(archive)
+	if err == nil || !strings.Contains(err.Error(), "unsupported symlink") {
+		t.Fatalf("expected symlink rejection, got %v", err)
 	}
 }
 
@@ -152,6 +186,48 @@ func TestDockerRuntimeCloseIsIdempotent(t *testing.T) {
 	}
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDefaultWorkloadHostConfigHardensCommandContainers(t *testing.T) {
+	config := defaultWorkloadHostConfig()
+	if len(config.CapDrop) != 1 || config.CapDrop[0] != "ALL" {
+		t.Fatalf("capabilities dropped = %#v", config.CapDrop)
+	}
+	if len(config.CapAdd) != 4 || config.CapAdd[0] != "CHOWN" || config.CapAdd[1] != "SETUID" || config.CapAdd[2] != "SETGID" || config.CapAdd[3] != "NET_BIND_SERVICE" {
+		t.Fatalf("capabilities added = %#v", config.CapAdd)
+	}
+	if len(config.SecurityOpt) != 1 || config.SecurityOpt[0] != "no-new-privileges:true" {
+		t.Fatalf("security options = %#v", config.SecurityOpt)
+	}
+	if config.IpcMode != container.IPCModePrivate {
+		t.Fatalf("IPC mode = %q", config.IpcMode)
+	}
+	if config.Memory != defaultContainerMemoryMB*1024*1024 || config.PidsLimit == nil || *config.PidsLimit != 256 {
+		t.Fatalf("resource limits = %+v", config.Resources)
+	}
+}
+
+func TestCommandHostConfigUsesEphemeralWritableTmp(t *testing.T) {
+	config := commandHostConfig()
+	if !config.ReadonlyRootfs {
+		t.Fatal("command container root filesystem must be read-only")
+	}
+	if config.Tmpfs["/tmp"] != "rw,noexec,nosuid,nodev" {
+		t.Fatalf("tmpfs configuration = %#v", config.Tmpfs)
+	}
+}
+
+func TestValidateRuntimeMountRejectsHostSensitiveSources(t *testing.T) {
+	for _, source := range []string{"/", "/etc", "/proc/1/root", "/var/run/docker.sock", "../host", "tenant/$HOME"} {
+		if err := validateRuntimeMount(source); err == nil {
+			t.Fatalf("mount source %q was accepted", source)
+		}
+	}
+	for _, source := range []string{"aether-data", "/Users/neverson/.aether/snapshots"} {
+		if err := validateRuntimeMount(source); err != nil {
+			t.Fatalf("mount source %q was rejected: %v", source, err)
+		}
 	}
 }
 

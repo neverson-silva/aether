@@ -45,6 +45,9 @@ func TestRegisterLoginMe(t *testing.T) {
 	if user.Email != "alice@example.com" || user.ID == (uuid.UUID{}) {
 		t.Fatalf("user inesperado: %+v", user)
 	}
+	if user.GlobalRole != "admin" {
+		t.Fatalf("first user global role = %q, want admin", user.GlobalRole)
+	}
 	if token == "" {
 		t.Fatalf("token vazio")
 	}

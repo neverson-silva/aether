@@ -67,3 +67,32 @@ func TestRateLimitMiddleware(t *testing.T) {
 		t.Fatalf("segunda requisição deveria ser 429, got %d", code)
 	}
 }
+
+func TestRateLimitDoesNotConsumeStatusRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rl := NewRateLimiter(1, 1)
+	engine := gin.New()
+	engine.GET("/auth/status", func(c *gin.Context) { c.Status(http.StatusOK) })
+	engine.POST("/auth/login", RateLimit(rl), func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	request := func(method, path string) int {
+		recorder := httptest.NewRecorder()
+		httpRequest := httptest.NewRequest(method, path, nil)
+		httpRequest.RemoteAddr = "10.0.0.1:1234"
+		engine.ServeHTTP(recorder, httpRequest)
+		return recorder.Code
+	}
+
+	if code := request(http.MethodGet, "/auth/status"); code != http.StatusOK {
+		t.Fatalf("status request should be allowed, got %d", code)
+	}
+	if code := request(http.MethodGet, "/auth/status"); code != http.StatusOK {
+		t.Fatalf("repeated status request should be allowed, got %d", code)
+	}
+	if code := request(http.MethodPost, "/auth/login"); code != http.StatusOK {
+		t.Fatalf("first login request should be allowed, got %d", code)
+	}
+	if code := request(http.MethodPost, "/auth/login"); code != http.StatusTooManyRequests {
+		t.Fatalf("second login request should be rate limited, got %d", code)
+	}
+}

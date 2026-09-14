@@ -68,16 +68,26 @@ func TestScheduleLifecycle(t *testing.T) {
 	if sched.Retention != 7 || !sched.Enabled {
 		t.Fatalf("defaults inesperados: %+v", sched)
 	}
+	limited, err := e.svc.CreateSchedule(e.ctx, e.orgID, nil, "data", "limited", "0 2 * * *", maxSnapshotRetention+1, true)
+	if err != nil {
+		t.Fatalf("create limited schedule: %v", err)
+	}
+	if limited.Retention != maxSnapshotRetention {
+		t.Fatalf("retention = %d, want %d", limited.Retention, maxSnapshotRetention)
+	}
 	if _, err := e.svc.CreateSchedule(e.ctx, e.orgID, nil, "data", "bad", "not-cron", 5, true); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("cron inválido deveria falhar: %v", err)
 	}
 
 	list, err := e.svc.ListSchedules(e.ctx, e.orgID)
-	if err != nil || len(list) != 1 {
+	if err != nil || len(list) != 2 {
 		t.Fatalf("list schedules: %v %d", err, len(list))
 	}
 
 	if err := e.svc.DeleteSchedule(e.ctx, sched.ID, e.orgID); err != nil {
 		t.Fatalf("delete schedule: %v", err)
+	}
+	if err := e.svc.DeleteSchedule(e.ctx, limited.ID, e.orgID); err != nil {
+		t.Fatalf("delete limited schedule: %v", err)
 	}
 }

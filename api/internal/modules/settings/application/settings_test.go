@@ -246,7 +246,7 @@ func (s *stubDiscoverer) AuthURL(ctx context.Context, issuer, clientID, scopes, 
 	return s.url, s.err
 }
 
-func (s *stubDiscoverer) Exchange(ctx context.Context, issuer, clientID, clientSecret, providerID, code string) (*domain.OIDCUser, error) {
+func (s *stubDiscoverer) Exchange(ctx context.Context, issuer, clientID, clientSecret, providerID, code, state string) (*domain.OIDCUser, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -311,7 +311,7 @@ func TestOIDCCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create oidc: %v", err)
 	}
-	user, err := e.svc.OIDCCallback(e.ctx, provider.ID, "code123")
+	user, err := e.svc.OIDCCallback(e.ctx, provider.ID, "code123", "state123")
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestOIDCCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create disabled: %v", err)
 	}
-	if _, err := e.svc.OIDCCallback(e.ctx, disabled.ID, "code"); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := e.svc.OIDCCallback(e.ctx, disabled.ID, "code", "state"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("disabled deveria bloquear: %v", err)
 	}
 }

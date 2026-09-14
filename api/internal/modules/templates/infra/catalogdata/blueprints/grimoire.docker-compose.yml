@@ -1,0 +1,10 @@
+services:
+  grimoire:
+    image: goniszewski/grimoire@sha256:50f700527c95b3cdd48be30ebf2b824c2f0634837eb597a2b6a8ba005920a23c
+    restart: unless-stopped
+    volumes:
+      - grimoire_data:/app/data
+    expose:
+      - "5173"
+volumes:
+  grimoire_data: {}

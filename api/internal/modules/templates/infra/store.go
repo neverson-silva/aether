@@ -30,33 +30,6 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) ListTemplates(ctx context.Context, filter domain.Filter) ([]domain.Template, error) {
-	rows, err := s.q.ListTemplates(ctx, gen.ListTemplatesParams{
-		Column1: filter.Category, Column2: filter.Search, Column3: filter.Featured,
-		Column4: filter.Verified, Column5: filter.EditorsChoice,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.Template, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, *templateFromRow(gen.GetTemplateRow(r)))
-	}
-	return out, nil
-}
-
-func (s *Store) GetTemplate(ctx context.Context, id uuid.UUID) (*domain.Template, error) {
-	row, err := s.q.GetTemplate(ctx, id)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return templateFromRow(row), nil
-}
-
-func (s *Store) IncrementInstalls(ctx context.Context, id uuid.UUID) error {
-	return mapErr(s.q.IncrementTemplateInstalls(ctx, id))
-}
-
 func (s *Store) CreateComposeApp(ctx context.Context, app *domain.ComposeApp) (*domain.ComposeApp, error) {
 	row, err := s.q.CreateComposeApp(ctx, gen.CreateComposeAppParams{
 		OrgID: app.OrgID, ProjectID: app.ProjectID, EnvironmentID: nullUUIDPtr(app.EnvironmentID),
@@ -72,7 +45,7 @@ func (s *Store) NextComposePort(ctx context.Context) (int, error) {
 	var port int
 	err := s.db.QueryRowContext(ctx, `
 SELECT candidate
-FROM generate_series(1000, 1999) AS candidate
+FROM generate_series(1024, 1999) AS candidate
 WHERE NOT EXISTS (SELECT 1 FROM compose_apps WHERE compose_apps.port = candidate)
   AND NOT EXISTS (SELECT 1 FROM apps WHERE apps.port = candidate)
   AND NOT EXISTS (SELECT 1 FROM databases WHERE databases.port = candidate)
@@ -115,16 +88,6 @@ func (s *Store) DeleteComposeApp(ctx context.Context, id, orgID uuid.UUID) error
 
 func (s *Store) SetComposeStatus(ctx context.Context, id uuid.UUID, status string) error {
 	return mapErr(s.q.SetComposeStatus(ctx, gen.SetComposeStatusParams{ID: id, Status: status}))
-}
-
-func templateFromRow(row gen.GetTemplateRow) *domain.Template {
-	return &domain.Template{
-		ID: row.ID, Name: row.Name, Description: row.Description, Category: row.Category,
-		Icon: row.Icon, Version: row.Version, Definition: row.Definition, Readme: row.Readme,
-		Homepage: row.Homepage, GitHub: row.Github, License: row.License, Installs: int(row.Installs),
-		Featured: row.Featured, Verified: row.Verified, EditorsChoice: row.EditorsChoice,
-		Tags: row.Tags, UpdatedAt: row.UpdatedAt, ComposeYAML: row.ComposeYaml,
-	}
 }
 
 func composeFromParts(id, serviceID, orgID, projectID uuid.UUID, environmentID uuid.NullUUID, name, compose string, port int, status string, createdAt time.Time) *domain.ComposeApp {

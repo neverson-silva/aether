@@ -1,0 +1,18 @@
+services:
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web@sha256:d5ad2aaf36f83dc56d70a589cb5a8788f998bdb9d4e495e8276e6302808c5265
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      # - DOCKER_MODS=linuxserver/mods:universal-calibre # optional
+      - OAUTHLIB_RELAX_TOKEN_SCOPE=1 # optional
+    volumes:
+      - calibre-config:/config
+      - calibre-books:/books
+      - ../files/startup-scripts:/custom-cont-init.d:ro # optional, comment out if you have your own metadata.db file, otherwise it will be created
+
+volumes:
+  calibre-config: {}
+  calibre-books: {}

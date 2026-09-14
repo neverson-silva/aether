@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,17 +14,104 @@ import (
 )
 
 const requestIDKey = "request_id"
+const maxRequestBodyBytes int64 = 16 << 20
+
+func RequestBodyLimit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.Contains(path, "/restores/") && (strings.HasSuffix(path, "/upload") || strings.HasSuffix(path, "/validate")) || strings.HasSuffix(path, "/upload/zip") {
+			c.Next()
+			return
+		}
+		if c.Request.ContentLength > maxRequestBodyBytes {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBodyBytes)
+		c.Next()
+	}
+}
+
+func SecurityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/v1/auth/") {
+			c.Header("Cache-Control", "no-store")
+			c.Header("Pragma", "no-cache")
+		}
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		if c.Request.TLS != nil {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		c.Next()
+	}
+}
+
+func CSRFProtection(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowed[strings.TrimRight(strings.TrimSpace(origin), "/")] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		switch c.Request.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+			c.Next()
+			return
+		}
+		_, accessErr := c.Cookie("aether_token")
+		_, refreshErr := c.Cookie("aether_refresh")
+		if accessErr != nil && refreshErr != nil {
+			c.Next()
+			return
+		}
+		origin := strings.TrimRight(strings.TrimSpace(c.GetHeader("Origin")), "/")
+		if origin == "" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "origin required for cookie-authenticated request"})
+			return
+		}
+		if _, ok := allowed[origin]; ok {
+			c.Next()
+			return
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Host != c.Request.Host {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cross-site request blocked"})
+			return
+		}
+		c.Next()
+	}
+}
 
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader("X-Request-ID")
-		if id == "" {
+		if !validRequestID(id) {
 			id = uuid.NewString()
 		}
 		c.Set(requestIDKey, id)
 		c.Writer.Header().Set("X-Request-ID", id)
 		c.Next()
 	}
+}
+
+func validRequestID(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' {
+			continue
+		}
+		switch character {
+		case '-', '.', ':', '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func RequestLogger(logger *slog.Logger) gin.HandlerFunc {
@@ -79,7 +168,7 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 func Timeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/api/v1/ws/") || (strings.Contains(path, "/backups/") && strings.HasSuffix(path, "/restore")) || strings.Contains(path, "/restores/") && strings.HasSuffix(path, "/upload") {
+		if strings.HasPrefix(path, "/api/v1/ws/") || strings.Contains(path, "/backups/") && strings.HasSuffix(path, "/restore") || strings.Contains(path, "/restores/") && strings.HasSuffix(path, "/upload") || strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/event-stream") {
 			c.Next()
 			return
 		}

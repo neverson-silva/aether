@@ -39,8 +39,10 @@ install_php_static() {
   ver="$(curl -fsSL "https://dl.static-php.dev/static-php-cli/common/" \
     | grep -oE "php-${major}\.[0-9]+\.[0-9]+-cli-linux-${ARCH}\.tar\.gz" | sort -uV | tail -1 || true)"
   [ -n "$ver" ] || { echo "aether/php-server: nenhuma versão ${major}.x estática disponível"; return 1; }
+  [ -n "${AETHER_PHP_SHA256:-}" ] || { echo "aether/php-server: AETHER_PHP_SHA256 is required for static PHP"; return 1; }
   echo "aether/php-server: baixando PHP estático $ver ($ARCH)..."
   curl -fsSLo /tmp/php.tgz "https://dl.static-php.dev/static-php-cli/common/$ver"
+  echo "$AETHER_PHP_SHA256  /tmp/php.tgz" | sha256sum -c -
   tar -xzf /tmp/php.tgz -C "$dest"
   rm -f /tmp/php.tgz
   return 0
@@ -90,6 +92,9 @@ php --version | head -1
 if [ -f /workspace/composer.json ]; then
   echo "aether/php-server: instalando Composer..."
   curl -fsSLo /tmp/composer-setup.php https://getcomposer.org/installer
+  COMPOSER_EXPECTED="$(curl -fsSL https://composer.github.io/installer.sig)"
+  COMPOSER_ACTUAL="$(php -r 'echo hash_file("sha384", "/tmp/composer-setup.php");')"
+  [ "$COMPOSER_ACTUAL" = "$COMPOSER_EXPECTED" ] || { echo "aether/php-server: Composer installer checksum mismatch"; exit 1; }
   php /tmp/composer-setup.php --install-dir="$php_layer/bin" --filename=composer --quiet
   rm -f /tmp/composer-setup.php
   export COMPOSER_HOME="$php_layer/.composer"

@@ -55,7 +55,8 @@ func (h *Hub) Add(conn *websocket.Conn, orgID, userID uuid.UUID) *Client {
 		presenceScopes: map[string]bool{},
 	}
 	h.mu.Lock()
-	if len(h.clients) >= defaultMaxConnPerOrg {
+	state := h.orgs[orgID.String()]
+	if state != nil && state.clients >= defaultMaxConnPerOrg {
 		h.mu.Unlock()
 		return nil
 	}

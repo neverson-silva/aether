@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  rss-bridge:
+    image: rssbridge/rss-bridge@sha256:606896116558c57e3d381dec6874457f7a69216103d77c78b5bd38b92b251902
+    restart: unless-stopped
+    expose:
+      - 80
+    volumes:
+      - rssbridge-config:/config
+
+volumes:
+  rssbridge-config: {}

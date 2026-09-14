@@ -282,7 +282,11 @@ func (h *Handler) GetApp(c *gin.Context) {
 	}
 	env := make([]gin.H, 0, len(vars))
 	for _, v := range vars {
-		env = append(env, gin.H{"name": v.Name, "value": v.Value, "secret": v.Secret})
+		value := v.Value
+		if v.Secret {
+			value = ""
+		}
+		env = append(env, gin.H{"name": v.Name, "value": value, "secret": v.Secret})
 	}
 	c.JSON(http.StatusOK, gin.H{"app": h.appDTO(c, app), "env": env})
 }
@@ -390,7 +394,11 @@ func (h *Handler) ListEnv(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(vars))
 	for _, v := range vars {
-		out = append(out, gin.H{"name": v.Name, "value": v.Value, "secret": v.Secret})
+		value := v.Value
+		if v.Secret {
+			value = ""
+		}
+		out = append(out, gin.H{"name": v.Name, "value": value, "secret": v.Secret})
 	}
 	c.JSON(http.StatusOK, gin.H{"vars": out})
 }

@@ -47,6 +47,19 @@ func TestRequestIDPropagated(t *testing.T) {
 	}
 }
 
+func TestRequestIDReplacesInvalidID(t *testing.T) {
+	engine := testEngine()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	request.Header.Set("X-Request-ID", "unsafe\r\nX-Injected: true")
+	engine.ServeHTTP(recorder, request)
+
+	value := recorder.Header().Get("X-Request-ID")
+	if value == "" || !validRequestID(value) || strings.Contains(value, "unsafe") {
+		t.Fatalf("unexpected sanitized request id: %q", value)
+	}
+}
+
 func TestCORSPreflight(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -70,6 +83,75 @@ func TestCORSPreflight(t *testing.T) {
 	engine.ServeHTTP(rec, req)
 	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("origin não permitida não deveria ter header CORS")
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(SecurityHeaders())
+	engine.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatal("security headers missing")
+	}
+}
+
+func TestCSRFProtectionRejectsForeignCookieOrigin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(CSRFProtection([]string{"https://app.example.com"}))
+	engine.POST("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.Host = "api.example.com"
+	req.Header.Set("Origin", "https://evil.example.com")
+	req.AddCookie(&http.Cookie{Name: "aether_token", Value: "session"})
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected CSRF rejection, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtectionRejectsMissingCookieOrigin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(CSRFProtection([]string{"https://app.example.com"}))
+	engine.POST("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.AddCookie(&http.Cookie{Name: "aether_token", Value: "session"})
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected missing origin rejection, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtectionRejectsMissingOriginForRefreshCookie(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(CSRFProtection([]string{"https://app.example.com"}))
+	engine.POST("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.AddCookie(&http.Cookie{Name: "aether_refresh", Value: "refresh"})
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected refresh CSRF rejection, got %d", rec.Code)
+	}
+}
+
+func TestRequestBodyLimitRejectsLargeBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(RequestBodyLimit())
+	engine.POST("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(strings.Repeat("x", int(maxRequestBodyBytes)+1)))
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected body limit rejection, got %d", rec.Code)
 	}
 }
 
@@ -109,6 +191,27 @@ func TestTimeout(t *testing.T) {
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusGatewayTimeout {
 		t.Fatalf("esperava timeout 504, got %d", rec.Code)
+	}
+}
+
+func TestTimeoutSkipsEventStreams(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(Timeout(10 * time.Millisecond))
+	engine.GET("/stream", func(c *gin.Context) {
+		select {
+		case <-c.Request.Context().Done():
+			c.Status(http.StatusGatewayTimeout)
+		default:
+			c.Status(http.StatusOK)
+		}
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/stream", nil)
+	req.Header.Set("Accept", "text/event-stream")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected event stream to skip timeout, got %d", rec.Code)
 	}
 }
 

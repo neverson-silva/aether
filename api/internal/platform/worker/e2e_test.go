@@ -130,8 +130,36 @@ func TestWorkerDeploysRealContainer(t *testing.T) {
 	if got.ContainerID == "" {
 		t.Fatalf("container id deveria estar persistido")
 	}
+	inspection, err := runtime.client.ContainerInspect(ctx, got.ContainerID)
+	if err != nil {
+		t.Fatalf("inspect deployed container: %v", err)
+	}
+	if inspection.Config.User != "101:101" {
+		t.Fatalf("container user = %q, want 101:101", inspection.Config.User)
+	}
+	if !inspection.HostConfig.ReadonlyRootfs {
+		t.Fatal("tenant container root filesystem must be read-only")
+	}
+	if inspection.HostConfig.IpcMode != "private" {
+		t.Fatalf("IPC mode = %q, want private", inspection.HostConfig.IpcMode)
+	}
+	if !containsString(inspection.HostConfig.SecurityOpt, "no-new-privileges:true") || !containsString(inspection.HostConfig.SecurityOpt, "apparmor=docker-default") {
+		t.Fatalf("security options = %#v", inspection.HostConfig.SecurityOpt)
+	}
+	if inspection.HostConfig.StorageOpt["size"] == "" {
+		t.Fatalf("storage quota is missing: %#v", inspection.HostConfig.StorageOpt)
+	}
 
 	time.Sleep(time.Second)
 	_ = runtime.Remove(ctx, got.ContainerID)
 	t.Logf("container real deployado: %s", got.ContainerID)
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }

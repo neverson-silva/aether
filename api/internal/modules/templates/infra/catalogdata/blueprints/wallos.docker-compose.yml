@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  wallos:
+    image: bellamy/wallos@sha256:82a74706a343ee0713eb1c5b1d7814f656ed5a35de36c73f0cb42276d8f9d95e
+    expose:
+      - '80'
+    environment:
+      TZ: 'Europe/Paris'
+    volumes:
+      - wallos_db:/var/www/html/db
+      - wallos_logos:/var/www/html/images/uploads/logos
+    restart: unless-stopped
+
+volumes:
+  wallos_db:
+  wallos_logos:

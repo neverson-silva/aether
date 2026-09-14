@@ -292,8 +292,6 @@ export interface Backup {
 }
 
 export interface LoginResponse {
-  token: string;
-  refresh_token: string;
   user: User;
 }
 
@@ -356,6 +354,7 @@ export interface Template {
   description: string;
   category: string;
   icon: string;
+  logo_url?: string;
   version: string;
   definition: string;
 }

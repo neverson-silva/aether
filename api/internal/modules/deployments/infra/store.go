@@ -26,6 +26,12 @@ type Store struct {
 	db *sql.DB
 }
 
+func (s *Store) CountActiveByOrg(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM deployments d JOIN apps a ON a.id = d.app_id WHERE a.org_id = $1 AND d.status IN ('queued', 'building', 'starting', 'health_checking')`, orgID).Scan(&count)
+	return count, err
+}
+
 func NewStore(pool *pgxpool.Pool) *Store {
 	db := stdlib.OpenDBFromPool(pool)
 	return &Store{q: gen.New(db), db: db}

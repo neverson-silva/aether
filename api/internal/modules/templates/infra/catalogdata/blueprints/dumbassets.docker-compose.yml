@@ -1,0 +1,12 @@
+version: "3.8"
+services:
+  dumbassets:
+    image: dumbwareio/dumbassets@sha256:1bbe3a1c4aa404f3cbd9641cbf7ef24dfd3f4f09a92570eecc88d48de31517ab
+    restart: unless-stopped
+    expose:
+      - 3000
+    volumes:
+      - dumbassets-data:/app/data
+
+volumes:
+  dumbassets-data: {}

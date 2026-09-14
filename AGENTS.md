@@ -146,8 +146,8 @@ first.
 ## Database — NEVER Clean
 
 - Permanent rule: NEVER `DROP/CREATE/TRUNCATE/DELETE` real production data.
-- Never `podman rm -f $(podman ps -aq)` nor `--filter name=aether-` (catches
-  infra).
+- Never remove containers indiscriminately, including with `docker rm -f $(docker
+  ps -aq)` or `--filter name=aether-` (catches infra).
 - Always operate containers by specific name.
 - Reading the database is allowed; writing only with explicit authorization.
 
@@ -185,12 +185,11 @@ state by polling.
 
 ## Containers / Infra
 
-- API, frontend, worker, monitoring, postgres and nats run in podman containers
-  (via `install.sh`).
-- `podman` is the only host dependency.
-- After code changes: rebuild via `./install.sh start` (builds the image and
-  restarts).
-- Podman machine: 4GB (increase if builds OOM).
+- API, frontend, worker, monitoring, postgres and nats run in Docker containers
+  through Docker Desktop on macOS.
+- Docker Desktop is the only container runtime and host dependency.
+- Use the repository's Docker Compose and Docker-based development scripts for
+  lifecycle operations; do not introduce alternate-runtime commands or assumptions.
 
 ## Tests
 

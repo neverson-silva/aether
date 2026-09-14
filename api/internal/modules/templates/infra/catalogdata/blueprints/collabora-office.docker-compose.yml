@@ -1,0 +1,12 @@
+version: "3"
+
+services:
+  collabora:
+    image: collabora/code@sha256:379b8f1fc955dd6d01ba24adf61d1b177048ddaae179ae8c1e6a6342daccb282
+    expose:
+      - "9980"
+    environment:
+      - domain=${DOMAIN}
+      - username=${USERNAME}
+      - password=${PASSWORD}
+      - extra_params=--o:ssl.enable=false 

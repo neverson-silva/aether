@@ -1,0 +1,29 @@
+services:
+  web:
+    image: githubyumao/mcsmanager-web@sha256:c42f2fc6a1706eecc43f411ba7b863c6de9b3df1ee054d7bcef124a5632b693e
+    restart: unless-stopped
+    expose:
+      - 23333
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - mcsmanager-web-data:/opt/mcsmanager/web/data
+      - mcsmanager-web-logs:/opt/mcsmanager/web/logs
+  daemon:
+    image: githubyumao/mcsmanager-daemon@sha256:128583cc02309a4a39808e70fe43c73b67a5f21bb20775105b51424b036be608
+    restart: unless-stopped
+    expose:
+      - 24444
+    environment:
+      - MCSM_DOCKER_WORKSPACE_PATH=/opt/mcsmanager/daemon/data/InstanceData
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - mcsmanager-daemon-data:/opt/mcsmanager/daemon/data
+      - mcsmanager-daemon-logs:/opt/mcsmanager/daemon/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  mcsmanager-web-data:
+  mcsmanager-web-logs:
+  mcsmanager-daemon-data:
+  mcsmanager-daemon-logs:
+

@@ -1,0 +1,12 @@
+version: "3.8"
+services:
+  dumbbudget:
+    image: dumbwareio/dumbbudget@sha256:e845d989765caceb07b48986764e6b06871d6788a749e7857bfbbea0ae4db5fc
+    restart: unless-stopped
+    expose:
+      - 3000
+    volumes:
+      - dumbbudget-data:/app/data
+
+volumes:
+  dumbbudget-data: {}

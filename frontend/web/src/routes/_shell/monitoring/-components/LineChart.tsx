@@ -49,7 +49,7 @@ export function LineChart({
     <div className={className}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height, width: "100%" }}>
         {[0.25, 0.5, 0.75].map((f) => (
-          <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="rgba(255,255,255,0.06)" strokeWidth={0.2} vectorEffect="non-scaling-stroke" />
+          <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="var(--color-outline-variant)" strokeOpacity={0.35} strokeWidth={0.2} vectorEffect="non-scaling-stroke" />
         ))}
         {series.map((s) => (
           <path key={s.name} d={path(s.points)} fill="none" stroke={s.color} strokeWidth={0.7} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />

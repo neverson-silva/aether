@@ -164,7 +164,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	deployWorker := &worker.Worker{
 		Store: deployStore, Apps: appsStore, Runtime: deployRuntime,
 		LogsDir: cfg.LogsDir, BuildsDir: cfg.BuildsDir, UploadsDir: cfg.UploadsDir,
-		IngressNetwork: cfg.IngressNetwork, CnbBuilder: cfg.CnbBuilder,
+		IngressNetwork: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, CnbBuilder: cfg.CnbBuilder, BuildDockerNetwork: cfg.BuildDockerNetwork,
 		DockerHost: cfg.DockerHost, BuildDockerHost: cfg.BuildDockerHost,
 		Images: imageRuntime, Builder: imageRuntime, Registry: imageRuntime,
 		Logger: slog.Default(), Queue: rtRuntime.Queue,
@@ -178,7 +178,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	if err != nil {
 		return err
 	}
-	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore, Variables: cronResolver}
+	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore, Variables: cronResolver}
 	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
 	composeSvc.Variables = cronResolver
 	sourceStore := sourcecontrolInfra.NewStore(pool)
@@ -216,7 +216,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	deployWorker.ComposeDeploy = composeSvc
 	settingsStore := settingsInfra.NewStore(pool)
-	settingsSvc := &settingsApp.Settings{Store: settingsStore, Passwords: dbCipher, PublicURL: cfg.PublicURL, OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL), GoogleRedirectURI: cfg.GoogleOAuthRedirectURI}
+	settingsSvc := &settingsApp.Settings{Store: settingsStore, Passwords: dbCipher, PublicURL: cfg.PublicURL, OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL, pool), GoogleRedirectURI: cfg.GoogleOAuthRedirectURI}
 	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)
 	dbBackupsSvc := &backupsApp.DatabaseBackups{
 		Store: dbBackupsStore, Databases: databasesSvc, Passwords: dbCipher,
@@ -225,7 +225,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		Notifier: realtimeSvc, Timeout: 45 * time.Minute,
 		Outbox:     outbox.NewStore(pool),
 		Cache:      rtRuntime.Cache,
-		UploadRoot: filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes,
+		UploadRoot: filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes, RestoreQuotaBytes: cfg.RestoreQuotaBytes, MaxBackupBytes: cfg.BackupMaxBytes,
 	}
 	cronWorker := &jobsApp.CronWorker{Store: jobsInfra.NewStore(pool), Apps: appsStore, Runtime: jobsApp.NewRuntime(deployRuntime), Resolver: cronResolver, Queue: rtRuntime.Queue, Scheduler: rtRuntime.Scheduler, Locks: rtRuntime.Locks, Metrics: metrics, Concurrency: 2}
 	snapshotOutputDir := os.Getenv("AETHER_SNAPSHOT_HOST_DIR")

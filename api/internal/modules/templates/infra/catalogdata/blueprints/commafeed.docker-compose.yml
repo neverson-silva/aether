@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  commafeed:
+    image: athou/commafeed@sha256:0e52f2a86c2ae36cb446401292c87ba6ca658fafda64c99bc7e8713ed433d8a3
+    restart: unless-stopped
+    volumes:
+      - ../files/commafeed-data:/commafeed/data
+    expose:
+      - 8082

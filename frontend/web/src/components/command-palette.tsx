@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Archive, Bell, Cloud, Code, Database, FolderOpen, Gear, GitBranch, HardDrives, Key, Lightning, MagnifyingGlass, Monitor, RocketLaunch, Star, Storefront, Users, Wrench } from "@phosphor-icons/react";
+import { Archive, Bell, Cloud, Code, Database, FolderOpen, Gear, GitBranch, HardDrives, Key, Lightning, MagnifyingGlass, Monitor, RocketLaunch, Star, Storefront, Users } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjects } from "../hooks";
 import { getServer } from "../api/client";
@@ -22,7 +22,6 @@ function PaletteIcon({ name, size = 16 }: { name: string; size?: number }) {
     apps: RocketLaunch,
     backup: Archive,
     bolt: Lightning,
-    branding_watermark: Wrench,
     cloud_sync: Cloud,
     code_blocks: Code,
     database: Database,
@@ -64,7 +63,6 @@ const NAV: NavEntry[] = [
   { label: "Members", path: "/members", icon: "group", hint: "Go to" },
   { label: "API Keys", path: "/api-keys", icon: "key", hint: "Go to" },
   { label: "SSO", path: "/sso", icon: "passkey", hint: "Go to" },
-  { label: "Whitelabeling", path: "/whitelabel", icon: "branding_watermark", hint: "Go to" },
   { label: "Registry", path: "/registry", icon: "inventory_2", hint: "Go to" },
   { label: "Notifications", path: "/notifications", icon: "notifications_active", hint: "Go to" },
   { label: "CI/CD", path: "/ci-cd", icon: "code_blocks", hint: "Go to" },

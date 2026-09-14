@@ -31,11 +31,13 @@ type DatabaseBackups struct {
 	Outbox       interface {
 		Enqueue(context.Context, events.Event, string) error
 	}
-	Cache          cache.Cache
-	UploadRoot     string
-	MaxUploadBytes int64
-	Timeout        time.Duration
-	Batch          int
+	Cache             cache.Cache
+	UploadRoot        string
+	MaxUploadBytes    int64
+	RestoreQuotaBytes int64
+	MaxBackupBytes    int64
+	Timeout           time.Duration
+	Batch             int
 }
 
 type RestoreNotifier interface {
@@ -67,6 +69,47 @@ func (s *DatabaseBackups) timeout() time.Duration {
 		return 30 * time.Minute
 	}
 	return s.Timeout
+}
+
+func (s *DatabaseBackups) maxBackupBytes() int64 {
+	if s.MaxBackupBytes <= 0 {
+		return 8 << 30
+	}
+	return s.MaxBackupBytes
+}
+
+func (s *DatabaseBackups) ensureOrganizationCapacity(ctx context.Context, orgID uuid.UUID) error {
+	counter, ok := s.Store.(domain.OrganizationJobCounter)
+	if !ok {
+		return nil
+	}
+	active, err := counter.CountActiveByOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if active >= 8 {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
+func (s *DatabaseBackups) ensureUploadCapacity(ctx context.Context, orgID uuid.UUID, additional int64) error {
+	counter, ok := s.Store.(domain.OrganizationJobCounter)
+	if !ok {
+		return nil
+	}
+	used, err := counter.CountActiveUploadBytesByOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	quota := s.RestoreQuotaBytes
+	if quota <= 0 {
+		quota = 4 << 30
+	}
+	if additional < 0 || used > quota-additional {
+		return domain.ErrConflict
+	}
+	return nil
 }
 
 func (s *DatabaseBackups) batch() int {

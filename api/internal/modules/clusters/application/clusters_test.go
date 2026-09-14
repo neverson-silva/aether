@@ -84,6 +84,16 @@ func TestAgentToken(t *testing.T) {
 	if !strings.HasPrefix(token, "aether-agent_") {
 		t.Fatalf("token inesperado")
 	}
+	if _, err := e.svc.AgentToken(e.ctx); err != nil {
+		t.Fatalf("rotate token: %v", err)
+	}
+	var count int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM server_tokens`).Scan(&count); err != nil {
+		t.Fatalf("count tokens: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("active agent tokens = %d, want 1", count)
+	}
 }
 
 func TestRegistry(t *testing.T) {

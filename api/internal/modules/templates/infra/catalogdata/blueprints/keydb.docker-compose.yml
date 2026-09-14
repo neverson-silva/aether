@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  keydb:
+    image: eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac
+    restart: unless-stopped
+    command: keydb-server /etc/keydb/keydb.conf --server-threads 2 --requirepass ${KEYDB_PASSWORD}
+    volumes:
+      - keydb-data:/data
+
+volumes:
+  keydb-data: {}

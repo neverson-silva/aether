@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  dashy:
+    image: lissy93/dashy@sha256:291df6b89e672bb4d29dbde1c31ec6af829401426ac4e4112e1b1b8d643d568d
+    restart: unless-stopped
+    expose:
+      - 8080
+    volumes:
+      - dashy-config:/app/user-data
+volumes:
+  dashy-config: {}

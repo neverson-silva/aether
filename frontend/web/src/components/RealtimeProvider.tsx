@@ -109,7 +109,7 @@ function resourceKeys(ev: EventEnvelope): unknown[][] {
   return [];
 }
 
-function applyInvalidation(qc: QueryClient, ev: EventEnvelope) {
+function applyInvalidation(qc: QueryClient, ev: EventEnvelope, replay: boolean) {
   if (ev.type.startsWith("deploy.") && ev.type !== "deploy.build.log") {
     const deploymentID = ev.resource_id || (ev.payload?.deployment_id as string | undefined);
     const status = (ev.payload?.status as string | undefined) || ev.type.slice("deploy.".length);
@@ -118,22 +118,36 @@ function applyInvalidation(qc: QueryClient, ev: EventEnvelope) {
       qc.setQueriesData<Deployment[]>({ queryKey: ["service-deployments"] }, (deployments) =>
         deployments?.map((deployment) =>
           deployment.id === deploymentID
-            ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+            ? shouldApplyDeploymentStatus(deployment.status, status)
+              ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+              : deployment
             : deployment,
         ),
       );
       qc.setQueriesData<Deployment[]>({ queryKey: ["deployments"] }, (deployments) =>
         deployments?.map((deployment) =>
           deployment.id === deploymentID
-            ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+            ? shouldApplyDeploymentStatus(deployment.status, status)
+              ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+              : deployment
             : deployment,
         ),
       );
     }
   }
+  if (replay) return;
   for (const key of resourceKeys(ev)) {
     qc.invalidateQueries({ queryKey: key });
   }
+}
+
+function shouldApplyDeploymentStatus(current: string, next: string): boolean {
+  if (current === next) return true;
+  const terminal = new Set(["ready", "failed", "rolled_back", "cancelled"]);
+  if (terminal.has(current)) return false;
+  if (terminal.has(next)) return true;
+  const rank: Record<string, number> = { queued: 0, building: 1, starting: 2, health_checking: 3 };
+  return (rank[next] ?? 0) >= (rank[current] ?? 0);
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
@@ -155,7 +169,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     (ev: EventEnvelope, replay: boolean) => {
       if (ev.seq > seqRef.current) seqRef.current = ev.seq;
       useRealtimeStore.getState().setLastSeq(seqRef.current);
-      applyInvalidation(qc, ev);
+      applyInvalidation(qc, ev, replay);
       listeners.current.forEach((fn) => {
         try {
           fn(ev, replay);

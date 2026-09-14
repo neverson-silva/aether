@@ -106,6 +106,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	svc := &authApp.Auth{
 		Users: store, Orgs: store, Members: store, Keys: store, AuditLog: store,
 		Tokens: infra.NewSigner(secret), Hash: infra.NewHasher(),
+		Sessions: store,
 		TokenTTL: 10 * time.Minute,
 	}
 	handler := authhttp.New(svc, cfg.CookieSecure)
@@ -184,9 +185,9 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		slog.Error("cipher de senhas", "err", err)
 		os.Exit(1)
 	}
-	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
+	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
 	databasesStudio := &databasesApp.Studio{Databases: databasesSvc, Timeout: 30 * time.Second, MaxRows: 1000}
-	databasesHandler := databaseshttp.New(databasesSvc, databasesStudio)
+	databasesHandler := databaseshttp.New(databasesSvc, databasesStudio, cfg.CORSOrigins...)
 	databasesHandler.WithRuntime(deployWorkerRuntime)
 
 	backupsStore := backupsInfra.NewStore(pool)
@@ -194,7 +195,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	backupsHandler := backupshttp.New(backupsSvc)
 
 	templatesStore := templatesInfra.NewStore(pool)
-	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore}
+	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore, Catalog: templatesInfra.NewDokployCatalog(cfg.StateDir)}
 	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
 	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
@@ -240,16 +241,17 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	svc.SSO = settingsStore
 	settingsSvc := &settingsApp.Settings{
 		Store: settingsStore, Passwords: dbCipher,
-		OIDC:              settingsInfra.NewOIDCDiscoverer(cfg.PublicURL),
+		OIDC:              settingsInfra.NewOIDCDiscoverer(cfg.PublicURL, pool),
 		GoogleRedirectURI: cfg.GoogleOAuthRedirectURI,
 		PublicURL:         cfg.PublicURL,
 	}
-	settingsHandler := settingshttp.New(settingsSvc).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, error) {
+	settingsHandler := settingshttp.New(settingsSvc).WithCookieSecure(cfg.CookieSecure).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, string, error) {
 		user, token, err := svc.SSOLogin(ctx, email, name)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
-		return user, token, nil
+		refresh, err := svc.CreateRefresh(ctx, token)
+		return user, token, refresh, err
 	})
 
 	webhooksStore := webhooksInfra.NewStore(pool)
@@ -274,6 +276,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	variablesStore := variablesInfra.NewStore(pool)
 	variablesStore.Cipher = appsSecrets
 	variablesSvc := &variablesApp.Variables{Store: variablesStore, Apps: appsStore}
+	templatesSvc.Variables = variablesStore
 	variablesHandler := variableshttp.New(variablesSvc)
 	deploySvc.Resolver = &variablesApp.Resolver{Vars: variablesStore, Apps: appsStore, Cipher: appsSecrets}
 	appsHandler.WithResolver(deploySvc.Resolver)
@@ -293,6 +296,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	statsHandler := statshttp.New(statsSvc)
 	servicesHandler := serviceshttp.New(pool)
 	servicesHandler.WithRuntime(deployWorkerRuntime)
+	servicesHandler.WithSecretCipher(appsSecrets)
 	servicesHandler.WithRuntimes(deploySvc, appOps, composeSvc, composeSvc, databasesSvc)
 	databasesHandler.WithDeploymentEnqueuer(servicesHandler)
 	servicesHandler.WithAppWebhook(appsSvc)
@@ -371,7 +375,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Notifier:     realtimeSvc,
 		Outbox:       outbox.NewStore(pool),
 		Cache:        rtRuntime.Cache,
-		UploadRoot:   filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes,
+		UploadRoot:   filepath.Join(cfg.StateDir, "restores"), MaxUploadBytes: cfg.RestoreMaxUploadBytes, RestoreQuotaBytes: cfg.RestoreQuotaBytes, MaxBackupBytes: cfg.BackupMaxBytes,
 		Timeout: 45 * time.Minute,
 	}
 	dbBackupsHandler := backupshttp.NewDatabaseBackupHandler(dbBackupsSvc)
@@ -388,7 +392,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Authorize: realtimeSvc.Authorize,
 		Presence:  rtRuntime.Presence,
 	})
-	realtimeHandler := realtimehttp.New(realtimeSvc, realtimeHub)
+	realtimeHandler := realtimehttp.New(realtimeSvc, realtimeHub, cfg.CORSOrigins...)
 
 	monitoringHistory := monitoringApp.NewMonitoring(nil, nil, slog.Default(), monitoringInfra.NewStore(pool))
 	var monitoringReader *monitoringInfra.Reader
@@ -426,9 +430,9 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	router := apihttp.New(apihttp.Options{
 		Logger:          logger,
-		CORSOrigins:     []string{"*"},
+		CORSOrigins:     cfg.CORSOrigins,
 		RequestTimeout:  60 * time.Second,
-		AuthRateLimiter: apihttp.NewRateLimiter(2, 5),
+		AuthRateLimiter: apihttp.NewPostgresRateLimiter(pool, 5, time.Minute),
 	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler, servicesHandler)
 	router.WithDatabaseBackups(dbBackupsHandler)
 	router.WithSourceControl(sourceHandler)

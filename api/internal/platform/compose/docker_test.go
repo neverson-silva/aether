@@ -12,7 +12,7 @@ import (
 func TestDockerExecuteBuildsExplicitProjectCommand(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "compose.yml")
-	if err := os.WriteFile(file, []byte("services: {}\n"), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte("services:\n  app:\n    image: nginx:alpine\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := filepath.Join(dir, "docker")
@@ -33,7 +33,7 @@ func TestDockerExecuteBuildsExplicitProjectCommand(t *testing.T) {
 func TestDockerExecuteWithLogsStreamsOutput(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "compose.yml")
-	if err := os.WriteFile(file, []byte("services: {}\n"), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte("services:\n  app:\n    image: nginx:alpine\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := filepath.Join(dir, "docker")
@@ -50,6 +50,26 @@ func TestDockerExecuteWithLogsStreamsOutput(t *testing.T) {
 	}
 	if len(lines) != 1 || lines[0] != "build one\nbuild two" {
 		t.Fatalf("streamed lines = %#v", lines)
+	}
+}
+
+func TestDockerExecuteRejectsUnsafeComposeBeforeLaunchingRuntime(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(file, []byte("services:\n  web:\n    image: nginx\n    privileged: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, "launched")
+	command := filepath.Join(dir, "docker")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := (&Docker{Binary: command}).Execute(context.Background(), Project{Directory: dir, File: file, Name: "aether-test"}, "compose", "up")
+	if err == nil {
+		t.Fatal("unsafe compose accepted")
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("runtime launched after policy rejection: %v", statErr)
 	}
 }
 

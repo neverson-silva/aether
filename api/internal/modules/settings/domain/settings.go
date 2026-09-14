@@ -94,7 +94,7 @@ type PasswordCipher interface {
 
 type OIDCDiscoverer interface {
 	AuthURL(ctx context.Context, issuer, clientID, scopes, providerID string) (string, error)
-	Exchange(ctx context.Context, issuer, clientID, clientSecret, providerID, code string) (user *OIDCUser, err error)
+	Exchange(ctx context.Context, issuer, clientID, clientSecret, providerID, code, state string) (user *OIDCUser, err error)
 }
 
 type OIDCUser struct {

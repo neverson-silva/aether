@@ -20,6 +20,7 @@ import (
 	"github.com/robfig/cron/v3"
 
 	appsapplication "aether/internal/modules/apps/application"
+	appsdomain "aether/internal/modules/apps/domain"
 	authhttp "aether/internal/modules/auth/http"
 	databasesdomain "aether/internal/modules/databases/domain"
 	deployapplication "aether/internal/modules/deployments/application"
@@ -84,6 +85,7 @@ type Handler struct {
 		DeleteEnv(context.Context, uuid.UUID, uuid.UUID, string) error
 	}
 	logsDir         string
+	secretCipher    appsdomain.SecretCipher
 	runtime         worker.Runtime
 	deploymentQueue queue.Queue
 	notifier        interface {
@@ -199,6 +201,11 @@ func (h *Handler) WithDomains(domains interface {
 
 func (h *Handler) WithEnvironment(environment *appsapplication.Apps) *Handler {
 	h.environment = environment
+	return h
+}
+
+func (h *Handler) WithSecretCipher(cipher appsdomain.SecretCipher) *Handler {
+	h.secretCipher = cipher
 	return h
 }
 
@@ -331,12 +338,17 @@ func (h *Handler) projectedServiceStatus(c *gin.Context, serviceID, specID uuid.
 		deployments = 0
 	}
 	active := latestStatus == "queued" || latestStatus == "building" || latestStatus == "starting" || latestStatus == "health_checking"
+	if states, err := runtimeContainerStates(c, h.runtime, serviceID, specID); err == nil && len(states) > 0 {
+		if active && !(kind == servicedomain.KindCompose && hasRunningContainer(states)) {
+			return servicedomain.StatusDeploying
+		}
+		if h.hasMissingPublishedPort(c, kind, specID, states) {
+			return servicedomain.StatusDegraded
+		}
+		return servicedomain.ProjectStatusWithDeployment(kind, states, latestStatus, active, deployments > 0)
+	}
 	if latestStatus == "failed" || latestStatus == "error" || latestStatus == "cancelled" {
 		return servicedomain.StatusFailed
-	}
-	states, err := runtimeContainerStates(c, h.runtime, serviceID, specID)
-	if err == nil && len(states) > 0 {
-		return servicedomain.ProjectStatus(kind, states, active, deployments > 0)
 	}
 	if active {
 		return servicedomain.StatusDeploying
@@ -401,6 +413,20 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service update"})
+		return
+	}
+	if input.Resources != nil {
+		if input.Resources.MemMB != nil && (*input.Resources.MemMB < 0 || *input.Resources.MemMB > 2048) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid memory limit"})
+			return
+		}
+		if input.Resources.StorageMB != nil && (*input.Resources.StorageMB < 0 || *input.Resources.StorageMB > 102400) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid storage limit"})
+			return
+		}
+	}
+	if input.Port != nil && (*input.Port < 0 || *input.Port > 65535) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid port"})
 		return
 	}
 	name := (*string)(nil)
@@ -795,17 +821,24 @@ func (h *Handler) Logs(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
-	containers, err := serviceContainers(c, h.runtime, id, specID)
-	if err != nil || len(containers) == 0 {
+	items, err := runtimeContainers(c, h.runtime, id, specID)
+	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "service logs unavailable"})
 		return
 	}
+	if c.Query("running") == "1" {
+		latest, ok := latestRunningContainer(items)
+		if !ok {
+			c.JSON(http.StatusOK, gin.H{"service_id": id, "logs": ""})
+			return
+		}
+		items = []worker.ContainerInfo{latest}
+	}
 	if selected := strings.TrimSpace(c.Query("container")); selected != "" {
-		filtered := make([]string, 0, 1)
-		for _, container := range containers {
-			parts := strings.SplitN(container, "|", 2)
-			if selected == parts[0] || len(parts) == 2 && selected == parts[1] {
-				filtered = append(filtered, container)
+		filtered := make([]worker.ContainerInfo, 0, 1)
+		for _, item := range items {
+			if selected == item.ID || selected == item.Name {
+				filtered = append(filtered, item)
 				break
 			}
 		}
@@ -813,12 +846,11 @@ func (h *Handler) Logs(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "container not found"})
 			return
 		}
-		containers = filtered
+		items = filtered
 	}
 	var output []byte
-	for _, container := range containers {
-		containerID := strings.SplitN(container, "|", 2)[0]
-		logs, logsErr := h.runtime.LogTail(c.Request.Context(), containerID, 200)
+	for _, item := range items {
+		logs, logsErr := h.runtime.LogTail(c.Request.Context(), item.ID, 200)
 		if logsErr == nil || len(logs) > 0 {
 			output = append(output, []byte(strings.Join(logs, "\n"))...)
 			output = append(output, '\n')
@@ -831,6 +863,19 @@ func (h *Handler) Logs(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"service_id": id, "logs": string(output)})
+}
+
+func latestRunningContainer(items []worker.ContainerInfo) (worker.ContainerInfo, bool) {
+	var latest worker.ContainerInfo
+	found := false
+	for _, item := range items {
+		if strings.ToLower(strings.TrimSpace(item.State)) != "running" || found && !item.CreatedAt.After(latest.CreatedAt) {
+			continue
+		}
+		latest = item
+		found = true
+	}
+	return latest, found
 }
 
 func (h *Handler) Containers(c *gin.Context) {
@@ -851,7 +896,7 @@ func (h *Handler) Containers(c *gin.Context) {
 	}
 	containers := make([]gin.H, 0, len(items))
 	for _, item := range items {
-		containers = append(containers, gin.H{"id": item.ID, "name": item.Name, "status": item.State})
+		containers = append(containers, gin.H{"id": item.ID, "name": item.Name, "status": item.State, "healthy": item.Healthy})
 	}
 	c.JSON(http.StatusOK, containers)
 }
@@ -859,6 +904,9 @@ func (h *Handler) Containers(c *gin.Context) {
 func runtimeContainers(c *gin.Context, runtime worker.Runtime, serviceID, specID uuid.UUID) ([]worker.ContainerInfo, error) {
 	if runtime == nil {
 		return nil, errors.New("container runtime unavailable")
+	}
+	if filteredRuntime, ok := runtime.(worker.ServiceContainerRuntime); ok {
+		return filteredRuntime.ListServiceContainers(c.Request.Context(), serviceID, specID)
 	}
 	var items []worker.ContainerInfo
 	var err error
@@ -910,13 +958,38 @@ func runtimeContainerStates(c *gin.Context, runtime worker.Runtime, serviceID, s
 	return states, nil
 }
 
+func (h *Handler) hasMissingPublishedPort(c *gin.Context, kind servicedomain.Kind, specID uuid.UUID, states []servicedomain.ContainerState) bool {
+	if kind != servicedomain.KindApp || h.runtime == nil {
+		return false
+	}
+	var configuredPort int
+	if err := h.db.QueryRow(c.Request.Context(), `SELECT port FROM apps WHERE id = $1`, specID).Scan(&configuredPort); err != nil || configuredPort <= 0 {
+		return false
+	}
+	portRuntime, ok := h.runtime.(interface {
+		Port(context.Context, string) (string, error)
+	})
+	if !ok {
+		return false
+	}
+	for _, state := range states {
+		if state.Status != "running" && state.Status != "restarting" {
+			continue
+		}
+		if _, err := portRuntime.Port(c.Request.Context(), state.ID); err != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) Stats(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("serviceID"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
-	_, specID, err := h.resolve(c, id)
+	kind, specID, err := h.resolve(c, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
@@ -930,6 +1003,18 @@ func (h *Handler) Stats(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"state": state, "stats": gin.H{"cpu_percent": 0, "mem_bytes": 0, "mem_limit": 0, "mem_percent": 0}, "containers": containerStats})
 		return
+	}
+	states := make([]servicedomain.ContainerState, 0, len(items))
+	for _, item := range items {
+		states = append(states, servicedomain.ContainerState{ID: item.ID, Name: item.Name, Status: item.State, Healthy: item.Healthy})
+	}
+	latestDeployment, deploymentCount := h.latestDeploymentStatus(c, id)
+	if deploymentInProgress(latestDeployment) && !(servicedomain.Kind(kind) == servicedomain.KindCompose && hasRunningContainer(states)) {
+		state = string(servicedomain.StatusDeploying)
+	} else if h.hasMissingPublishedPort(c, servicedomain.Kind(kind), specID, states) {
+		state = string(servicedomain.StatusDegraded)
+	} else {
+		state = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(kind), states, latestDeployment, deploymentInProgress(latestDeployment), deploymentCount > 0))
 	}
 	var cpu, used, limit float64
 	for _, item := range items {
@@ -958,10 +1043,16 @@ func (h *Handler) Deployments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
-	_, _, err = h.resolve(c, id)
+	kind, specID, err := h.resolve(c, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
+	}
+	composeReady := false
+	if servicedomain.Kind(kind) == servicedomain.KindCompose {
+		if states, statesErr := runtimeContainerStates(c, h.runtime, id, specID); statesErr == nil {
+			composeReady = hasRunningContainer(states)
+		}
 	}
 	rows, err := h.db.Query(c.Request.Context(), `
 SELECT d.id, d.number, d.status, d.created_at, d.started_at, d.finished_at
@@ -983,6 +1074,9 @@ ORDER BY d.number DESC LIMIT 50`, id)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
+		if len(result) == 0 && composeReady && deploymentInProgress(status) {
+			status = string(deploydomain.StatusReady)
+		}
 		result = append(result, gin.H{"id": deploymentID, "service_id": id, "number": number, "status": status, "created_at": createdAt, "started_at": startedAt, "finished_at": finishedAt})
 	}
 	if err := rows.Err(); err != nil {
@@ -990,6 +1084,16 @@ ORDER BY d.number DESC LIMIT 50`, id)
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func hasRunningContainer(states []servicedomain.ContainerState) bool {
+	for _, state := range states {
+		switch strings.ToLower(strings.TrimSpace(state.Status)) {
+		case "running", "healthy":
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) CancelDeployment(c *gin.Context) {
@@ -1165,6 +1269,7 @@ func (h *Handler) Environment(c *gin.Context) {
 	}
 	defer rows.Close()
 	result := make([]gin.H, 0)
+	includeSecrets := c.Query("secrets") == "1" || strings.EqualFold(c.Query("secrets"), "true")
 	for rows.Next() {
 		var name, value string
 		var secret bool
@@ -1173,7 +1278,18 @@ func (h *Handler) Environment(c *gin.Context) {
 			return
 		}
 		if secret {
-			value = ""
+			if !includeSecrets {
+				value = ""
+			} else if h.secretCipher == nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "secret values are unavailable"})
+				return
+			} else {
+				value, err = h.secretCipher.Decrypt(value)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "secret value could not be decrypted"})
+					return
+				}
+			}
 		}
 		result = append(result, gin.H{"name": name, "value": value, "secret": secret})
 	}
@@ -1292,7 +1408,19 @@ func (h *Handler) SetEnvironment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid environment variable"})
 		return
 	}
-	if _, err := h.db.Exec(c.Request.Context(), `INSERT INTO app_env (service_id, name, value, secret) VALUES ($1, $2, $3, $4) ON CONFLICT (service_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret`, id, input.Name, input.Value, input.Secret); err != nil {
+	storedValue := input.Value
+	if input.Secret {
+		if h.secretCipher == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "secret values are unavailable"})
+			return
+		}
+		storedValue, err = h.secretCipher.Encrypt(input.Value)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "secret value could not be encrypted"})
+			return
+		}
+	}
+	if _, err := h.db.Exec(c.Request.Context(), `INSERT INTO app_env (service_id, name, value, secret) VALUES ($1, $2, $3, $4) ON CONFLICT (service_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret`, id, input.Name, storedValue, input.Secret); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save environment variable"})
 		return
 	}

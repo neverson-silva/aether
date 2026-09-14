@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  app:
+    image: lissy93/networking-toolbox@sha256:700862839553705302cf7a2b54d6a60c6aeb33dc38e06828c488840896e2afd9
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      HOST: ${HOST}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

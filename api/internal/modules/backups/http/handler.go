@@ -67,7 +67,7 @@ func (h *Handler) RestoreDatabase(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{
 		"id": job.ID, "backup_id": job.BackupID, "target_database_id": job.TargetDatabaseID,
 		"service_id": job.ServiceID,
-		"status": job.Status, "error_code": job.ErrorCode, "error_message": job.ErrorMessage,
+		"status":     job.Status, "error_code": job.ErrorCode, "error_message": job.ErrorMessage,
 	})
 }
 

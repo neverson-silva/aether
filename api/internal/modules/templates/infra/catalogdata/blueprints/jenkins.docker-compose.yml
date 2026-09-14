@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  jenkins:
+    image: jenkins/jenkins@sha256:0e50a5b11ac14f3b84e529d725ed3a1c4b17ba16188dfa8d9a0189428b0839b1
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - 8080
+volumes:
+  jenkins-home: {}

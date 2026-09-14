@@ -158,8 +158,9 @@ type fakeCipher struct{}
 func (fakeCipher) Decrypt(_ string) (string, error) { return "pass", nil }
 
 type fakeProvider struct {
-	mu      sync.Mutex
-	objects map[string]int64
+	mu               sync.Mutex
+	objects          map[string]int64
+	headSizeOverride *int64
 }
 
 func newFakeProvider() *fakeProvider { return &fakeProvider{objects: map[string]int64{}} }
@@ -186,6 +187,9 @@ func (p *fakeProvider) GetObject(_ context.Context, in storage.GetObjectInput) (
 func (p *fakeProvider) HeadObject(_ context.Context, in storage.HeadObjectInput) (*storage.HeadObjectOutput, error) {
 	p.mu.Lock()
 	size, ok := p.objects[in.Key]
+	if p.headSizeOverride != nil {
+		size = *p.headSizeOverride
+	}
 	p.mu.Unlock()
 	if !ok {
 		return nil, storage.ErrObjectNotFound
@@ -500,6 +504,35 @@ func TestManualBackupPipelineToCompleted(t *testing.T) {
 	}
 	if len(prov.objects) != 1 {
 		t.Fatalf("expected 1 object uploaded, got %d", len(prov.objects))
+	}
+}
+
+func TestManualBackupRemovesObjectWhenVerificationFails(t *testing.T) {
+	svc, store, prov, _, _ := newService()
+	dbID := uuid.New()
+	destID := uuid.New()
+	store.config = &domain.BackupConfiguration{
+		ID: uuid.New(), DatabaseID: dbID, DestinationID: destID, Enabled: true,
+		PathPrefix: "databases/prod",
+		Schedule:   domain.Schedule{Type: domain.ScheduleDaily, At: "03:00", Timezone: "UTC"},
+		Retention:  domain.Retention{Type: domain.RetentionAll},
+	}
+	wrongSize := int64(1)
+	prov.headSizeOverride = &wrongSize
+	job, err := svc.StartManualBackup(context.Background(), dbID, uuid.New())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	svc.runBackup(context.Background(), uuid.New(), job.ID)
+	if len(prov.objects) != 0 {
+		t.Fatalf("verification failure left remote objects: %d", len(prov.objects))
+	}
+	done, err := store.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done.Status != domain.BackupFailed {
+		t.Fatalf("expected failed backup, got %s", done.Status)
 	}
 }
 

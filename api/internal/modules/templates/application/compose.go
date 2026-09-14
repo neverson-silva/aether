@@ -64,6 +64,19 @@ type ProjectVarStore interface {
 	ListVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]variablesDomain.Variable, error)
 }
 
+type ProjectVarWriter interface {
+	UpsertVariable(ctx context.Context, variable *variablesDomain.Variable) (*variablesDomain.Variable, error)
+}
+
+type ServiceVariableStore interface {
+	ListServiceEnvVars(ctx context.Context, serviceID uuid.UUID) ([]appsdomain.EnvVar, error)
+	UpsertServiceEnvVar(ctx context.Context, serviceID uuid.UUID, name, value string, secret bool) error
+}
+
+type ResolvedProjectVariableStore interface {
+	ListResolvedVariables(ctx context.Context, projectID, environmentID uuid.UUID) ([]variablesDomain.Variable, error)
+}
+
 type EffectiveVariableResolver interface {
 	Effective(ctx context.Context, appID, orgID uuid.UUID) (map[string]string, error)
 }
@@ -141,6 +154,9 @@ func (c *Compose) Create(ctx context.Context, orgID, projectID uuid.UUID, name, 
 	if !validYAML(content) {
 		return nil, domain.ErrValidation
 	}
+	if err := composeengine.ValidatePolicy(content); err != nil {
+		return nil, domain.ErrValidation
+	}
 	port, hasPort, err := composePublishedPort(content)
 	if err != nil {
 		return nil, domain.ErrValidation
@@ -196,6 +212,17 @@ func PublishedPort(content string) (int, bool, error) {
 }
 
 func addComposePort(content string, port int) (string, error) {
+	containerPort, err := composeContainerPort(content)
+	if err != nil {
+		return "", err
+	}
+	if containerPort == 0 {
+		containerPort = port
+	}
+	return addComposePortMapping(content, port, containerPort)
+}
+
+func addComposePortMapping(content string, hostPort, containerPort int) (string, error) {
 	var document map[string]any
 	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
 		return "", err
@@ -209,11 +236,183 @@ func addComposePort(content string, port int) (string, error) {
 		if !ok {
 			continue
 		}
-		service["ports"] = []string{fmt.Sprintf("%d:%d", port, port)}
+		service["ports"] = []string{fmt.Sprintf("%d:%d", hostPort, containerPort)}
 		break
 	}
 	encoded, err := yaml.Marshal(document)
 	return string(encoded), err
+}
+
+func composeContainerPort(content string) (int, error) {
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return 0, err
+	}
+	services, ok := document["services"].(map[string]any)
+	if !ok || len(services) == 0 {
+		return 0, nil
+	}
+	names := make([]string, 0, len(services))
+	for name := range services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		service, ok := services[name].(map[string]any)
+		if !ok {
+			continue
+		}
+		if port := composeServicePort(service["expose"]); port > 0 {
+			return port, nil
+		}
+		if port := composeAddressPort(service["environment"]); port > 0 {
+			return port, nil
+		}
+	}
+	for _, name := range names {
+		service, ok := services[name].(map[string]any)
+		if !ok {
+			continue
+		}
+		if port := composeServicePort(service["ports"]); port > 0 {
+			return port, nil
+		}
+	}
+	return 0, nil
+}
+
+func composeServicePort(raw any) int {
+	values, ok := raw.([]any)
+	if !ok {
+		return 0
+	}
+	for _, value := range values {
+		if port := composePortValue(value); port > 0 {
+			return port
+		}
+	}
+	return 0
+}
+
+func composePortValue(raw any) int {
+	switch value := raw.(type) {
+	case string:
+		parts := strings.Split(strings.TrimSpace(value), ":")
+		if len(parts) > 1 {
+			return parseComposePort(parts[len(parts)-1])
+		}
+		return parseComposePort(value)
+	case int:
+		return value
+	case uint64:
+		return int(value)
+	case map[string]any:
+		if target, ok := value["target"]; ok {
+			return composePortValue(target)
+		}
+	}
+	return 0
+}
+
+func composeAddressPort(raw any) int {
+	var values []string
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			values = append(values, fmt.Sprint(item))
+		}
+	case map[string]any:
+		for key, value := range value {
+			values = append(values, key+"="+fmt.Sprint(value))
+		}
+	default:
+		return 0
+	}
+	for _, value := range values {
+		parts := strings.SplitN(value, "=", 2)
+		if len(parts) != 2 || !strings.Contains(strings.ToUpper(parts[0]), "ADDRESS") || strings.Contains(strings.ToUpper(parts[0]), "CONSOLE") {
+			continue
+		}
+		if port := parseComposePort(parts[1]); port > 0 {
+			return port
+		}
+	}
+	return 0
+}
+
+func parseComposePort(value string) int {
+	value = strings.TrimSpace(value)
+	if slash := strings.IndexByte(value, '/'); slash >= 0 {
+		value = value[:slash]
+	}
+	if colon := strings.LastIndexByte(value, ':'); colon >= 0 {
+		value = value[colon+1:]
+	}
+	value = strings.Trim(value, "[]")
+	port, err := strconv.Atoi(value)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0
+	}
+	return port
+}
+
+func repairComposePortMapping(content string, publishedPort int) (string, bool, error) {
+	if publishedPort <= 0 {
+		return content, false, nil
+	}
+	containerPort, err := composeContainerPort(content)
+	if err != nil {
+		return "", false, err
+	}
+	if containerPort <= 0 || containerPort == publishedPort {
+		return content, false, nil
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", false, err
+	}
+	services, ok := document["services"].(map[string]any)
+	if !ok {
+		return content, false, nil
+	}
+	for _, raw := range services {
+		service, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		ports, ok := service["ports"].([]any)
+		if !ok {
+			continue
+		}
+		for index, rawPort := range ports {
+			switch value := rawPort.(type) {
+			case string:
+				parts := strings.Split(value, ":")
+				if len(parts) < 2 || parseComposePort(parts[len(parts)-2]) != publishedPort || parseComposePort(parts[len(parts)-1]) != publishedPort {
+					continue
+				}
+				target := parts[len(parts)-1]
+				suffix := ""
+				if slash := strings.IndexByte(target, '/'); slash >= 0 {
+					suffix = target[slash:]
+				}
+				parts[len(parts)-1] = strconv.Itoa(containerPort) + suffix
+				ports[index] = strings.Join(parts, ":")
+				encoded, err := yaml.Marshal(document)
+				return string(encoded), true, err
+			case map[string]any:
+				published, publishedOK := value["published"]
+				target, targetOK := value["target"]
+				if !publishedOK || !targetOK || composePortValue(published) != publishedPort || composePortValue(target) != publishedPort {
+					continue
+				}
+				value["target"] = containerPort
+				encoded, err := yaml.Marshal(document)
+				return string(encoded), true, err
+			}
+		}
+	}
+	return content, false, nil
 }
 
 func (c *Compose) Get(ctx context.Context, id, orgID uuid.UUID) (*domain.ComposeApp, error) {
@@ -482,6 +681,9 @@ func (c *Compose) Validate(content string) ComposeValidation {
 		out.Errors = append(out.Errors, "YAML parse error: "+err.Error())
 		return out
 	}
+	if err := composeengine.ValidatePolicy(content); err != nil {
+		out.Errors = append(out.Errors, err.Error())
+	}
 	if len(cf.Services) == 0 {
 		out.Errors = append(out.Errors, "no services defined")
 		return out
@@ -549,8 +751,11 @@ func (c *Compose) AppCompose(ctx context.Context, appID, orgID uuid.UUID) (strin
 		return "", err
 	}
 	service := map[string]any{
-		"image":   app.Image,
-		"restart": "unless-stopped",
+		"image":      app.Image,
+		"restart":    "no",
+		"mem_limit":  "512m",
+		"cpus":       "1.0",
+		"pids_limit": 256,
 	}
 	if app.Port > 0 {
 		service["ports"] = []string{fmt.Sprintf("%d:%d", app.Port, app.Port)}
@@ -654,6 +859,21 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 			content = string(data)
 		}
 	}
+	normalized, normalizeErr := composeengine.NormalizeNamedResourceDefinitions(content)
+	if normalizeErr != nil {
+		return "", normalizeErr
+	}
+	content = normalized
+	if len(args) > 0 && args[0] == "up" {
+		repaired, _, err := repairComposePortMapping(content, app.Port)
+		if err != nil {
+			return "", fmt.Errorf("repair compose port mapping: %w", err)
+		}
+		content = repaired
+	}
+	if err := composeengine.ValidatePolicy(content); err != nil {
+		return "", err
+	}
 	if len(args) > 0 && args[0] == "up" {
 		publishedPort, hasPort, err := composePublishedPort(content)
 		if err != nil {
@@ -690,6 +910,9 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if err != nil {
 			return "", fmt.Errorf("inject compose labels: %w", err)
 		}
+		if err := c.ensureComposeVariables(ctx, app, content); err != nil {
+			return "", err
+		}
 		variables, err := c.effectiveVariables(ctx, app)
 		if err != nil {
 			return "", err
@@ -698,7 +921,14 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if err != nil {
 			return "", fmt.Errorf("inject compose environment: %w", err)
 		}
+		injected, err = injectComposeSecurityDefaults(injected)
+		if err != nil {
+			return "", fmt.Errorf("inject compose security defaults: %w", err)
+		}
 		content = injected
+		if err := composeengine.ValidatePolicy(content); err != nil {
+			return "", err
+		}
 		overlay := filepath.Join(dir, "compose.generated.yml")
 		if err := os.WriteFile(overlay, []byte(content), 0o644); err != nil {
 			return "", err
@@ -740,6 +970,137 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		logSink(output)
 	}
 	return output, nil
+}
+
+func (c *Compose) ensureComposeVariables(ctx context.Context, app *domain.ComposeApp, content string) error {
+	if writer, ok := c.Apps.(ServiceVariableStore); ok {
+		return c.ensureServiceComposeVariables(ctx, writer, app, content)
+	}
+	writer, ok := c.ProjectVars.(ProjectVarWriter)
+	if !ok {
+		return nil
+	}
+	existing, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, uuid.Nil)
+	if err != nil {
+		return fmt.Errorf("list compose variables: %w", err)
+	}
+	values := make(map[string]string, len(existing))
+	for _, variable := range existing {
+		values[variable.Key] = variable.Value
+	}
+	if app.EnvironmentID != nil {
+		environment, err := c.ProjectVars.ListVariables(ctx, app.ProjectID, *app.EnvironmentID)
+		if err != nil {
+			return fmt.Errorf("list compose environment variables: %w", err)
+		}
+		for _, variable := range environment {
+			values[variable.Key] = variable.Value
+		}
+	}
+	for _, variable := range templateEnvironmentVariables(content) {
+		if strings.TrimSpace(values[variable.Name]) != "" {
+			continue
+		}
+		value := strings.TrimSpace(variable.Value)
+		if value == "" && isGeneratedTemplateSecret(variable.Name) {
+			value, err = generatedTemplateSecret()
+			if err != nil {
+				return fmt.Errorf("generate compose secret: %w", err)
+			}
+		}
+		if value == "" {
+			continue
+		}
+		if _, err := writer.UpsertVariable(ctx, &variablesDomain.Variable{
+			ProjectID: app.ProjectID,
+			Key:       variable.Name,
+			Value:     value,
+			IsSecret:  isGeneratedTemplateSecret(variable.Name),
+		}); err != nil {
+			return fmt.Errorf("save compose variable %s: %w", variable.Name, err)
+		}
+		values[variable.Name] = value
+	}
+	return nil
+}
+
+func (c *Compose) ensureServiceComposeVariables(ctx context.Context, writer ServiceVariableStore, app *domain.ComposeApp, content string) error {
+	serviceID := app.ServiceID
+	if serviceID == uuid.Nil {
+		var err error
+		serviceID, err = c.GetServiceID(ctx, app.ID)
+		if err != nil {
+			return fmt.Errorf("resolve compose service: %w", err)
+		}
+	}
+	existing, err := writer.ListServiceEnvVars(ctx, serviceID)
+	if err != nil {
+		return fmt.Errorf("list service compose variables: %w", err)
+	}
+	known := make(map[string]struct{}, len(existing))
+	for _, variable := range existing {
+		known[variable.Name] = struct{}{}
+	}
+	projectValues, err := c.resolvedComposeProjectValues(ctx, app)
+	if err != nil {
+		return err
+	}
+	for _, variable := range templateEnvironmentVariables(content) {
+		if _, exists := known[variable.Name]; exists {
+			continue
+		}
+		value := strings.TrimSpace(projectValues[variable.Name])
+		if value == "" {
+			value = strings.TrimSpace(variable.Value)
+		}
+		if value == "" && isGeneratedTemplateSecret(variable.Name) {
+			value, err = generatedTemplateSecret()
+			if err != nil {
+				return fmt.Errorf("generate compose secret: %w", err)
+			}
+		}
+		if value == "" {
+			continue
+		}
+		if err := writer.UpsertServiceEnvVar(ctx, serviceID, variable.Name, value, isGeneratedTemplateSecret(variable.Name)); err != nil {
+			return fmt.Errorf("save service compose variable %s: %w", variable.Name, err)
+		}
+	}
+	return nil
+}
+
+func (c *Compose) resolvedComposeProjectValues(ctx context.Context, app *domain.ComposeApp) (map[string]string, error) {
+	if c.ProjectVars == nil {
+		return map[string]string{}, nil
+	}
+	read := func(environmentID uuid.UUID) ([]variablesDomain.Variable, error) {
+		if reader, ok := c.ProjectVars.(ResolvedProjectVariableStore); ok {
+			return reader.ListResolvedVariables(ctx, app.ProjectID, environmentID)
+		}
+		return c.ProjectVars.ListVariables(ctx, app.ProjectID, environmentID)
+	}
+	project, err := read(uuid.Nil)
+	if err != nil {
+		return nil, fmt.Errorf("list resolved compose variables: %w", err)
+	}
+	values := make(map[string]string, len(project))
+	for _, variable := range project {
+		if variable.Value != "" {
+			values[variable.Key] = variable.Value
+		}
+	}
+	if app.EnvironmentID != nil {
+		environment, err := read(*app.EnvironmentID)
+		if err != nil {
+			return nil, fmt.Errorf("list resolved compose environment variables: %w", err)
+		}
+		for _, variable := range environment {
+			if variable.Value != "" {
+				values[variable.Key] = variable.Value
+			}
+		}
+	}
+	return values, nil
 }
 
 func pathWithin(root, candidate string) bool {
@@ -851,6 +1212,88 @@ func injectServiceLabels(svc *yaml.Node, labels map[string]string) *yaml.Node {
 	}
 	svc.Content = append(svc.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "labels"}, labelsNode)
 	return svc
+}
+
+func injectComposeSecurityDefaults(content string) (string, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return "", err
+	}
+	root := &doc
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	services := nodeValue(root, "services")
+	if services == nil || services.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("compose has no services mapping")
+	}
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		service := services.Content[i+1]
+		if service.Kind != yaml.MappingNode {
+			continue
+		}
+		ensureSequenceValue(service, "cap_drop", "ALL")
+		ensureSequenceValue(service, "security_opt", "no-new-privileges:true")
+		setScalarValue(service, "restart", "no")
+		ensureScalarValue(service, "mem_limit", "512m")
+		ensureScalarValue(service, "cpus", "1.0")
+		ensureScalarValue(service, "pids_limit", "256")
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return "", err
+	}
+	_ = enc.Close()
+	return buf.String(), nil
+}
+
+func nodeValue(mapping *yaml.Node, key string) *yaml.Node {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1]
+		}
+	}
+	return nil
+}
+
+func ensureSequenceValue(mapping *yaml.Node, key, value string) {
+	existing := nodeValue(mapping, key)
+	if existing == nil {
+		mapping.Content = append(mapping.Content, keyNode(key), &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Content: []*yaml.Node{valueNode(value)}})
+		return
+	}
+	if existing.Kind != yaml.SequenceNode {
+		return
+	}
+	for _, item := range existing.Content {
+		if strings.EqualFold(strings.TrimSpace(item.Value), value) {
+			return
+		}
+	}
+	existing.Content = append(existing.Content, valueNode(value))
+}
+
+func ensureScalarValue(mapping *yaml.Node, key, value string) {
+	if nodeValue(mapping, key) == nil {
+		mapping.Content = append(mapping.Content, keyNode(key), valueNode(value))
+	}
+}
+
+func setScalarValue(mapping *yaml.Node, key, value string) {
+	existing := nodeValue(mapping, key)
+	if existing == nil {
+		mapping.Content = append(mapping.Content, keyNode(key), valueNode(value))
+		return
+	}
+	if existing.Kind == yaml.ScalarNode {
+		existing.Tag = "!!str"
+		existing.Value = value
+	}
 }
 
 func keyNode(k string) *yaml.Node   { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k} }

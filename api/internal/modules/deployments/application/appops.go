@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -22,6 +23,10 @@ type ContainerRuntime interface {
 	Restart(ctx context.Context, containerID string) error
 	Remove(ctx context.Context, containerID string) error
 	RemoveByLabel(ctx context.Context, label string) error
+}
+
+type publishedPortRuntime interface {
+	Port(ctx context.Context, containerID string) (string, error)
 }
 
 func (o *AppOps) State(ctx context.Context, appID, orgID uuid.UUID) (string, error) {
@@ -105,9 +110,23 @@ func (o *AppOps) DeleteService(ctx context.Context, appID, serviceID, orgID uuid
 }
 
 func (o *AppOps) start(ctx context.Context, appID, serviceID, orgID uuid.UUID) (string, error) {
+	app, err := o.Deployments.Apps.GetApp(ctx, appID, orgID)
+	if err != nil {
+		return "", err
+	}
 	container, err := o.latestContainer(ctx, appID, orgID)
 	if err != nil {
 		return "", err
+	}
+	if app.Port > 0 {
+		if portRuntime, ok := o.Runtime.(publishedPortRuntime); ok {
+			if _, err := portRuntime.Port(ctx, container); err != nil {
+				if _, deployErr := o.Deployments.Deploy(ctx, appID, orgID, DeployOpts{ServiceID: serviceID, Trigger: "repair"}); deployErr != nil {
+					return "", fmt.Errorf("repair deployment: %w", deployErr)
+				}
+				return "deploying", nil
+			}
+		}
 	}
 	if err := o.Runtime.Start(ctx, container); err != nil {
 		return "", err

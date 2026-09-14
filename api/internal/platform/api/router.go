@@ -43,7 +43,7 @@ type Options struct {
 	Logger          *slog.Logger
 	CORSOrigins     []string
 	RequestTimeout  time.Duration
-	AuthRateLimiter *RateLimiter
+	AuthRateLimiter RateLimiterBackend
 }
 
 type Router struct {
@@ -75,7 +75,7 @@ type Router struct {
 	monitoring  *monitoringhttp.Handler
 	services    *serviceshttp.Handler
 	ready       func(context.Context) error
-	authLimiter *RateLimiter
+	authLimiter RateLimiterBackend
 }
 
 func (r *Router) WithDatabaseBackups(h *backupshttp.DBBackupHandler) *Router {
@@ -119,6 +119,9 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(RequestID())
+	engine.Use(RequestBodyLimit())
+	engine.Use(SecurityHeaders())
+	engine.Use(CSRFProtection(opts.CORSOrigins))
 	if opts.Logger != nil {
 		engine.Use(RequestLogger(opts.Logger))
 	}
@@ -158,11 +161,15 @@ func (r *Router) routes() {
 
 	authRoutes := api.Group("")
 	if r.authLimiter != nil {
-		authRoutes.Use(RateLimit(r.authLimiter))
+		authRateLimit := RateLimit(r.authLimiter)
+		authRoutes.POST("/auth/register", authRateLimit, r.auth.Register)
+		authRoutes.POST("/auth/login", authRateLimit, r.auth.Login)
+		authRoutes.POST("/auth/refresh", authRateLimit, r.auth.Refresh)
+	} else {
+		authRoutes.POST("/auth/register", r.auth.Register)
+		authRoutes.POST("/auth/login", r.auth.Login)
+		authRoutes.POST("/auth/refresh", r.auth.Refresh)
 	}
-	authRoutes.POST("/auth/register", r.auth.Register)
-	authRoutes.POST("/auth/login", r.auth.Login)
-	authRoutes.POST("/auth/refresh", r.auth.Refresh)
 	authRoutes.POST("/auth/logout", r.auth.Logout)
 	authRoutes.GET("/auth/status", r.auth.AuthStatus)
 	authRoutes.GET("/sso/public", r.settings.PublicSSO)
@@ -176,6 +183,7 @@ func (r *Router) routes() {
 	authed.Use(r.auth.Middleware())
 	{
 		authed.GET("/auth/me", r.auth.Me)
+		authed.POST("/auth/password", r.auth.ChangePassword)
 		authed.GET("/auth/members", r.auth.ListMembers)
 		authed.POST("/auth/members", r.auth.AddMember)
 		authed.GET("/auth/keys", r.auth.ListKeys)
@@ -329,6 +337,7 @@ func (r *Router) routes() {
 		authed.POST("/backups/:backupID/restore", r.backups.RestoreState)
 
 		authed.GET("/templates", r.templates.List)
+		authed.GET("/templates/:templateID/logo", r.templates.Logo)
 		authed.POST("/templates/:templateID/install", r.templates.Install)
 		authed.GET("/compose", r.templates.ListCompose)
 		authed.DELETE("/compose/:composeID", r.templates.DeleteCompose)
@@ -385,14 +394,15 @@ func (r *Router) routes() {
 		authed.POST("/clusters/:clusterID/servers", r.clusters.AddServer)
 		authed.DELETE("/clusters/:clusterID/servers/:serverID", r.clusters.RemoveServer)
 
-		authed.GET("/servers", r.clusters.ListServers)
-		authed.POST("/servers/token", r.clusters.ServerToken)
-		authed.DELETE("/servers/:serverID", r.clusters.DeleteServer)
-
-		authed.GET("/registry", r.clusters.GetRegistry)
-		authed.POST("/registry", r.clusters.SetRegistry)
-		authed.GET("/registry/images", r.clusters.RegistryImages)
-		authed.DELETE("/registry/images/:repo/:tag", r.clusters.RegistryImageDelete)
+		platformAdmin := r.engine.Group("/api/v1")
+		platformAdmin.Use(r.auth.Middleware(), authhttp.RequireGlobalAdmin())
+		platformAdmin.GET("/servers", r.clusters.ListServers)
+		platformAdmin.POST("/servers/token", r.clusters.ServerToken)
+		platformAdmin.DELETE("/servers/:serverID", r.clusters.DeleteServer)
+		platformAdmin.GET("/registry", r.clusters.GetRegistry)
+		platformAdmin.POST("/registry", r.clusters.SetRegistry)
+		platformAdmin.GET("/registry/images", r.clusters.RegistryImages)
+		platformAdmin.DELETE("/registry/images/:repo/:tag", r.clusters.RegistryImageDelete)
 
 		authed.GET("/pipelines", r.pipelines.List)
 		authed.POST("/pipelines", r.pipelines.Create)

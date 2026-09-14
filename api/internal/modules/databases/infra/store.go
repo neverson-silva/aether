@@ -44,8 +44,24 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) OrganizationStorageMB(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE((SELECT SUM(storage_mb) FROM apps WHERE org_id = $1), 0)
+     + COALESCE((SELECT SUM(storage_mb) FROM databases WHERE org_id = $1), 0)`, orgID).Scan(&total)
+	return total, err
+}
+
 func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domain.Database, error) {
-	row, err := s.q.CreateDatabase(ctx, gen.CreateDatabaseParams{
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := checkOrganizationStorage(ctx, tx, db.OrgID, db.StorageMB); err != nil {
+		return nil, err
+	}
+	row, err := gen.New(tx).CreateDatabase(ctx, gen.CreateDatabaseParams{
 		OrgID: db.OrgID, ProjectID: db.ProjectID, EnvironmentID: nullableUUID(db.EnvironmentID), Name: db.Name, Engine: string(db.Engine),
 		Version: db.Version, Port: int32(db.Port), DbName: db.DBName, DbUser: db.User,
 		PassEnc: db.PassEnc, MemMb: int32(db.MemMB), StorageMb: int32(db.StorageMB),
@@ -53,7 +69,26 @@ func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domai
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return databaseFromRow(row), nil
+}
+
+func checkOrganizationStorage(ctx context.Context, tx *sql.Tx, orgID uuid.UUID, requested int) error {
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, orgID.String()); err != nil {
+		return err
+	}
+	var used int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COALESCE((SELECT SUM(storage_mb) FROM apps WHERE org_id = $1), 0)
+     + COALESCE((SELECT SUM(storage_mb) FROM databases WHERE org_id = $1), 0)`, orgID).Scan(&used); err != nil {
+		return err
+	}
+	if used < 0 || requested < 0 || used > 512000-requested {
+		return domain.ErrConflict
+	}
+	return nil
 }
 
 func (s *Store) GetDatabase(ctx context.Context, id uuid.UUID) (*domain.Database, error) {

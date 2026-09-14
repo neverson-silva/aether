@@ -132,14 +132,15 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		serviceID = db.ID
 	}
 	spec := worker.RunSpec{
-		Name:          "db-" + db.Name,
-		Image:         image,
-		Env:           d.runtimeEnv(ctx, db, pass),
-		Port:          hostPort,
-		ContainerPort: containerPort,
-		Network:       d.Network,
-		NetworkAlias:  "db-" + db.ID.String()[:8],
-		MemMB:         db.MemMB,
+		Name:               "db-" + db.Name,
+		Image:              image,
+		Env:                d.runtimeEnv(ctx, db, pass),
+		Port:               hostPort,
+		ContainerPort:      containerPort,
+		Network:            d.Network,
+		NetworkAlias:       "db-" + db.ID.String()[:8],
+		AdditionalNetworks: []string{d.PublishedNetwork},
+		MemMB:              db.MemMB,
 		Labels: map[string]string{
 			"aether.owner":        "user",
 			"aether.service-type": "database",
@@ -365,7 +366,7 @@ func (d *Databases) appendDeployLog(ctx context.Context, depID uuid.UUID, line s
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	f, err := os.OpenFile(filepath.Join(dir, depID.String()+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filepath.Join(dir, depID.String()+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}

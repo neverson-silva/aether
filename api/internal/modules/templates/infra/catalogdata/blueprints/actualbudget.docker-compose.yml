@@ -1,0 +1,12 @@
+services:
+  actualbudget:
+    image: docker.io/actualbudget/actual-server@sha256:552beab3dec8c93d46b8b9245612d63c3f123b8a45063a474f53e229b17621d3
+    environment:
+      # See all options at https://actualbudget.org/docs/config
+      - ACTUAL_PORT=5006
+    volumes:
+      - actual-data:/data
+    restart: unless-stopped
+
+volumes:
+  actual-data:

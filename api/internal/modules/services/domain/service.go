@@ -53,6 +53,9 @@ func ProjectStatus(kind Kind, states []ContainerState, activeDeployment, everDep
 
 func ProjectStatusWithDeployment(kind Kind, states []ContainerState, deploymentStatus string, activeDeployment, everDeployed bool) Status {
 	if activeDeployment {
+		if kind == KindCompose && composeHasRunningContainer(states) {
+			return NormalizeCompose(states, false)
+		}
 		return StatusDeploying
 	}
 	if len(states) == 0 {
@@ -92,13 +95,22 @@ func CapabilitiesFor(kind Kind) Capabilities {
 	case KindCompose:
 		capabilities.CanDeploy = true
 		capabilities.CanEditCompose = true
-		capabilities.CanManageSource = true
 	case KindDatabase:
 		capabilities.CanDeploy = true
 		capabilities.CanManageBackups = true
 		capabilities.CanRestore = true
 	}
 	return capabilities
+}
+
+func composeHasRunningContainer(states []ContainerState) bool {
+	for _, state := range states {
+		switch strings.ToLower(strings.TrimSpace(state.Status)) {
+		case "running", "healthy":
+			return true
+		}
+	}
+	return false
 }
 
 func NormalizeApp(deployment, container string, healthy *bool) Status {

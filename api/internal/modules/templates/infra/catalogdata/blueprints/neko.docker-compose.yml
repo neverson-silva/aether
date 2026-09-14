@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  neko:
+    image: "ghcr.io/m1k1o/neko/firefox@sha256:5596a0571437a96937426a7060b144912414028293c854412382e8449842a60e"
+    restart: "unless-stopped"
+    shm_size: "2gb"
+    ports:
+      - "8080"
+      - "52000-52100:52000-52100/udp"

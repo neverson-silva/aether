@@ -1,0 +1,15 @@
+services:
+  tailscale-exitnode:
+    image: tailscale/tailscale@sha256:8c42c4574ab066384fcb72f69e086a2ff1dd3652eb6f56856cee34bcf0d2f680
+    hostname: ${TAILSCALE_HOSTNAME}
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY}
+      - TS_EXTRA_ARGS=--advertise-exit-node
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+    volumes:
+      - tailscale_exitnode_data:/var/lib/tailscale
+    restart: always
+
+volumes:
+  tailscale_exitnode_data:

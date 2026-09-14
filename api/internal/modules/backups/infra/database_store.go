@@ -26,6 +26,32 @@ func NewDatabaseStore(pool *pgxpool.Pool) *DatabaseStore {
 
 func (s *DatabaseStore) Close() error { return s.db.Close() }
 
+func (s *DatabaseStore) CountActiveByOrg(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM (
+			SELECT bj.id FROM backup_jobs bj JOIN databases d ON d.id = bj.database_id
+			WHERE d.org_id = $1 AND bj.status IN ('queued', 'preparing', 'running', 'uploading', 'verifying')
+			UNION ALL
+			SELECT rj.id FROM restore_jobs rj JOIN databases d ON d.id = rj.target_database_id
+			WHERE d.org_id = $1 AND rj.status IN ('queued', 'uploading', 'validating', 'ready', 'preparing', 'downloading', 'restoring', 'verifying')
+		) active`, orgID).Scan(&count)
+	return count, err
+}
+
+func (s *DatabaseStore) CountActiveUploadBytesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	var bytes sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(rj.uploaded_bytes), 0)
+		FROM restore_jobs rj JOIN databases d ON d.id = rj.target_database_id
+		WHERE d.org_id = $1 AND rj.source_type = 'upload'
+		AND rj.status IN ('queued', 'uploading', 'validating', 'ready', 'preparing', 'downloading', 'restoring', 'verifying')`, orgID).Scan(&bytes)
+	if err != nil {
+		return 0, err
+	}
+	return bytes.Int64, nil
+}
+
 func (s *DatabaseStore) GetConfiguration(ctx context.Context, id uuid.UUID) (*domain.BackupConfiguration, error) {
 	row, err := s.q.GetBackupConfiguration(ctx, id)
 	if err != nil {

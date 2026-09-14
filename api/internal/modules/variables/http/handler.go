@@ -91,8 +91,12 @@ func (h *Handler) ListVariables(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(variables))
 	for _, variable := range variables {
+		value := variable.Value
+		if variable.IsSecret {
+			value = ""
+		}
 		out = append(out, gin.H{
-			"key": variable.Key, "value": variable.Value, "is_secret": variable.IsSecret,
+			"key": variable.Key, "value": value, "is_secret": variable.IsSecret,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"variables": out})
@@ -211,8 +215,12 @@ func (h *Handler) ListEnvironmentVariables(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(variables))
 	for _, variable := range variables {
+		value := variable.Value
+		if variable.IsSecret {
+			value = ""
+		}
 		out = append(out, gin.H{
-			"key": variable.Key, "value": variable.Value, "is_secret": variable.IsSecret,
+			"key": variable.Key, "value": value, "is_secret": variable.IsSecret,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"variables": out})

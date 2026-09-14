@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  anythingllm:
+    image: mintplexlabs/anythingllm@sha256:eb812f3da085289d1dc3dd11437c0946e8139d92d5c68bcf6031b2151e99a93c
+    restart: unless-stopped
+    expose:
+      - 3001
+    environment:
+      - STORAGE_DIR=/app/server/storage
+    volumes:
+      - storage:/app/server/storage
+    cap_add:
+      - SYS_ADMIN
+
+volumes:
+  storage: {} 

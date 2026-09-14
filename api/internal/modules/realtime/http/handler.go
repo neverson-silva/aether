@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -14,15 +15,24 @@ import (
 	"aether/internal/modules/realtime/application"
 	"aether/internal/modules/realtime/domain"
 	"aether/internal/modules/realtime/infra"
+	"aether/internal/platform/security"
 )
 
 type Handler struct {
-	realtime *application.Realtime
-	hub      *infra.Hub
+	realtime       *application.Realtime
+	hub            *infra.Hub
+	streams        *security.StreamLimiter
+	originPatterns []string
 }
 
-func New(realtime *application.Realtime, hub *infra.Hub) *Handler {
-	return &Handler{realtime: realtime, hub: hub}
+func New(realtime *application.Realtime, hub *infra.Hub, origins ...string) *Handler {
+	patterns := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		if parsed, err := url.Parse(origin); err == nil && parsed.Hostname() != "" {
+			patterns = append(patterns, parsed.Hostname())
+		}
+	}
+	return &Handler{realtime: realtime, hub: hub, streams: security.NewStreamLimiter(32), originPatterns: patterns}
 }
 
 type presenceReq struct {
@@ -92,6 +102,12 @@ func (h *Handler) Events(c *gin.Context) {
 }
 
 func (h *Handler) EventsStream(c *gin.Context) {
+	release, err := h.streams.Acquire(orgID(c))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "stream limit reached"})
+		return
+	}
+	defer release()
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		abort(c, domain.ErrValidation)

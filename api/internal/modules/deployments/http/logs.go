@@ -98,6 +98,12 @@ func (h *Handler) AppLogHistory(c *gin.Context) {
 }
 
 func (h *Handler) Logs(c *gin.Context) {
+	release, err := h.streams.Acquire(orgID(c))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "stream limit reached"})
+		return
+	}
+	defer release()
 	appID, err := uuid.Parse(c.Param("appID"))
 	if err != nil {
 		abort(c, deploydomain.ErrValidation)

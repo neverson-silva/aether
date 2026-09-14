@@ -22,6 +22,9 @@ func ensureIngress(ctx context.Context, cfg *config.Config, runtime worker.Runti
 	if err := networkRuntime.EnsureNetwork(ctx, cfg.IngressNetwork, map[string]string{"io.aether.component": "ingress"}); err != nil {
 		return fmt.Errorf("ensure ingress network: %w", err)
 	}
+	if err := networkRuntime.EnsureNetwork(ctx, cfg.PublishedNetwork, map[string]string{"io.aether.component": "workload-published"}); err != nil {
+		return fmt.Errorf("ensure published network: %w", err)
+	}
 
 	dir := filepath.Join(cfg.StateDir, "traefik")
 	if err := os.MkdirAll(filepath.Join(dir, "dynamic"), 0o755); err != nil {
@@ -37,20 +40,30 @@ func ensureIngress(ctx context.Context, cfg *config.Config, runtime worker.Runti
 	}
 
 	for _, item := range mustListContainers(ctx, runtime) {
-		if item.Name == "aether-traefik" {
-			return nil
+		if item.Name != "aether-traefik" {
+			continue
 		}
+		if item.State == "running" {
+			if _, err := runtime.Port(ctx, item.ID); err == nil {
+				return nil
+			}
+		}
+		if err := runtime.Remove(ctx, item.ID); err != nil {
+			return fmt.Errorf("remove stale ingress: %w", err)
+		}
+		break
 	}
 	if _, err := runtime.Pull(ctx, cfg.TraefikImage); err != nil {
 		return fmt.Errorf("pull ingress image %q: %w", cfg.TraefikImage, err)
 	}
 	if _, err := runtime.Run(ctx, worker.RunSpec{
 		Name: "aether-traefik", Image: cfg.TraefikImage, Network: cfg.IngressNetwork,
-		NetworkAlias: "traefik",
-		Labels:       map[string]string{"io.aether.component": "traefik", "io.aether.managed": "true"},
-		Command:      []string{"--configFile=/etc/traefik/traefik.yml"},
-		Mounts:       []worker.MountSpec{{Source: dir, Target: "/etc/traefik"}},
-		Ports:        []worker.PortSpec{{HostPort: 80, ContainerPort: 80}, {HostPort: 443, ContainerPort: 443}},
+		AdditionalNetworks: []string{cfg.PublishedNetwork},
+		NetworkAlias:       "traefik",
+		Labels:             map[string]string{"io.aether.component": "traefik", "io.aether.managed": "true"},
+		Command:            []string{"--configFile=/etc/traefik/traefik.yml"},
+		Mounts:             []worker.MountSpec{{Source: dir, Target: "/etc/traefik"}},
+		Ports:              []worker.PortSpec{{HostPort: 80, ContainerPort: 80, HostIP: "0.0.0.0"}, {HostPort: 443, ContainerPort: 443, HostIP: "0.0.0.0"}},
 	}); err != nil {
 		return fmt.Errorf("start ingress: %w", err)
 	}

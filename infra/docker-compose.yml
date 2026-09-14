@@ -1,12 +1,55 @@
 services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      NETWORKS: "1"
+      VOLUMES: "1"
+      POST: "1"
+      BUILD: "1"
+      EXEC: "1"
+      PING: "1"
+      VERSION: "1"
+      SYSTEM: "1"
+      AUTH: "0"
+      SECRETS: "0"
+      SWARM: "0"
+      PLUGINS: "0"
+      SERVICES: "0"
+      TASKS: "0"
+      NODES: "0"
+    volumes:
+      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    tmpfs:
+      - /tmp:noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2375/_ping >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - docker-control
+
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
     environment:
       POSTGRES_USER: aether
-      POSTGRES_PASSWORD: aether
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
       POSTGRES_DB: aether
     volumes:
       - aether-pg:/var/lib/postgresql/data
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+      - /run/postgresql:rw,nosuid,nodev,size=16m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aether"]
       interval: 5s
@@ -15,14 +58,21 @@ services:
     restart: unless-stopped
 
   nats:
-    image: nats:2.14.2-alpine
+    image: nats:2.14.2-alpine@sha256:952d157e28d5394a211229bd57a7b37ff9f184e58e2c8486a08fa909fd254e32
     command: ["-c", "/etc/nats/nats.conf"]
+    environment:
+      AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
+      AETHER_NATS_PASSWORD_HASH: ${AETHER_NATS_PASSWORD_HASH:?AETHER_NATS_PASSWORD_HASH must be set}
     volumes:
       - aether-nats:/data
       - ./nats.conf:/etc/nats/nats.conf:ro
-    ports:
-      - "1422:4222"
-      - "1822:8222"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
       interval: 5s
@@ -35,40 +85,61 @@ services:
       context: ..
       dockerfile: infra/Dockerfile
     depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       nats:
         condition: service_healthy
+    read_only: true
+    user: "aether"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_NAME: aether
       DATABASE_USER: aether
-      DATABASE_PASSWORD: aether
-      DATABASE_SSL_MODE: disable
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-require}
       AETHER_API_ADDR: 0.0.0.0:8080
       AETHER_STATE: /var/lib/aether
       AETHER_RUNTIME_BACKEND: nats
       AETHER_NATS_URL: nats://nats:4222
       AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
-      DOCKER_HOST: unix:///var/run/docker.sock
-      AETHER_BUILD_DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      AETHER_BUILD_DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
       - aether-state:/var/lib/aether
-      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    networks:
+      - default
+      - docker-control
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
 
   web:
     build:
       context: ..
       dockerfile: infra/web.Dockerfile
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=16m
+      - /var/run:rw,nosuid,nodev,size=1m
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
     depends_on:
       - aether
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     restart: unless-stopped
 
   worker:
@@ -77,17 +148,27 @@ services:
       dockerfile: infra/Dockerfile
     entrypoint: ["/usr/local/bin/aether-worker"]
     depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       nats:
         condition: service_healthy
+    read_only: true
+    user: "aether"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_NAME: aether
       DATABASE_USER: aether
-      DATABASE_PASSWORD: aether
-      DATABASE_SSL_MODE: disable
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-require}
       AETHER_STATE: /var/lib/aether
       AETHER_RUNTIME_BACKEND: nats
       AETHER_NATS_URL: nats://nats:4222
@@ -95,11 +176,13 @@ services:
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
       AETHER_SNAPSHOT_HOST_DIR: /var/lib/aether/snapshots
       AETHER_WORKER_HEALTH_ADDR: 0.0.0.0:8081
-      DOCKER_HOST: unix:///var/run/docker.sock
-      AETHER_BUILD_DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      AETHER_BUILD_DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
       - aether-state:/var/lib/aether
-      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    networks:
+      - default
+      - docker-control
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/ready"]
@@ -117,24 +200,29 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+    read_only: true
+    user: "aether"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_NAME: aether
       DATABASE_USER: aether
-      DATABASE_PASSWORD: aether
-      DATABASE_SSL_MODE: disable
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-require}
       AETHER_STATE: /var/lib/aether
       AETHER_RUNTIME_BACKEND: nats
       AETHER_NATS_URL: nats://nats:4222
       AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
       AETHER_MONITORING_HEALTH_ADDR: 0.0.0.0:8082
-      DOCKER_HOST: unix:///var/run/docker.sock
-      AETHER_BUILD_DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - aether-state:/var/lib/aether
-      - ${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/ready"]
@@ -146,3 +234,7 @@ volumes:
   aether-pg:
   aether-nats:
   aether-state:
+
+networks:
+  docker-control:
+    internal: false

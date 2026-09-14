@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"aether/internal/modules/webhooks/domain"
 	"aether/internal/modules/webhooks/infra"
+	"aether/internal/platform/security"
 )
 
 type env struct {
@@ -73,8 +75,9 @@ func TestWebhookDeliver(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	e.svc.AllowLoopback = true
 	_, _ = e.svc.Create(e.ctx, e.orgID, "deploys", srv.URL, "s3cr3t", []string{"deploy.ready"})
-	e.svc.Client = srv.Client()
+	e.svc.Client = security.NewTestHTTPClient(5 * time.Second)
 
 	if err := e.svc.Deliver(e.ctx, "deploy.ready", map[string]any{"app": "web"}); err != nil {
 		t.Fatalf("deliver: %v", err)

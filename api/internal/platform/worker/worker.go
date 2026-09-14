@@ -41,25 +41,27 @@ type AppStore interface {
 }
 
 type Worker struct {
-	Store           DeploymentStore
-	Apps            AppStore
-	Runtime         Runtime
-	Logger          *slog.Logger
-	LogsDir         string
-	BuildsDir       string
-	UploadsDir      string
-	IngressNetwork  string
-	Notifier        DeployNotifier
-	LogNotifier     LogNotifier
-	CnbBuilder      string
-	DockerHost      string
-	BuildDockerHost string
-	Images          ImageRuntime
-	Builder         ImageBuildRuntime
-	Registry        ImageRegistryRuntime
-	Queue           queue.Queue
-	ServiceDeploy   func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
-	ComposeDeploy   interface {
+	Store              DeploymentStore
+	Apps               AppStore
+	Runtime            Runtime
+	Logger             *slog.Logger
+	LogsDir            string
+	BuildsDir          string
+	UploadsDir         string
+	IngressNetwork     string
+	PublishedNetwork   string
+	Notifier           DeployNotifier
+	LogNotifier        LogNotifier
+	CnbBuilder         string
+	DockerHost         string
+	BuildDockerHost    string
+	BuildDockerNetwork string
+	Images             ImageRuntime
+	Builder            ImageBuildRuntime
+	Registry           ImageRegistryRuntime
+	Queue              queue.Queue
+	ServiceDeploy      func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
+	ComposeDeploy      interface {
 		UpApp(context.Context, uuid.UUID, uuid.UUID) (string, error)
 	}
 	Metrics           *observability.Metrics
@@ -98,6 +100,9 @@ type LogNotifier interface {
 
 type deploymentLogContextKey struct{}
 
+var deploymentSecretPattern = regexp.MustCompile(`(?i)(\b(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)\b\s*[:=]\s*["']?)([^\s"'&,;}]+)`)
+var deploymentAuthorizationPattern = regexp.MustCompile(`(?i)(\bauthorization\b\s*[:=]\s*)(?:[^\s]+\s+)?[^\s"'&,;}]+`)
+
 // WithDeploymentLog attaches a live deployment log sink to a context.
 func WithDeploymentLog(ctx context.Context, sink func(string)) context.Context {
 	return context.WithValue(ctx, deploymentLogContextKey{}, sink)
@@ -106,7 +111,8 @@ func WithDeploymentLog(ctx context.Context, sink func(string)) context.Context {
 // EmitDeploymentLog sends a deployment log line to the context sink.
 func EmitDeploymentLog(ctx context.Context, line string) {
 	if sink, ok := ctx.Value(deploymentLogContextKey{}).(func(string)); ok && line != "" {
-		sink(line)
+		line = deploymentAuthorizationPattern.ReplaceAllString(line, "${1}[REDACTED]")
+		sink(deploymentSecretPattern.ReplaceAllString(line, "${1}[REDACTED]"))
 	}
 }
 
@@ -470,6 +476,10 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		containerPort = spec.Port
 	}
 	w.removeOldContainers(ctx, dep.AppID, dep.ID)
+	runtimePort := spec.Port
+	if runtimePort > 0 && runtimePort < 1024 {
+		runtimePort = 0
+	}
 	serviceID := dep.AppID
 	if provider, ok := w.Apps.(interface {
 		GetServiceID(context.Context, uuid.UUID) (uuid.UUID, error)
@@ -491,8 +501,8 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		}
 	}
 	containerID, err := w.Runtime.Run(ctx, RunSpec{
-		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: spec.Port, ContainerPort: containerPort,
-		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8],
+		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: runtimePort, ContainerPort: containerPort,
+		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8], AdditionalNetworks: []string{w.PublishedNetwork},
 		MemMB: spec.MemMB, CPUs: spec.CPUs, StorageMB: spec.StorageMB, Labels: labels,
 	})
 	if err != nil {
@@ -666,6 +676,9 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	w.appendLog(dep, "cnb (smartbuild): building "+img+" with builder "+builder)
 	w.appendLog(dep, "cnb: docker host "+dockerHost)
 	args := []string{"build", img, "-p", srcDir, "-B", builder, "--docker-host=inherit", "--pull-policy=never", "--platform", "linux/" + runtime.GOARCH}
+	if w.BuildDockerNetwork != "" {
+		args = append(args, "--network", w.BuildDockerNetwork)
+	}
 	for _, e := range cnbBuildEnv(srcDir, spec) {
 		args = append(args, "--env", e)
 	}
@@ -955,7 +968,7 @@ func (w *Worker) appendLog(dep *deploydomain.Deployment, line string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	f, err := os.OpenFile(filepath.Join(dir, dep.ID.String()+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filepath.Join(dir, dep.ID.String()+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}

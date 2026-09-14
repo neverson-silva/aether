@@ -16,24 +16,32 @@ var (
 )
 
 type Template struct {
-	ID            uuid.UUID
-	Name          string
-	Description   string
-	Category      string
-	Icon          string
-	Version       string
-	Definition    string
-	Readme        string
-	Homepage      string
-	GitHub        string
-	License       string
-	Installs      int
-	Featured      bool
-	Verified      bool
-	EditorsChoice bool
-	Tags          []string
-	UpdatedAt     time.Time
-	ComposeYAML   string
+	ID             uuid.UUID
+	RemoteID       string
+	LogoTemplateID uuid.UUID
+	Name           string
+	Description    string
+	Category       string
+	Icon           string
+	Version        string
+	Definition     string
+	Readme         string
+	Homepage       string
+	GitHub         string
+	License        string
+	Installs       int
+	Featured       bool
+	Verified       bool
+	EditorsChoice  bool
+	Tags           []string
+	UpdatedAt      time.Time
+	ComposeYAML    string
+	Environment    []TemplateEnvironmentVariable
+}
+
+type TemplateEnvironmentVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type ComposeApp struct {
@@ -58,10 +66,6 @@ type Filter struct {
 }
 
 type Store interface {
-	ListTemplates(ctx context.Context, filter Filter) ([]Template, error)
-	GetTemplate(ctx context.Context, id uuid.UUID) (*Template, error)
-	IncrementInstalls(ctx context.Context, id uuid.UUID) error
-
 	CreateComposeApp(ctx context.Context, app *ComposeApp) (*ComposeApp, error)
 	NextComposePort(ctx context.Context) (int, error)
 	GetComposeApp(ctx context.Context, id uuid.UUID) (*ComposeApp, error)

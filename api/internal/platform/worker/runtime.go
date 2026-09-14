@@ -19,20 +19,22 @@ var (
 )
 
 type RunSpec struct {
-	Name          string
-	Image         string
-	Env           []string
-	Port          int
-	ContainerPort int
-	Network       string
-	NetworkAlias  string
-	MemMB         int
-	CPUs          string
-	StorageMB     int
-	Labels        map[string]string
-	Command       []string
-	Mounts        []MountSpec
-	Ports         []PortSpec
+	Name               string
+	Image              string
+	Env                []string
+	Port               int
+	ContainerPort      int
+	HostIP             string
+	Network            string
+	NetworkAlias       string
+	AdditionalNetworks []string
+	MemMB              int
+	CPUs               string
+	StorageMB          int
+	Labels             map[string]string
+	Command            []string
+	Mounts             []MountSpec
+	Ports              []PortSpec
 }
 
 type MountSpec struct {
@@ -44,6 +46,7 @@ type MountSpec struct {
 type PortSpec struct {
 	HostPort      int
 	ContainerPort int
+	HostIP        string
 }
 
 type LifecycleRuntime interface {
@@ -99,6 +102,10 @@ type StatsRuntime interface {
 
 type ContainerMetadataRuntime interface {
 	ListContainerMetadata(ctx context.Context) ([]ContainerInfo, error)
+}
+
+type ServiceContainerRuntime interface {
+	ListServiceContainers(ctx context.Context, serviceID, specID uuid.UUID) ([]ContainerInfo, error)
 }
 
 type RuntimeEvent struct {
@@ -194,11 +201,12 @@ type ContainerStats struct {
 }
 
 type ContainerInfo struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	State    string            `json:"state"`
-	Labels   map[string]string `json:"labels"`
-	Healthy  *bool             `json:"healthy,omitempty"`
-	Stats    ContainerStats    `json:"stats"`
-	HasStats bool              `json:"has_stats"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	State     string            `json:"state"`
+	Labels    map[string]string `json:"labels"`
+	CreatedAt time.Time         `json:"created_at,omitempty"`
+	Healthy   *bool             `json:"healthy,omitempty"`
+	Stats     ContainerStats    `json:"stats"`
+	HasStats  bool              `json:"has_stats"`
 }

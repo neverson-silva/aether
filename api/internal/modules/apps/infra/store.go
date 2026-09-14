@@ -27,6 +27,14 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) OrganizationStorageMB(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE((SELECT SUM(storage_mb) FROM apps WHERE org_id = $1), 0)
+     + COALESCE((SELECT SUM(storage_mb) FROM databases WHERE org_id = $1), 0)`, orgID).Scan(&total)
+	return total, err
+}
+
 func (s *Store) CreateProject(ctx context.Context, orgID uuid.UUID, name, slug, description, color string) (*domain.Project, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -140,9 +148,20 @@ func (s *Store) DeleteEnvironment(ctx context.Context, id, projectID uuid.UUID) 
 }
 
 func (s *Store) CreateApp(ctx context.Context, app *domain.App) (*domain.App, error) {
-	row, err := s.q.CreateApp(ctx, appParams(app))
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := checkOrganizationStorage(ctx, tx, app.OrgID, app.StorageMB, 0); err != nil {
+		return nil, err
+	}
+	row, err := gen.New(tx).CreateApp(ctx, appParams(app))
 	if err != nil {
 		return nil, mapErr(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return appFromRow(row), nil
 }
@@ -201,7 +220,19 @@ func (s *Store) ListAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Ap
 }
 
 func (s *Store) UpdateApp(ctx context.Context, app *domain.App) (*domain.App, error) {
-	row, err := s.q.UpdateApp(ctx, gen.UpdateAppParams{
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var previous int
+	if err := tx.QueryRowContext(ctx, `SELECT storage_mb FROM apps WHERE id = $1 AND org_id = $2 FOR UPDATE`, app.ID, app.OrgID).Scan(&previous); err != nil {
+		return nil, mapErr(err)
+	}
+	if err := checkOrganizationStorage(ctx, tx, app.OrgID, app.StorageMB, previous); err != nil {
+		return nil, err
+	}
+	row, err := gen.New(tx).UpdateApp(ctx, gen.UpdateAppParams{
 		ID: app.ID, OrgID: app.OrgID, Name: app.Name, Image: app.Image, GitUrl: app.GitURL,
 		GitBranch: app.GitBranch, UploadID: app.UploadID, Dockerfile: app.Dockerfile, ComposeFile: app.ComposeFile, Port: int32(app.Port), Cpus: app.CPUs,
 		MemMb: int32(app.MemMB), HcEnabled: app.HealthCheck.Enabled, HcPath: app.HealthCheck.Path,
@@ -216,7 +247,26 @@ func (s *Store) UpdateApp(ctx context.Context, app *domain.App) (*domain.App, er
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return appFromRow(row), nil
+}
+
+func checkOrganizationStorage(ctx context.Context, tx *sql.Tx, orgID uuid.UUID, requested, replaced int) error {
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, orgID.String()); err != nil {
+		return err
+	}
+	var used int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COALESCE((SELECT SUM(storage_mb) FROM apps WHERE org_id = $1), 0)
+     + COALESCE((SELECT SUM(storage_mb) FROM databases WHERE org_id = $1), 0)`, orgID).Scan(&used); err != nil {
+		return err
+	}
+	if used < 0 || replaced < 0 || requested < 0 || replaced > used || used-replaced > 512000-requested {
+		return domain.ErrConflict
+	}
+	return nil
 }
 
 func (s *Store) DeleteApp(ctx context.Context, id, orgID uuid.UUID) error {
@@ -242,6 +292,36 @@ func (s *Store) UpsertEnvVar(ctx context.Context, appID uuid.UUID, name, value s
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO app_env (app_id, service_id, name, value, secret) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (service_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret`, appID, serviceID, name, stored, secret)
 	return mapErr(err)
+}
+
+func (s *Store) UpsertServiceEnvVar(ctx context.Context, serviceID uuid.UUID, name, value string, secret bool) error {
+	stored := value
+	if secret && s.Cipher != nil && stored != "" {
+		enc, err := s.Cipher.Encrypt(stored)
+		if err != nil {
+			return err
+		}
+		stored = enc
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO app_env (app_id, service_id, name, value, secret) VALUES (NULL, $1, $2, $3, $4) ON CONFLICT (service_id, name) DO UPDATE SET value = EXCLUDED.value, secret = EXCLUDED.secret`, serviceID, name, stored, secret)
+	return mapErr(err)
+}
+
+func (s *Store) ListServiceEnvVars(ctx context.Context, serviceID uuid.UUID) ([]domain.EnvVar, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name, value, secret FROM app_env WHERE service_id = $1 ORDER BY name`, serviceID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	result := make([]domain.EnvVar, 0)
+	for rows.Next() {
+		var variable domain.EnvVar
+		if err := rows.Scan(&variable.Name, &variable.Value, &variable.Secret); err != nil {
+			return nil, mapErr(err)
+		}
+		result = append(result, variable)
+	}
+	return result, mapErr(rows.Err())
 }
 
 func (s *Store) InsertMissingEnvVars(ctx context.Context, appID uuid.UUID, names []string) (int, error) {

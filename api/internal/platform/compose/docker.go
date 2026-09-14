@@ -50,6 +50,13 @@ func (d *Docker) execute(ctx context.Context, project Project, sink func(string)
 	if strings.TrimSpace(project.Directory) == "" || strings.TrimSpace(project.File) == "" {
 		return "", fmt.Errorf("compose project is incomplete")
 	}
+	content, err := os.ReadFile(project.File)
+	if err != nil {
+		return "", fmt.Errorf("read compose configuration: %w", err)
+	}
+	if err := ValidatePolicy(string(content)); err != nil {
+		return "", err
+	}
 	binary := d.Binary
 	if binary == "" {
 		binary = "docker"
@@ -149,6 +156,12 @@ func markExistingNetworks(content string, exists func(string) bool) (string, boo
 		if external, ok := config["external"].(bool); ok && external {
 			continue
 		}
+		if internal, ok := config["internal"].(bool); ok && internal {
+			continue
+		}
+		config["internal"] = true
+		rawNetworks[key] = config
+		changed = true
 		name, ok := config["name"].(string)
 		if !ok || strings.TrimSpace(name) == "" || !exists(name) {
 			continue

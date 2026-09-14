@@ -4,6 +4,7 @@ import "testing"
 
 func TestLoadUsesDedicatedBuildDockerHost(t *testing.T) {
 	t.Setenv("AETHER_STATE", t.TempDir())
+	t.Setenv("DEV_MODE", "true")
 	t.Setenv("AETHER_DOCKER_HOST", "unix:///legacy.sock")
 	t.Setenv("AETHER_BUILD_DOCKER_HOST", "unix:///docker.sock")
 	t.Setenv("DOCKER_HOST", "unix:///environment.sock")
@@ -22,6 +23,7 @@ func TestLoadUsesDedicatedBuildDockerHost(t *testing.T) {
 
 func TestLoadDefaultsBuildDockerHostToDockerSocket(t *testing.T) {
 	t.Setenv("AETHER_STATE", t.TempDir())
+	t.Setenv("DEV_MODE", "true")
 	t.Setenv("AETHER_DOCKER_HOST", "")
 	t.Setenv("AETHER_BUILD_DOCKER_HOST", "")
 	t.Setenv("AETHER_IMAGE_DOCKER_HOST", "")
@@ -33,5 +35,32 @@ func TestLoadDefaultsBuildDockerHostToDockerSocket(t *testing.T) {
 	}
 	if cfg.BuildDockerHost != "unix:///var/run/docker.sock" {
 		t.Fatalf("BuildDockerHost = %q", cfg.BuildDockerHost)
+	}
+}
+
+func TestLoadRejectsWildcardCORSOrigin(t *testing.T) {
+	t.Setenv("AETHER_STATE", t.TempDir())
+	t.Setenv("AETHER_CORS_ORIGINS", "*")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected wildcard CORS origin to be rejected")
+	}
+}
+
+func TestLoadRejectsMutableInfrastructureImagesOutsideDevelopment(t *testing.T) {
+	t.Setenv("AETHER_STATE", t.TempDir())
+	if _, err := Load(); err == nil {
+		t.Fatal("expected mutable infrastructure image to be rejected")
+	}
+}
+
+func TestValidateImageSignaturePolicyRequiresCosignConfigurationOutsideDevelopment(t *testing.T) {
+	t.Setenv("AETHER_REQUIRE_IMAGE_SIGNATURES", "false")
+	if err := validateImageSignaturePolicy(&Config{DevMode: false}); err == nil {
+		t.Fatal("expected signature policy to be required outside development")
+	}
+	t.Setenv("AETHER_REQUIRE_IMAGE_SIGNATURES", "true")
+	t.Setenv("AETHER_COSIGN_PUBLIC_KEY", "")
+	if err := validateImageSignaturePolicy(&Config{DevMode: false}); err == nil {
+		t.Fatal("expected verification key to be required outside development")
 	}
 }

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${KANEO_DB}
+      POSTGRES_USER: ${KANEO_DB_USER}
+      POSTGRES_PASSWORD: ${KANEO_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/usekaneo/api@sha256:512753d25d13a9e6852722a90723b95e8034b16804123fdb7d621226b8e5d1d6
+    environment:
+      JWT_ACCESS: ${KANEO_JWT_ACCESS}
+      DATABASE_URL: "postgresql://${KANEO_DB_USER}:${KANEO_DB_PASSWORD}@postgres:5432/${KANEO_DB}"
+    expose:
+      - 1337
+    depends_on:
+      postgres:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/usekaneo/web@sha256:4229303bf5764caea713e9e02443f887f4f1afee2a8cf02bb9eea69d8be422e1
+    environment:
+      KANEO_API_URL: "http://${BACKEND_HOST}"
+    expose:
+      - 5173
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -101,6 +101,15 @@ func TestDomainValidation(t *testing.T) {
 	if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, AddDomainInput{Host: ""}); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("host vazio deveria falhar: %v", err)
 	}
+	for _, input := range []AddDomainInput{
+		{Host: "safe.example.com", Path: "/\"\nrule: injected"},
+		{Host: "safe.example.com", InternalPath: "/../etc"},
+		{Host: "safe.example.com", ContainerPort: 65536},
+	} {
+		if _, err := e.svc.Add(e.ctx, e.appID, e.orgID, ServiceTypeApp, input); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("unsafe domain input should fail: %+v (%v)", input, err)
+		}
+	}
 	if err := e.svc.Provisioner.ValidateHost("localhost"); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("localhost deveria ser rejeitado")
 	}

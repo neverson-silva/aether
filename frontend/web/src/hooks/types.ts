@@ -411,9 +411,12 @@ export interface TemplateItem {
   category: string;
   tags: string[];
   icon: string;
-  version: string;
-  definition: string;
-  compose_yaml?: string;
+  logo_url?: string;
+	version: string;
+	definition: string;
+	remote_id?: string;
+	compose_yaml?: string;
+	environment?: Array<{ name: string; value: string }>;
   readme: string;
   homepage: string;
   github: string;

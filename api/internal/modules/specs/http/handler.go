@@ -16,6 +16,8 @@ import (
 	"aether/internal/modules/specs/domain"
 )
 
+const maxZipUploadBytes int64 = 64 << 20
+
 type Handler struct {
 	specs    *application.Specs
 	analyzer *application.Analyzer
@@ -106,9 +108,13 @@ func (h *Handler) UploadZip(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	data, err := io.ReadAll(io.LimitReader(file, maxZipUploadBytes+1))
 	if err != nil {
 		abort(c, err)
+		return
+	}
+	if int64(len(data)) > maxZipUploadBytes {
+		abort(c, domain.ErrValidation)
 		return
 	}
 	upload, err := h.analyzer.SaveZipUpload(header.Filename, data)

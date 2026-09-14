@@ -13,6 +13,9 @@ import (
 )
 
 func (s *DatabaseBackups) StartManualBackup(ctx context.Context, dbID, orgID uuid.UUID, configIDs ...uuid.UUID) (*domain.BackupJob, error) {
+	if err := s.ensureOrganizationCapacity(ctx, orgID); err != nil {
+		return nil, err
+	}
 	db, err := s.Databases.Get(ctx, dbID, orgID)
 	if err != nil {
 		return nil, err

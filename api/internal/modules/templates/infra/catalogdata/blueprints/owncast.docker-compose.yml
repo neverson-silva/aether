@@ -1,0 +1,14 @@
+
+version: "3.8"
+
+services:
+  owncast:
+    image: owncast/owncast@sha256:3d3474276e6b6a41750fb2d759c0ad240fd0f19759af939ff10ee0eaeb5487a9
+    restart: unless-stopped
+    volumes:
+      - owncast-data:/app/data
+    expose:
+      - 8080
+      - 1935
+volumes:
+  owncast-data: {}

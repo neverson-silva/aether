@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -17,18 +18,25 @@ import (
 )
 
 type Handler struct {
-	databases *application.Databases
-	studio    *application.Studio
-	runtime   worker.Runtime
-	enqueuer  ServiceDeploymentEnqueuer
+	databases      *application.Databases
+	studio         *application.Studio
+	runtime        worker.Runtime
+	enqueuer       ServiceDeploymentEnqueuer
+	originPatterns []string
 }
 
 type ServiceDeploymentEnqueuer interface {
 	EnqueueServiceDeployment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)
 }
 
-func New(databases *application.Databases, studio *application.Studio) *Handler {
-	return &Handler{databases: databases, studio: studio}
+func New(databases *application.Databases, studio *application.Studio, origins ...string) *Handler {
+	patterns := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		if parsed, err := url.Parse(origin); err == nil && parsed.Hostname() != "" {
+			patterns = append(patterns, parsed.Hostname())
+		}
+	}
+	return &Handler{databases: databases, studio: studio, originPatterns: patterns}
 }
 
 func (h *Handler) WithRuntime(runtime worker.Runtime) *Handler {
@@ -113,8 +121,7 @@ func (h *Handler) Get(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	dsn, _ := h.databases.ConnectionString(c.Request.Context(), id, orgID(c))
-	c.JSON(http.StatusOK, gin.H{"database": databaseDTO(db), "dsn": dsn, "public_host": hostinfo.PublicIP()})
+	c.JSON(http.StatusOK, gin.H{"database": databaseDTO(db), "public_host": hostinfo.PublicIP()})
 }
 
 func (h *Handler) Delete(c *gin.Context) {

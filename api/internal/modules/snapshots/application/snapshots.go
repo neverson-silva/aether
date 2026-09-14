@@ -14,6 +14,8 @@ type Snapshots struct {
 	Store domain.Store
 }
 
+const maxSnapshotRetention = 3650
+
 func (s *Snapshots) Create(ctx context.Context, orgID uuid.UUID, appID *uuid.UUID, volume, name string) (*domain.Snapshot, error) {
 	volume = strings.TrimSpace(volume)
 	name = strings.TrimSpace(name)
@@ -73,6 +75,8 @@ func (s *Snapshots) CreateSchedule(ctx context.Context, orgID uuid.UUID, appID *
 	}
 	if retention <= 0 {
 		retention = 7
+	} else if retention > maxSnapshotRetention {
+		retention = maxSnapshotRetention
 	}
 	return s.Store.CreateSchedule(ctx, &domain.Schedule{
 		OrgID: orgID, AppID: appID, Volume: volume, NamePrefix: strings.TrimSpace(namePrefix),
@@ -94,6 +98,8 @@ func (s *Snapshots) CreateScheduleForService(ctx context.Context, serviceID, org
 	}
 	if retention <= 0 {
 		retention = 7
+	} else if retention > maxSnapshotRetention {
+		retention = maxSnapshotRetention
 	}
 	return s.Store.CreateScheduleForService(ctx, &domain.Schedule{OrgID: orgID, ServiceID: &serviceID, Volume: volume, NamePrefix: strings.TrimSpace(namePrefix), Cron: cronExpr, Retention: retention, Enabled: enabled})
 }

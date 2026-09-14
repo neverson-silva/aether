@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"aether/internal/modules/backups/domain"
 	"aether/internal/platform/storage"
 )
+
+const externalBackupStorageQuotaBytes int64 = 500 * 1024 * 1024 * 1024
 
 func (s *DatabaseBackups) runBackup(ctx context.Context, orgID uuid.UUID, jobID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout())
@@ -43,13 +46,13 @@ func (s *DatabaseBackups) runBackup(ctx context.Context, orgID uuid.UUID, jobID 
 		return
 	}
 
-	lock, ok, err := s.Locks.Acquire(ctx, "db:"+job.DatabaseID.String()+":backup", s.timeout())
+	lock, ok, err := s.Locks.Acquire(ctx, "org:"+orgID.String()+":backup-storage", s.timeout())
 	if err != nil {
 		_ = s.failJob(ctx, orgID, job, "BACKUP_LOCK_FAILED", err.Error())
 		return
 	}
 	if !ok {
-		_ = s.failJob(ctx, orgID, job, "BACKUP_ALREADY_RUNNING", "another backup is running")
+		_ = s.failJob(ctx, orgID, job, "BACKUP_ALREADY_RUNNING", "another backup is running for this organization")
 		return
 	}
 	defer func() { _ = s.Locks.Release(ctx, lock) }()
@@ -108,6 +111,15 @@ func (s *DatabaseBackups) runBackup(ctx context.Context, orgID uuid.UUID, jobID 
 		return
 	}
 	job.StorageKey = key
+	used, err := externalStorageUsage(ctx, provider, cfg.PathPrefix)
+	if err != nil {
+		_ = s.failJob(ctx, orgID, job, "BACKUP_STORAGE_QUOTA_CHECK_FAILED", err.Error())
+		return
+	}
+	if used > externalBackupStorageQuotaBytes || size > externalBackupStorageQuotaBytes-used {
+		_ = s.failJob(ctx, orgID, job, "BACKUP_STORAGE_QUOTA_EXCEEDED", "external backup storage quota exceeded")
+		return
+	}
 	_ = job.Transition(domain.BackupUploading)
 	_, _ = s.Store.UpdateJob(ctx, job)
 
@@ -115,6 +127,12 @@ func (s *DatabaseBackups) runBackup(ctx context.Context, orgID uuid.UUID, jobID 
 		_ = s.failJob(ctx, orgID, job, "BACKUP_STORAGE_UPLOAD_FAILED", err.Error())
 		return
 	}
+	uploaded := true
+	defer func() {
+		if uploaded {
+			_ = provider.DeleteObject(context.Background(), storage.DeleteObjectInput{Key: key})
+		}
+	}()
 	_ = job.Transition(domain.BackupVerifying)
 	head, err := provider.HeadObject(ctx, storage.HeadObjectInput{Key: key})
 	if err != nil {
@@ -130,11 +148,34 @@ func (s *DatabaseBackups) runBackup(ctx context.Context, orgID uuid.UUID, jobID 
 	job.CompletedAt = &completed
 	_ = job.Transition(domain.BackupCompleted)
 	_, _ = s.Store.UpdateJob(ctx, job)
+	uploaded = false
 	s.Audit.Record(ctx, orgID, "backup.completed", "database", job.DatabaseID.String(), job.ID.String()+" "+key)
 	s.notifyBackup(ctx, orgID, job.DatabaseID, job.ID, string(job.Status))
 
 	if cfg.Retention.Type == domain.RetentionLatest {
 		s.applyLatestRetention(ctx, provider, job)
+	}
+	s.cleanupExternalOrphans(ctx, provider, cfg.PathPrefix, job)
+}
+
+func externalStorageUsage(ctx context.Context, provider storage.Provider, prefix string) (int64, error) {
+	var used int64
+	cursor := ""
+	for {
+		page, err := provider.ListObjects(ctx, storage.ListObjectsInput{Prefix: prefix, Limit: 1000, Cursor: cursor})
+		if err != nil {
+			return 0, err
+		}
+		for _, object := range page.Objects {
+			if object.Size < 0 || used > externalBackupStorageQuotaBytes-object.Size {
+				return 0, errors.New("external backup storage quota exceeded")
+			}
+			used += object.Size
+		}
+		if page.NextCursor == "" || page.NextCursor == cursor {
+			return used, nil
+		}
+		cursor = page.NextCursor
 	}
 }
 
@@ -145,19 +186,36 @@ func (s *DatabaseBackups) streamBackup(ctx context.Context, adapter BackupAdapte
 	}
 	path := file.Name()
 	hash := sha256.New()
-	sink := io.MultiWriter(file, hash)
+	sink := &boundedWriter{writer: io.MultiWriter(file, hash), remaining: s.maxBackupBytes()}
 	if err := adapter.CreateBackup(ctx, desc, sink); err != nil {
 		_ = file.Close()
+		_ = os.Remove(path)
 		return "", 0, "", err
 	}
 	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
 		return "", 0, "", err
 	}
 	info, err := os.Stat(path)
 	if err != nil {
+		_ = os.Remove(path)
 		return "", 0, "", err
 	}
 	return path, info.Size(), hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+type boundedWriter struct {
+	writer    io.Writer
+	remaining int64
+}
+
+func (w *boundedWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > w.remaining {
+		return 0, errors.New("backup exceeds the maximum allowed size")
+	}
+	n, err := w.writer.Write(p)
+	w.remaining -= int64(n)
+	return n, err
 }
 
 func (s *DatabaseBackups) upload(ctx context.Context, provider storage.Provider, key, path string, job *domain.BackupJob) error {
@@ -189,6 +247,40 @@ func (s *DatabaseBackups) applyLatestRetention(ctx context.Context, provider sto
 			continue
 		}
 		_ = provider.DeleteObject(ctx, storage.DeleteObjectInput{Key: b.StorageKey})
+	}
+}
+
+func (s *DatabaseBackups) cleanupExternalOrphans(ctx context.Context, provider storage.Provider, prefix string, current *domain.BackupJob) {
+	jobs, err := s.Store.ListJobsByDatabase(ctx, current.DatabaseID, 10000)
+	if err != nil {
+		return
+	}
+	known := make(map[string]struct{}, len(jobs))
+	for _, job := range jobs {
+		if job.Status == domain.BackupCompleted && job.StorageKey != "" {
+			known[job.StorageKey] = struct{}{}
+		}
+	}
+	scope := strings.TrimSuffix(prefix, "/") + "/"
+	databaseMarker := "/" + current.DatabaseID.String() + "/backup-"
+	cursor := ""
+	for {
+		page, err := provider.ListObjects(ctx, storage.ListObjectsInput{Prefix: prefix, Limit: 1000, Cursor: cursor})
+		if err != nil {
+			return
+		}
+		for _, object := range page.Objects {
+			if !strings.HasPrefix(object.Key, scope) || !strings.Contains(object.Key, databaseMarker) {
+				continue
+			}
+			if _, ok := known[object.Key]; !ok {
+				_ = provider.DeleteObject(ctx, storage.DeleteObjectInput{Key: object.Key})
+			}
+		}
+		if page.NextCursor == "" || page.NextCursor == cursor {
+			return
+		}
+		cursor = page.NextCursor
 	}
 }
 
@@ -278,6 +370,33 @@ type restoreArtifact struct {
 	cleanup func()
 }
 
+var errRestoreExpansionLimit = errors.New("decompressed restore exceeds the maximum allowed size")
+
+type limitedReadCloser struct {
+	reader    io.Reader
+	closer    io.Closer
+	remaining int64
+}
+
+func (r *limitedReadCloser) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		var probe [1]byte
+		n, err := r.reader.Read(probe[:])
+		if n > 0 {
+			return 0, errRestoreExpansionLimit
+		}
+		return 0, err
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	n, err := r.reader.Read(p)
+	r.remaining -= int64(n)
+	return n, err
+}
+
+func (r *limitedReadCloser) Close() error { return r.closer.Close() }
+
 type restoreSourceError struct {
 	code string
 	msg  string
@@ -323,7 +442,7 @@ func (s *DatabaseBackups) openUploadedSource(ctx context.Context, rj *domain.Res
 			_ = f.Close()
 			return nil, &restoreSourceError{"RESTORE_INVALID_FORMAT", "uploaded file is not a valid gzip archive"}
 		}
-		return &restoreArtifact{reader: gz, cleanup: func() { _ = gz.Close(); _ = f.Close() }}, nil
+		return &restoreArtifact{reader: &limitedReadCloser{reader: gz, closer: gz, remaining: s.maxUploadBytes()}, cleanup: func() { _ = gz.Close(); _ = f.Close() }}, nil
 	}
 	rj.SourceFormat = detected
 	return &restoreArtifact{reader: f, cleanup: func() { _ = f.Close() }}, nil

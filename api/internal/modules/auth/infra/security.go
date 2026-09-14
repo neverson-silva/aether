@@ -87,6 +87,8 @@ type payload struct {
 	Glob string `json:"glob"`
 	Exp  int64  `json:"exp"`
 	Kind string `json:"kind"`
+	Sid  string `json:"sid,omitempty"`
+	Jti  string `json:"jti,omitempty"`
 }
 
 const (
@@ -95,13 +97,32 @@ const (
 )
 
 func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	return s.sign(ctx, uuid.Nil, subject, orgID, role, global, ttl, "access", time.Time{})
+}
+
+func (s *Signer) SignWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	return s.sign(ctx, sessionID, subject, orgID, role, global, ttl, "access", time.Time{})
+}
+
+func (s *Signer) sign(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration, kind string, expiresAt time.Time) (string, error) {
 	if ttl > accessTokenMaxTTL {
 		ttl = accessTokenMaxTTL
 	}
+	if expiresAt.IsZero() {
+		expiresAt = time.Now().Add(ttl)
+	}
+	if sessionID != uuid.Nil {
+		if kind == "access" {
+			return s.signPayload(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: kind, Sid: sessionID.String()})
+		}
+		return s.signPayload(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: kind, Sid: sessionID.String()})
+	}
+	return s.signPayload(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: kind})
+}
+
+func (s *Signer) signPayload(p payload) (string, error) {
 	body, err := json.Marshal(payload{
-		Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global,
-		Exp:  time.Now().Add(ttl).Unix(),
-		Kind: "access",
+		Sub: p.Sub, Org: p.Org, Role: p.Role, Glob: p.Glob, Exp: p.Exp, Kind: p.Kind, Sid: p.Sid, Jti: p.Jti,
 	})
 	if err != nil {
 		return "", err
@@ -114,25 +135,50 @@ func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain
 }
 
 func (s *Signer) SignRefresh(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	return s.signRefresh(ctx, uuid.Nil, subject, orgID, role, global, ttl)
+}
+
+func (s *Signer) SignRefreshWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
+	return s.signRefresh(ctx, sessionID, subject, orgID, role, global, ttl)
+}
+
+func (s *Signer) signRefresh(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
 	if ttl > refreshTokenMaxTTL {
 		ttl = refreshTokenMaxTTL
 	}
-	return s.SignRefreshUntil(ctx, subject, orgID, role, global, time.Now().Add(ttl))
+	return s.signRefreshUntil(ctx, sessionID, subject, orgID, role, global, time.Now().Add(ttl))
 }
 
 func (s *Signer) SignRefreshUntil(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, expiresAt time.Time) (string, error) {
+	return s.signRefreshUntil(ctx, uuid.Nil, subject, orgID, role, global, expiresAt)
+}
+
+func (s *Signer) SignRefreshUntilWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, expiresAt time.Time) (string, error) {
+	return s.signRefreshUntil(ctx, sessionID, subject, orgID, role, global, expiresAt)
+}
+
+func (s *Signer) IssueRefreshWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, expiresAt time.Time) (string, uuid.UUID, error) {
+	tokenID := uuid.New()
+	if expiresAt.After(time.Now().Add(refreshTokenMaxTTL)) {
+		expiresAt = time.Now().Add(refreshTokenMaxTTL)
+	}
+	token, err := s.signPayload(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: "refresh", Sid: sessionString(sessionID), Jti: tokenID.String()})
+	return token, tokenID, err
+}
+
+func (s *Signer) signRefreshUntil(ctx context.Context, sessionID, subject, orgID uuid.UUID, role domain.Role, global string, expiresAt time.Time) (string, error) {
 	maxExpiry := time.Now().Add(refreshTokenMaxTTL)
 	if expiresAt.After(maxExpiry) {
 		expiresAt = maxExpiry
 	}
-	body, err := json.Marshal(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: "refresh"})
-	if err != nil {
-		return "", err
+	return s.signPayload(payload{Sub: subject.String(), Org: orgID.String(), Role: string(role), Glob: global, Exp: expiresAt.Unix(), Kind: "refresh", Sid: sessionString(sessionID)})
+}
+
+func sessionString(id uuid.UUID) string {
+	if id == uuid.Nil {
+		return ""
 	}
-	encoded := base64.RawURLEncoding.EncodeToString(body)
-	mac := hmac.New(sha256.New, s.secret)
-	mac.Write([]byte(encoded))
-	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+	return id.String()
 }
 
 func (s *Signer) Verify(ctx context.Context, token string) (*domain.AuthToken, error) {
@@ -168,8 +214,22 @@ func (s *Signer) Verify(ctx context.Context, token string) (*domain.AuthToken, e
 	if !domain.Role(p.Role).Valid() {
 		return nil, domain.ErrUnauthorized
 	}
+	sessionID := uuid.Nil
+	if p.Sid != "" {
+		sessionID, err = uuid.Parse(p.Sid)
+		if err != nil {
+			return nil, domain.ErrUnauthorized
+		}
+	}
+	tokenID := uuid.Nil
+	if p.Jti != "" {
+		tokenID, err = uuid.Parse(p.Jti)
+		if err != nil {
+			return nil, domain.ErrUnauthorized
+		}
+	}
 	return &domain.AuthToken{
 		Subject: sub, OrgID: org, Role: domain.Role(p.Role), Global: p.Glob,
-		Expires: time.Unix(p.Exp, 0), Kind: p.Kind,
+		Expires: time.Unix(p.Exp, 0), Kind: p.Kind, SessionID: sessionID, TokenID: tokenID,
 	}, nil
 }

@@ -129,6 +129,19 @@ func TestProjectStatusDeploymentTakesPrecedenceOverRuntime(t *testing.T) {
 	}
 }
 
+func TestProjectStatusComposeDoesNotRemainDeployingWithRunningContainer(t *testing.T) {
+	got := ProjectStatusWithDeployment(KindCompose, []ContainerState{{Status: "running"}}, "queued", true, true)
+	if got != StatusRunning {
+		t.Fatalf("status = %q, want %q", got, StatusRunning)
+	}
+}
+
+func TestComposeDoesNotManageSourceControl(t *testing.T) {
+	if CapabilitiesFor(KindCompose).CanManageSource {
+		t.Fatal("compose services must not expose source-control settings")
+	}
+}
+
 func TestProjectStatusRuntimeMatrix(t *testing.T) {
 	healthy := true
 	unhealthy := false

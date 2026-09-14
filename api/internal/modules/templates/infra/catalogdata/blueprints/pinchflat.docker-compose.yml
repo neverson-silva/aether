@@ -1,0 +1,7 @@
+version: "3"
+services:
+  pinchflat:
+    image: ghcr.io/kieraneglin/pinchflat@sha256:01b4f98aabaf3f5fe394213f7a32578c9e84e42080f52e2f8334021a4473b202
+    volumes:
+      - ../files/config:/config
+      - ../files/downloads:/downloads

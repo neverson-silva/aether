@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { apiPost, setRefreshToken, setServer, setToken } from "../api/client";
+import { apiPost, setServer } from "../api/client";
 import type { LoginResponse } from "../api/types";
 
 export function useLogin() {
@@ -18,8 +18,6 @@ export function useLogin() {
         email,
         password,
       });
-      setToken(data.token);
-      setRefreshToken(data.refresh_token);
       return data;
     },
   });

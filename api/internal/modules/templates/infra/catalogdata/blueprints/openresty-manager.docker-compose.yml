@@ -1,0 +1,15 @@
+services:
+  openresty-manager:
+   image: uusec/openresty-manager@sha256:be49bec115b30c69fb19dbd7bb84f3a72499d8bb73abedd85f60d78111a2375b
+   restart: always
+   volumes:
+     - /etc/localtime:/etc/localtime:ro
+     - /etc/resolv.conf:/etc/resolv.conf:ro
+     - om_acme:/opt/om/acme
+     - om_data:/opt/om/data
+     - om_conf:/opt/om/nginx/conf
+
+volumes:
+  om_acme:
+  om_data:
+  om_conf:

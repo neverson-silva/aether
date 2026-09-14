@@ -184,7 +184,10 @@ func (w *SnapshotWorker) applyRetention(ctx context.Context, schedule domain.Sch
 	if schedule.Retention < 1 {
 		return nil
 	}
-	snapshots, err := w.Store.ListSnapshotsByOrg(ctx, schedule.OrgID, 1000)
+	if schedule.Retention > maxSnapshotRetention {
+		schedule.Retention = maxSnapshotRetention
+	}
+	snapshots, err := w.Store.ListSnapshotsByOrg(ctx, schedule.OrgID, maxSnapshotRetention)
 	if err != nil {
 		return err
 	}

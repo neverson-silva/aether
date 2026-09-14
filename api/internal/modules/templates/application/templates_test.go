@@ -11,6 +11,7 @@ import (
 	appsInfra "aether/internal/modules/apps/infra"
 	"aether/internal/modules/templates/domain"
 	"aether/internal/modules/templates/infra"
+	composeengine "aether/internal/platform/compose"
 )
 
 type env struct {
@@ -42,10 +43,29 @@ func newEnv(t *testing.T) *env {
 	return e
 }
 
-func seedTemplates(t *testing.T, e *env) {
-	_, _ = e.pool.Exec(e.ctx, `INSERT INTO templates (name, category, definition, tags) VALUES
-		('nginx', 'web', $1, '{proxy,http}'),
-		('postgres', 'database', $2, '{db}')`, `{"services":[{"name":"web","image":"nginx:alpine","port":80}]}`, `{"services":[{"name":"db","image":"postgres:16"}]}`)
+func seedTemplates(_ *testing.T, e *env) {
+	e.svc.Catalog = testCatalog{templates: []domain.Template{
+		{ID: uuid.New(), Name: "nginx", Category: "web", Definition: `{"services":[{"name":"web","image":"nginx:alpine","port":80}]}`, Tags: []string{"proxy", "http"}},
+		{ID: uuid.New(), Name: "postgres", Category: "database", Definition: `{"services":[{"name":"db","image":"postgres:16"}]}`, Tags: []string{"db"}},
+	}}
+}
+
+type testCatalog struct {
+	templates []domain.Template
+}
+
+func (c testCatalog) List(context.Context) ([]domain.Template, error) {
+	return c.templates, nil
+}
+
+func (c testCatalog) Get(_ context.Context, id uuid.UUID) (*domain.Template, error) {
+	for _, template := range c.templates {
+		if template.ID == id {
+			copy := template
+			return &copy, nil
+		}
+	}
+	return nil, domain.ErrNotFound
 }
 
 func TestTemplateListAndFilters(t *testing.T) {
@@ -91,6 +111,9 @@ func TestTemplateInstall(t *testing.T) {
 	if err != nil || len(apps) != 1 || apps[0].Name != "myweb" {
 		t.Fatalf("compose apps: %v %d", err, len(apps))
 	}
+	if apps[0].EnvironmentID == nil {
+		t.Fatal("template service must use the project default environment")
+	}
 
 	if err := e.svc.DeleteCompose(e.ctx, apps[0].ID, e.orgID); err != nil {
 		t.Fatalf("delete compose: %v", err)
@@ -107,6 +130,48 @@ func TestTemplateInstallOverride(t *testing.T) {
 	}
 	if !contains(installed.ComposeYAML, "nginx:1.25") {
 		t.Fatalf("override deveria trocar imagem: %s", installed.ComposeYAML)
+	}
+}
+
+type staticCatalog struct {
+	template domain.Template
+}
+
+func (c staticCatalog) List(context.Context) ([]domain.Template, error) {
+	return []domain.Template{c.template}, nil
+}
+
+func (c staticCatalog) Get(context.Context, uuid.UUID) (*domain.Template, error) {
+	template := c.template
+	return &template, nil
+}
+
+func TestTemplateInstallNormalizesCatalogRestartPolicy(t *testing.T) {
+	e := newEnv(t)
+	template := domain.Template{
+		ID:   uuid.New(),
+		Name: "RustFS",
+		ComposeYAML: `version: "3.8"
+services:
+  rustfs:
+    image: rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21
+    volumes:
+      - rustfs-data:/data
+    restart: unless-stopped
+volumes:
+  rustfs-data: {}`,
+	}
+	e.svc.Catalog = staticCatalog{template: template}
+
+	installed, err := e.svc.Install(e.ctx, template.ID, e.orgID, e.proj, "rustfs", nil)
+	if err != nil {
+		t.Fatalf("catalog install: %v", err)
+	}
+	if err := composeengine.ValidatePolicy(installed.ComposeYAML); err != nil {
+		t.Fatalf("installed compose violates policy: %v", err)
+	}
+	if !contains(installed.ComposeYAML, "restart: no") {
+		t.Fatalf("installed compose should use the managed restart policy: %s", installed.ComposeYAML)
 	}
 }
 

@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  morphos-server:
+    image: ghcr.io/danvergara/morphos-server@sha256:3d6f64ef386cbb6a7c5d55526e1a69da2d3661a1996d757897e92bf4369088f5
+    restart: unless-stopped
+    expose:
+      - 8080
+    volumes:
+      - ../files/morphos-upload:/upload:rw
+    healthcheck:
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s

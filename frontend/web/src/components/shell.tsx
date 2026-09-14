@@ -25,7 +25,7 @@ import {
 import { createElement, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useBranding, useMe, useProjects, useServiceDetails } from "../hooks";
-import { clearToken } from "../api/client";
+import { logout } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { CommandPalette, usePalette } from "./command-palette";
 import { BellButton } from "./NotificationProvider";
@@ -73,6 +73,7 @@ export function Shell() {
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const { data: serviceDetail } = useServiceDetails(appMatch?.[1] ?? "");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [brandingLogoFailed, setBrandingLogoFailed] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [mobileOpen, setMobileOpen] = useState(() => window.innerWidth >= 768);
   useEffect(() => {
@@ -85,6 +86,9 @@ export function Shell() {
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+  useEffect(() => {
+    setBrandingLogoFailed(false);
+  }, [branding?.logo_url]);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("aether_sidebar_collapsed") === "1",
   );
@@ -99,6 +103,7 @@ export function Shell() {
       ? projects?.find((project) => project.id === projectId)?.name
       : undefined;
   }, [projectMatch, projects, serviceDetail]);
+  const brandName = branding?.name?.trim() || "Aether";
   const brandVars = branding?.primary_color
     ? ({ "--color-primary": branding.primary_color } as React.CSSProperties)
     : undefined;
@@ -142,11 +147,15 @@ export function Shell() {
         }}
         header={
           <div className="flex items-center gap-3">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <CloudArrowUp size={20} weight="fill" />
+            <span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-primary text-primary-foreground">
+              {branding?.logo_url && !brandingLogoFailed ? (
+                <img src={branding.logo_url} alt="" className="size-full object-contain p-1" onError={() => setBrandingLogoFailed(true)} />
+              ) : (
+                <CloudArrowUp size={20} weight="fill" aria-hidden="true" />
+              )}
             </span>
             <span>
-              <strong className="block text-body-md">Aether</strong>
+              <strong className="block text-body-md">{brandName}</strong>
               <span className="block text-label-caps text-muted-foreground">
                 PaaS platform
               </span>
@@ -165,8 +174,8 @@ export function Shell() {
             <Button
               variant="ghost"
               fullWidth
-              onClick={() => {
-                clearToken();
+              onClick={async () => {
+                await logout();
                 useAuthStore.getState().clear();
                 window.location.href = "/login";
               }}
@@ -243,8 +252,8 @@ export function Shell() {
                   params: { id: currentOrg?.id ?? "" },
                 } as never)
               }
-              onSignOut={() => {
-                clearToken();
+              onSignOut={async () => {
+                await logout();
                 useAuthStore.getState().clear();
                 window.location.href = "/login";
               }}

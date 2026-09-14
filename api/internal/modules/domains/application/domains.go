@@ -120,12 +120,23 @@ func (d *Domains) Add(ctx context.Context, serviceID, orgID uuid.UUID, serviceTy
 	if err := d.Provisioner.ValidateHost(in.Host); err != nil {
 		return nil, err
 	}
+	in.Path = orDefault(in.Path, "/")
+	in.InternalPath = orDefault(in.InternalPath, "/")
+	if err := validateDomainPath(in.Path); err != nil {
+		return nil, err
+	}
+	if err := validateDomainPath(in.InternalPath); err != nil {
+		return nil, err
+	}
 	if in.ContainerPort <= 0 {
 		in.ContainerPort = ref.port
 	}
+	if in.ContainerPort <= 0 || in.ContainerPort > 65535 {
+		return nil, domain.ErrValidation
+	}
 	dom, err := d.Store.CreateDomain(ctx, &domain.Domain{
 		AppID: serviceID, ServiceID: ref.serviceID, ServiceType: serviceType, ServerID: in.ServerID, Host: in.Host, HTTPS: in.HTTPS,
-		Path: orDefault(in.Path, "/"), InternalPath: orDefault(in.InternalPath, "/"),
+		Path: in.Path, InternalPath: in.InternalPath,
 		StripPath: in.StripPath, ContainerPort: in.ContainerPort,
 		Status: string(domain.DomainProvisioning),
 	})
@@ -190,11 +201,32 @@ func (d *Domains) UpdateDomain(ctx context.Context, serviceID, orgID uuid.UUID, 
 	if err := d.Provisioner.ValidateHost(in.Host); err != nil {
 		return err
 	}
+	in.Path = orDefault(in.Path, "/")
+	in.InternalPath = orDefault(in.InternalPath, "/")
+	if err := validateDomainPath(in.Path); err != nil {
+		return err
+	}
+	if err := validateDomainPath(in.InternalPath); err != nil {
+		return err
+	}
 	if in.ContainerPort <= 0 {
 		in.ContainerPort = dom.ContainerPort
 	}
+	if in.ContainerPort <= 0 || in.ContainerPort > 65535 {
+		return domain.ErrValidation
+	}
 	_ = d.Store.UpdateDomainFields(ctx, dom.ID, domainOwnerID(dom, serviceID), in.Host, in.HTTPS,
-		orDefault(in.Path, "/"), orDefault(in.InternalPath, "/"), in.StripPath, in.ContainerPort)
+		in.Path, in.InternalPath, in.StripPath, in.ContainerPort)
+	return nil
+}
+
+func validateDomainPath(value string) error {
+	if len(value) == 0 || len(value) > 2048 || !strings.HasPrefix(value, "/") {
+		return domain.ErrValidation
+	}
+	if strings.ContainsAny(value, "\r\n\"`\\") || strings.Contains(value, "..") {
+		return domain.ErrValidation
+	}
 	return nil
 }
 

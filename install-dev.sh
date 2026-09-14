@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ -z "${BASH_VERSION:-}" ]; then
+if [ -z "${BASH_VERSION:-}" ] || [[ "$(set -o | awk '$1 == "posix" { print $2 }')" == "on" ]]; then
   exec bash "$0" "$@"
 fi
 
@@ -71,20 +71,25 @@ fi
 STATE_DIR="${AETHER_STATE:-$HOME/.aether}"
 NET_NAME="${AETHER_NET:-aether-net}"
 INGRESS_NET_NAME="${AETHER_INGRESS_NETWORK:-aether-ingress}"
+PUBLISHED_NET_NAME="${AETHER_PUBLISHED_NETWORK:-aether-workload-host}"
+DOCKER_CONTROL_NET="${AETHER_DOCKER_CONTROL_NET:-aether-docker-control}"
+DOCKER_PROXY_CONTAINER="aether-docker-socket-proxy"
+DOCKER_PROXY_IMAGE="${AETHER_DOCKER_PROXY_IMAGE:-tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2}"
 
 PG_CONTAINER="aether-postgres"
-PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine}"
+PG_IMAGE="${AETHER_PG_IMAGE:-docker.io/library/postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685}"
 PG_PORT="1543"
 
 NATS_CONTAINER="aether-nats"
-NATS_IMAGE="${AETHER_NATS_IMAGE:-docker.io/library/nats:2.14.2-alpine}"
+NATS_IMAGE="${AETHER_NATS_IMAGE:-docker.io/library/nats:2.14.2-alpine@sha256:952d157e28d5394a211229bd57a7b37ff9f184e58e2c8486a08fa909fd254e32}"
 NATS_PORT="1422"
 NATS_MONITOR_PORT="1822"
 NATS_URL_EFFECTIVE="${AETHER_NATS_URL:-}"
 NATS_USER="${AETHER_NATS_USER:-aether}"
 NATS_PASSWORD="${AETHER_NATS_PASSWORD:-}"
 NATS_AUTH_FILE="$STATE_DIR/keys/nats.auth"
-TRAEFIK_IMAGE="${AETHER_TRAEFIK_IMAGE:-docker.io/library/traefik:v3.2}"
+NATS_CONFIG_FILE="$STATE_DIR/keys/nats.conf"
+TRAEFIK_IMAGE="${AETHER_TRAEFIK_IMAGE:-docker.io/library/traefik:v3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9}"
 
 API_CONTAINER="aether-api"
 API_IMAGE="${AETHER_API_IMAGE:-aether.local/api:1}"
@@ -98,7 +103,11 @@ WEB_CONTAINER="aether-web"
 WEB_IMAGE="${AETHER_WEB_IMAGE:-aether.local/web:1}"
 FRONTEND_DIR="$PROJECT_ROOT/frontend/web"
 WEB_PORT=4000
-DEV_MODE="${DEV_MODE:-false}"
+DEV_MODE="${DEV_MODE:-true}"
+COOKIE_SECURE_DEFAULT=true
+if [[ "$DEV_MODE" == "1" || "$DEV_MODE" == "true" || "$DEV_MODE" == "TRUE" || "$DEV_MODE" == "yes" ]]; then
+  COOKIE_SECURE_DEFAULT=false
+fi
 
 MODE="${AETHER_MODE:-dev}"
 CRED_FILE="$STATE_DIR/.aether-db"
@@ -400,15 +409,21 @@ load_db_credentials() {
   if [[ -z "$DB_PASSWORD" ]]; then
     DB_PASSWORD="$(strong_password)"
   fi
+  [[ "$DB_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "Database user must be a valid PostgreSQL identifier."
+  [[ "$DB_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "Database name must be a valid PostgreSQL identifier."
 
   PG_PORT="1543"
 
   mkdir -p "$STATE_DIR"
   umask 077
+  local cred_db_user cred_db_name cred_db_password
+  printf -v cred_db_user '%q' "$DB_USER"
+  printf -v cred_db_name '%q' "$DB_NAME"
+  printf -v cred_db_password '%q' "$DB_PASSWORD"
   cat > "$CRED_FILE" <<EOF
-DB_USER='$DB_USER'
-DB_NAME='$DB_NAME'
-DB_PASSWORD='$DB_PASSWORD'
+DB_USER=$cred_db_user
+DB_NAME=$cred_db_name
+DB_PASSWORD=$cred_db_password
 PG_PORT='$PG_PORT'
 NATS_PORT='$NATS_PORT'
 EOF
@@ -419,13 +434,35 @@ EOF
 ensure_network() {
   local network
   local missing=0
-  for network in "$NET_NAME" "$INGRESS_NET_NAME"; do
+  for network in "$NET_NAME" "$INGRESS_NET_NAME" "$PUBLISHED_NET_NAME" "$DOCKER_CONTROL_NET"; do
     if $RUNTIME network inspect "$network" >/dev/null 2>&1; then
-      continue
+      if [[ "$network" == "$DOCKER_CONTROL_NET" ]] && [[ "$($RUNTIME network inspect "$network" --format '{{.Internal}}')" == "true" ]]; then
+        for container in "$API_CONTAINER" "$WORKER_CONTAINER" "$DOCKER_PROXY_CONTAINER"; do
+          $RUNTIME network disconnect -f "$network" "$container" >/dev/null 2>&1 || true
+        done
+        $RUNTIME network rm "$network" >/dev/null 2>&1 || fail "Could not replace the Docker control network '$network'."
+      else
+        continue
+      fi
     fi
     missing=1
     info "Preparing the application network '$network'..."
-    if ! $RUNTIME network create "$network" >/dev/null 2>&1 && ! $RUNTIME network inspect "$network" >/dev/null 2>&1; then
+    local component="application"
+    if [[ "$network" == "$INGRESS_NET_NAME" ]]; then
+      component="ingress"
+    elif [[ "$network" == "$PUBLISHED_NET_NAME" ]]; then
+      component="workload-published"
+    elif [[ "$network" == "$DOCKER_CONTROL_NET" ]]; then
+      component="docker-control"
+    fi
+    if [[ "$network" == "$INGRESS_NET_NAME" ]]; then
+      create_args=(network create --internal --label "io.aether.component=$component" "$network")
+    elif [[ "$network" == "$PUBLISHED_NET_NAME" ]]; then
+      create_args=(network create --opt com.docker.network.bridge.enable_ip_masquerade=false --label "io.aether.component=$component" "$network")
+    else
+      create_args=(network create --label "io.aether.component=$component" "$network")
+    fi
+    if ! $RUNTIME "${create_args[@]}" >/dev/null 2>&1 && ! $RUNTIME network inspect "$network" >/dev/null 2>&1; then
       fail "Could not prepare the application network '$network'."
     fi
   done
@@ -434,6 +471,21 @@ ensure_network() {
   else
     info "Application networks prepared."
   fi
+}
+
+ensure_docker_proxy() {
+  local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
+  [[ -S "$docker_socket" ]] || return 0
+  if ! $RUNTIME network inspect "$DOCKER_CONTROL_NET" >/dev/null 2>&1; then
+    fail "Docker control network '$DOCKER_CONTROL_NET' is unavailable."
+  fi
+  $RUNTIME rm -f "$DOCKER_PROXY_CONTAINER" >/dev/null 2>&1 || true
+  $RUNTIME run -d --name "$DOCKER_PROXY_CONTAINER" --network "$DOCKER_CONTROL_NET" \
+    --tmpfs /tmp:noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true \
+    -v "$docker_socket:/var/run/docker.sock:ro" \
+    -e CONTAINERS=1 -e IMAGES=1 -e NETWORKS=1 -e VOLUMES=1 -e POST=1 -e BUILD=1 -e EXEC=1 \
+    -e PING=1 -e VERSION=1 -e SYSTEM=1 -e AUTH=0 -e SECRETS=0 -e SWARM=0 \
+    -e PLUGINS=0 -e SERVICES=0 -e TASKS=0 -e NODES=0 "$DOCKER_PROXY_IMAGE" >/dev/null || fail "Could not start the Docker socket proxy."
 }
 
 ensure_ingress_image() {
@@ -459,8 +511,19 @@ ensure_postgres() {
   exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$PG_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
     local published_port
-    published_port="$($runtime port "$PG_CONTAINER" 5432/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
-    if [[ -n "$published_port" && "$published_port" != "$PG_PORT" ]]; then
+    local published_binding
+    local configured_readonly_rootfs
+    published_binding="$($runtime port "$PG_CONTAINER" 5432/tcp 2>/dev/null | head -1)"
+    published_port="$(printf '%s\n' "$published_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
+    configured_readonly_rootfs="$($runtime inspect "$PG_CONTAINER" --format '{{.HostConfig.ReadonlyRootfs}}' 2>/dev/null || true)"
+    if [[ "$configured_readonly_rootfs" != "true" ]]; then
+      info "PostgreSQL container lacks a read-only root filesystem; recreating it with the existing data volume."
+      published_port=""
+    fi
+    if [[ -n "$published_binding" && "$published_binding" != 127.0.0.1:* ]]; then
+      info "PostgreSQL is exposed beyond localhost; recreating it with a localhost-only bind."
+      published_port=""
+    elif [[ -n "$published_port" && "$published_port" != "$PG_PORT" ]]; then
       info "PostgreSQL is exposed on 127.0.0.1:$published_port — moving it to 127.0.0.1:$PG_PORT."
       published_port=""
     fi
@@ -481,8 +544,11 @@ ensure_postgres() {
         -e "POSTGRES_USER=$DB_USER" \
         -e "POSTGRES_PASSWORD=$password" \
         -e "POSTGRES_DB=$DB_NAME" \
-        -p "$PG_PORT:5432" \
+        -p "127.0.0.1:$PG_PORT:5432" \
         -v aether-pg-data:/var/lib/postgresql/data \
+        --read-only \
+        --tmpfs /tmp:noexec,nosuid,nodev,size=64m \
+        --tmpfs /run/postgresql:rw,nosuid,nodev,size=16m \
         --restart unless-stopped \
         "$PG_IMAGE" >/dev/null || fail "Failed to recreate the PostgreSQL container."
       info "PostgreSQL recreated on 127.0.0.1:$PG_PORT using the existing database volume."
@@ -493,7 +559,7 @@ ensure_postgres() {
       running="$($runtime ps --format '{{.Names}}' 2>/dev/null | grep -cx "$PG_CONTAINER" || true)"
       [[ "$running" -eq 0 ]] && $runtime start "$PG_CONTAINER"
     fi
-    $runtime exec -e "PGPASSWORD=$password" "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER ROLE \"$DB_USER\" PASSWORD '$password';" >/dev/null 2>&1 \
+    $runtime exec -e "PGPASSWORD=$password" "$PG_CONTAINER" psql -v password="$password" -U "$DB_USER" -d "$DB_NAME" -c "ALTER ROLE \"$DB_USER\" PASSWORD :'password';" >/dev/null 2>&1 \
       && info "Password synced in PostgreSQL." \
       || warn "Could not sync the password — check the container."
   else
@@ -509,8 +575,11 @@ ensure_postgres() {
       -e "POSTGRES_USER=$DB_USER" \
       -e "POSTGRES_PASSWORD=$password" \
       -e "POSTGRES_DB=$DB_NAME" \
-      -p "$PG_PORT:5432" \
+      -p "127.0.0.1:$PG_PORT:5432" \
       -v aether-pg-data:/var/lib/postgresql/data \
+      --read-only \
+      --tmpfs /tmp:noexec,nosuid,nodev,size=64m \
+      --tmpfs /run/postgresql:rw,nosuid,nodev,size=16m \
       --restart unless-stopped \
       "$PG_IMAGE" >/dev/null
     info "Application data storage started."
@@ -540,10 +609,12 @@ ensure_nats() {
   local exists
   exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$NATS_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
-    local configured_port configured_monitor_port
-    configured_port="$($runtime port "$NATS_CONTAINER" 4222/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
-    configured_monitor_port="$($runtime port "$NATS_CONTAINER" 8222/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
-    if [[ "$configured_port" != "$NATS_PORT" || "$configured_monitor_port" != "$NATS_MONITOR_PORT" ]]; then
+    local configured_port configured_monitor_port configured_binding configured_monitor_binding
+    configured_binding="$($runtime port "$NATS_CONTAINER" 4222/tcp 2>/dev/null | head -1 || true)"
+    configured_monitor_binding="$($runtime port "$NATS_CONTAINER" 8222/tcp 2>/dev/null | head -1 || true)"
+    configured_port="$(printf '%s\n' "$configured_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
+    configured_monitor_port="$(printf '%s\n' "$configured_monitor_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
+    if [[ "$configured_port" != "$NATS_PORT" || "$configured_monitor_port" != "$NATS_MONITOR_PORT" || "$configured_binding" != 127.0.0.1:* || "$configured_monitor_binding" != 127.0.0.1:* ]]; then
       info "Migrating NATS to the internal port range."
       $runtime rm -f "$NATS_CONTAINER" >/dev/null
       exists=""
@@ -552,7 +623,7 @@ ensure_nats() {
   if [[ -n "$exists" ]]; then
     local configured_image
     configured_image="$($runtime inspect "$NATS_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)"
-    if [[ "$configured_image" != "$NATS_IMAGE" ]]; then
+      if [[ "$configured_image" != "$NATS_IMAGE" ]]; then
       info "Upgrading NATS container from ${configured_image:-unknown} to $NATS_IMAGE..."
       $runtime rm -f "$NATS_CONTAINER" >/dev/null
       exists=""
@@ -560,8 +631,19 @@ ensure_nats() {
     if [[ -n "$exists" ]]; then
       local configured_cmd
       configured_cmd="$($runtime inspect "$NATS_CONTAINER" --format '{{json .Config.Cmd}}' 2>/dev/null || true)"
-      if [[ "$configured_cmd" != *"--user"* ]]; then
+      if [[ "$configured_cmd" != *"-c"* ]]; then
         info "Recreating NATS with authentication enabled..."
+        $runtime rm -f "$NATS_CONTAINER" >/dev/null
+        exists=""
+      fi
+    fi
+    if [[ -n "$exists" ]]; then
+      local readonly_rootfs configured_cap_drop configured_security_opt
+      readonly_rootfs="$($runtime inspect "$NATS_CONTAINER" --format '{{.HostConfig.ReadonlyRootfs}}' 2>/dev/null || true)"
+      configured_cap_drop="$($runtime inspect "$NATS_CONTAINER" --format '{{json .HostConfig.CapDrop}}' 2>/dev/null || true)"
+      configured_security_opt="$($runtime inspect "$NATS_CONTAINER" --format '{{json .HostConfig.SecurityOpt}}' 2>/dev/null || true)"
+      if [[ "$readonly_rootfs" != "true" || "$configured_cap_drop" != *'ALL'* || "$configured_security_opt" != *'no-new-privileges:true'* ]]; then
+        info "NATS container lacks required runtime hardening; recreating it with the existing data volume."
         $runtime rm -f "$NATS_CONTAINER" >/dev/null
         exists=""
       fi
@@ -578,11 +660,16 @@ ensure_nats() {
       --name "$NATS_CONTAINER" \
       --network "$NET_NAME" \
       --network-alias "$NATS_CONTAINER" \
-      -p "$NATS_PORT:4222" \
-      -p "$NATS_MONITOR_PORT:8222" \
+      -p "127.0.0.1:$NATS_PORT:4222" \
+      -p "127.0.0.1:$NATS_MONITOR_PORT:8222" \
       -v aether-nats-data:/data \
+      -v "$NATS_CONFIG_FILE:/etc/nats/nats.conf:ro" \
+      --read-only \
+      --tmpfs /tmp:noexec,nosuid,nodev,size=16m \
+      --cap-drop ALL \
+      --security-opt no-new-privileges:true \
       --restart unless-stopped \
-      "$NATS_IMAGE" -js -sd /data -m 8222 --user "$NATS_USER" --pass "$NATS_PASSWORD" >/dev/null
+      "$NATS_IMAGE" -c /etc/nats/nats.conf >/dev/null
     info "NATS started on 127.0.0.1:$NATS_PORT."
   fi
   local tries=0
@@ -597,6 +684,7 @@ ensure_nats() {
 }
 
 ensure_nats_auth() {
+  [[ "$NATS_USER" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || fail "NATS user must contain only letters, numbers, underscores, or hyphens."
   if [[ -z "$NATS_PASSWORD" && -f "$NATS_AUTH_FILE" ]]; then
     NATS_PASSWORD="$(sed -n '2p' "$NATS_AUTH_FILE")"
   fi
@@ -610,6 +698,19 @@ ensure_nats_auth() {
     fi
     printf '%s\n%s\n' "$NATS_USER" "$NATS_PASSWORD" > "$NATS_AUTH_FILE"
   fi
+  if ! command_exists htpasswd; then
+    fail "htpasswd is required to configure bcrypt authentication for the local NATS service."
+  fi
+  local password_hash
+  password_hash="$(htpasswd -bnBC 12 '' "$NATS_PASSWORD" 2>/dev/null | tr -d ':\n')"
+  [[ "$password_hash" == '$2'* ]] || fail "Could not generate a bcrypt hash for the local NATS service."
+  mkdir -p "$(dirname "$NATS_CONFIG_FILE")"
+  umask 077
+  {
+    printf 'port: 4222\nhttp: 8222\njetstream { store_dir: "/data" }\nauthorization {\n'
+    printf '  users = [{ user: "%s", password: "%s", permissions: { publish: ["aether.jobs.>", "aether.events.>", "aether.live.>", "aether.dlq.>", "aether.state.>", "aether.monitoring.>", "aether.notify.>", "$JS.API.>", "$JS.ACK.>", "$JS.FC.>", "$KV.>", "_INBOX.>"], subscribe: ["aether.jobs.>", "aether.events.>", "aether.live.>", "aether.dlq.>", "aether.state.>", "aether.monitoring.>", "aether.notify.>", "$JS.API.>", "$JS.ACK.>", "$JS.FC.>", "$KV.>", "_INBOX.>"] } }]\n' "$NATS_USER" "$password_hash"
+    printf '}\n'
+  } > "$NATS_CONFIG_FILE"
   export AETHER_NATS_USER="$NATS_USER"
   export AETHER_NATS_PASSWORD="$NATS_PASSWORD"
 }
@@ -650,7 +751,7 @@ build_api_image() {
   fi
   info "Preparing the application services..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
-  $RUNTIME build -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT" \
+  $RUNTIME build --sbom=true --provenance=true -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT" \
     >>"$INSTALL_LOG" 2>&1 || fail "The application services could not be prepared."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$image_stamp"
@@ -683,7 +784,7 @@ ensure_web_image() {
   fi
   info "Preparing the application interface..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
-  if ! $RUNTIME build -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" >>"$INSTALL_LOG" 2>&1; then
+  if ! $RUNTIME build --sbom=true --provenance=true -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" >>"$INSTALL_LOG" 2>&1; then
     cleanup_web_build_env
     fail "The application interface could not be prepared."
   fi
@@ -723,8 +824,8 @@ start_api() {
     "$STATE_DIR/builds" "$STATE_DIR/cache" "$STATE_DIR/keys" "$STATE_DIR/logs/apps" \
     "$STATE_DIR/builds/sources" "$STATE_DIR/snapshots"
 
-  $RUNTIME volume create aether-traefik >/dev/null 2>&1 || true
   $RUNTIME volume create aether-pack-cache >/dev/null 2>&1 || true
+  ensure_docker_proxy
 
   if api_exists; then
     remove_api_container
@@ -737,13 +838,18 @@ start_api() {
   fi
   args+=(
     --name "$API_CONTAINER"
+    --user "$(id -u):$(id -g)"
     --network "$NET_NAME"
+    --network "$DOCKER_CONTROL_NET"
     --network-alias "$API_CONTAINER"
     --security-opt label=disable
-    -p "$API_PORT:8080"
+    --security-opt no-new-privileges:true
+    --cap-drop ALL
+    --read-only
+    --tmpfs /tmp:rw,noexec,nosuid,size=128m
+    -p "127.0.0.1:$API_PORT:8080"
     -v "$STATE_DIR:/var/lib/aether"
-    -v "aether-traefik:/var/lib/aether/traefik"
-    -v "aether-pack-cache:/root/.cache/pack"
+    -v "aether-pack-cache:/home/aether/.cache/pack"
     --restart unless-stopped
     -e "AETHER_STATE=/var/lib/aether"
     -e "AETHER_SNAPSHOT_HOST_DIR=$STATE_DIR/snapshots"
@@ -760,22 +866,21 @@ start_api() {
     -e "AETHER_NATS_PASSWORD=$NATS_PASSWORD"
     -e "AETHER_RUNTIME_BACKEND=nats"
     -e "AETHER_CNB_BUILDER=$CNB_BUILDER"
+    -e "AETHER_BUILD_DOCKER_NETWORK=$DOCKER_CONTROL_NET"
     -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
     -e "DEV_MODE=$DEV_MODE"
     -e "AETHER_FREE_DOMAIN_PROVIDER=${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
     -e "AETHER_TRAEFIK_IMAGE=$TRAEFIK_IMAGE"
-    -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-false}"
+    -e "AETHER_PUBLISHED_NETWORK=$PUBLISHED_NET_NAME"
+    -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-$COOKIE_SECURE_DEFAULT}"
     -e "AETHER_MODE=$MODE"
   )
-  local sock_mount=0
   local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
   if [[ -S "$docker_socket" ]]; then
-    args+=( -v "$docker_socket:/var/run/docker.sock:ro" )
-    args+=( -e "DOCKER_HOST=unix:///var/run/docker.sock" -e "AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock" )
-    sock_mount=1
-    info "  Docker socket mounted for application deployments."
+    args+=( -e "DOCKER_HOST=tcp://$DOCKER_PROXY_CONTAINER:2375" -e "AETHER_BUILD_DOCKER_HOST=tcp://$DOCKER_PROXY_CONTAINER:2375" )
+    info "  Docker operations use the internal socket proxy."
   fi
-  if [[ "$sock_mount" -eq 0 ]]; then
+  if [[ ! -S "$docker_socket" ]]; then
     warn "  Docker socket is not mountable; application deployments will be unavailable."
   fi
 
@@ -790,61 +895,32 @@ start_api() {
     fi
   fi
   if [[ "$api_started" -eq 0 ]]; then
-    if [[ "$sock_mount" -eq 1 ]]; then
-      warn "  Docker socket mount failed — retrying without it."
-      remove_api_container
-      local clean_args=()
-      local index=0
-      while [[ "$index" -lt "${#args[@]}" ]]; do
-        local argument="${args[$index]}"
-        if [[ "$argument" == "-v" && "$((index + 1))" -lt "${#args[@]}" && "${args[$((index + 1))]}" == *"docker.sock:ro" ]]; then
-          index=$((index + 2))
-          continue
-        fi
-        if [[ "$argument" == "-e" && "$((index + 1))" -lt "${#args[@]}" && ( "${args[$((index + 1))]}" == "DOCKER_HOST=unix://"* || "${args[$((index + 1))]}" == "AETHER_BUILD_DOCKER_HOST=unix://"* ) ]]; then
-          index=$((index + 2))
-          continue
-        fi
-        clean_args+=( "$argument" )
-        index=$((index + 1))
-      done
-      $RUNTIME "${clean_args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start the API container."
-    else
-      fail "Failed to start the API container."
-    fi
+    fail "Failed to start the API container."
   fi
 
-  if [[ "$INGRESS_NET_NAME" != "$NET_NAME" ]]; then
-    if ! $RUNTIME network connect "$INGRESS_NET_NAME" "$API_CONTAINER" >/dev/null 2>&1; then
-      if ! $RUNTIME network inspect "$INGRESS_NET_NAME" >/dev/null 2>&1; then
-        fail "The ingress network '$INGRESS_NET_NAME' is unavailable."
+  if is_true "${AETHER_WAIT_FOR_HEALTH:-false}"; then
+    local tries=0
+    until curl -fsS "http://127.0.0.1:$API_PORT/api/v1/ready" >/dev/null 2>&1; do
+      tries=$((tries + 1))
+      if ! api_running; then
+        fail "The API container exited during boot. See: $RUNTIME logs $API_CONTAINER"
       fi
-      if ! $RUNTIME inspect "$API_CONTAINER" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null | grep -q "\"$INGRESS_NET_NAME\""; then
-        fail "Could not connect the API container to the ingress network '$INGRESS_NET_NAME'."
-      fi
-    fi
+      [[ $tries -gt 90 ]] && fail "API did not respond in 180s. See: $RUNTIME logs $API_CONTAINER"
+      sleep 2
+    done
+    info "  ✓ API healthy on http://127.0.0.1:$API_PORT"
+  else
+    info "  API started in background; run './install-dev.sh status' to check readiness."
   fi
-
-  local tries=0
-  until curl -fsS "http://127.0.0.1:$API_PORT/api/v1/ready" >/dev/null 2>&1; do
-    tries=$((tries + 1))
-    if ! api_running; then
-      fail "The API container exited during boot. See: $RUNTIME logs $API_CONTAINER"
-    fi
-    [[ $tries -gt 90 ]] && fail "API did not respond in 180s. See: $RUNTIME logs $API_CONTAINER"
-    sleep 2
-  done
-  info "  ✓ API healthy on http://127.0.0.1:$API_PORT"
 }
 
 start_auxiliary() {
   local container="$1"
   local binary="$2"
   $RUNTIME rm -f "$container" >/dev/null 2>&1 || true
-  local args=(run -d --name "$container" --entrypoint "/usr/local/bin/$binary" --network "$NET_NAME" --security-opt label=disable)
+  local args=(run -d --name "$container" --user "$(id -u):$(id -g)" --entrypoint "/usr/local/bin/$binary" --network "$NET_NAME" --security-opt label=disable --security-opt no-new-privileges:true --cap-drop ALL --read-only --tmpfs /tmp:rw,noexec,nosuid,size=128m)
   args+=(
     -v "$STATE_DIR:/var/lib/aether"
-    -v "aether-traefik:/var/lib/aether/traefik"
     -e "AETHER_STATE=/var/lib/aether"
     -e "AETHER_SNAPSHOT_HOST_DIR=$STATE_DIR/snapshots"
     -e "DATABASE_HOST=$PG_CONTAINER"
@@ -869,30 +945,23 @@ start_auxiliary() {
   elif [[ "$binary" == "aether-monitoring" ]]; then
     args+=( -e "AETHER_MONITORING_HEALTH_ADDR=0.0.0.0:8082" -p "127.0.0.1:$MONITORING_HEALTH_PORT:8082" )
   fi
-  if [[ "$binary" == "aether-worker" ]]; then
+  if [[ "$binary" == "aether-worker" || "$binary" == "aether-monitoring" ]]; then
     local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
     if [[ -S "$docker_socket" ]]; then
-      args+=( -v "$docker_socket:/var/run/docker.sock:ro" )
-      args+=( -e "DOCKER_HOST=unix:///var/run/docker.sock" -e "AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock" )
+      if [[ "$binary" == "aether-worker" ]]; then
+        ensure_docker_proxy
+        args+=( -e "AETHER_BUILD_DOCKER_HOST=tcp://$DOCKER_PROXY_CONTAINER:2375" -e "AETHER_BUILD_DOCKER_NETWORK=$DOCKER_CONTROL_NET" -e "AETHER_PUBLISHED_NETWORK=$PUBLISHED_NET_NAME" )
+      fi
+      args+=( --network "$DOCKER_CONTROL_NET" )
+      args+=( -e "DOCKER_HOST=tcp://$DOCKER_PROXY_CONTAINER:2375" )
     else
-      warn "Docker Engine socket is unavailable; the deployment worker cannot build or run images."
+      warn "Docker Engine socket is unavailable; runtime container monitoring and image deployments will be unavailable."
     fi
   else
-    local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
-    if [[ -S "$docker_socket" ]]; then
-      args+=( -v "$docker_socket:/var/run/docker.sock:ro" )
-      args+=( -e "DOCKER_HOST=unix:///var/run/docker.sock" -e "AETHER_BUILD_DOCKER_HOST=unix:///var/run/docker.sock" )
-    fi
+    :
   fi
   info "Starting $container..."
   $RUNTIME "${args[@]}" "$API_IMAGE" >/dev/null || fail "Failed to start $container."
-  if [[ "$binary" == "aether-worker" && "$INGRESS_NET_NAME" != "$NET_NAME" ]]; then
-    if ! $RUNTIME network connect "$INGRESS_NET_NAME" "$container" >/dev/null 2>&1; then
-      if ! $RUNTIME inspect "$container" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null | grep -q "\"$INGRESS_NET_NAME\""; then
-        fail "Could not connect the deployment worker to the ingress network '$INGRESS_NET_NAME'."
-      fi
-    fi
-  fi
 }
 
 start_workers() {
@@ -910,6 +979,13 @@ server {
     server_name _;
 
     client_max_body_size 128m;
+    server_tokens off;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     location /api/ {
         proxy_pass http://$API_CONTAINER:8080;
@@ -943,23 +1019,40 @@ start_web() {
   $RUNTIME run -d \
     --name "$WEB_CONTAINER" \
     --network "$NET_NAME" \
-    -p "$WEB_PORT:4000" \
+    --security-opt no-new-privileges:true \
+    --cap-drop ALL \
+    --cap-add SETGID \
+    --cap-add SETUID \
+    --read-only \
+    --tmpfs /var/cache/nginx:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=755 \
+    --tmpfs /var/cache/nginx/client_temp:rw,noexec,nosuid,nodev,size=4m,uid=101,gid=101,mode=755 \
+    --tmpfs /var/cache/nginx/proxy_temp:rw,noexec,nosuid,nodev,size=4m,uid=101,gid=101,mode=755 \
+    --tmpfs /var/cache/nginx/fastcgi_temp:rw,noexec,nosuid,nodev,size=4m,uid=101,gid=101,mode=755 \
+    --tmpfs /var/cache/nginx/uwsgi_temp:rw,noexec,nosuid,nodev,size=4m,uid=101,gid=101,mode=755 \
+    --tmpfs /var/cache/nginx/scgi_temp:rw,noexec,nosuid,nodev,size=4m,uid=101,gid=101,mode=755 \
+    --tmpfs /var/run:rw,nosuid,nodev,size=1m \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+    -p "127.0.0.1:$WEB_PORT:4000" \
     -v "$conf:/etc/nginx/conf.d/default.conf:ro" \
     --restart unless-stopped \
     "$WEB_IMAGE" >/dev/null || fail "Failed to start the web container."
 
-  local tries=0
-  until curl -fsS "http://127.0.0.1:$WEB_PORT/" >/dev/null 2>&1; do
-    tries=$((tries + 1))
-    [[ $tries -gt 30 ]] && fail "Web gateway did not become ready in 60s."
-    sleep 2
-  done
-  info "  ✓ web gateway healthy on http://127.0.0.1:$WEB_PORT"
+  if is_true "${AETHER_WAIT_FOR_HEALTH:-false}"; then
+    local tries=0
+    until curl -fsS "http://127.0.0.1:$WEB_PORT/" >/dev/null 2>&1; do
+      tries=$((tries + 1))
+      [[ $tries -gt 30 ]] && fail "Web gateway did not become ready in 60s."
+      sleep 2
+    done
+    info "  ✓ web gateway healthy on http://127.0.0.1:$WEB_PORT"
+  else
+    info "  Web gateway started in background; run './install-dev.sh status' to check readiness."
+  fi
 }
 
 # ---------------------------------------------------------------------------
 # REGISTRY + CNB BUILDER — local registry and Docker-backed CNB builder.
-REGISTRY_IMAGE="${AETHER_REGISTRY_IMAGE:-docker.io/library/registry:2}"
+REGISTRY_IMAGE="${AETHER_REGISTRY_IMAGE:-docker.io/library/registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373}"
 REGISTRY_ADDR="127.0.0.1:1500"
 REGISTRY_CONTAINER="aether-registry"
 DOCKER_RUNTIME="${AETHER_DOCKER_CLI:-docker}"
@@ -974,9 +1067,11 @@ ensure_registry() {
   local exists
   exists="$($DOCKER_RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$REGISTRY_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
-    local configured_port
-    configured_port="$($DOCKER_RUNTIME port "$REGISTRY_CONTAINER" 5000/tcp 2>/dev/null | sed -nE 's/.*:([0-9]+)$/\1/p' | head -1)"
-    if [[ "$configured_port" != "1500" ]]; then
+    local configured_port configured_image configured_binding
+    configured_binding="$($DOCKER_RUNTIME port "$REGISTRY_CONTAINER" 5000/tcp 2>/dev/null | head -1 || true)"
+    configured_port="$(printf '%s\n' "$configured_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
+    configured_image="$($DOCKER_RUNTIME inspect "$REGISTRY_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)"
+    if [[ "$configured_port" != "1500" || "$configured_binding" != 127.0.0.1:* || "$configured_image" != "$REGISTRY_IMAGE" ]]; then
       info "Migrating the internal registry to port 1500."
       $DOCKER_RUNTIME rm -f "$REGISTRY_CONTAINER" >/dev/null
       exists=""
@@ -992,6 +1087,8 @@ ensure_registry() {
     $DOCKER_RUNTIME run -d \
       --name "$REGISTRY_CONTAINER" \
       -p "$REGISTRY_ADDR:5000" \
+      --cap-drop ALL \
+      --security-opt no-new-privileges:true \
       --restart unless-stopped \
       "$REGISTRY_IMAGE" >/dev/null
   fi
@@ -1148,6 +1245,12 @@ main() {
   PROGRESS_TOTAL=7
   export AETHER_PUBLIC_HOST="$(resolve_public_host)"
   export AETHER_PUBLIC_URL="$(resolve_public_url)"
+  if ! is_true "$DEV_MODE" && [[ "$AETHER_PUBLIC_URL" != https://* ]]; then
+    fail "Non-development mode requires AETHER_PUBLIC_URL to use HTTPS. Set DEV_MODE=true for local HTTP development."
+  fi
+  if ! is_true "$DEV_MODE" && [[ -n "${AETHER_COOKIE_SECURE:-}" ]] && ! is_true "$AETHER_COOKIE_SECURE"; then
+    fail "Non-development mode requires AETHER_COOKIE_SECURE=true."
+  fi
   export AETHER_API_PUBLIC_URL="http://$AETHER_PUBLIC_HOST:$API_PORT"
   if [[ "$AETHER_PUBLIC_HOST" == "127.0.0.1" || "$AETHER_PUBLIC_HOST" == "localhost" ]]; then
     warn "Could not detect a routable host IP. Set AETHER_PUBLIC_HOST before installing for remote access."

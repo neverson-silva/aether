@@ -23,7 +23,7 @@ func (h *Handler) DbTerminal(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no active container"})
 		return
 	}
-	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{OriginPatterns: h.originPatterns})
 	if err != nil {
 		return
 	}

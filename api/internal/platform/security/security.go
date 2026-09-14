@@ -43,6 +43,10 @@ func LoadSecrets(keysDir string) (*Secrets, error) {
 		if err := os.WriteFile(kekPath, kek, 0o600); err != nil {
 			return nil, err
 		}
+	} else if info, statErr := os.Stat(kekPath); statErr != nil {
+		return nil, statErr
+	} else if info.Mode().Perm()&0o077 != 0 {
+		return nil, fmt.Errorf("master key permissions must be 0600 or stricter")
 	}
 	if len(kek) != encMasterKeyLen {
 		return nil, ErrInvalidKey

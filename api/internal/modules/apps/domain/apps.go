@@ -118,3 +118,7 @@ type Store interface {
 	ListEnvVars(ctx context.Context, appID uuid.UUID) ([]EnvVar, error)
 	DeleteEnvVar(ctx context.Context, appID uuid.UUID, name string) error
 }
+
+type OrganizationStorageUsage interface {
+	OrganizationStorageMB(ctx context.Context, orgID uuid.UUID) (int, error)
+}

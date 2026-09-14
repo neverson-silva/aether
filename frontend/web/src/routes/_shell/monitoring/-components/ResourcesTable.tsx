@@ -47,7 +47,9 @@ export function ResourcesTable({
           {(["all", "user", "aether", "unknown"] as const).map((f) => (
             <button
               key={f}
+              type="button"
               onClick={() => setFilter(f)}
+              aria-pressed={filter === f}
               className={cn(
                 "rounded px-sm py-xs font-label-caps text-label-caps transition-colors",
                 filter === f ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:text-on-surface",
@@ -62,6 +64,7 @@ export function ResourcesTable({
       <div className="overflow-x-auto">
         {loading ? <div className="p-md"><Skeleton variant="table" aria-label="Loading resource usage" /></div> : null}
         <table className="w-full text-left border-collapse min-w-[760px]">
+          <caption className="sr-only">Container resource usage</caption>
           <thead>
             <tr className="font-label-caps text-label-caps text-on-surface-variant/70 border-b border-outline-variant/50">
               <th className="py-2 pl-lg pr-2 font-normal">Resource</th>
@@ -81,6 +84,15 @@ export function ResourcesTable({
                 <tr
                   key={r.id}
                   onClick={() => onSelect(r.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelect(r.id);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={selected}
                   className={cn(
                     "transition-colors cursor-pointer",
                     selected ? "bg-primary/5" : "table-row-hover",
@@ -123,7 +135,7 @@ export function ResourcesTable({
                   <td className="py-2 px-2 text-right text-on-surface">
                     {r.active && r.has_net_rate ? (
                       <>
-                        <span className="text-[#4ade80]">↓{fmtRate(r.net_rx_rate)}</span>{" "}
+                        <span className="text-status-success">↓{fmtRate(r.net_rx_rate)}</span>{" "}
                         <span className="text-on-surface-variant/60">↑{fmtRate(r.net_tx_rate)}</span>
                       </>
                     ) : (
@@ -141,7 +153,7 @@ export function ResourcesTable({
       </div>
       {!loading && rows.length === 0 && (
         <p className="font-body-sm text-body-sm text-on-surface-variant/60 text-center py-lg">
-          {filter === "all" ? "No user workloads are running." : `No ${OWNER_LABEL[filter]} resources.`}
+          {filter === "all" ? "No resources match the current filter." : `No ${OWNER_LABEL[filter]} resources.`}
         </p>
       )}
     </div>

@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  pairdrop:
+    image: lscr.io/linuxserver/pairdrop@sha256:3279d2d986c01a223f76e306e222a742508baf75b8eca03b097f25d9344584f6
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+    volumes:
+      - pairdrop-config:/config
+
+volumes:
+  pairdrop-config:

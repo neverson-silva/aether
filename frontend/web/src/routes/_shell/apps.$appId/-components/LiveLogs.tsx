@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { getServer } from "../../../../api/client";
+import { apiGet } from "../../../../api/client";
 import { LogViewer, type LogLine as DesignLogLine } from "@aether/design-system";
-import { useServiceDeploymentLog } from "../../../../hooks";
 
 const ANSI_RE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/;
 const TAG_RE = /^\[([a-z_\-]+)\]/i;
+const MAX_LOG_ROWS = 1500;
 
 export function stripANSI(line: string): string {
   return line.replace(ANSI_RE, "");
@@ -41,28 +41,33 @@ export function classify(line: string): LogRow {
   return { id: ROW_ID, text, json, ts: tsMatch ? tsMatch[0] : "", level, tag: tagMatch ? tagMatch[1].toLowerCase() : "" };
 }
 
-export function LiveLogs({ serviceId, enabled = true, endpoint, deploymentId }: { serviceId: string; enabled?: boolean; endpoint?: string; deploymentId?: string | null }) {
+export function LiveLogs({ serviceId, enabled = true, endpoint }: { serviceId: string; enabled?: boolean; endpoint?: string }) {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [follow, setFollow] = useState(true);
-  const deploymentLog = useServiceDeploymentLog(serviceId, deploymentId ?? null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!deploymentId) return;
-    const content = deploymentLog.data?.content ?? "";
-    setRows(content.split("\n").filter((line) => line.trim() !== "").map((line) => classify(line)));
-  }, [deploymentId, deploymentLog.data?.content]);
-
-  useEffect(() => {
-    if (!enabled || !serviceId || deploymentId) return;
-    const server = getServer();
-    const es = new EventSource(server + (endpoint ?? "/api/v1/services/" + serviceId + "/logs?follow=1"), { withCredentials: true });
-    es.onmessage = (ev) => {
-      const chunks = ev.data.split("\n").filter((c: string) => c.trim() !== "");
-      const newRows = chunks.map((c: string) => classify(c));
-      setRows((prev) => [...prev.slice(-1000), ...newRows].slice(-1500));
+    if (!enabled || !serviceId) return;
+    const initialEndpoint = endpoint ?? "/api/v1/services/" + serviceId + "/logs";
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    apiGet<{ logs: string }>(initialEndpoint).then((result) => {
+      if (cancelled) return;
+      setRows(result.logs.split("\n").filter((line) => line.trim() !== "").slice(-MAX_LOG_ROWS).map((line) => classify(line)));
+    }).catch(() => {
+      if (!cancelled) {
+        setRows([]);
+        setError("Unable to load runtime logs.");
+      }
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
     };
-    return () => es.close();
-  }, [serviceId, enabled, endpoint, deploymentId]);
+  }, [serviceId, enabled, endpoint]);
 
   const viewerLines = useMemo<DesignLogLine[]>(
     () => rows.map((row) => ({
@@ -74,6 +79,8 @@ export function LiveLogs({ serviceId, enabled = true, endpoint, deploymentId }: 
     [rows],
   );
 
+  if (error) return <div role="alert" className="rounded border border-error/40 bg-error/10 p-md font-body-sm text-body-sm text-error">{error}</div>;
+  if (!loading && rows.length === 0) return <div className="rounded border border-outline-variant bg-surface-container-low p-md font-body-sm text-body-sm text-on-surface-variant">No runtime logs are available.</div>;
   return (
     <LogViewer
       lines={viewerLines}

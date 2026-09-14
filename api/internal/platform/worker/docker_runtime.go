@@ -10,7 +10,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,11 +29,20 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"github.com/google/uuid"
 )
 
 type DockerRuntime struct {
 	client *client.Client
 }
+
+const (
+	defaultContainerMemoryMB = 512
+	maxContainerMemoryMB     = 2048
+	maxContainerCPUs         = 2.0
+	defaultWorkloadStorageMB = 102400
+	maxWorkloadStorageMB     = 102400
+)
 
 func NewDockerRuntime(host string) (*DockerRuntime, error) {
 	options := []client.Opt{client.WithAPIVersionNegotiation()}
@@ -54,6 +66,12 @@ func (r *DockerRuntime) Close() error {
 }
 
 func (r *DockerRuntime) Pull(ctx context.Context, imageRef string) (string, error) {
+	if isMutableImageReference(imageRef) || isDigestRequiredImageReference(imageRef) {
+		return "", fmt.Errorf("mutable image reference %q is not allowed", imageRef)
+	}
+	if err := verifyImageSignature(ctx, imageRef); err != nil {
+		return "", err
+	}
 	response, err := r.client.ImagePull(ctx, imageRef, image.PullOptions{})
 	if err != nil {
 		return "", runtimeError("pull image", err)
@@ -64,6 +82,32 @@ func (r *DockerRuntime) Pull(ctx context.Context, imageRef string) (string, erro
 		return output, runtimeError("read image pull output", readErr)
 	}
 	return output, nil
+}
+
+func verifyImageSignature(ctx context.Context, imageRef string) error {
+	if strings.ToLower(strings.TrimSpace(os.Getenv("AETHER_REQUIRE_IMAGE_SIGNATURES"))) != "true" {
+		return nil
+	}
+	key := strings.TrimSpace(os.Getenv("AETHER_COSIGN_PUBLIC_KEY"))
+	if key == "" {
+		return errors.New("image signature verification requires AETHER_COSIGN_PUBLIC_KEY")
+	}
+	if _, err := os.Stat(key); err != nil {
+		return fmt.Errorf("image signature verification key unavailable: %w", err)
+	}
+	command := exec.CommandContext(ctx, "cosign", "verify", "--key", key, imageRef)
+	if output, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("image signature verification failed for %q: %w: %s", imageRef, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func isMutableImageReference(imageRef string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(imageRef)), ":latest")
+}
+
+func isDigestRequiredImageReference(imageRef string) bool {
+	return strings.ToLower(strings.TrimSpace(os.Getenv("AETHER_REQUIRE_IMAGE_DIGESTS"))) == "true" && !strings.Contains(imageRef, "@sha256:")
 }
 
 func (r *DockerRuntime) Push(ctx context.Context, imageRef string) (string, error) {
@@ -247,6 +291,39 @@ func (r *DockerRuntime) ListContainerMetadata(ctx context.Context) ([]ContainerI
 	return r.listContainers(ctx, false)
 }
 
+func (r *DockerRuntime) ListServiceContainers(ctx context.Context, serviceID, specID uuid.UUID) ([]ContainerInfo, error) {
+	values := []string{serviceID.String()}
+	if specID != serviceID {
+		values = append(values, specID.String())
+	}
+	var out []ContainerInfo
+	for _, value := range values {
+		containers, err := r.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(filters.Arg("label", "aether.service-id="+value))})
+		if err != nil {
+			return nil, runtimeError("list service containers", err)
+		}
+		for _, item := range containers {
+			name := ""
+			if len(item.Names) > 0 {
+				name = strings.TrimPrefix(item.Names[0], "/")
+			}
+			info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels, CreatedAt: time.Unix(item.Created, 0)}
+			if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil && inspected.State.Health != nil {
+				switch inspected.State.Health.Status {
+				case "healthy":
+					healthy := true
+					info.Healthy = &healthy
+				case "unhealthy":
+					healthy := false
+					info.Healthy = &healthy
+				}
+			}
+			out = append(out, info)
+		}
+	}
+	return out, nil
+}
+
 func (r *DockerRuntime) listContainers(ctx context.Context, includeStats bool) ([]ContainerInfo, error) {
 	containers, err := r.client.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
@@ -258,7 +335,7 @@ func (r *DockerRuntime) listContainers(ctx context.Context, includeStats bool) (
 		if len(item.Names) > 0 {
 			name = strings.TrimPrefix(item.Names[0], "/")
 		}
-		info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels}
+		info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels, CreatedAt: time.Unix(item.Created, 0)}
 		if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil && inspected.State.Health != nil {
 			switch inspected.State.Health.Status {
 			case "healthy":
@@ -452,10 +529,78 @@ func (r *DockerRuntime) execAttached(ctx context.Context, containerID, user stri
 	return nil
 }
 
+func defaultWorkloadHostConfig() *container.HostConfig {
+	pidsLimit := int64(256)
+	return &container.HostConfig{
+		CapAdd:      []string{"CHOWN", "SETUID", "SETGID", "NET_BIND_SERVICE"},
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges:true"},
+		IpcMode:     container.IPCModePrivate,
+		Resources: container.Resources{
+			Memory:    defaultContainerMemoryMB * 1024 * 1024,
+			PidsLimit: &pidsLimit,
+		},
+	}
+}
+
+func validateRuntimeMount(source string) error {
+	value := strings.TrimSpace(strings.ReplaceAll(source, "\\", "/"))
+	if value == "" {
+		return errors.New("runtime mount source cannot be empty")
+	}
+	if !strings.HasPrefix(value, "/") {
+		if strings.Contains(value, "/") || strings.Contains(value, "..") || strings.Contains(value, "$") {
+			return fmt.Errorf("runtime mount source %q is not a valid named volume", source)
+		}
+		return nil
+	}
+	clean := path.Clean(value)
+	for _, blocked := range []string{"/", "/dev", "/etc", "/proc", "/sys", "/var/run", "/run"} {
+		if clean == blocked || strings.HasPrefix(clean, blocked+"/") {
+			return fmt.Errorf("runtime mount source %q is restricted", source)
+		}
+	}
+	if strings.Contains(clean, "docker.sock") {
+		return fmt.Errorf("runtime mount source %q is restricted", source)
+	}
+	return nil
+}
+
+func commandHostConfig() *container.HostConfig {
+	config := defaultWorkloadHostConfig()
+	config.ReadonlyRootfs = true
+	config.SecurityOpt = append(config.SecurityOpt, "apparmor=docker-default")
+	config.StorageOpt = map[string]string{"size": fmt.Sprintf("%dm", defaultWorkloadStorageMB)}
+	config.Tmpfs = map[string]string{"/tmp": "rw,noexec,nosuid,nodev"}
+	return config
+}
+
 func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
+	containerPort := spec.ContainerPort
+	if containerPort == 0 {
+		containerPort = spec.Port
+	}
 	config := &container.Config{Image: spec.Image, Env: spec.Env, Labels: spec.Labels, Cmd: spec.Command}
-	hostConfig := &container.HostConfig{}
+	if spec.Labels["aether.owner"] == "user" {
+		config.User = "101:101"
+	}
+	hostConfig := defaultWorkloadHostConfig()
+	if spec.Labels["aether.owner"] == "user" {
+		hostConfig.ReadonlyRootfs = true
+		hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, "apparmor=docker-default")
+		hostConfig.Tmpfs = map[string]string{
+			"/tmp":             "rw,noexec,nosuid,nodev",
+			"/run":             "rw,noexec,nosuid,nodev,uid=101,gid=101,mode=755",
+			"/var/run":         "rw,noexec,nosuid,nodev,uid=101,gid=101,mode=755",
+			"/var/cache":       "rw,noexec,nosuid,nodev,uid=101,gid=101,mode=755",
+			"/var/cache/nginx": "rw,noexec,nosuid,nodev,uid=101,gid=101,mode=755",
+			"/var/lib/nginx":   "rw,noexec,nosuid,nodev,uid=101,gid=101,mode=755",
+		}
+	}
 	for _, mount := range spec.Mounts {
+		if err := validateRuntimeMount(mount.Source); err != nil {
+			return "", err
+		}
 		mode := "rw"
 		if mount.ReadOnly {
 			mode = "ro"
@@ -463,28 +608,55 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 		hostConfig.Binds = append(hostConfig.Binds, mount.Source+":"+mount.Target+":"+mode)
 	}
 	var networking *network.NetworkingConfig
+	networks := make([]string, 0, 1+len(spec.AdditionalNetworks))
 	if spec.Network != "" {
-		endpoint := &network.EndpointSettings{}
-		if spec.NetworkAlias != "" {
-			endpoint.Aliases = []string{spec.NetworkAlias}
+		networks = append(networks, spec.Network)
+	}
+	for _, name := range spec.AdditionalNetworks {
+		if name == "" || slices.Contains(networks, name) {
+			continue
 		}
-		networking = &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{spec.Network: endpoint}}
+		networks = append(networks, name)
+	}
+	if len(networks) > 0 {
+		endpoints := make(map[string]*network.EndpointSettings, len(networks))
+		for _, name := range networks {
+			endpoint := &network.EndpointSettings{}
+			if name == spec.Network && spec.NetworkAlias != "" {
+				endpoint.Aliases = []string{spec.NetworkAlias}
+			}
+			endpoints[name] = endpoint
+		}
+		networking = &network.NetworkingConfig{EndpointsConfig: endpoints}
 	}
 	if spec.MemMB > 0 {
+		if spec.MemMB > maxContainerMemoryMB {
+			return "", fmt.Errorf("memory limit exceeds %dMB", maxContainerMemoryMB)
+		}
 		hostConfig.Memory = int64(spec.MemMB) * 1024 * 1024
 	}
 	if spec.CPUs != "" {
 		cpus, err := strconv.ParseFloat(spec.CPUs, 64)
-		if err != nil || cpus <= 0 {
+		if err != nil || cpus <= 0 || cpus > maxContainerCPUs {
 			return "", fmt.Errorf("invalid CPU limit %q", spec.CPUs)
 		}
 		hostConfig.NanoCPUs = int64(cpus * 1_000_000_000)
 	}
-	if spec.StorageMB > 0 {
-		hostConfig.StorageOpt = map[string]string{"size": fmt.Sprintf("%dm", spec.StorageMB)}
+	if spec.Labels["aether.owner"] == "user" {
+		storageMB := spec.StorageMB
+		if storageMB == 0 {
+			storageMB = defaultWorkloadStorageMB
+		}
+		if storageMB < 0 || storageMB > maxWorkloadStorageMB {
+			return "", fmt.Errorf("storage limit must be between 1MB and %dMB", maxWorkloadStorageMB)
+		}
+		hostConfig.StorageOpt = map[string]string{"size": fmt.Sprintf("%dm", storageMB)}
 	}
-	if spec.ContainerPort > 0 {
-		port, err := nat.NewPort("tcp", strconv.Itoa(spec.ContainerPort))
+	if spec.ContainerPort > 0 || spec.Port > 0 {
+		if containerPort <= 0 || containerPort > 65535 || spec.Port > 65535 || (spec.Port > 0 && spec.Port < 1024) {
+			return "", errors.New("invalid container or host port")
+		}
+		port, err := nat.NewPort("tcp", strconv.Itoa(containerPort))
 		if err != nil {
 			return "", runtimeError("configure container port", err)
 		}
@@ -493,11 +665,18 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 		if spec.Port > 0 {
 			publicPort = strconv.Itoa(spec.Port)
 		}
-		hostConfig.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: publicPort}}}
+		hostIP := spec.HostIP
+		if hostIP == "" && spec.Labels["aether.owner"] == "user" {
+			hostIP = "127.0.0.1"
+		}
+		hostConfig.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: hostIP, HostPort: publicPort}}}
 	}
 	for _, binding := range spec.Ports {
 		if binding.ContainerPort <= 0 {
 			continue
+		}
+		if binding.ContainerPort > 65535 || binding.HostPort > 65535 || (binding.HostPort > 0 && binding.HostPort < 1024 && binding.HostIP != "0.0.0.0") {
+			return "", errors.New("invalid container or host port")
 		}
 		port, err := nat.NewPort("tcp", strconv.Itoa(binding.ContainerPort))
 		if err != nil {
@@ -514,11 +693,11 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 		if hostConfig.PortBindings == nil {
 			hostConfig.PortBindings = nat.PortMap{}
 		}
-		hostConfig.PortBindings[port] = append(hostConfig.PortBindings[port], nat.PortBinding{HostIP: "0.0.0.0", HostPort: hostPort})
+		hostConfig.PortBindings[port] = append(hostConfig.PortBindings[port], nat.PortBinding{HostIP: binding.HostIP, HostPort: hostPort})
 	}
 	created, err := r.client.ContainerCreate(ctx, config, hostConfig, networking, nil, spec.Name)
 	if err != nil {
-		if spec.StorageMB > 0 && strings.Contains(strings.ToLower(err.Error()), "storage-opt") {
+		if hostConfig.StorageOpt != nil && strings.Contains(strings.ToLower(err.Error()), "storage-opt") {
 			return "", fmt.Errorf("create container: %w: %v", ErrStorageLimitUnsupported, err)
 		}
 		return "", containerError("create container", err)
@@ -546,7 +725,7 @@ func (r *DockerRuntime) Wait(ctx context.Context, containerID string) (int64, er
 }
 
 func (r *DockerRuntime) RunCommand(ctx context.Context, name, imageRef, command string, env []string, remove bool) (string, error) {
-	created, err := r.client.ContainerCreate(ctx, &container.Config{Image: imageRef, Env: env, Cmd: []string{"sh", "-c", command}}, &container.HostConfig{}, nil, nil, name)
+	created, err := r.client.ContainerCreate(ctx, &container.Config{Image: imageRef, Env: env, Cmd: []string{"sh", "-c", command}}, commandHostConfig(), nil, nil, name)
 	if err != nil {
 		return "", containerError("create command container", err)
 	}
@@ -623,12 +802,31 @@ func (r *DockerRuntime) RemoveByLabel(ctx context.Context, label string) error {
 }
 
 func (r *DockerRuntime) EnsureNetwork(ctx context.Context, name string, labels map[string]string) error {
-	if _, err := r.client.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
+	if existing, err := r.client.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
+		for key, value := range labels {
+			if existing.Labels[key] != value {
+				return fmt.Errorf("network %q has unexpected label %q", name, key)
+			}
+		}
+		if labels["io.aether.component"] == "ingress" && !existing.Internal {
+			return fmt.Errorf("network %q must be internal for tenant egress isolation", name)
+		}
+		if labels["io.aether.component"] == "workload-published" && existing.Internal {
+			return fmt.Errorf("network %q must support host port publishing", name)
+		}
+		if labels["io.aether.component"] == "workload-published" && existing.Options["com.docker.network.bridge.enable_ip_masquerade"] != "false" {
+			return fmt.Errorf("network %q must disable workload masquerading", name)
+		}
 		return nil
 	} else if !client.IsErrNotFound(err) {
 		return runtimeError("inspect network", err)
 	}
-	_, err := r.client.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge", Labels: labels})
+	component := labels["io.aether.component"]
+	options := map[string]string{}
+	if component == "workload-published" {
+		options["com.docker.network.bridge.enable_ip_masquerade"] = "false"
+	}
+	_, err := r.client.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge", Internal: component == "ingress", Options: options, Labels: labels})
 	if err != nil {
 		return runtimeError("create network", err)
 	}
@@ -658,10 +856,14 @@ func (r *DockerRuntime) RemoveVolume(ctx context.Context, name string, force boo
 }
 
 func (r *DockerRuntime) HealthCheck(ctx context.Context, hostPort, path string) error {
+	port, err := strconv.Atoi(hostPort)
+	if err != nil || port < 1 || port > 65535 || path == "" || !strings.HasPrefix(path, "/") || len(path) > 2048 || strings.ContainsAny(path, "\r\n") {
+		return errors.New("invalid health check target")
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
 	var lastErr error
 	for _, host := range []string{"host.docker.internal", "127.0.0.1"} {
-		url := "http://" + host + ":" + hostPort + path
+		url := "http://" + host + ":" + strconv.Itoa(port) + path
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return err
@@ -810,6 +1012,15 @@ func writeTar(root string, writer *io.PipeWriter) error {
 		if relative == "." {
 			return nil
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("build context contains unsupported symlink %q", relative)
+		}
+		if excludedBuildContextPath(relative, info.IsDir()) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
 			return err
@@ -837,6 +1048,20 @@ func writeTar(root string, writer *io.PipeWriter) error {
 		return err
 	}
 	return closeErr
+}
+
+func excludedBuildContextPath(relative string, isDir bool) bool {
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	for _, part := range parts {
+		if part == ".git" || part == ".svn" || part == ".hg" || part == ".aether" || part == ".ssh" {
+			return true
+		}
+	}
+	base := parts[len(parts)-1]
+	if isDir {
+		return base == "keys" || base == "secrets"
+	}
+	return base == ".env" || strings.HasPrefix(base, ".env.") || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".p12") || strings.HasSuffix(base, ".pfx")
 }
 
 func runtimeError(operation string, err error) error {

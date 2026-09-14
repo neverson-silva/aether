@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useBranding, useSaveBranding } from "../../../hooks";
 import { Badge, Button, Card, Field, Input, Skeleton, useToast } from "@aether/design-system";
 import { CheckCircle, Cloud, FloppyDisk } from "@phosphor-icons/react";
@@ -148,5 +148,8 @@ export function Whitelabel() {
 }
 
 export const Route = createFileRoute("/_shell/whitelabel/")({
+  beforeLoad: () => {
+    throw redirect({ to: "/" });
+  },
   component: Whitelabel,
 });

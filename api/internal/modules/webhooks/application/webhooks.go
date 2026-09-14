@@ -14,18 +14,23 @@ import (
 	"github.com/google/uuid"
 
 	"aether/internal/modules/webhooks/domain"
+	"aether/internal/platform/security"
 )
 
 type Webhooks struct {
-	Store     domain.Store
-	Passwords domain.PasswordCipher
-	Client    *http.Client
+	Store         domain.Store
+	Passwords     domain.PasswordCipher
+	Client        *http.Client
+	AllowLoopback bool
 }
 
 func (w *Webhooks) Create(ctx context.Context, orgID uuid.UUID, name, url, secret string, events []string) (*domain.OutWebhook, error) {
 	name = strings.TrimSpace(name)
 	url = strings.TrimSpace(url)
 	if name == "" || url == "" || len(events) == 0 {
+		return nil, domain.ErrValidation
+	}
+	if err := w.validateCreateURL(url); err != nil {
 		return nil, domain.ErrValidation
 	}
 	secretEnc, err := w.Passwords.Encrypt(secret)
@@ -56,7 +61,7 @@ func (w *Webhooks) Deliver(ctx context.Context, event string, payload any) error
 	}
 	client := w.Client
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = security.NewHTTPClient(10 * time.Second)
 	}
 	for i := range hooks {
 		hook := &hooks[i]
@@ -71,6 +76,9 @@ func (w *Webhooks) Deliver(ctx context.Context, event string, payload any) error
 		if err != nil {
 			continue
 		}
+		if err := w.validateURL(hook.URL); err != nil {
+			continue
+		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Aether-Event", event)
 		req.Header.Set("X-Aether-Signature", sign(body, secret))
@@ -80,6 +88,20 @@ func (w *Webhooks) Deliver(ctx context.Context, event string, payload any) error
 		}
 	}
 	return nil
+}
+
+func (w *Webhooks) validateURL(raw string) error {
+	if w.AllowLoopback {
+		return security.ValidateOutboundURLForTest(raw)
+	}
+	return security.ValidateOutboundURL(raw)
+}
+
+func (w *Webhooks) validateCreateURL(raw string) error {
+	if w.AllowLoopback {
+		return security.ValidateOutboundURLForTest(raw)
+	}
+	return security.ValidateOutboundURLSyntax(raw)
 }
 
 func sign(body []byte, secret string) string {

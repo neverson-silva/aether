@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -86,7 +87,7 @@ func (c *Clusters) AgentToken(ctx context.Context) (string, error) {
 	}
 	token := "aether-agent_" + base64.RawURLEncoding.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(token))
-	if err := c.Store.CreateServerToken(ctx, hex.EncodeToString(sum[:])); err != nil {
+	if err := c.Store.CreateServerToken(ctx, hex.EncodeToString(sum[:]), time.Now().UTC().Add(24*time.Hour)); err != nil {
 		return "", err
 	}
 	return token, nil

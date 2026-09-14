@@ -1,0 +1,19 @@
+services:
+  syncthing:
+    image: lscr.io/linuxserver/syncthing@sha256:9e9b931bf48a8a08bffaaa7e2fc2b7d0126b02def2bf1d3395d9b531817f9af3
+    restart: unless-stopped
+    expose:
+      - 8384
+      - 22000
+      - 21027/udp
+    volumes:
+      - syncthing_config:/config
+      - syncthing_data:/var/syncthing/Sync
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${timezone}
+
+volumes:
+  syncthing_config:
+  syncthing_data:

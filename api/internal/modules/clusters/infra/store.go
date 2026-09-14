@@ -108,8 +108,8 @@ func (s *Store) SetRegistryEnabled(ctx context.Context, enabled bool) (*domain.R
 	return registryFromRow(row), nil
 }
 
-func (s *Store) CreateServerToken(ctx context.Context, tokenHash string) error {
-	return mapErr(s.q.CreateServerToken(ctx, tokenHash))
+func (s *Store) CreateServerToken(ctx context.Context, tokenHash string, expiresAt time.Time) error {
+	return mapErr(s.q.CreateServerToken(ctx, gen.CreateServerTokenParams{TokenHash: tokenHash, ExpiresAt: expiresAt}))
 }
 
 func clusterFromRow(row gen.Cluster) *domain.Cluster {

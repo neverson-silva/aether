@@ -50,7 +50,7 @@ type Querier interface {
 	CreateRestoreJob(ctx context.Context, arg CreateRestoreJobParams) (RestoreJob, error)
 	CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (CreateS3DestinationRow, error)
 	CreateSCMManifestState(ctx context.Context, arg CreateSCMManifestStateParams) error
-	CreateServerToken(ctx context.Context, tokenHash string) error
+	CreateServerToken(ctx context.Context, arg CreateServerTokenParams) error
 	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error)
 	CreateSnapshotForService(ctx context.Context, arg CreateSnapshotForServiceParams) (Snapshot, error)
 	CreateSnapshotSchedule(ctx context.Context, arg CreateSnapshotScheduleParams) (SnapshotSchedule, error)

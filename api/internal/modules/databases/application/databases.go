@@ -17,14 +17,15 @@ import (
 )
 
 type Databases struct {
-	Store       domain.Store
-	Apps        AppStore
-	Passwords   domain.PasswordCipher
-	Runtime     ContainerRuntime
-	Network     string
-	LogsDir     string
-	Deployments deploydomain.Store
-	Variables   interface {
+	Store            domain.Store
+	Apps             AppStore
+	Passwords        domain.PasswordCipher
+	Runtime          ContainerRuntime
+	Network          string
+	PublishedNetwork string
+	LogsDir          string
+	Deployments      deploydomain.Store
+	Variables        interface {
 		Effective(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error)
 	}
 	Notifier interface {
@@ -48,6 +49,12 @@ var defaultPorts = map[domain.Engine]int{
 	domain.EnginePostgres: 5432, domain.EngineMysql: 3306, domain.EngineMariaDB: 3306,
 	domain.EngineRedis: 6379, domain.EngineMongoDB: 27017, domain.EngineMSSQL: 1433, domain.EngineOracle: 1521,
 }
+
+const (
+	maxDatabaseMemoryMB      = 2048
+	maxDatabaseStorageMB     = 102400
+	maxOrganizationStorageMB = 512000
+)
 
 func (d *Databases) Create(ctx context.Context, orgID, projectID uuid.UUID, name string, engine domain.Engine, version, user, password string, memMB, storageMB int) (*domain.Database, error) {
 	var environmentID *uuid.UUID
@@ -74,6 +81,18 @@ func (d *Databases) create(ctx context.Context, orgID, projectID uuid.UUID, envi
 	}
 	if !engine.Valid() {
 		return nil, domain.ErrValidation
+	}
+	if memMB < 0 || memMB > maxDatabaseMemoryMB || storageMB < 0 || storageMB > maxDatabaseStorageMB {
+		return nil, domain.ErrValidation
+	}
+	if usageStore, ok := d.Store.(domain.OrganizationStorageUsage); ok {
+		used, err := usageStore.OrganizationStorageMB(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if used < 0 || used > maxOrganizationStorageMB-storageMB {
+			return nil, domain.ErrConflict
+		}
 	}
 	user = strings.TrimSpace(user)
 	if user == "" {

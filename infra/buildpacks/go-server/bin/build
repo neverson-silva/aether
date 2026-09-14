@@ -30,6 +30,7 @@ GO_VER="$(curl -fsSL "https://go.dev/dl/?mode=json" | grep -oE "\"version\":\"go
 GO_VER="${GO_VER:-$(echo $GO_MINOR).0}"
 echo "aether/go-server: instalando Go $GO_VER (linux-$ARCH)..."
 curl -fsSLo /tmp/go.tgz "https://go.dev/dl/go$GO_VER.linux-$ARCH.tar.gz"
+curl -fsSL "https://go.dev/dl/go$GO_VER.linux-$ARCH.tar.gz.sha256" | awk '{print $1 "  /tmp/go.tgz"}' | sha256sum -c -
 mkdir -p /tmp/go-x
 tar -xzf /tmp/go.tgz -C /tmp/go-x
 mv /tmp/go-x/go/* "$go_layer/"

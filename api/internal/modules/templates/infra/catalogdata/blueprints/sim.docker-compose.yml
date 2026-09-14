@@ -1,0 +1,76 @@
+services:
+  simstudio:
+    image: ghcr.io/simstudioai/simstudio@sha256:2818825773fb9171069f684bc54fc1acf4476889aec39f80c1b12eccf56faf33
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/simstudio
+      - BETTER_AUTH_URL=${SIM_APP_URL}
+      - NEXT_PUBLIC_APP_URL=${SIM_APP_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - API_ENCRYPTION_KEY=${API_ENCRYPTION_KEY}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+      - SOCKET_SERVER_URL=http://realtime:3002
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+      realtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  realtime:
+    image: ghcr.io/simstudioai/realtime@sha256:eba8824bf9d7c4bcf2a887f2bfac61fb9e96862cfde106510dc6c4022262e457
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/simstudio
+      - NEXT_PUBLIC_APP_URL=${SIM_APP_URL}
+      - BETTER_AUTH_URL=${SIM_APP_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  migrations:
+    image: ghcr.io/simstudioai/migrations@sha256:e6da45a99d5997912e6b20bf9693f4beb44bd588c0a7368a28e97df0e86b664f
+    working_dir: /app/packages/db
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/simstudio
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["bun", "run", "db:migrate"]
+    restart: "no"
+
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=simstudio
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

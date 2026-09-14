@@ -40,6 +40,12 @@ type DatabaseNameStore interface {
 
 var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
+const (
+	maxAppMemoryMB           = 2048
+	maxAppStorageMB          = 102400
+	maxOrganizationStorageMB = 512000
+)
+
 func (a *Apps) CreateProject(ctx context.Context, orgID uuid.UUID, name, description, color string) (*domain.Project, error) {
 	name = strings.TrimSpace(name)
 	if err := validateName(name); err != nil {
@@ -116,7 +122,11 @@ func (a *Apps) CreateApp(ctx context.Context, orgID, projectID uuid.UUID, app *d
 	} else if envID, err := a.Store.DefaultEnvironment(ctx, projectID); err == nil {
 		app.EnvironmentID = &envID
 	}
+	applyAppDefaults(app)
 	if err := validateApp(app); err != nil {
+		return nil, err
+	}
+	if err := a.validateOrganizationStorage(ctx, orgID, app.StorageMB, 0); err != nil {
 		return nil, err
 	}
 	if a.Databases != nil {
@@ -128,7 +138,6 @@ func (a *Apps) CreateApp(ctx context.Context, orgID, projectID uuid.UUID, app *d
 			return nil, domain.ErrConflict
 		}
 	}
-	applyAppDefaults(app)
 	created, err := a.Store.CreateApp(ctx, app)
 	if err != nil {
 		return nil, err
@@ -189,8 +198,26 @@ func (a *Apps) UpdateApp(ctx context.Context, id, orgID uuid.UUID, app *domain.A
 	if err := validateApp(app); err != nil {
 		return nil, err
 	}
+	if err := a.validateOrganizationStorage(ctx, orgID, app.StorageMB, existing.StorageMB); err != nil {
+		return nil, err
+	}
 	applyAppDefaults(app)
 	return a.Store.UpdateApp(ctx, app)
+}
+
+func (a *Apps) validateOrganizationStorage(ctx context.Context, orgID uuid.UUID, requested, replaced int) error {
+	usageStore, ok := a.Store.(domain.OrganizationStorageUsage)
+	if !ok {
+		return nil
+	}
+	used, err := usageStore.OrganizationStorageMB(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if used < 0 || replaced < 0 || requested < 0 || replaced > used || used-replaced > maxOrganizationStorageMB-requested {
+		return domain.ErrConflict
+	}
+	return nil
 }
 
 func (a *Apps) DeleteApp(ctx context.Context, id, orgID uuid.UUID) error {
@@ -294,7 +321,7 @@ func validateApp(app *domain.App) error {
 	if app.Port < 0 || app.Port > 65535 {
 		return domain.ErrValidation
 	}
-	if app.MemMB < 0 || app.StorageMB < 0 || app.ImageRetention < 0 {
+	if app.MemMB < 0 || app.MemMB > maxAppMemoryMB || app.StorageMB < 0 || app.StorageMB > maxAppStorageMB || app.ImageRetention < 0 {
 		return domain.ErrValidation
 	}
 	if app.HealthCheck.IntervalMS < 0 || app.HealthCheck.TimeoutMS < 0 || app.HealthCheck.Retries < 0 {

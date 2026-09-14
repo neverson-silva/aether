@@ -109,10 +109,11 @@ export function normalizeServiceSource(raw: ServiceSourceResponse): ServiceSourc
   };
 }
 
-export function useSourceControlConnections() {
+export function useSourceControlConnections(enabled = true) {
   return useQuery({
     queryKey: ["source-control", "connections"],
     queryFn: () => apiGet<SourceControlConnection[]>("/api/v1/source-control/github/connections"),
+    enabled,
   });
 }
 
@@ -157,7 +158,7 @@ export function useSourceControlFile(repositoryID: string | undefined, installat
   });
 }
 
-export function useServiceSource(appID: string, canonical = false) {
+export function useServiceSource(appID: string, canonical = false, enabled = true) {
   const endpoint = canonical ? `/api/v1/services/${appID}/source` : `/api/v1/apps/${appID}/source`;
   return useQuery({
     queryKey: ["service-source", canonical ? "canonical" : "legacy", appID],
@@ -169,7 +170,7 @@ export function useServiceSource(appID: string, canonical = false) {
         ignore_paths: source.ignore_paths ?? [],
       };
     },
-    enabled: !!appID,
+    enabled: enabled && !!appID,
     retry: (count, error) => (error instanceof Error && "status" in error && (error as { status?: number }).status === 404 ? false : count < 2),
   });
 }

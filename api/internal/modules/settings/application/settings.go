@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"aether/internal/modules/settings/domain"
+	"aether/internal/platform/security"
 	"aether/internal/platform/storage"
 	"aether/internal/platform/storage/gdrive"
 	"aether/internal/platform/storage/s3"
@@ -49,7 +50,7 @@ func (s *Settings) SaveBranding(ctx context.Context, orgID uuid.UUID, branding *
 
 func (s *Settings) CreateOIDC(ctx context.Context, orgID uuid.UUID, name, issuer, clientID, clientSecret, scopes string) (*domain.OIDCProvider, error) {
 	name = strings.TrimSpace(name)
-	if name == "" || issuer == "" || clientID == "" {
+	if name == "" || issuer == "" || clientID == "" || security.ValidateOutboundURLSyntax(strings.TrimSpace(issuer)) != nil {
 		return nil, domain.ErrValidation
 	}
 	if scopes == "" {
@@ -88,7 +89,7 @@ func (s *Settings) OIDCAuthURL(ctx context.Context, id uuid.UUID) (string, error
 	return s.OIDC.AuthURL(ctx, provider.Issuer, provider.ClientID, provider.Scopes, provider.ID.String())
 }
 
-func (s *Settings) OIDCCallback(ctx context.Context, id uuid.UUID, code string) (*domain.OIDCUser, error) {
+func (s *Settings) OIDCCallback(ctx context.Context, id uuid.UUID, code, state string) (*domain.OIDCUser, error) {
 	provider, err := s.Store.GetOIDC(ctx, id)
 	if err != nil {
 		return nil, err
@@ -100,7 +101,7 @@ func (s *Settings) OIDCCallback(ctx context.Context, id uuid.UUID, code string) 
 	if err != nil {
 		return nil, err
 	}
-	return s.OIDC.Exchange(ctx, provider.Issuer, provider.ClientID, secret, provider.ID.String(), code)
+	return s.OIDC.Exchange(ctx, provider.Issuer, provider.ClientID, secret, provider.ID.String(), code, state)
 }
 
 type oauthState struct {

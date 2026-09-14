@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  ampache:
+    image: ampache/ampache@sha256:215f232169d78bcea7a9b555cd7e34b5d9c706b2aa977be36cfeb62b566b4917
+    restart: unless-stopped
+    expose:
+      - 80
+    volumes:
+      - config:/var/www/config
+      - log:/var/log/ampache
+      - mysql:/var/lib/mysql
+      - ${MEDIA_PATH}:/media
+
+volumes:
+  config: {}
+  log: {}
+  mysql: {} 

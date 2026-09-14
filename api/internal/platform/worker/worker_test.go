@@ -34,6 +34,15 @@ type fakeRuntime struct {
 	containerErr   error
 }
 
+func TestEmitDeploymentLogRedactsSecrets(t *testing.T) {
+	var output string
+	ctx := WithDeploymentLog(context.Background(), func(line string) { output = line })
+	EmitDeploymentLog(ctx, `password=secret token:abc123 Authorization: Bearer xyz api_key="value" safe=value`)
+	if output != `password=[REDACTED] token:[REDACTED] Authorization: [REDACTED] api_key="[REDACTED]" safe=value` {
+		t.Fatalf("unexpected redacted log: %q", output)
+	}
+}
+
 type imageRuntimeSpy struct {
 	pulled []string
 }
@@ -168,7 +177,7 @@ func TestWorkerDeploySuccess(t *testing.T) {
 	if len(rt.ran) != 1 {
 		t.Fatalf("run inesperado: %d", len(rt.ran))
 	}
-	if rt.ran[0].Image != "nginx:alpine" || rt.ran[0].Port != 80 {
+	if rt.ran[0].Image != "nginx:alpine" || rt.ran[0].Port != 0 {
 		t.Fatalf("run spec inesperado: %+v", rt.ran[0])
 	}
 	if len(store.updates) != 4 {

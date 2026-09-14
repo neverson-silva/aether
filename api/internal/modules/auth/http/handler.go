@@ -22,10 +22,11 @@ func New(auth *application.Auth, cookieSecure bool) *Handler {
 }
 
 const (
-	ContextUserID = "auth.user_id"
-	ContextOrgID  = "auth.org_id"
-	ContextRole   = "auth.role"
-	ContextGlobal = "auth.global"
+	ContextUserID    = "auth.user_id"
+	ContextOrgID     = "auth.org_id"
+	ContextRole      = "auth.role"
+	ContextGlobal    = "auth.global"
+	ContextSessionID = "auth.session_id"
 )
 
 type registerReq struct {
@@ -44,6 +45,11 @@ type memberReq struct {
 	Name     string `json:"name" binding:"required"`
 	Password string `json:"password" binding:"required"`
 	Role     string `json:"role" binding:"required"`
+}
+
+type changePasswordReq struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required"`
 }
 
 type createKeyReq struct {
@@ -67,10 +73,8 @@ func (h *Handler) Register(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{
-		"token": token, "refresh_token": refresh,
-		"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
-	})
+	h.setRefreshCookie(c, refresh)
+	c.JSON(http.StatusCreated, gin.H{"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt}})
 }
 
 func (h *Handler) Login(c *gin.Context) {
@@ -90,27 +94,24 @@ func (h *Handler) Login(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"token": token, "refresh_token": refresh,
-		"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt},
-	})
+	h.setRefreshCookie(c, refresh)
+	c.JSON(http.StatusOK, gin.H{"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name, "created_at": user.CreatedAt}})
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
-	var req struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	refreshToken, err := c.Cookie("aether_refresh")
+	if err != nil || refreshToken == "" {
 		abort(c, domain.ErrUnauthorized)
 		return
 	}
-	access, refresh, err := h.auth.Refresh(c.Request.Context(), req.RefreshToken)
+	access, refresh, err := h.auth.Refresh(c.Request.Context(), refreshToken)
 	if err != nil {
 		abort(c, err)
 		return
 	}
 	h.setAuthCookie(c, access)
-	c.JSON(http.StatusOK, gin.H{"token": access, "refresh_token": refresh})
+	h.setRefreshCookie(c, refresh)
+	c.JSON(http.StatusOK, gin.H{"status": "refreshed"})
 }
 
 func (h *Handler) Me(c *gin.Context) {
@@ -145,6 +146,20 @@ func (h *Handler) Me(c *gin.Context) {
 		"org":           current,
 		"organizations": out,
 	})
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	var req changePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	if err := h.auth.ChangePassword(c.Request.Context(), userID(c), req.CurrentPassword, req.NewPassword); err != nil {
+		abort(c, err)
+		return
+	}
+	h.clearAuthCookies(c)
+	c.JSON(http.StatusOK, gin.H{"status": "password changed"})
 }
 
 func (h *Handler) ListMembers(c *gin.Context) {
@@ -360,12 +375,14 @@ func (h *Handler) AuthStatus(c *gin.Context) {
 }
 
 func (h *Handler) Logout(c *gin.Context) {
-	sameSite := http.SameSiteLaxMode
-	if h.cookieSecure {
-		sameSite = http.SameSiteNoneMode
+	if token, err := c.Cookie("aether_token"); err == nil && token != "" {
+		if verified, err := h.auth.Tokens.Verify(c.Request.Context(), token); err == nil {
+			_ = h.auth.RevokeSession(c.Request.Context(), verified.SessionID)
+		}
 	}
-	c.SetSameSite(sameSite)
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecure, true)
+	c.SetCookie("aether_refresh", "", -1, "/api/v1/auth", "", h.cookieSecure, true)
 	c.JSON(http.StatusOK, gin.H{"status": "logged_out"})
 }
 
@@ -390,12 +407,18 @@ func orgID(c *gin.Context) uuid.UUID {
 }
 
 func (h *Handler) setAuthCookie(c *gin.Context, token string) {
-	sameSite := http.SameSiteLaxMode
-	if h.cookieSecure {
-		sameSite = http.SameSiteNoneMode
-	}
-	c.SetSameSite(sameSite)
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("aether_token", token, 600, "/", "", h.cookieSecure, true)
+}
+
+func (h *Handler) setRefreshCookie(c *gin.Context, token string) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("aether_refresh", token, 1200, "/api/v1/auth", "", h.cookieSecure, true)
+}
+
+func (h *Handler) clearAuthCookies(c *gin.Context) {
+	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecure, true)
+	c.SetCookie("aether_refresh", "", -1, "/api/v1/auth", "", h.cookieSecure, true)
 }
 
 func abort(c *gin.Context, err error) {

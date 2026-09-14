@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -153,14 +154,39 @@ func templateDTO(t *domain.Template) gin.H {
 	if t.ComposeYAML != "" {
 		composeYAML = t.ComposeYAML
 	}
-	return gin.H{
+	result := gin.H{
 		"id": t.ID, "name": t.Name, "description": t.Description, "category": t.Category,
 		"tags": t.Tags, "icon": t.Icon, "version": t.Version, "definition": t.Definition,
-		"compose_yaml": composeYAML, "readme": t.Readme, "homepage": t.Homepage,
+		"compose_yaml": composeYAML, "environment": t.Environment, "readme": t.Readme, "homepage": t.Homepage,
 		"github": t.GitHub, "license": t.License, "installs": t.Installs,
 		"featured": t.Featured, "editors_choice": t.EditorsChoice, "verified": t.Verified,
 		"updated_at": t.UpdatedAt,
 	}
+	logoID := t.LogoTemplateID
+	if logoID == uuid.Nil {
+		logoID = t.ID
+	}
+	if t.RemoteID != "" || t.LogoTemplateID != uuid.Nil {
+		if t.RemoteID != "" {
+			result["remote_id"] = t.RemoteID
+		}
+		result["logo_url"] = "/api/v1/templates/" + url.PathEscape(logoID.String()) + "/logo"
+	}
+	return result
+}
+
+func (h *Handler) Logo(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("templateID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	data, contentType, err := h.templates.Logo(c.Request.Context(), id)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.Data(http.StatusOK, contentType, data)
 }
 
 func orgID(c *gin.Context) uuid.UUID {

@@ -33,7 +33,7 @@ func (a *Analyzer) SaveZipUpload(name string, data []byte) (*ZipUpload, error) {
 		return nil, err
 	}
 	id := uuid.NewString()
-	if err := os.WriteFile(filepath.Join(a.UploadsDir, id+".zip"), data, 0o640); err != nil {
+	if err := os.WriteFile(filepath.Join(a.UploadsDir, id+".zip"), data, 0o600); err != nil {
 		return nil, err
 	}
 	dest := filepath.Join(a.UploadsDir, id)
@@ -270,7 +270,7 @@ func extractZip(data []byte, dest string) error {
 		if err != nil {
 			return err
 		}
-		out, err := os.Create(target)
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 		if err != nil {
 			_ = rc.Close()
 			return err
@@ -378,7 +378,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.Create(dst)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}

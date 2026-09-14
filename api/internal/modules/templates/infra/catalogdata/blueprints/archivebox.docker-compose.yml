@@ -1,0 +1,15 @@
+services:
+  archivebox:
+    image: archivebox/archivebox@sha256:1a5a37331091d9df865ead2b9c231aa5a892fc26fe0422ce6140d9e2d9532327
+    restart: unless-stopped
+    command: server --quick-init 0.0.0.0:8000
+    environment:
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      PUBLIC_INDEX: ${PUBLIC_INDEX}
+      PUBLIC_SNAPSHOTS: ${PUBLIC_SNAPSHOTS}
+    volumes:
+      - archivebox_data:/data
+    expose:
+      - "8000"
+volumes:
+  archivebox_data:

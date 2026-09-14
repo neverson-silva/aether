@@ -12,6 +12,8 @@ import (
 
 func (h *Handler) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("Pragma", "no-cache")
 		token := ""
 		if raw, err := c.Cookie("aether_token"); err == nil {
 			token = raw
@@ -19,8 +21,6 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 		if token == "" {
 			if header := c.GetHeader("Authorization"); strings.HasPrefix(header, "Bearer ") {
 				token = strings.TrimPrefix(header, "Bearer ")
-			} else {
-				token = c.Query("token")
 			}
 		}
 		if token == "" {
@@ -36,10 +36,25 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
+		if err := h.auth.ValidateAccessToken(c.Request.Context(), auth); err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 		c.Set(ContextUserID, auth.Subject)
 		c.Set(ContextOrgID, auth.OrgID)
 		c.Set(ContextRole, string(auth.Role))
 		c.Set(ContextGlobal, auth.Global)
+		c.Set(ContextSessionID, auth.SessionID)
+		c.Next()
+	}
+}
+
+func RequireGlobalAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetString(ContextGlobal) != "admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
 		c.Next()
 	}
 }

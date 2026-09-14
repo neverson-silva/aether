@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  ai_fiesta:
+    image: ghcr.io/jaainil/open-fiesta-ghcr@sha256:404737ed2e4dd8a9bc1967edd35fd5b5b5e9f75042eba4a7b9de93936a1c851b
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      UNSTABLE_INFERENCE_API_KEY: ${UNSTABLE_INFERENCE_API_KEY}
+      OLLAMA_URL: ${OLLAMA_URL}

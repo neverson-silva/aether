@@ -107,7 +107,7 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                     onClick={() => setLogDep(d.id)}
                     className={cn(
                       "hover:bg-surface-container-high transition-colors border-b border-outline-variant/40 cursor-pointer",
-                      isDeploymentActive(d.status) && "rt-card-active bg-[#4ade80]/[0.03]"
+                      isDeploymentActive(d.status) && "rt-card-active bg-status-success-container/10"
                     )}
                   >
                     <td className="px-sm py-2">
@@ -138,7 +138,7 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                         "—"
                       )}
                       {fix && (
-                        <span className={`ml-xs px-1.5 py-0.5 rounded font-code-md text-code-md ${fix.level === "error" ? "bg-error/10 text-error" : "bg-[#fbbf24]/10 text-[#fbbf24]"}`} title={fix.detail}>
+                        <span className={`ml-xs px-1.5 py-0.5 rounded font-code-md text-code-md ${fix.level === "error" ? "bg-error/10 text-error" : "bg-status-warning-container/30 text-status-warning"}`} title={fix.detail}>
                           {fix.level === "error" ? "blocked" : "suggested"}
                         </span>
                       )}
@@ -180,20 +180,20 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
               <div className="p-sm rounded bg-surface-container-lowest border border-outline-variant">
                 <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">Image</p>
                 <p className="font-code-md text-code-md text-on-surface truncate">{compare.data.image.from || "—"}</p>
-                <p className="font-code-md text-code-md text-[#4ade80] truncate">→ {compare.data.image.to || "—"}</p>
+                <p className="font-code-md text-code-md text-status-success truncate">→ {compare.data.image.to || "—"}</p>
               </div>
               <div className="p-sm rounded bg-surface-container-lowest border border-outline-variant">
                 <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">Commit</p>
                 <p className="font-code-md text-code-md text-on-surface">{(compare.data.commit.from || "—").slice(0, 8)}</p>
-                <p className="font-code-md text-code-md text-[#4ade80]">→ {(compare.data.commit.to || "—").slice(0, 8)}</p>
+                <p className="font-code-md text-code-md text-status-success">→ {(compare.data.commit.to || "—").slice(0, 8)}</p>
               </div>
             </div>
             {compare.data.env_added.length + compare.data.env_removed.length + compare.data.env_changed.length > 0 ? (
               <div className="space-y-md">
                 {compare.data.env_added.length > 0 && (
                   <div>
-                    <p className="font-label-caps text-label-caps text-[#4ade80] uppercase mb-sm">Added variables</p>
-                    <div className="flex gap-sm flex-wrap">{compare.data.env_added.map((k) => <code key={k} className="px-2 py-0.5 rounded border border-[#4ade80]/30 font-code-md text-code-md text-[#4ade80]">{k}</code>)}</div>
+                    <p className="font-label-caps text-label-caps text-status-success uppercase mb-sm">Added variables</p>
+                    <div className="flex gap-sm flex-wrap">{compare.data.env_added.map((k) => <code key={k} className="px-2 py-0.5 rounded border border-status-success/30 font-code-md text-code-md text-status-success">{k}</code>)}</div>
                   </div>
                 )}
                 {compare.data.env_removed.length > 0 && (
@@ -204,8 +204,8 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                 )}
                 {compare.data.env_changed.length > 0 && (
                   <div>
-                    <p className="font-label-caps text-label-caps text-[#fbbf24] uppercase mb-sm">Changed variables</p>
-                    <div className="flex gap-sm flex-wrap">{compare.data.env_changed.map((k) => <code key={k} className="px-2 py-0.5 rounded border border-[#fbbf24]/30 font-code-md text-code-md text-[#fbbf24]">{k}</code>)}</div>
+                    <p className="font-label-caps text-label-caps text-status-warning uppercase mb-sm">Changed variables</p>
+                    <div className="flex gap-sm flex-wrap">{compare.data.env_changed.map((k) => <code key={k} className="px-2 py-0.5 rounded border border-status-warning/30 font-code-md text-code-md text-status-warning">{k}</code>)}</div>
                   </div>
                 )}
               </div>

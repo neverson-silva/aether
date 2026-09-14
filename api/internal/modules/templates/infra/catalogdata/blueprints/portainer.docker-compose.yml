@@ -1,0 +1,11 @@
+services:
+  portainer:
+    image: portainer/portainer-ce@sha256:511f3f06c96fe3b993ebeaafde311c1959cae73a7ef825dba6397d51b450dffa
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    expose:
+      - 9000
+volumes:
+  portainer-data: {}

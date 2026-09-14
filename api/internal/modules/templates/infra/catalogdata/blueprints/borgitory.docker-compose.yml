@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  borgitory:
+    image: mlapaglia/borgitory@sha256:139061eb08af83406bb478818b52ed2a3ef85a57100cfd030a964e13e0fce842
+    restart: unless-stopped
+    expose:
+      - 8000
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    volumes:
+      - borgitory-data:/app/data
+      - borgitory-sources:/mnt/sources:ro
+      - borgitory-repos:/mnt/repos:ro
+
+volumes:
+  borgitory-data: {}
+  borgitory-sources: {}
+  borgitory-repos: {}

@@ -29,6 +29,7 @@ if [ -f /workspace/global.json ]; then
 fi
 echo "aether/dotnet-server: instalando .NET SDK channel $CHANNEL ($ARCH)..."
 curl -fsSLo /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh
+echo "082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e  /tmp/dotnet-install.sh" | sha256sum -c -
 chmod +x /tmp/dotnet-install.sh
 /tmp/dotnet-install.sh --channel "$CHANNEL" --architecture "$ARCH" --install-dir "$dotnet_layer" >/dev/null 2>&1
 rm -f /tmp/dotnet-install.sh

@@ -18,15 +18,15 @@ esac
 REGISTRY="${AETHER_REGISTRY_ADDR:-127.0.0.1:1500}"
 BUILDER_TAG="$REGISTRY/builder:node-spa"
 LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
-RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
+RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517}"
 STACK_ID="io.buildpacks.stacks.aether"
 HOST_DISTRO="$(if [[ -r /etc/os-release ]]; then . /etc/os-release; printf '%s' "${ID:-linux}"; else printf 'linux'; fi)"
 case "${AETHER_BUILDER_DISTRO:-$HOST_DISTRO}" in
-  fedora|rhel|centos|rocky|almalinux|ol|amzn) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-quay.io/fedora/fedora:latest}" ;;
-  alpine) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/alpine:3.21}" ;;
-  arch|manjaro) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/archlinux:base}" ;;
-  opensuse*|sles) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-registry.opensuse.org/opensuse/leap:15.6}" ;;
-  *) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04}" ;;
+  fedora|rhel|centos|rocky|almalinux|ol|amzn) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-quay.io/fedora/fedora:latest@sha256:b013b98e4f4c43b46fb59b71b9d3d1f4f33df503ff84b1ea3415cafc32ead87c}" ;;
+  alpine) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d}" ;;
+  arch|manjaro) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/archlinux:base@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a}" ;;
+  opensuse*|sles) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-registry.opensuse.org/opensuse/leap:15.6@sha256:e4d84bbc5e0fa0df64381e95ad7ea8e3867cc34f3b1d174e9948d0f559d223e2}" ;;
+  *) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517}" ;;
 esac
 
 # Ordem de detecção (marcadores fortes primeiro; node-server rejeita SPA; spa pega o resto)
@@ -45,7 +45,7 @@ if ! docker ps --format '{{.Names}}' | grep -qx aether-registry; then
   if docker ps -a --format '{{.Names}}' | grep -qx aether-registry; then
     docker rm -f aether-registry >/dev/null
   fi
-  docker run -d --name aether-registry -p 127.0.0.1:1500:5000 docker.io/library/registry:2 >/dev/null
+  docker run -d --name aether-registry -p 127.0.0.1:1500:5000 --cap-drop ALL --security-opt no-new-privileges:true docker.io/library/registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 >/dev/null
   sleep 3
 fi
 info "registry at http://127.0.0.1:1500/v2/ -> $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:1500/v2/ || echo unavailable)"
@@ -60,7 +60,13 @@ mkdir -p "$CTX/cnb/lifecycle" "$CTX/cnb/buildpacks"
 # 2.1 lifecycle (CNB)
 LIF_VER_FULL="${LIFECYCLE_VER#v}"
 info "downloading lifecycle $LIF_VER_FULL ($LIFE_ARCH)..."
-curl -fsSLo /tmp/lifecycle.tgz "https://github.com/buildpacks/lifecycle/releases/download/v$LIF_VER_FULL/lifecycle-v$LIF_VER_FULL+linux.$LIFE_ARCH.tgz"
+LIFECYCLE_URL="https://github.com/buildpacks/lifecycle/releases/download/v$LIF_VER_FULL/lifecycle-v$LIF_VER_FULL+linux.$LIFE_ARCH.tgz"
+curl -fsSLo /tmp/lifecycle.tgz "$LIFECYCLE_URL"
+LIFECYCLE_CHECKSUM_FILE="https://github.com/buildpacks/lifecycle/releases/download/v$LIF_VER_FULL/lifecycle-v$LIF_VER_FULL-checksums.txt"
+LIFECYCLE_FILE="lifecycle-v$LIF_VER_FULL+linux.$LIFE_ARCH.tgz"
+LIFECYCLE_CHECKSUM="$(curl -fsSL "$LIFECYCLE_CHECKSUM_FILE" | awk -v file="$LIFECYCLE_FILE" 'length($1) >= length(file) && substr($1, length($1) - length(file) + 1) == file {print $2}')"
+LIFECYCLE_ACTUAL_CHECKSUM="$(sha256sum /tmp/lifecycle.tgz | awk '{print $1}')"
+[[ -n "$LIFECYCLE_CHECKSUM" && "$LIFECYCLE_CHECKSUM" == "$LIFECYCLE_ACTUAL_CHECKSUM" ]] || { echo "lifecycle checksum verification failed"; exit 1; }
 tar -xzf /tmp/lifecycle.tgz -C "$CTX/cnb"
 rm -f /tmp/lifecycle.tgz
 chmod +x "$CTX/cnb/lifecycle"/*
@@ -119,20 +125,20 @@ RUN set -eux; \
     if command -v apt-get >/dev/null 2>&1; then \
       export DEBIAN_FRONTEND=noninteractive; \
       apt-get update -qq; \
-      apt-get install -y -qq --no-install-recommends bash curl unzip xz-utils git ca-certificates build-essential libssl-dev pkg-config passwd; \
+      apt-get install -y -qq --no-install-recommends bash curl unzip xz-utils git ca-certificates build-essential libssl-dev pkg-config passwd jq; \
       rm -rf /var/lib/apt/lists/*; \
     elif command -v dnf >/dev/null 2>&1; then \
-      dnf install -y bash curl unzip xz git ca-certificates gcc gcc-c++ make openssl-devel pkgconf-pkg-config shadow-utils; \
+      dnf install -y bash curl unzip xz git ca-certificates gcc gcc-c++ make openssl-devel pkgconf-pkg-config shadow-utils jq; \
       dnf clean all; \
       rm -rf /var/cache/dnf; \
     elif command -v apk >/dev/null 2>&1; then \
-      apk add --no-cache bash curl unzip xz git ca-certificates build-base openssl-dev pkgconf shadow; \
+      apk add --no-cache bash curl unzip xz git ca-certificates build-base openssl-dev pkgconf shadow jq; \
     elif command -v pacman >/dev/null 2>&1; then \
-      pacman -Sy --noconfirm --needed bash curl unzip xz git ca-certificates base-devel openssl pkgconf shadow; \
+      pacman -Sy --noconfirm --needed bash curl unzip xz git ca-certificates base-devel openssl pkgconf shadow jq; \
       pacman -Scc --noconfirm; \
     elif command -v zypper >/dev/null 2>&1; then \
       zypper --non-interactive refresh; \
-      zypper --non-interactive install bash curl unzip xz git ca-certificates gcc gcc-c++ make libopenssl-devel pkg-config shadow; \
+      zypper --non-interactive install bash curl unzip xz git ca-certificates gcc gcc-c++ make libopenssl-devel pkg-config shadow jq; \
       zypper clean --all; \
     else \
       echo "No supported package manager found in builder base image" >&2; \

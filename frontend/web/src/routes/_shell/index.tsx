@@ -14,6 +14,7 @@ import {
   MetricCard,
   Progress,
   RuntimeStatus,
+  Skeleton,
   useToast,
 } from "@aether/design-system";
 import { useExportOrg, useSystemSummary } from "../../hooks";
@@ -28,7 +29,7 @@ function formatBytes(bytes: number) {
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { data: summary } = useSystemSummary();
+  const { data: summary, isLoading } = useSystemSummary();
   const exportOrg = useExportOrg();
   const toast = useToast();
   const health = summary?.health_pct ?? 0;
@@ -102,6 +103,7 @@ function Dashboard() {
           unit="%"
           delta="From live probes"
           trend="up"
+          loading={isLoading}
         />
         <MetricCard
           label="Total traffic"
@@ -109,6 +111,7 @@ function Dashboard() {
           unit="net"
           delta="Since container start"
           trend="flat"
+          loading={isLoading}
         />
         <MetricCard
           label="Deployments"
@@ -116,6 +119,7 @@ function Dashboard() {
           unit="runs"
           delta="Across all services"
           trend="flat"
+          loading={isLoading}
         />
       </section>
 
@@ -139,7 +143,11 @@ function Dashboard() {
           </div>
           <div className="flex min-h-56 flex-col">
             <div className="flex-1 divide-y divide-border overflow-hidden">
-              {projects.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-3 p-5" aria-label="Loading projects">
+                  {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} variant="table" />)}
+                </div>
+              ) : projects.length === 0 ? (
                 <div className="p-8 text-center text-body-sm text-muted-foreground">
                   <EmptyState title="No projects yet" description="Create one to get started." className="border-0" />
                 </div>
@@ -233,24 +241,32 @@ function Dashboard() {
             </div>
           }
         >
-          <div className="space-y-6 mt-4 px-2">
-            <ResourceMeter
-              label="CPU allocation"
-              value={summary?.cpu_pct ?? 0}
-              icon={ShieldCheck}
-            />
-            <ResourceMeter
-              label="Memory"
-              value={summary?.mem_pct ?? 0}
-              icon={ArrowsDownUp}
-              status="success"
-            />
-            <ResourceMeter
-              label="Storage I/O"
-              value={summary?.io_pct ?? 0}
-              icon={RocketLaunch}
-              status="warning"
-            />
+          <div className="mt-4 space-y-6 px-2">
+            {isLoading ? (
+              <div className="space-y-5" aria-label="Loading resource usage">
+                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} variant="text" className="h-8" />)}
+              </div>
+            ) : (
+              <>
+                <ResourceMeter
+                  label="CPU allocation"
+                  value={summary?.cpu_pct ?? 0}
+                  icon={ShieldCheck}
+                />
+                <ResourceMeter
+                  label="Memory"
+                  value={summary?.mem_pct ?? 0}
+                  icon={ArrowsDownUp}
+                  status="success"
+                />
+                <ResourceMeter
+                  label="Storage I/O"
+                  value={summary?.io_pct ?? 0}
+                  icon={RocketLaunch}
+                  status="warning"
+                />
+              </>
+            )}
           </div>
         </Card>
       </section>

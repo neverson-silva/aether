@@ -32,6 +32,10 @@ type atomicDeploymentStore interface {
 	CreateDeploymentAndOutbox(context.Context, *deploydomain.Deployment, uuid.UUID) (*deploydomain.Deployment, error)
 }
 
+type activeDeploymentCounter interface {
+	CountActiveByOrg(context.Context, uuid.UUID) (int, error)
+}
+
 type DeployNotifier interface {
 	NotifyDeploy(ctx context.Context, event deploydomain.DeployEvent)
 }
@@ -65,6 +69,8 @@ type DeployOpts struct {
 	ImageRef    string
 }
 
+const maxActiveDeploymentsPerOrg = 4
+
 func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts DeployOpts) (*deploydomain.Deployment, error) {
 	app, err := d.Apps.GetApp(ctx, appID, orgID)
 	if err != nil {
@@ -90,6 +96,17 @@ func (d *Deployments) Deploy(ctx context.Context, appID, orgID uuid.UUID, opts D
 		},
 	})
 	d.mu.Lock()
+	if counter, ok := d.Store.(activeDeploymentCounter); ok {
+		active, countErr := counter.CountActiveByOrg(ctx, orgID)
+		if countErr != nil {
+			d.mu.Unlock()
+			return nil, countErr
+		}
+		if active >= maxActiveDeploymentsPerOrg {
+			d.mu.Unlock()
+			return nil, deploydomain.ErrConflict
+		}
+	}
 	number, err := d.Store.NextNumber(ctx, appID)
 	var dep *deploydomain.Deployment
 	if err == nil {
@@ -160,6 +177,10 @@ func (d *Deployments) Rollback(ctx context.Context, appID, orgID uuid.UUID, by s
 		return nil, deploydomain.ErrValidation
 	}
 	d.mu.Lock()
+	if err := d.checkDeploymentAdmission(ctx, orgID); err != nil {
+		d.mu.Unlock()
+		return nil, err
+	}
 	number, err := d.Store.NextNumber(ctx, appID)
 	var next *deploydomain.Deployment
 	if err == nil {
@@ -176,6 +197,21 @@ func (d *Deployments) Rollback(ctx context.Context, appID, orgID uuid.UUID, by s
 	}
 	d.enqueue(ctx, next, orgID)
 	return next, nil
+}
+
+func (d *Deployments) checkDeploymentAdmission(ctx context.Context, orgID uuid.UUID) error {
+	counter, ok := d.Store.(activeDeploymentCounter)
+	if !ok {
+		return nil
+	}
+	active, err := counter.CountActiveByOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if active >= maxActiveDeploymentsPerOrg {
+		return deploydomain.ErrConflict
+	}
+	return nil
 }
 
 func (d *Deployments) Cancel(ctx context.Context, appID, orgID, depID uuid.UUID) (*deploydomain.Deployment, error) {

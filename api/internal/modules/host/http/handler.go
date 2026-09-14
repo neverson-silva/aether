@@ -62,12 +62,78 @@ func (h *Handler) Events(c *gin.Context) {
 }
 
 func (h *Handler) Logs(c *gin.Context) {
+	if c.Query("follow") == "1" {
+		h.followLogs(c)
+		return
+	}
 	lines, err := h.host.Logs(100)
 	if err != nil {
 		abort(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"lines": lines})
+}
+
+func (h *Handler) followLogs(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Flush()
+
+	previous := []string{}
+	if lines, err := h.host.Logs(100); err == nil {
+		writeLogLines(c, lines)
+		previous = lines
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-ticker.C:
+			lines, err := h.host.Logs(100)
+			if err != nil {
+				continue
+			}
+			writeLogLines(c, appendedLogLines(previous, lines))
+			previous = lines
+		}
+	}
+}
+
+func writeLogLines(c *gin.Context, lines []string) {
+	for _, line := range lines {
+		data, _ := json.Marshal(gin.H{"line": line})
+		_, _ = fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", data)
+	}
+	if len(lines) > 0 {
+		c.Writer.Flush()
+	}
+}
+
+func appendedLogLines(previous, current []string) []string {
+	if len(previous) == 0 {
+		return current
+	}
+	limit := len(previous)
+	if len(current) < limit {
+		limit = len(current)
+	}
+	for overlap := limit; overlap > 0; overlap-- {
+		matches := true
+		for index := 0; index < overlap; index++ {
+			if previous[len(previous)-overlap+index] != current[index] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return current[overlap:]
+		}
+	}
+	return current
 }
 
 func writeStats(c *gin.Context, stats domain.Stats) {

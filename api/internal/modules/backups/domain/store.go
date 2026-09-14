@@ -29,3 +29,8 @@ type DatabaseBackupStore interface {
 	ListRestoreJobsByTarget(ctx context.Context, targetID uuid.UUID, limit int) ([]RestoreJob, error)
 	ListQueuedRestoreJobs(ctx context.Context, limit int) ([]RestoreJob, error)
 }
+
+type OrganizationJobCounter interface {
+	CountActiveByOrg(ctx context.Context, orgID uuid.UUID) (int, error)
+	CountActiveUploadBytesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
+}

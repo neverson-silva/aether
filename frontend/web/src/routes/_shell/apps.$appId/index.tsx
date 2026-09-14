@@ -1,136 +1,64 @@
-import { Metric } from "./-components/Metric";
-import { LiveLogs } from "./-components/LiveLogs";
-import { DeploymentLogModal } from "./-components/DeploymentLogModal";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useParams } from "@tanstack/react-router";
-import { CronJobs } from "./-components/CronJobs";
-import { Autopilot } from "./-components/Autopilot";
-import { Terminal } from "./-components/Terminal";
-import { ComposeTab } from "./-components/ComposeTab";
-import { DomainsPanel } from "../../../components/DomainsPanel";
-import {
-  useDeleteEnv,
-  useUpdateService,
-  useDomains,
-  useSetEnv,
-  useSetWebhook,
-  useSaveServiceSource,
-  useSourceControlConnections,
-  useSourceControlRepositories,
-  useServiceSource,
-  useServiceDetails,
-  useServiceAction,
-  useServiceTimeline,
-  useServiceStats,
-  useServiceDeployments,
-  useServiceEnvironment,
-  useServiceConnection,
-  useServiceContainers,
-} from "@/hooks";
+import { NativeSelect } from "@aether/design-system";
+import { Button, Dialog, Field, Input, useToast, type VariableRow } from "@aether/design-system";
 import type { App } from "@/api/types";
-import { DeploymentsTab } from "./-components/DeploymentsTab";
+import { useDomains, useSaveServiceSource, useServiceAction, useServiceConnection, useServiceContainers, useServiceDeployments, useServiceDetails, useServiceEnvironment, useServiceSource, useServiceStats, useServiceTimeline, useSetEnv, useSetWebhook, useSourceControlConnections, useSourceControlRepositories } from "@/hooks";
+import { useDeleteEnv as useRemoveEnv } from "@/hooks/use-delete-env";
+import { useUpdateService as usePatchService } from "@/hooks/use-update-service";
+import { isRuntimeLive, mapRuntimeStatus } from "@/lib/runtime-status";
 import { BackupTab } from "../databases.$dbId/-components/BackupTab";
-import {
-  ArrowSquareOut,
-  ArrowsClockwise,
-  ArrowUUpLeft,
-  ChartLine,
-  Check,
-  Code,
-  Copy,
-  Database,
-  Gear,
-  Gauge,
-  GitBranch,
-  Globe,
-  HardDrives,
-  Link,
-  ListChecks,
-  MagnifyingGlass,
-  PencilSimple,
-  Play,
-  RocketLaunch,
-  Stop,
-  Target,
-  TerminalWindow,
-  Trash,
-} from "@phosphor-icons/react";
-import type { Icon as DesignIcon } from "@aether/design-system";
-import {
-  AlertDialog,
-  Badge,
-  Button,
-  Card,
-  Checkbox,
-  CodeBlock,
-  Dialog,
-  EmptyState,
-  Field,
-  Input,
-  NativeSelect,
-  RuntimeStatus,
-  Skeleton,
-  Slider,
-  Switch,
-  VariableEditor,
-  type VariableRow,
-  useToast,
-} from "@aether/design-system";
-import { isRuntimeLive, mapRuntimeStatus } from "../../../lib/runtime-status";
-import {
-  extractReturnTo,
-  normalizeDetailsSearch,
-  normalizeLegacyKind,
-  readDetailsReturnTo,
-  sanitizeReturnTo,
-} from "./-details-search";
+import { ComposeTab } from "./-components/ComposeTab";
+import { CronJobs } from "./-components/CronJobs";
+import { DeploymentLogModal } from "./-components/DeploymentLogModal";
+import { DeploymentsTab } from "./-components/DeploymentsTab";
+import { DomainsPanel } from "../../../components/DomainsPanel";
+import { ServiceHeader } from "./-components/ServiceHeader";
+import { ServiceLogsTab, ServiceMetricsTab, ServiceVariablesTab } from "./-components/ServiceRuntimeTabs";
+import { ServiceOverviewTab } from "./-components/ServiceOverviewTab";
+import { ServiceSettingsTab } from "./-components/ServiceSettingsTab";
+import { Terminal } from "./-components/Terminal";
+import { SERVICE_TABS, type ServiceTab } from "./-components/service-tabs";
+import { extractReturnTo, normalizeDetailsSearch, readDetailsReturnTo } from "./-details-search";
+import type { Deployment } from "@/api/types";
 
-const designIcon = (icon: typeof RocketLaunch) => icon as unknown as DesignIcon;
-const cn = (...classes: Array<string | false | undefined>) =>
-  classes.filter(Boolean).join(" ");
-const fmtBytes = (bytes: number) =>
-  bytes < 1024
-    ? `${bytes} B`
-    : bytes < 1024 ** 2
-      ? `${(bytes / 1024).toFixed(1)} KiB`
-      : `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
+const detailSearchSchema = z.preprocess(normalizeDetailsSearch, z.object({
+  tab: z.enum(SERVICE_TABS).optional(),
+  returnTo: z.string().optional(),
+}));
+
+const webhookSchema = z.object({ secret: z.string().min(1, "Secret is required") });
+const maskedSecretValue = "••••••••";
+
+function safeExternalURL(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseProviderPaths(value: string) { return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean); }
+
+function parseEnv(): VariableRow[] | undefined {
+  const pasted = window.prompt("Paste .env content (KEY=value per line):");
+  if (!pasted) return;
+  return pasted.split("\n").flatMap((raw, index) => {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) return [];
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) return [];
+    return [{ id: `imported-${index}-${match[1]}`, key: match[1], value: match[2].replace(/^"|"$/g, ""), secret: /password|secret|key|token/i.test(match[1]) }];
   });
-const isDeploymentActive = (status: string) =>
-  ["queued", "building", "starting", "health_checking"].includes(status);
-const deploymentTone = (status: string) =>
-  status === "failed"
-    ? ("danger" as const)
-    : status === "ready" || status === "running"
-      ? ("success" as const)
-      : isDeploymentActive(status)
-        ? ("warning" as const)
-        : ("neutral" as const);
-const deploymentLabel = (status: string) =>
-  status === "ready" ? "success" : status;
-
-const parseProviderPaths = (value: string) =>
-  value
-    .split(/[\n,]/)
-    .map((path) => path.trim())
-    .filter(Boolean);
-
-const maskedConnectionString = (value: string) => value.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:••••••••@");
+}
 
 async function copyText(value: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
   const textarea = document.createElement("textarea");
   textarea.value = value;
   textarea.style.position = "fixed";
@@ -143,1403 +71,154 @@ async function copyText(value: string) {
   if (!copied) throw new Error("Copy command failed");
 }
 
-const webhookSchema = z.object({
-  secret: z.string().min(1, "Secret is required"),
-});
+function isDeploymentActive(status: string) { return ["queued", "building", "starting", "health_checking"].includes(status); }
 
-const TABS = [
-  "overview",
-  "deployments",
-  "variables",
-  "compose",
-  "domains",
-  "logs",
-  "metrics",
-  "settings",
-  "cron",
-  "terminal",
-  "backup",
-] as const;
-type Tab = (typeof TABS)[number];
-const detailSearchSchema = z.preprocess(normalizeDetailsSearch, z.object({
-  tab: z.enum(TABS).optional(),
-  returnTo: z.string().optional(),
-}));
-const TAB_ICONS: Record<Tab, typeof Code> = {
-  overview: Gauge,
-  deployments: RocketLaunch,
-  variables: ListChecks,
-  compose: Code,
-  domains: Globe,
-  logs: TerminalWindow,
-  metrics: ChartLine,
-  settings: Gear,
-  cron: ListChecks,
-  terminal: TerminalWindow,
-  backup: Database,
-};
-
-function stateTone(state: string): string {
-  return state === "running"
-    ? "active"
-    : state === "no_container"
-      ? "disabled"
-      : "pending";
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
 }
 
-function parseEnv(): VariableRow[] | undefined {
-  const pasted = window.prompt("Paste .env content (KEY=value per line):");
-  if (!pasted) return;
-  return pasted.split("\n").flatMap((raw, index) => {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) return [];
-    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-    if (!match) return [];
-    return [{
-      id: `imported-${index}-${match[1]}`,
-      key: match[1],
-      value: match[2].replace(/^"|"$/g, ""),
-      secret: /password|secret|key|token/i.test(match[1]),
-    }];
-  });
+function canonicalApp(service: NonNullable<ReturnType<typeof useServiceDetails>["data"]>): App {
+  return {
+    id: service.id,
+    org_id: service.org_id,
+    project_id: service.project_id,
+    name: service.name,
+    source_type: service.kind === "app" && service.spec?.source_type === "git" ? "git" : "image",
+    image: service.spec?.image ?? (service.kind === "compose" ? "Docker Compose stack" : service.spec?.engine ?? service.kind),
+    git_url: service.spec?.git_url ?? "",
+    git_branch: service.spec?.git_branch ?? "",
+    dockerfile: service.spec?.dockerfile ?? "",
+    build_type: service.spec?.build_type ?? service.kind,
+    preview_domain: "",
+    server_id: "",
+    cluster_id: "",
+    environment_id: service.environment_id ?? "",
+    port: service.spec?.port ?? 0,
+    storage_mb: service.spec?.storage_mb ?? 0,
+    resources: { cpus: service.spec?.cpus ?? "0", mem_mb: service.spec?.mem_mb ?? 0 },
+    image_retention: service.spec?.image_retention ?? 0,
+    health_check: { enabled: false, path: "/", interval_ms: 0, timeout_ms: 0, retries: 0 },
+    volumes: (service.volumes ?? []).map((volume) => ({ name: volume.name, mount_path: volume.mount_path })),
+    created_at: service.created_at,
+    updated_at: service.updated_at,
+  };
 }
 
 function AppDetail() {
   const { appId } = useParams({ strict: false }) as { appId: string };
-  const [variables, setVariables] = useState<VariableRow[]>([]);
-  const [connectionVisible, setConnectionVisible] = useState(false);
   const search = Route.useSearch();
-  const resolvedServiceID = appId;
-  const serviceQuery = useServiceDetails(resolvedServiceID, Boolean(resolvedServiceID));
-  const { data: service } = serviceQuery;
-  const canonicalServiceID = service?.id ?? resolvedServiceID;
+  const navigate = Route.useNavigate();
+  const { add } = useToast();
+  const serviceQuery = useServiceDetails(appId, Boolean(appId));
+  const service = serviceQuery.data;
+  const serviceId = service?.id ?? appId;
   const runtimeId = service?.spec_id ?? appId;
-  const { data: serviceEnvironment } = useServiceEnvironment(canonicalServiceID, Boolean(service));
-  const { data: serviceConnection, isError: serviceConnectionError } = useServiceConnection(canonicalServiceID, connectionVisible && service?.kind === "database");
+  const app = service ? canonicalApp(service) : undefined;
+  const { data: serviceEnvironment } = useServiceEnvironment(serviceId, Boolean(service), search.tab === "variables");
+  const { data: serviceConnection, isError: serviceConnectionError } = useServiceConnection(serviceId, Boolean(service && service.kind === "database"));
+  const canManageSource = service?.capabilities.can_manage_source === true;
+  const { data: source, isLoading: sourceLoading, isError: sourceError } = useServiceSource(serviceId, canManageSource, canManageSource);
+  const { data: sourceConnections } = useSourceControlConnections(canManageSource);
+  const sourceConnection = sourceConnections?.find((item) => item.id === source?.connection_id);
+  const { data: providerRepositories } = useSourceControlRepositories(sourceConnection?.installation_id);
+  const { data: deployments } = useServiceDeployments(serviceId, Boolean(service));
+  const { data: domains } = useDomains("services", serviceId);
+  const { data: stats } = useServiceStats(serviceId, Boolean(service));
+  const { data: containers } = useServiceContainers(serviceId, Boolean(service));
+  const { data: timeline } = useServiceTimeline(serviceId, Boolean(service));
+  const setEnv = useSetEnv(serviceId, Boolean(service));
+  const deleteEnv = useRemoveEnv(serviceId, Boolean(service));
+  const setWebhook = useSetWebhook(serviceId, Boolean(service));
+  const saveSource = useSaveServiceSource(serviceId, Boolean(service));
+  const updateService = usePatchService();
   const serviceDeploy = useServiceAction("deploy");
   const serviceStart = useServiceAction("start");
   const serviceStop = useServiceAction("stop");
   const serviceRestart = useServiceAction("restart");
   const serviceDelete = useServiceAction("delete");
-  const { data: source, isLoading: sourceLoading } = useServiceSource(canonicalServiceID, service?.capabilities.can_manage_source ?? false);
-  const { data: sourceConnections } = useSourceControlConnections();
-  const sourceConnection = sourceConnections?.find((connection) => connection.id === source?.connection_id);
-  const { data: providerRepositories } = useSourceControlRepositories(sourceConnection?.installation_id);
-  const composeSource = service?.spec?.compose;
-  const canonicalApp: App | undefined = service
-    ? {
-        id: service.id,
-        org_id: service.org_id,
-        project_id: service.project_id,
-        name: service.name,
-        source_type: service.kind === "app" ? (service.spec?.source_type === "git" ? "git" : "image") : "image",
-        image: service.spec?.image ?? (service.kind === "compose" ? "Docker Compose stack" : service.spec?.engine ?? service.kind),
-        git_url: service.spec?.git_url ?? "",
-        git_branch: service.spec?.git_branch ?? "",
-        dockerfile: service.spec?.dockerfile ?? "",
-        build_type: service.spec?.build_type ?? service.kind,
-        preview_domain: "",
-        server_id: "",
-        cluster_id: "",
-        environment_id: service.environment_id ?? "",
-        port: service.spec?.port ?? 0,
-        storage_mb: service.spec?.storage_mb ?? 0,
-        resources: { cpus: service.spec?.cpus ?? "0", mem_mb: service.spec?.mem_mb ?? 0 },
-        image_retention: service.spec?.image_retention ?? 0,
-        health_check: { enabled: false, path: "/", interval_ms: 0, timeout_ms: 0, retries: 0 },
-        volumes: (service.volumes ?? []).map((volume) => ({ name: volume.name, mount_path: volume.mount_path })),
-        created_at: service.created_at,
-        updated_at: service.updated_at,
-      }
-    : undefined;
-  const app = canonicalApp;
-  const logsID = service?.id ?? app?.id ?? "";
-  const envEditorVars = useMemo(
-    () =>
-      (serviceEnvironment?.env ?? []).map((e) => ({
-        key: e.name,
-        value: e.value,
-        is_secret: e.secret,
-      })),
-    [serviceEnvironment],
-  );
-  const variableKey = useMemo(
-    () => envEditorVars.map((entry) => `${entry.key}:${entry.value.length}:${entry.is_secret}`).join("|"),
-    [envEditorVars],
-  );
-  const { data: canonicalDeployments } = useServiceDeployments(canonicalServiceID, Boolean(service));
-  const runtimeDeployments = canonicalDeployments;
-  const { data: domains } = useDomains("services", canonicalServiceID);
-  const statsEnabled = Boolean(app);
-  const { data: canonicalStats } = useServiceStats(canonicalServiceID, Boolean(service));
-  const { data: serviceContainers } = useServiceContainers(canonicalServiceID, Boolean(service));
-  const { data: canonicalTimeline } = useServiceTimeline(canonicalServiceID, Boolean(service));
-  const runtimeStats = canonicalStats;
-  const runtimeTimeline = canonicalTimeline;
-  const visibleTabs = service
-    ? TABS.filter((item) =>
-        (item !== "compose" || service.kind === "compose") &&
-        (item !== "domains" || service.capabilities.can_manage_domains) &&
-        (item !== "logs" || service.capabilities.can_view_logs) &&
-        (item !== "metrics" || service.capabilities.can_view_metrics) &&
-        (item !== "cron" || service.capabilities.can_manage_schedules) &&
-        (item !== "terminal" || service.capabilities.can_open_terminal) &&
-        (item !== "settings" || service.capabilities.can_build || service.kind === "compose") &&
-        (item !== "backup" || service.capabilities.can_manage_backups),
-      )
-    : TABS;
-  const setEnv = useSetEnv(canonicalServiceID, Boolean(service));
-  const deleteEnv = useDeleteEnv(canonicalServiceID, Boolean(service));
-  const setWebhook = useSetWebhook(canonicalServiceID, Boolean(service));
-  const saveSource = useSaveServiceSource(canonicalServiceID, Boolean(service));
-  const updateService = useUpdateService();
-
-  const { add } = useToast();
-
-  useEffect(() => {
-    setVariables(envEditorVars.map((entry, index) => ({
-      id: `service-${index}-${entry.key}`,
-      key: entry.key,
-      value: entry.value,
-      secret: entry.is_secret,
-    })));
-  }, [envEditorVars]);
-
-  const exportVariables = () => {
-    const content = variables
-      .filter((variable) => variable.key.trim())
-      .map((variable) => `${variable.key}=${variable.value}`)
-      .join("\n");
-    void copyText(content)
-      .then(() => add({ title: "Variables copied", description: "Environment variables were copied as .env text.", tone: "success" }))
-      .catch(() => add({ title: "Variables could not be copied", description: "Try again later.", tone: "error" }));
-  };
-
-  const saveVariables = async () => {
-    const entries = new Map<string, { value: string; secret: boolean }>();
-    for (const variable of variables) {
-      const key = variable.key.trim();
-      if (key) entries.set(key, { value: variable.value, secret: Boolean(variable.secret) });
-    }
-    try {
-      const existingNames = new Set(envEditorVars.map((entry) => entry.key));
-      for (const name of existingNames) {
-        if (!entries.has(name)) await deleteEnv.mutateAsync(name);
-      }
-      for (const [name, entry] of entries) {
-        await setEnv.mutateAsync({ name, value: entry.value, secret: entry.secret });
-      }
-      add({ title: "Variables saved", description: `${entries.size} variable(s) updated.`, tone: "success" });
-    } catch (error) {
-      add({ title: "Variables could not be saved", description: error instanceof Error ? error.message : "Try again later.", tone: "error" });
-    }
-  };
-
-  const navigate = Route.useNavigate();
-  const returnTo = readDetailsReturnTo(search.returnTo);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has("kind")) return;
-    params.delete("kind");
-    if (returnTo) params.set("returnTo", returnTo);
-    const query = params.toString();
-    const nextURL = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
-    window.history.replaceState(window.history.state, "", nextURL);
-  }, [returnTo]);
-
-  const requestedTab: Tab = search.tab ?? "overview";
-  const tab: Tab = visibleTabs.includes(requestedTab) ? requestedTab : "overview";
-  const setTab = (nextTab: Tab) => {
-    void navigate({
-      search: (previous: typeof search) => ({ ...previous, tab: nextTab }),
-    });
-  };
-  const [webhookModal, setWebhookModal] = useState(false);
+  const [variables, setVariables] = useState<VariableRow[]>([]);
+  const [connectionVisible, setConnectionVisible] = useState(false);
   const [providerEditing, setProviderEditing] = useState(false);
   const [providerRepositoryId, setProviderRepositoryId] = useState("");
   const [providerBranch, setProviderBranch] = useState("");
-  const [logContainer, setLogContainer] = useState("");
   const [providerRootDirectory, setProviderRootDirectory] = useState("");
   const [providerWatchPaths, setProviderWatchPaths] = useState("");
-  const [providerIgnorePaths, setProviderIgnorePaths] = useState("");
   const [providerWatchRootFiles, setProviderWatchRootFiles] = useState(false);
   const [providerAutoDeploy, setProviderAutoDeploy] = useState(false);
+  const [autodeploy, setAutodeploy] = useState(false);
+  const [logContainer, setLogContainer] = useState("");
+  const [webhookModal, setWebhookModal] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPort, setEditPort] = useState(0);
-  const [editBuildType, setEditBuildType] = useState<"dockerfile" | "buildpacks" | "custom" | "compose">("buildpacks");
+  const [editBuildType, setEditBuildType] = useState("buildpacks");
   const [copied, setCopied] = useState(false);
   const [connectionCopied, setConnectionCopied] = useState(false);
-  const [autodeploy, setAutodeploy] = useState(false);
-  const serviceLogsEndpoint = service
-    ? `/api/v1/services/${service.id}/logs?follow=1${logContainer ? `&container=${encodeURIComponent(logContainer)}` : ""}`
-    : undefined;
   const [viewLogsDep, setViewLogsDep] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (editOpen && app) {
-      setEditName(app.name);
-      setEditPort(app.port);
-      setEditBuildType((app.build_type as typeof editBuildType) || "buildpacks");
-    }
-  }, [editOpen, app]);
-
-  useEffect(() => {
-    if (source) {
-      setAutodeploy(source.auto_deploy);
-    }
-  }, [source]);
-  const latest = runtimeDeployments?.slice().sort((a, b) => b.number - a.number)[0];
-  const containerState = canonicalStats?.state && canonicalStats.state !== "unknown"
-    ? canonicalStats.state
-    : serviceContainers?.[0]?.status ?? service?.status ?? "unknown";
-  const activeDeploymentRecord = latest && ["queued", "building", "starting", "health_checking"].includes(latest.status) ? latest : undefined;
-  const activeDeployment = activeDeploymentRecord?.status;
+  const requestedTab: ServiceTab = search.tab ?? "overview";
+  const visibleTabs = service ? SERVICE_TABS.filter((item) => (item !== "compose" || service.kind === "compose") && (item !== "domains" || service.capabilities.can_manage_domains) && (item !== "logs" || service.capabilities.can_view_logs) && (item !== "metrics" || service.capabilities.can_view_metrics) && (item !== "cron" || service.capabilities.can_manage_schedules) && (item !== "terminal" || service.capabilities.can_open_terminal) && (item !== "settings" || service.capabilities.can_build || service.kind === "compose") && (item !== "backup" || service.capabilities.can_manage_backups)) : SERVICE_TABS;
+  const tab = visibleTabs.includes(requestedTab) ? requestedTab : "overview";
+  const envEditorVars = useMemo(() => (serviceEnvironment?.env ?? []).map((entry) => ({ key: entry.name, value: entry.secret && entry.value === "" ? maskedSecretValue : entry.value, is_secret: entry.secret })), [serviceEnvironment]);
+  const variableKey = useMemo(() => envEditorVars.map((entry) => `${entry.key}:${entry.value.length}:${entry.is_secret}`).join("|"), [envEditorVars]);
+  const latest = deployments?.slice().sort((a, b) => b.number - a.number)[0];
+  const containerState = stats?.state && stats.state !== "unknown" ? stats.state : containers?.[0]?.status ?? service?.status ?? "unknown";
+  const activeDeployment = latest && isDeploymentActive(latest.status) ? latest.status : undefined;
   const runtimeStatus = mapRuntimeStatus(containerState, activeDeployment);
   const running = containerState === "running" || containerState === "healthy";
+  const returnTo = readDetailsReturnTo(search.returnTo);
+  const serviceLogsEndpoint = service ? `/api/v1/services/${service.id}/logs${logContainer ? `?container=${encodeURIComponent(logContainer)}` : ""}` : undefined;
+  const overviewLogsEndpoint = service ? `/api/v1/services/${service.id}/logs?running=1` : undefined;
+  const liveURL = domains?.length ? safeExternalURL(`${domains[0].https ? "https" : "http"}://${domains[0].host}`) : null;
+  const webhookForm = useForm<z.infer<typeof webhookSchema>>({ resolver: zodResolver(webhookSchema), defaultValues: { secret: "" } });
 
-  const webhookForm = useForm<z.infer<typeof webhookSchema>>({
-    resolver: zodResolver(webhookSchema),
-    defaultValues: { secret: "" },
-  });
+  useEffect(() => { setVariables(envEditorVars.map((entry, index) => ({ id: `service-${index}-${entry.key}`, key: entry.key, value: entry.value, secret: entry.is_secret }))); }, [envEditorVars]);
+  useEffect(() => { if (source) { setAutodeploy(source.auto_deploy); setProviderAutoDeploy(source.auto_deploy); } }, [source]);
+  useEffect(() => { if (editOpen && app) { setEditName(app.name); setEditPort(app.port); setEditBuildType(app.build_type || "buildpacks"); } }, [editOpen, app]);
+  useEffect(() => { if (typeof window !== "undefined") { const params = new URLSearchParams(window.location.search); if (params.has("kind")) { params.delete("kind"); if (returnTo) params.set("returnTo", returnTo); const query = params.toString(); window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`); } } }, [returnTo]);
 
-  if (serviceQuery.isLoading) return <Skeleton variant="card" className="min-h-48" />;
-  if (serviceQuery.isError || !service || !app) return <EmptyState title="Service unavailable" description="The requested service could not be loaded." />;
+  if (serviceQuery.isLoading) return <div className="min-h-48 animate-pulse rounded-xl border border-outline-variant bg-surface-container" aria-label="Loading service" />;
+  if (serviceQuery.isError || !service || !app) return <div className="rounded-xl border border-outline-variant bg-surface-container p-6 text-body-md text-on-surface-variant" role="alert">The requested service could not be loaded.</div>;
 
-  const liveURL = (() => {
-    if (domains?.length)
-      return `${domains[0].https ? "https" : "http"}://${domains[0].host}`;
-    return null;
-  })();
-
+  const setTab = (nextTab: ServiceTab) => { void navigate({ search: (previous: typeof search) => ({ ...previous, tab: nextTab }) }); };
+  const run = (operation: () => Promise<unknown>, successMessage: string) => { operation().then(() => add({ title: successMessage, tone: "success" })).catch((error) => add({ title: "Operation failed", description: error instanceof Error ? error.message : "Try again later.", tone: "error" })); };
   const updateAutodeploy = (next: boolean) => {
-    if (!source) {
-      add({
-        title: "Source control is unavailable",
-        description: "Reconnect the repository before enabling autodeploy.",
-        tone: "error",
-      });
-      return;
-    }
-    if (!source.connection_id || !source.repository_id) {
-      add({
-        title: "Source control configuration is incomplete",
-        description: "Reconnect the repository before enabling autodeploy.",
-        tone: "error",
-      });
-      return;
-    }
+    if (!source?.connection_id || !source.repository_id) { add({ title: "Source control configuration is incomplete", description: "Reconnect the repository before enabling autodeploy.", tone: "error" }); return; }
     setAutodeploy(next);
-    saveSource.mutate(
-      {
-        connection_id: source.connection_id,
-        repository_id: source.repository_id,
-        repository_owner: source.repository_owner,
-        repository_name: source.repository_name,
-        repository_full_name: source.repository_full_name,
-        default_branch: source.default_branch,
-        branch: source.branch,
-        auto_deploy: next,
-        root_directory: source.root_directory,
-        environment_template_path: source.environment_template_path,
-        watch_paths: source.watch_paths ?? [],
-        ignore_paths: source.ignore_paths ?? [],
-        watch_root_files: source.watch_root_files,
-      },
-      {
-        onSuccess: () =>
-          add({
-            title: next ? "Autodeploy enabled" : "Autodeploy disabled",
-            tone: "success",
-          }),
-        onError: (error) => {
-          setAutodeploy(source.auto_deploy);
-          add({
-            title: "Could not update autodeploy",
-            description: error.message,
-            tone: "error",
-          });
-        },
-      },
-    );
+    saveSource.mutate({ connection_id: source.connection_id, repository_id: source.repository_id, repository_owner: source.repository_owner, repository_name: source.repository_name, repository_full_name: source.repository_full_name, default_branch: source.default_branch, branch: source.branch, auto_deploy: next, root_directory: source.root_directory, environment_template_path: source.environment_template_path, watch_paths: source.watch_paths ?? [], ignore_paths: source.ignore_paths ?? [], watch_root_files: source.watch_root_files }, { onSuccess: () => add({ title: next ? "Autodeploy enabled" : "Autodeploy disabled", tone: "success" }), onError: (error) => { setAutodeploy(source.auto_deploy); add({ title: "Could not update autodeploy", description: error.message, tone: "error" }); } });
   };
-
-  const openProviderEditor = () => {
-    if (!source) return;
-    setProviderBranch(source.branch || source.default_branch || "main");
-    setProviderRepositoryId(source.repository_id);
-    setProviderRootDirectory(source.root_directory || "/");
-    setProviderWatchPaths((source.watch_paths ?? []).join(", "));
-    setProviderIgnorePaths((source.ignore_paths ?? []).join(", "));
-    setProviderWatchRootFiles(source.watch_root_files);
-    setProviderAutoDeploy(source.auto_deploy);
-    setProviderEditing(true);
-  };
-
+  const openProviderEditor = () => { if (!source) return; setProviderBranch(source.branch || source.default_branch || "main"); setProviderRepositoryId(source.repository_id); setProviderRootDirectory(source.root_directory || "/"); setProviderWatchPaths((source.watch_paths ?? []).join(", ")); setProviderWatchRootFiles(source.watch_root_files); setProviderAutoDeploy(source.auto_deploy); setProviderEditing(true); };
   const saveProvider = () => {
     if (!source) return;
-    const selectedRepository = providerRepositories?.find((repository) => repository.id === providerRepositoryId);
-    const repository = selectedRepository ?? {
-      id: source.repository_id,
-      owner: source.repository_owner,
-      name: source.repository_name,
-      full_name: source.repository_full_name,
-      default_branch: source.default_branch,
-    };
-    saveSource.mutate(
-      {
-        connection_id: source.connection_id,
-        repository_id: repository.id,
-        repository_owner: repository.owner,
-        repository_name: repository.name,
-        repository_full_name: repository.full_name,
-        default_branch: repository.default_branch,
-        branch: providerBranch.trim() || repository.default_branch || "main",
-        auto_deploy: providerAutoDeploy,
-        root_directory: providerRootDirectory.trim() || "/",
-        environment_template_path: source.environment_template_path,
-        watch_paths: parseProviderPaths(providerWatchPaths),
-        ignore_paths: parseProviderPaths(providerIgnorePaths),
-        watch_root_files: providerWatchRootFiles,
-      },
-      {
-        onSuccess: () => {
-          setAutodeploy(providerAutoDeploy);
-          setProviderEditing(false);
-          add({ title: "Provider settings saved", tone: "success" });
-        },
-        onError: (error) =>
-          add({
-            title: "Could not save provider settings",
-            description: error.message,
-            tone: "error",
-          }),
-      },
-    );
+    const repository = providerRepositories?.find((item) => item.id === providerRepositoryId) ?? { id: source.repository_id, owner: source.repository_owner, name: source.repository_name, full_name: source.repository_full_name, default_branch: source.default_branch };
+    saveSource.mutate({ connection_id: source.connection_id, repository_id: repository.id, repository_owner: repository.owner, repository_name: repository.name, repository_full_name: repository.full_name, default_branch: repository.default_branch, branch: providerBranch.trim() || repository.default_branch || "main", auto_deploy: providerAutoDeploy, root_directory: providerRootDirectory.trim() || "/", environment_template_path: source.environment_template_path, watch_paths: parseProviderPaths(providerWatchPaths), ignore_paths: parseProviderPaths(source.ignore_paths.join(",")), watch_root_files: providerWatchRootFiles }, { onSuccess: () => { setAutodeploy(providerAutoDeploy); setProviderEditing(false); add({ title: "Provider settings saved", tone: "success" }); }, onError: (error) => add({ title: "Could not save provider settings", description: error.message, tone: "error" }) });
   };
-
-  const copyURL = () => {
-    if (!liveURL) return;
-    copyText(liveURL).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }).catch(() => add({ title: "Could not copy URL", tone: "error" }));
-  };
-
-  const copyConnection = async () => {
-    const value = serviceConnection?.dsn;
-    if (!value) return;
-    try {
-      await copyText(value);
-      setConnectionCopied(true);
-      setTimeout(() => setConnectionCopied(false), 1500);
-      add({ title: "Connection string copied", tone: "success" });
-    } catch {
-      add({ title: "Could not copy connection string", tone: "error" });
-    }
-  };
-
-  const submitWebhook = async (values: z.infer<typeof webhookSchema>) => {
-    try {
-      await setWebhook.mutateAsync(values.secret);
-      add({ title: "Webhook secret saved", tone: "success" });
-      setWebhookModal(false);
-      webhookForm.reset();
-    } catch (err) {
-      add({
-        title: "Could not save webhook secret",
-        description: err instanceof Error ? err.message : "Try again later.",
-        tone: "error",
-      });
-    }
-  };
-
-  const run = (fn: () => Promise<unknown>, okMsg: string, onSuccess?: () => void) => {
-    fn().then(
-      () => {
-        onSuccess?.();
-        add({ title: okMsg, tone: "success" });
-      },
-      (e) =>
-        add({
-          title: "Operation failed",
-          description: e instanceof Error ? e.message : "Try again later.",
-          tone: "error",
-        }),
-    );
-  };
-
-  const startDeployment = () => {
-    serviceDeploy.mutate(service.id, {
-      onError: (error) => add({ title: "Could not start deployment", description: error.message, tone: "error" }),
-    });
-  };
+  const exportVariables = () => { const content = variables.filter((variable) => variable.key.trim()).map((variable) => `${variable.key}=${variable.secret && variable.value === maskedSecretValue ? "" : variable.value}`).join("\n"); void copyText(content).then(() => add({ title: "Variables copied", tone: "success" })).catch(() => add({ title: "Variables could not be copied", tone: "error" })); };
+  const saveVariables = async () => { try { const entries = new Map(variables.filter((variable) => variable.key.trim()).map((variable) => [variable.key.trim(), { value: variable.value, secret: Boolean(variable.secret) }])); for (const entry of envEditorVars) if (!entries.has(entry.key)) await deleteEnv.mutateAsync(entry.key); for (const [name, value] of entries) { if (value.secret && value.value === maskedSecretValue) continue; await setEnv.mutateAsync({ name, value: value.value, secret: value.secret }); } add({ title: "Variables saved", description: `${entries.size} variable(s) updated.`, tone: "success" }); } catch (error) { add({ title: "Variables could not be saved", description: error instanceof Error ? error.message : "Try again later.", tone: "error" }); } };
+  const copyURL = () => { if (!liveURL) return; void copyText(liveURL).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }).catch(() => add({ title: "Could not copy URL", tone: "error" })); };
+  const copyConnection = () => { if (!serviceConnection?.dsn) return; void copyText(serviceConnection.dsn).then(() => { setConnectionCopied(true); window.setTimeout(() => setConnectionCopied(false), 1500); add({ title: "Connection string copied", tone: "success" }); }).catch(() => add({ title: "Could not copy connection string", tone: "error" })); };
+  const submitWebhook = async (values: z.infer<typeof webhookSchema>) => { try { await setWebhook.mutateAsync(values.secret); setWebhookModal(false); webhookForm.reset(); add({ title: "Webhook secret saved", tone: "success" }); } catch (error) { add({ title: "Could not save webhook secret", description: error instanceof Error ? error.message : "Try again later.", tone: "error" }); } };
+  const saveService = () => { const update: Record<string, unknown> = {}; if (editName.trim() && editName.trim() !== app.name) update.name = editName.trim(); if (editPort > 0 && editPort !== app.port) update.port = editPort; if (service.kind === "app" && editBuildType !== app.build_type) update.build_type = editBuildType; if (!Object.keys(update).length) { setEditOpen(false); return; } updateService.mutate({ serviceId: service.id, update }, { onSuccess: () => { setEditOpen(false); add({ title: "Service updated", tone: "success" }); }, onError: (error) => add({ title: "Could not update service", description: error instanceof Error ? error.message : "Try again later.", tone: "error" }) }); };
 
   return (
-    <div className="space-y-lg">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3">
-            {app.source_type === "git" ? (
-              <Code size={32} className="shrink-0 text-primary" />
-            ) : (
-              <Link size={32} className="shrink-0 text-primary" />
-            )}
-            <h2 className="font-display-lg text-[clamp(1.5rem,4vw,3rem)] leading-[1.1] text-on-surface truncate">
-              {app.name}
-            </h2>
-            <RuntimeStatus
-              status={runtimeStatus}
-              live={isRuntimeLive(runtimeStatus)}
-            />
-            <p className="md:ml-4 font-body-md text-body-md text-on-surface-variant">
-              :{app.port}
-            </p>
-          </div>
-          <p className="font-body-md text-body-md text-on-surface-variant mt-1 max-w-[42rem]">
-            {app.source_type === "image" ? app.image : app.git_url}
-          </p>
-        </div>
-            <div className="flex items-center gap-3 flex-wrap">
-          {service?.kind === "database" && (
-            <Button
-              variant="primary"
-              onClick={() => { window.location.href = `/studio/${runtimeId}`; }}
-            >
-              Open Studio
-            </Button>
-          )}
-          <div className="flex gap-2">
-            <button
-              className="text-on-surface-variant hover:text-primary transition-colors"
-              onClick={() => setEditOpen(true)}
-              title="Edit service name"
-              aria-label="Edit service name"
-            >
-              <PencilSimple size={18} />
-            </button>
-            <AlertDialog
-              trigger={
-                <button
-                  type="button"
-                  className="text-on-surface-variant transition-colors hover:text-error"
-                  title="Delete"
-                  aria-label="Delete application"
-                >
-                  <Trash size={18} />
-                </button>
-              }
-              onConfirm={() =>
-                serviceDelete.mutate(service.id, {
-                  onSuccess: () => {
-                    add({ title: "Service deleted", tone: "success" });
-                    window.location.href = returnTo;
-                  },
-                  onError: (e) => add({ title: "Could not delete service", description: e.message, tone: "error" }),
-                })
-              }
-              title="Delete application"
-              description={`Remove ${app.name} and all deployments? Active containers will be stopped.`}
-              confirmLabel="Delete"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-8 flex max-w-full snap-x gap-6 overflow-x-auto overscroll-x-contain border-b border-outline-variant pb-px" role="tablist" aria-label="Service sections">
-        {visibleTabs.map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`inline-flex min-w-max items-center gap-2 font-label-caps text-label-caps pb-3 px-1 whitespace-nowrap capitalize transition-colors ${
-              tab === t
-                ? "text-primary border-b-2 border-primary"
-                : "text-on-surface-variant hover:text-on-surface"
-            }`}
-          >
-            {(() => {
-              const Icon = TAB_ICONS[t];
-              return <Icon size={16} aria-hidden="true" />;
-            })()}
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === "overview" && (
-        <>
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-8">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="font-headline-sm text-headline-sm text-on-surface">
-                  Deploy Settings
-                </h3>
-                <p className="text-body-sm text-on-surface-variant">
-                  Deploy, rebuild or control this service
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <Button
-                  variant="ghost"
-                  icon={designIcon(TerminalWindow)}
-                  onClick={() => setTab("terminal")}
-                >
-                  Open Terminal
-                </Button>
-                <Button
-                  variant="ghost"
-                  icon={designIcon(ArrowSquareOut)}
-                  onClick={() => {
-                    if (liveURL) window.open(liveURL, "_blank");
-                    else
-                      add({
-                        title: "Add a domain to open the URL",
-                        tone: "error",
-                      });
-                  }}
-                >
-                  Visit URL
-                </Button>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                icon={designIcon(RocketLaunch)}
-                onClick={startDeployment}
-              >
-                Deploy
-              </Button>
-              <Button
-                variant="secondary"
-                icon={designIcon(ArrowsClockwise)}
-                onClick={() =>
-                  run(
-                    () => serviceRestart.mutateAsync(service.id),
-                    "Service restarted",
-                  )
-                }
-              >
-                Restart
-              </Button>
-              {running ? (
-                <Button
-                  variant='danger'
-                  icon={designIcon(Stop)}
-                  loading={serviceStop.isPending}
-                  onClick={() =>
-                    run(
-                      () => serviceStop.mutateAsync(service.id),
-                      "Service stopped",
-                    )
-                  }
-                >
-                  Stop
-                </Button>
-              ) : (
-                <Button
-                  variant="success"
-                  icon={designIcon(Play)}
-                  loading={serviceStart.isPending}
-                  onClick={() =>
-                    run(
-                      () => serviceStart.mutateAsync(service.id),
-                      "Service started",
-                    )
-                  }
-                >
-                  Start
-                </Button>
-              )}
-              <div className="ml-auto flex items-center gap-3">
-                <span className="text-body-sm text-on-surface-variant">
-                  Automatic deploys
-                </span>
-                <Switch
-                  ariaLabel="Automatic deploys"
-                  checked={autodeploy}
-                  disabled={sourceLoading || saveSource.isPending}
-                  loading={saveSource.isPending}
-                  onCheckedChange={(checked) => updateAutodeploy(checked)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 space-y-8 mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-headline-sm text-headline-sm text-on-surface">
-                  Provider
-                </h3>
-                <p className="text-body-sm text-on-surface-variant">
-                  Source of this service's code or image
-                </p>
-              </div>
-              <Link size={18} className="text-muted-foreground" />
-            </div>
-            <div className="flex gap-6 border-b border-outline-variant pb-4">
-              {[
-                ["code", "Git"],
-                ["docker", "Image"],
-                ["upload", "Upload"],
-              ].map(([icon, label]) => (
-                <button
-                  key={label}
-                  className={`flex items-center gap-2 text-body-sm font-medium pb-4 -mb-[17px] transition-colors ${
-                    (label === "Git" && app.source_type === "git") ||
-                    (label === "Image" && app.source_type === "image")
-                      ? "text-primary border-b-2 border-primary font-bold"
-                      : "text-on-surface-variant hover:text-on-surface"
-                  }`}
-                >
-                  <Code size={18} />
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 gap-6">
-              <div className="space-y-2">
-                <label className="block font-label-caps text-label-caps text-on-surface-variant">
-                  {app.source_type === "git" ? "Repository" : "Image"}
-                </label>
-                {providerEditing && source ? (
-                  <NativeSelect
-                    value={providerRepositoryId}
-                    onChange={(event) => setProviderRepositoryId(event.target.value)}
-                    options={[
-                      { label: source.repository_full_name || "Current repository", value: source.repository_id },
-                      ...(providerRepositories ?? [])
-                        .filter((repository) => repository.id !== source.repository_id)
-                        .map((repository) => ({ label: repository.full_name, value: repository.id })),
-                    ]}
-                  />
-                ) : (
-                  <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                    <span className="font-code-md text-code-md text-on-surface truncate">
-                      {app.source_type === "git" ? source?.repository_full_name || app.git_url || "—" : app.image}
-                    </span>
-                    <ArrowSquareOut size={16} className="text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block font-label-caps text-label-caps text-on-surface-variant">Branch</label>
-                  {providerEditing && source ? (
-                    <Input value={providerBranch} onChange={(event) => setProviderBranch(event.target.value)} />
-                  ) : (
-                    <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                      <span className="font-code-md text-code-md text-on-surface">{source?.branch || app.git_branch || "main"}</span>
-                      <ArrowSquareOut size={16} className="text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <label className="block font-label-caps text-label-caps text-on-surface-variant">Port</label>
-                  <div className="w-full p-3 bg-surface-container border border-outline-variant rounded flex justify-between items-center">
-                    <span className="font-code-md text-code-md text-on-surface">:{app.port}</span>
-                    <ArrowSquareOut size={16} className="text-muted-foreground" />
-                  </div>
-                </div>
-              </div>
-            </div>
-            {source && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-outline-variant">
-                <div className="space-y-2">
-                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Root directory</span>
-                  {providerEditing ? (
-                    <Input value={providerRootDirectory} onChange={(event) => setProviderRootDirectory(event.target.value)} />
-                  ) : (
-                    <span className="font-code-md text-code-md text-on-surface">{source.root_directory || "/"}</span>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Watch paths</span>
-                  {providerEditing ? (
-                    <Input value={providerWatchPaths} onChange={(event) => setProviderWatchPaths(event.target.value)} />
-                  ) : (
-                    <span className="font-code-md text-code-md text-on-surface">{(source.watch_paths ?? []).length || "All service files"}</span>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <span className="block font-label-caps text-label-caps text-on-surface-variant">Root files</span>
-                  {providerEditing ? (
-                    <Checkbox
-                      label="Include root files"
-                      checked={providerWatchRootFiles}
-                      onCheckedChange={(checked) => setProviderWatchRootFiles(checked === true)}
-                    />
-                  ) : (
-                    <span className="font-code-md text-code-md text-on-surface">{source.watch_root_files ? "Included" : "Ignored"}</span>
-                  )}
-                </div>
-              </div>
-            )}
-            {providerEditing && source ? (
-              <div className="flex items-center justify-between border-t border-outline-variant pt-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-body-sm font-medium text-foreground">Automatic deploys</span>
-                  <Switch ariaLabel="Automatic deploys" checked={providerAutoDeploy} onCheckedChange={setProviderAutoDeploy} />
-                </div>
-                <div className="flex gap-3">
-                  <Button variant="ghost" onClick={() => setProviderEditing(false)}>Cancel</Button>
-                  <Button loading={saveSource.isPending} onClick={saveProvider}>Save changes</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-end pt-4">
-                <Button onClick={openProviderEditor}>Edit</Button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 flex flex-col gap-6">
-              <div className="bg-surface border border-outline-variant rounded-xl p-6">
-                <h3 className="font-label-caps text-label-caps text-on-surface-variant mb-6 uppercase tracking-wider">
-                  Service Details
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">
-                      Live URL
-                    </span>
-                    <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant rounded-md group">
-                      <span className="font-code-md text-code-md text-primary truncate">
-                        {liveURL ?? "—"}
-                      </span>
-                      <button
-                        onClick={copyURL}
-                        className="text-on-surface-variant group-hover:text-primary transition-colors"
-                        title={copied ? "Copied!" : "Copy"}
-                      >
-                        {copied ? <Check size={18} /> : <Copy size={18} />}
-                      </button>
-                    </div>
-                  </div>
-                  {service?.kind === "database" && (
-                    <div>
-                      <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">Connection</span>
-                      {!connectionVisible ? <Button variant="ghost" onClick={() => setConnectionVisible(true)}>Show connection</Button> : serviceConnection?.dsn ? <div className="flex items-center justify-between gap-sm p-3 bg-surface-container-low border border-outline-variant rounded-md">
-                        <span className="font-code-md text-code-md text-on-surface truncate">{maskedConnectionString(serviceConnection.dsn)}</span>
-                        <button type="button" onClick={copyConnection} className="text-on-surface-variant hover:text-primary transition-colors" title={connectionCopied ? "Copied!" : "Copy connection string"}>{connectionCopied ? <Check size={18} /> : <Copy size={18} />}</button>
-                      </div> : <span className="font-body-sm text-body-sm text-on-surface-variant">{serviceConnectionError ? "Connection string unavailable" : "Loading connection..."}</span>}
-                    </div>
-                  )}
-                  <div>
-                    <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">
-                      Internal Host
-                      <span title="Internal hostname for container-to-container service discovery.">
-                        <MagnifyingGlass
-                          size={14}
-                          className="ml-1 inline cursor-help text-muted-foreground/50"
-                        />
-                      </span>
-                    </span>
-                    <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant rounded-md group">
-                      <span className="font-code-md text-code-md text-on-surface truncate">
-                        {"—"}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">
-                      Source
-                    </span>
-                    <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant rounded-md group">
-                      <span className="font-code-md text-code-md text-on-surface truncate flex items-center gap-2">
-                        <Code size={16} />
-                        {app.source_type === "image" ? app.image : app.git_url}
-                      </span>
-                      <a
-                        href={
-                          app.source_type === "git" ? app.git_url : undefined
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-on-surface-variant group-hover:text-primary transition-colors"
-                      >
-                        <ArrowSquareOut size={18} />
-                      </a>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-outline-variant mt-4">
-                    <div>
-                      <span className="block font-label-caps text-label-caps text-on-surface-variant mb-1">
-                        Type
-                      </span>
-                      <span className="font-body-md text-body-md text-on-surface">
-                        {app.source_type === "image" ? "OCI Image" : "Git"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block font-label-caps text-label-caps text-on-surface-variant mb-1">
-                        Port
-                      </span>
-                      <span className="font-body-md text-body-md text-on-surface">
-                        :{app.port}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block font-label-caps text-label-caps text-on-surface-variant mb-1">
-                        Health
-                      </span>
-                      <span
-                        className={`font-body-md text-body-md ${runtimeStats?.state === "running" ? "text-[#4ade80]" : "text-on-surface-variant"}`}
-                      >
-                        {runtimeStats?.state === "running" ? "healthy" : "—"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block font-label-caps text-label-caps text-on-surface-variant mb-1">
-                        Memory
-                      </span>
-                      <span className="font-body-md text-body-md text-on-surface">
-                        {fmtBytes(runtimeStats?.stats?.mem_bytes ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                  {(domains ?? []).length > 0 && (
-                    <div className="pt-4 border-t border-outline-variant mt-4">
-                      <span className="block font-body-sm text-body-sm text-on-surface-variant mb-1">
-                        Domains
-                      </span>
-                      <div className="flex flex-wrap gap-sm">
-                        {(domains ?? []).map((d) => (
-                          <a
-                            key={d.host}
-                            href={`${d.https ? "https" : "http"}://${d.host}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-2 py-1 rounded bg-surface-container-low border border-outline-variant font-code-md text-code-md text-primary hover:border-primary/50 transition-colors"
-                          >
-                            {d.host}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {service?.runtime?.containers && service.runtime.containers.length > 0 && (
-                <Card>
-                  <div className="flex items-center justify-between mb-md">
-                    <h3 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Containers</h3>
-                    <span className="font-code-md text-code-md text-on-surface-variant">{service.runtime.containers.length}</span>
-                  </div>
-                  <div className="space-y-sm">
-                    {service.runtime.containers.map((container) => (
-                      <div key={container.id} className="flex items-center justify-between gap-md rounded border border-outline-variant/60 px-sm py-xs">
-                        <span className="min-w-0 truncate font-code-md text-code-md text-on-surface">{container.name || container.id}</span>
-                        <Badge tone={container.status === "running" ? "success" : "neutral"}>{container.status}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
-                  <span className="font-label-caps text-label-caps text-on-surface-variant">
-                    CPU Usage
-                  </span>
-                  <div className="mt-4">
-                    <span className="font-headline-sm text-headline-sm text-on-surface">
-                      {runtimeStats?.stats?.cpu_percent?.toFixed(0) ?? "0"}%
-                    </span>
-                    <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{
-                          width: `${Math.min(100, runtimeStats?.stats?.cpu_percent ?? 0)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col justify-between">
-                  <span className="font-label-caps text-label-caps text-on-surface-variant">
-                    Memory
-                  </span>
-                  <div className="mt-4">
-                    <span className="font-headline-sm text-headline-sm text-on-surface">
-                      {fmtBytes(runtimeStats?.stats?.mem_bytes ?? 0)}
-                    </span>
-                    <div className="w-full h-1 bg-surface-container-high mt-2 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-secondary rounded-full"
-                        style={{
-                          width: `${Math.min(100, runtimeStats?.stats?.mem_limit ? ((runtimeStats.stats.mem_bytes ?? 0) / runtimeStats.stats.mem_limit) * 100 : 0)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-2 flex flex-col gap-6">
-              <div
-                className={cn(
-                  "bg-surface border border-outline-variant rounded-xl p-6 relative overflow-hidden",
-                  latest && isDeploymentActive(latest.status) && "rt-bg-glow",
-                )}
-              >
-                <div className="flex items-center justify-between mb-6 relative z-10">
-                  <h3 className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-                    Latest Deployment
-                  </h3>
-                  {latest && (
-                    <span className="px-2 py-1 rounded bg-surface-container border border-outline-variant font-code-md text-[11px] text-on-surface-variant">
-                      {fmtDate(latest.created_at)}
-                    </span>
-                  )}
-                </div>
-                {latest ? (
-                  <div className="flex items-start gap-4 relative z-10">
-                    <div className="w-10 h-10 rounded-full bg-surface-container border border-outline-variant flex items-center justify-center shrink-0">
-                      <GitBranch size={18} className="text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-body-md text-body-md text-on-surface font-semibold mb-1">
-                        Deployment #{latest.number} ·{" "}
-                        {latest.commit
-                          ? latest.commit.slice(0, 8)
-                          : app.git_branch || "image"}
-                      </h4>
-                      <div className="flex items-center gap-3 font-code-md text-code-md text-on-surface-variant">
-                        <span>{app.git_branch || "image"}</span>
-                        <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                        <span>{latest.image_ref}</span>
-                      </div>
-                      <div className="mt-6 flex gap-4">
-                        <Badge tone={deploymentTone(latest.status)}>
-                          {deploymentLabel(latest.status)}
-                        </Badge>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setViewLogsDep(latest.id)}
-                      className="px-3 py-1.5 border border-outline-variant rounded hover:bg-surface-container font-body-sm text-body-sm transition-colors"
-                    >
-                      View Logs
-                    </button>
-                  </div>
-                ) : (
-                  <EmptyState title="No deployments yet" description="Deploy the service to create its first deployment." className="relative z-10 border-0" />
-                )}
-              </div>
-
-              <LiveLogs serviceId={logsID} enabled={Boolean(service)} deploymentId={activeDeploymentRecord?.id} endpoint={serviceLogsEndpoint} />
-            </div>
-          </div>
-        </>
-      )}
-
-      {tab === "variables" && (
-        <Card>
-          <div className="mb-md">
-            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Service Variables</h2>
-            <p className="font-body-sm text-body-sm text-on-surface-variant/70 mt-xs">Variables injected only into this service. They override environment variables.</p>
-          </div>
-          <VariableEditor
-            key={variableKey}
-            variables={variables}
-            onChange={setVariables}
-            onImport={parseEnv}
-            onExport={exportVariables}
-            className="max-h-[min(42rem,calc(100dvh-18rem))]"
-          />
-          <div className="mt-md flex justify-end">
-            <Button type="button" onClick={() => void saveVariables()} loading={setEnv.isPending || deleteEnv.isPending} loadingLabel="Saving variables">
-              Save variables
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {tab === "compose" && <ComposeTab appID={app.id} initialCompose={composeSource} canonicalService={Boolean(service)} exportID={service?.kind === "app" ? service.spec_id ?? app.id : undefined} showRuntimeExports={service?.kind !== "compose"} />}
-
-      {tab === "deployments" && (
-        <DeploymentsTab
-          appId={app.id}
-          serviceId={service?.id}
-          deployments={(runtimeDeployments ?? []) as never}
-          onRollback={() => add({ title: "Rollback is only available for application deployments", tone: "info" })}
-        />
-      )}
-
-      {tab === "logs" && (
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-md">
-            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-              Live Logs
-            </h2>
-            {service && (serviceContainers?.length ?? 0) > 1 && (
-              <NativeSelect
-                aria-label="Log container"
-                value={logContainer}
-                onChange={(event) => setLogContainer(event.target.value)}
-                options={[{ label: "All containers", value: "" }, ...(serviceContainers ?? []).map((container) => ({ label: container.name, value: container.id }))]}
-              />
-            )}
-          </div>
-          <div className="mt-md">
-            <LiveLogs serviceId={logsID} enabled={Boolean(service)} endpoint={serviceLogsEndpoint} />
-          </div>
-          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase mt-lg mb-md">
-            Event timeline
-          </h2>
-          <div className="space-y-1 max-h-[260px] overflow-y-auto sidebar-scroll">
-            {(runtimeTimeline ?? []).map((e, i) => (
-              <div
-                key={e.id}
-                className="flex items-stretch gap-sm font-code-md text-code-md"
-              >
-                <div className="flex flex-col items-center w-3">
-                  <span
-                    className={cn(
-                      "rt-node mt-1.5",
-                      i === 0 ? "bg-[#4ade80]" : "bg-outline-variant/40",
-                    )}
-                  />
-                </div>
-                <div className="flex items-center gap-sm min-w-0">
-                  <span className="text-on-surface-variant/50 shrink-0">
-                    {fmtDate(e.ts)}
-                  </span>
-                  <span className="text-primary truncate">{e.type}</span>
-                </div>
-              </div>
-            ))}
-            {latest && isDeploymentActive(latest.status) && (
-              <div className="flex gap-sm items-center pl-1.5">
-                <span className="rt-live-dot" />
-                <span className="font-code-md text-code-md text-on-surface-variant">
-                  live
-                </span>
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {tab === "metrics" && (
-        <Card>
-          <div className="flex items-center justify-between mb-md">
-            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-              Metrics
-            </h2>
-            <RuntimeStatus
-              status={runtimeStatus}
-              live={isRuntimeLive(runtimeStatus)}
-            />
-          </div>
-          {runtimeStats?.stats ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
-              <Metric
-                label="CPU"
-                value={`${runtimeStats.stats?.cpu_percent?.toFixed(2) ?? 0}%`}
-                icon={Gauge}
-              />
-              <Metric
-                label="Memory"
-                value={fmtBytes(runtimeStats.stats?.mem_bytes ?? 0)}
-                icon={HardDrives}
-              />
-              <Metric
-                label="Limit"
-                value={fmtBytes(runtimeStats.stats?.mem_limit ?? 0)}
-                icon={Database}
-              />
-              <Metric
-                label="Mem %"
-                value={`${runtimeStats.stats?.mem_percent?.toFixed(1) ?? 0}%`}
-                icon={Target}
-              />
-            </div>
-          ) : (
-            <p className="font-body-sm text-body-sm text-on-surface-variant">
-              No active container.
-            </p>
-          )}
-        </Card>
-      )}
-
-      {tab === "settings" && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-lg">
-          <Card>
-            <div className="flex items-center justify-between mb-md">
-              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-                Resources
-              </h2>
-            </div>
-            <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
-              CPU
-            </p>
-            <Slider
-              min={0.25}
-              max={8}
-              step={0.25}
-              value={Number.parseFloat(String(app.resources?.cpus ?? "0.5")) || 0.5}
-              onValueChange={(value) => {
-                const next = Array.isArray(value) ? value[0] : value;
-                if (typeof next === "number") {
-                  updateService.mutate({ serviceId: service.id, update: { resources: { cpus: next.toString() } } });
-                }
-              }}
-            />
-            <p className="font-code-md text-code-md text-on-surface-variant mb-md">
-              {app.resources?.cpus ?? "0.5"} CPU allocated
-            </p>
-            <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
-              Memory
-            </p>
-            <Slider
-              min={256}
-              max={8192}
-              step={256}
-              value={Math.min(8192, Math.max(256, app.resources?.mem_mb || 256))}
-              onValueChange={(value) => {
-                const next = Array.isArray(value) ? value[0] : value;
-                if (typeof next === "number") {
-                  updateService.mutate({ serviceId: service.id, update: { resources: { mem_mb: next } } });
-                }
-              }}
-            />
-            <p className="font-code-md text-code-md text-on-surface-variant mb-md">
-              {app.resources?.mem_mb && app.resources.mem_mb % 1024 === 0
-                ? `${app.resources.mem_mb / 1024} GB RAM`
-                : `${app.resources?.mem_mb ?? 256} MB RAM`}
-            </p>
-            <p className="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-sm">
-              Storage
-            </p>
-            <Slider
-              min={0}
-              max={102400}
-              step={1024}
-              value={Math.min(102400, Math.max(0, app.storage_mb ?? 0))}
-              onValueChange={(value) => {
-                const next = Array.isArray(value) ? value[0] : value;
-                if (typeof next === "number") {
-                  updateService.mutate({ serviceId: service.id, update: { resources: { storage_mb: next } } });
-                }
-              }}
-            />
-            <p className="font-code-md text-code-md text-on-surface-variant mb-md">
-              {app.storage_mb
-                ? app.storage_mb % 1024 === 0
-                  ? `${app.storage_mb / 1024} GB storage`
-                  : `${app.storage_mb} MB storage`
-                : "Unlimited storage"}
-            </p>
-            <p className="font-code-md text-code-md text-on-surface-variant/60">
-              Applies on the next deploy. CPU accepts decimals (0.5) or
-              millicores (500m).
-            </p>
-          </Card>
-          <Card>
-            <div className="flex items-center justify-between mb-md">
-              <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-                Image retention
-              </h2>
-            </div>
-            <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
-              Keep the N most recent built images for this app (git builds).
-              Older images are deleted from the internal registry and local
-              storage. 0 = use global policy (default 5).
-            </p>
-            <div className="flex items-center gap-sm">
-              <Input
-                type="number"
-                min={0}
-                placeholder="5"
-                defaultValue={app.image_retention || 0}
-                onChange={(e) => {
-                  const n = parseInt(e.target.value, 10);
-                  updateService.mutate({ serviceId: service.id, update: { image_retention: isFinite(n) ? n : 0 } });
-                }}
-              />
-            </div>
-            <p className="font-code-md text-code-md text-on-surface-variant/60 mt-xs">
-              Global policy: AETHER_IMAGE_RETENTION (default 5, 0 = disabled)
-            </p>
-          </Card>
-          {(!service || service.capabilities.can_build) && <div className="space-y-lg">
-            <Autopilot appID={service?.kind === "app" ? runtimeId : app.id} />
-            <Card>
-              <div className="flex items-center justify-between mb-md">
-                <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-                  Webhook GitHub
-                </h2>
-                <button
-                  onClick={() => setWebhookModal(true)}
-                  className="text-primary font-body-sm text-body-sm hover:text-primary-fixed-dim transition-colors"
-                >
-                  Configure
-                </button>
-              </div>
-              <p className="font-body-sm text-body-sm text-on-surface-variant mb-sm">
-                {app.source_type === "git"
-                  ? "POST /api/v1/webhooks/github/{serviceID} with the X-Hub-Signature-256 header."
-                  : "Available for applications with a git source."}
-              </p>
-              {app.source_type === "git" && (
-                  <CodeBlock
-                  code={`POST /api/v1/webhooks/github/${app.id}\nX-Hub-Signature-256: sha256=<hmac>`}
-                  />
-              )}
-            </Card>
-          </div>}
-        </div>
-      )}
-
-      {tab === "cron" && (!service || service.capabilities.can_manage_schedules) && <CronJobs appID={app.id} canonicalService={Boolean(service)} />}
-      {tab === "terminal" && <Terminal serviceId={canonicalServiceID} />}
-      {tab === "domains" && <DomainsPanel kind="services" id={app.id} />}
-      {tab === "backup" && service?.kind === "database" && <BackupTab dbId={service.id} dbName={service.name} />}
-
-      <Dialog
-        open={webhookModal}
-        onOpenChange={setWebhookModal}
-        title="Webhook secret"
-        trigger={
-          <button
-            type="button"
-            className="hidden"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-      >
-        <form
-          onSubmit={webhookForm.handleSubmit(submitWebhook)}
-          className="space-y-lg"
-          noValidate
-        >
-          <Field
-            label="Secret (HMAC)"
-            error={webhookForm.formState.errors.secret?.message}
-          >
-            <Input
-              placeholder="whsec-..."
-              {...webhookForm.register("secret")}
-            />
-          </Field>
-          <div className="flex justify-end gap-md">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setWebhookModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={webhookForm.formState.isSubmitting}>
-              Save
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-
-      <DeploymentLogModal
-        appId={app.id}
-        serviceId={service.id}
-        deploymentId={viewLogsDep}
-        onClose={() => setViewLogsDep(null)}
-      />
-      <Dialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        title="Edit service"
-        trigger={
-          <button
-            type="button"
-            className="hidden"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-      >
-        <div className="flex flex-col gap-lg">
-          <Field label="Service name">
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="my-service"
-            />
-          </Field>
-          {editBuildType !== "compose" && (
-            <Field label="Port">
-              <Input
-                type="number"
-                value={String(editPort)}
-                onChange={(e) => setEditPort(parseInt(e.target.value) || 0)}
-                placeholder="8080"
-              />
-            </Field>
-          )}
-          {service?.kind === "app" && (
-            <Field label="Build type">
-              <NativeSelect
-                value={editBuildType}
-                onChange={(event) => setEditBuildType(event.target.value as typeof editBuildType)}
-                options={[
-                  { label: "Dockerfile", value: "dockerfile" },
-                  { label: "SmartBuild (CNB)", value: "buildpacks" },
-                  { label: "Custom", value: "custom" },
-                  { label: "Compose", value: "compose" },
-                ]}
-              />
-            </Field>
-          )}
-          <div className="flex justify-end gap-md border-t border-outline-variant pt-lg">
-            <Button variant="ghost" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                const body: Record<string, unknown> = {};
-                if (editName.trim() && editName.trim() !== app.name)
-                  body.name = editName.trim();
-                if (editPort > 0 && editPort !== app.port) body.port = editPort;
-                if (service?.kind === "app" && editBuildType !== app.build_type)
-                  body.build_type = editBuildType;
-                if (Object.keys(body).length) {
-                  updateService.mutate({ serviceId: service.id, update: body }, {
-                    onSuccess: () => {
-                      add({ title: "Service updated", tone: "success" });
-                      setEditOpen(false);
-                      window.location.href = returnTo;
-                    },
-                    onError: (e) =>
-                      add({
-                        title: "Could not update service",
-                        description:
-                          e instanceof Error ? e.message : "Try again later.",
-                        tone: "error",
-                      }),
-                  });
-                } else {
-                  setEditOpen(false);
-                }
-              }}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    </div>
-  );
+  <div className="space-y-lg">
+    <ServiceHeader app={app} service={service} runtimeId={runtimeId} runtimeStatus={runtimeStatus} isLive={isRuntimeLive(runtimeStatus)} visibleTabs={visibleTabs} tab={tab} onTabChange={setTab} onEdit={() => setEditOpen(true)} deletePending={serviceDelete.isPending} onDelete={() => serviceDelete.mutate(service.id, { onSuccess: () => { add({ title: "Service deleted", tone: "success" }); window.location.href = returnTo; }, onError: (error) => add({ title: "Could not delete service", description: error.message, tone: "error" }) })} />
+    {tab === "overview" ? <ServiceOverviewTab app={app} service={service} runtimeId={runtimeId} liveURL={liveURL} source={source} repositories={providerRepositories} sourceLoading={sourceLoading} sourceError={sourceError} canManageSource={canManageSource} providerEditing={providerEditing} providerRepositoryId={providerRepositoryId} providerBranch={providerBranch} providerRootDirectory={providerRootDirectory} providerWatchPaths={providerWatchPaths} providerWatchRootFiles={providerWatchRootFiles} providerAutoDeploy={providerAutoDeploy} savingSource={saveSource.isPending} autodeploy={autodeploy} runtimeStats={stats} domains={domains} latest={latest} logsID={service.id} overviewLogsEndpoint={overviewLogsEndpoint} running={running} restarting={serviceRestart.isPending} stopping={serviceStop.isPending} starting={serviceStart.isPending} copied={copied} connectionVisible={connectionVisible} connectionDSN={serviceConnection?.dsn} connectionError={serviceConnectionError} connectionCopied={connectionCopied} onOpenTerminal={() => setTab("terminal")} onVisit={() => liveURL ? window.open(liveURL, "_blank", "noopener,noreferrer") : add({ title: "Add a domain to open the URL", tone: "error" })} onDeploy={() => serviceDeploy.mutate(service.id)} onRestart={() => run(() => serviceRestart.mutateAsync(service.id), "Service restarted")} onStop={() => run(() => serviceStop.mutateAsync(service.id), "Service stopped")} onStart={() => run(() => serviceStart.mutateAsync(service.id), "Service started")} onAutodeployChange={updateAutodeploy} onProviderEdit={openProviderEditor} onProviderCancel={() => setProviderEditing(false)} onProviderSave={saveProvider} onRepositoryChange={setProviderRepositoryId} onBranchChange={setProviderBranch} onRootDirectoryChange={setProviderRootDirectory} onWatchPathsChange={setProviderWatchPaths} onWatchRootFilesChange={setProviderWatchRootFiles} onProviderAutoDeployChange={setProviderAutoDeploy} onCopyURL={copyURL} onShowConnection={() => setConnectionVisible(true)} onCopyConnection={copyConnection} onViewDeploymentLogs={setViewLogsDep} /> : null}
+    {tab === "variables" ? <ServiceVariablesTab variableKey={`${variableKey}:${variables.length}`} variables={variables} onChange={setVariables} onImport={parseEnv} onExport={exportVariables} onSave={() => void saveVariables()} saving={setEnv.isPending || deleteEnv.isPending} /> : null}
+    {tab === "compose" ? <ComposeTab appID={app.id} initialCompose={service.spec?.compose} canonicalService exportID={service.kind === "app" ? service.spec_id ?? app.id : undefined} showRuntimeExports={service.kind !== "compose"} /> : null}
+    {tab === "deployments" ? <DeploymentsTab appId={app.id} serviceId={service.id} deployments={(deployments ?? []) as Deployment[]} onRollback={() => add({ title: "Rollback is only available for application deployments", tone: "info" })} /> : null}
+    {tab === "logs" ? <ServiceLogsTab serviceId={service.id} enabled endpoint={serviceLogsEndpoint} containers={containers} logContainer={logContainer} onContainerChange={setLogContainer} timeline={timeline} latest={latest} deploymentActive={Boolean(activeDeployment)} /> : null}
+    {tab === "metrics" ? <ServiceMetricsTab runtimeStatus={runtimeStatus} live={isRuntimeLive(runtimeStatus)} stats={stats} /> : null}
+    {tab === "settings" ? <ServiceSettingsTab app={app} service={service} runtimeId={runtimeId} onUpdate={(update) => updateService.mutate({ serviceId: service.id, update })} onOpenWebhook={() => setWebhookModal(true)} /> : null}
+    {tab === "cron" ? <CronJobs appID={app.id} canonicalService /> : null}
+    {tab === "terminal" ? <Terminal serviceId={service.id} /> : null}
+    {tab === "domains" ? <DomainsPanel kind="services" id={service.id} /> : null}
+    {tab === "backup" && service.kind === "database" ? <BackupTab dbId={service.id} dbName={service.name} /> : null}
+    <Dialog open={webhookModal} onOpenChange={setWebhookModal} title="Webhook secret" trigger={<span />}><form onSubmit={webhookForm.handleSubmit(submitWebhook)} className="space-y-lg" noValidate><Field label="Secret (HMAC)" error={webhookForm.formState.errors.secret?.message}><Input placeholder="whsec-..." {...webhookForm.register("secret")} /></Field><div className="flex justify-end gap-md"><Button type="button" variant="ghost" onClick={() => setWebhookModal(false)}>Cancel</Button><Button type="submit" loading={webhookForm.formState.isSubmitting}>Save</Button></div></form></Dialog>
+    <DeploymentLogModal appId={app.id} serviceId={service.id} deploymentId={viewLogsDep} onClose={() => setViewLogsDep(null)} />
+    <Dialog open={editOpen} onOpenChange={setEditOpen} title="Edit service" trigger={<span />}><div className="flex flex-col gap-lg"><Field label="Service name"><Input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="my-service" /></Field>{editBuildType !== "compose" ? <Field label="Port"><Input type="number" value={String(editPort)} onChange={(event) => setEditPort(Number.parseInt(event.target.value, 10) || 0)} placeholder="8080" /></Field> : null}{service.kind === "app" ? <Field label="Build type"><NativeSelect value={editBuildType} onChange={(event) => setEditBuildType(event.target.value)} options={[{ label: "Dockerfile", value: "dockerfile" }, { label: "SmartBuild (CNB)", value: "buildpacks" }, { label: "Custom", value: "custom" }, { label: "Compose", value: "compose" }]} /></Field> : null}<div className="flex justify-end gap-md border-t border-outline-variant pt-lg"><Button variant="ghost" onClick={() => setEditOpen(false)}>Cancel</Button><Button onClick={saveService} loading={updateService.isPending}>Save</Button></div></div></Dialog>
+  </div>);
 }
 
-export const Route = createFileRoute("/_shell/apps/$appId/")({
-  validateSearch: detailSearchSchema,
-  component: AppDetail,
-});
+export const Route = createFileRoute("/_shell/apps/$appId/")({ validateSearch: detailSearchSchema, component: AppDetail });

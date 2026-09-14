@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  nginx:
+    image: nginx@sha256:05b8cb60c354a44ab824ea6e7dc69b46d50762cdbe728a347a5b656e6fb3d7c4
+    restart: unless-stopped
+    expose:
+      - 80
+      - 443
+    volumes:
+      - nginx-config:/etc/nginx
+      - nginx-html:/usr/share/nginx/html
+volumes:
+  nginx-config: {}
+  nginx-html: {}

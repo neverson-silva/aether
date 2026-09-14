@@ -15,12 +15,12 @@ import { ResourcesTable } from "./-components/ResourcesTable";
 import { fmtBytes, fmtRate, fmtUptime } from "./-components/format";
 
 const COLORS = {
-  host: "#b0c6ff",
-  aether: "#c0c1ff",
-  user: "#ffb599",
-  system: "#8c90a1",
-  netRx: "#4ade80",
-  netTx: "#c0c1ff",
+  host: "var(--color-primary)",
+  aether: "var(--color-secondary)",
+  user: "var(--color-tertiary)",
+  system: "var(--color-on-surface-variant)",
+  netRx: "var(--color-status-success)",
+  netTx: "var(--color-secondary)",
 };
 
 const WINDOWS: { id: MonitoringWindow; label: string }[] = [
@@ -71,7 +71,7 @@ function Card({ label, icon, value, sub, gauge, network }: { label: string; icon
       ) : network ? (
         <div className="flex min-h-[8.5rem] items-center justify-center">
           <div className="flex flex-wrap items-center justify-center gap-x-md gap-y-xs whitespace-nowrap font-body-md text-body-md text-on-surface">
-            <span className="inline-flex items-center gap-xs text-[#4ade80]">↓ {network.rx}</span>
+            <span className="inline-flex items-center gap-xs text-status-success">↓ {network.rx}</span>
             <span className="inline-flex items-center gap-xs text-on-surface-variant">↑ {network.tx}</span>
           </div>
         </div>
@@ -146,7 +146,7 @@ function DistributionCard({
         <div className="flex min-h-[4.5rem] flex-col">
           <div className="font-label-caps text-label-caps text-on-surface-variant/60">Network</div>
           <div className="flex min-h-[2.25rem] flex-wrap items-center gap-x-sm gap-y-0.5 font-body-md text-body-md whitespace-nowrap">
-            <span className="inline-flex items-center gap-xs text-[#4ade80]">↓ {fmtRate(agg.net_rx_rate)}</span>
+            <span className="inline-flex items-center gap-xs text-status-success">↓ {fmtRate(agg.net_rx_rate)}</span>
             <span className="inline-flex items-center gap-xs text-on-surface-variant">↑ {fmtRate(agg.net_tx_rate)}</span>
           </div>
         </div>
@@ -183,7 +183,7 @@ function ChartSkeleton() {
 }
 
 function Monitoring() {
-  const { snapshot, connected } = useMonitoring();
+  const { snapshot, connected, error } = useMonitoring();
   const events = useHostEvents();
   const [follow, setFollow] = useState(true);
   const logLines = useHostLogs(follow);
@@ -201,7 +201,7 @@ function Monitoring() {
   const stats = snapshot?.host;
   const loading = !snapshot || !stats;
   const points = history.data ?? [];
-  const selected = useMemo(() => snapshot?.resources.find((r) => r.id === selectedId) ?? null, [snapshot, selectedId]);
+  const selected = useMemo(() => (snapshot?.resources ?? []).find((r) => r.id === selectedId) ?? null, [snapshot, selectedId]);
 
   const filteredLogs = useMemo(() => logLines.filter((l) => l.line.trim()), [logLines]);
   const activityItems: ActivityItem[] = (events.data ?? []).map((event, index) => ({
@@ -223,13 +223,13 @@ function Monitoring() {
         </div>
         <div className="flex flex-wrap items-center justify-end gap-sm">
           <span className="px-md py-sm border border-outline-variant rounded bg-surface text-on-surface font-body-sm flex items-center gap-2">
-            <span className={cn("w-2 h-2 rounded-full", connected ? "bg-[#4ade80]" : "bg-error")} />
+            <span className={cn("w-2 h-2 rounded-full", connected ? "bg-status-success" : "bg-error")} />
             {connected ? "Live" : "Reconnecting…"}
           </span>
           <span
             className={cn(
               "px-md py-sm border rounded bg-surface font-body-sm flex items-center gap-2",
-              stats?.source && stats.source !== "runtime" ? "border-[#4ade80]/30 text-[#4ade80]" : "border-outline-variant text-on-surface-variant",
+              stats?.source && stats.source !== "runtime" ? "border-status-success/30 text-status-success" : "border-outline-variant text-on-surface-variant",
             )}
             title={
               stats?.source && stats.source !== "runtime"
@@ -245,7 +245,9 @@ function Monitoring() {
             {stats?.os ? stats.os : <span className="inline-block w-24"><Skeleton variant="text" /></span>}
           </span>
           <button
+            type="button"
             onClick={() => setFollow((f) => !f)}
+            aria-pressed={follow}
             className={cn(
               "px-md py-sm rounded font-body-sm font-semibold transition-colors flex items-center gap-2",
               follow ? "bg-primary text-on-primary hover:bg-primary-fixed" : "bg-surface border border-outline-variant text-on-surface-variant"
@@ -256,6 +258,7 @@ function Monitoring() {
           </button>
         </div>
       </div>
+      {error ? <div role="alert" className="rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">{error}</div> : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
         {!snapshot ? (
@@ -340,11 +343,13 @@ function Monitoring() {
               History is persisted in the platform database; windows 5m through 7d.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-xs rounded-md border border-outline-variant/50 p-0.5">
+          <div className="flex flex-wrap items-center gap-xs rounded-md border border-outline-variant/50 p-0.5" role="group" aria-label="Monitoring history window">
             {WINDOWS.map((w) => (
               <button
                 key={w.id}
+                type="button"
                 onClick={() => setWindow(w.id)}
+                aria-pressed={window === w.id}
                 className={cn(
                   "min-w-10 rounded px-sm py-xs text-center font-label-caps text-label-caps transition-colors",
                   window === w.id ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:text-on-surface"
@@ -355,6 +360,7 @@ function Monitoring() {
             ))}
           </div>
         </div>
+        {history.isError ? <div role="alert" className="mb-md rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">Unable to load monitoring history.</div> : null}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
           <ChartPanel
             title="CPU"
@@ -437,14 +443,15 @@ function Monitoring() {
             <div className="flex items-center gap-2">
               <AppWindow size={18} className="text-muted-foreground" aria-hidden="true" />
               <h2 className="font-label-caps text-label-caps text-on-surface">{selected.name}</h2>
-              <span className={cn("px-2 py-0.5 rounded border font-label-caps text-label-caps capitalize", selected.state === "running" ? "bg-[#4ade80]/10 text-[#4ade80] border-[#4ade80]/20" : "bg-outline/10 text-on-surface-variant border-outline-variant/30")}>
+              <span className={cn("px-2 py-0.5 rounded border font-label-caps text-label-caps capitalize", selected.state === "running" ? "bg-status-success/10 text-status-success border-status-success/20" : "bg-outline/10 text-on-surface-variant border-outline-variant/30")}>
                 {selected.state}
               </span>
             </div>
-            <button onClick={() => setSelectedId(null)} className="font-label-caps text-label-caps text-primary hover:text-primary-fixed">
+            <button type="button" onClick={() => setSelectedId(null)} aria-label={`Close ${selected.name} details`} className="font-label-caps text-label-caps text-primary hover:text-primary-fixed">
               Close
             </button>
           </div>
+          {resourceHistory.isError ? <div role="alert" className="mb-md rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">Unable to load resource history.</div> : null}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
             <div className="bg-surface rounded-lg border border-outline-variant/50 p-md">
               <div className="font-label-caps text-label-caps text-on-surface-variant mb-sm">CPU ({window})</div>
@@ -484,7 +491,7 @@ function Monitoring() {
             if (logRef.current && logRef.current.scrollTop + logRef.current.clientHeight > logRef.current.scrollHeight - 60) scrollToBottom();
           }}
           className={cn(
-            "bg-[#0A0A0A] p-sm font-code-md text-code-md leading-relaxed rounded-b-lg",
+              "bg-surface-container-low p-sm font-code-md text-code-md leading-relaxed rounded-b-lg",
             filteredLogs.length ? "min-h-[11rem] flex-1 overflow-y-auto" : "flex min-h-[7rem] items-center justify-center",
           )}
         >

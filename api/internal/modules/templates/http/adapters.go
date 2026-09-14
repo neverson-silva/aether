@@ -32,7 +32,11 @@ func (h *Handler) ComposeEnv(c *gin.Context) {
 	}
 	result := make([]gin.H, 0, len(variables))
 	for _, variable := range variables {
-		result = append(result, gin.H{"key": variable.Key, "value": variable.Value, "is_secret": variable.IsSecret, "environment_id": variable.EnvironmentID})
+		value := variable.Value
+		if variable.IsSecret {
+			value = ""
+		}
+		result = append(result, gin.H{"key": variable.Key, "value": value, "is_secret": variable.IsSecret, "environment_id": variable.EnvironmentID})
 	}
 	c.JSON(http.StatusOK, gin.H{"env": result})
 }

@@ -1,13 +1,17 @@
 package api
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type RateLimiterBackend interface{ Allow(key string) bool }
 
 type bucket struct {
 	tokens float64
@@ -59,7 +63,39 @@ func (rl *RateLimiter) Allow(key string) bool {
 	return true
 }
 
-func RateLimit(rl *RateLimiter) gin.HandlerFunc {
+type PostgresRateLimiter struct {
+	pool   *pgxpool.Pool
+	limit  int
+	window time.Duration
+}
+
+func NewPostgresRateLimiter(pool *pgxpool.Pool, limit int, window time.Duration) *PostgresRateLimiter {
+	return &PostgresRateLimiter{pool: pool, limit: limit, window: window}
+}
+
+func (rl *PostgresRateLimiter) Allow(key string) bool {
+	if rl == nil || rl.pool == nil || rl.limit <= 0 || rl.window <= 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var allowed bool
+	if _, err := rl.pool.Exec(ctx, `DELETE FROM rate_limit_buckets WHERE window_started < now() - interval '1 hour'`); err != nil {
+		return false
+	}
+	err := rl.pool.QueryRow(ctx, `
+		INSERT INTO rate_limit_buckets (bucket_key, window_started, request_count, window_seconds, max_requests)
+		VALUES ($1, now(), 1, $2, $3)
+		ON CONFLICT (bucket_key) DO UPDATE SET
+			request_count = CASE WHEN EXTRACT(EPOCH FROM (now() - rate_limit_buckets.window_started)) >= rate_limit_buckets.window_seconds THEN 1 ELSE rate_limit_buckets.request_count + 1 END,
+			window_started = CASE WHEN EXTRACT(EPOCH FROM (now() - rate_limit_buckets.window_started)) >= rate_limit_buckets.window_seconds THEN now() ELSE rate_limit_buckets.window_started END,
+			window_seconds = EXCLUDED.window_seconds,
+			max_requests = EXCLUDED.max_requests
+		RETURNING request_count <= max_requests`, key, int(rl.window.Seconds()), rl.limit).Scan(&allowed)
+	return err == nil && allowed
+}
+
+func RateLimit(rl RateLimiterBackend) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !rl.Allow(c.ClientIP()) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})

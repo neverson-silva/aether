@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,7 +16,7 @@ import type { TemplateItem } from "../../../hooks";
 import { Badge, Button, Dialog, EmptyState, Field, Input, NativeSelect, useToast } from "@aether/design-system";
 import { Plus, Star } from "@phosphor-icons/react";
 import { Markdown } from "../../../components/Markdown";
-import { TechIcon } from "../../../components/TechIcon";
+import { TemplateIcon } from "../../../components/TemplateIcon";
 
 const installSchema = z.object({
   project_id: z.string().min(1, "Project is required"),
@@ -31,19 +31,21 @@ function TemplateCard({ t, onClick, fav, onFav }: { t: TemplateItem; onClick: ()
   return (
     <div className="bg-surface-container-low border border-outline-variant rounded-lg p-lg flex flex-col gap-md hover:border-primary/40 transition-colors relative group">
       <button
+        type="button"
         onClick={onFav}
-        className={`absolute top-2 right-2 transition-colors ${fav ? "text-[#fbbf24]" : "text-on-surface-variant/30 opacity-0 group-hover:opacity-100 hover:text-[#fbbf24]"}`}
-        aria-label="Favorite"
+        className={`absolute top-2 right-2 transition-colors ${fav ? "text-status-warning" : "text-on-surface-variant/30 opacity-0 group-hover:opacity-100 hover:text-status-warning"}`}
+        aria-label={`${fav ? "Remove" : "Add"} ${t.name} ${fav ? "from" : "to"} favorites`}
+        aria-pressed={fav}
       >
         <Star size={18} weight={fav ? "fill" : "regular"} />
       </button>
-      <button onClick={onClick} className="text-left flex flex-col gap-md flex-1">
+      <button type="button" onClick={onClick} className="text-left flex flex-col gap-md flex-1">
       <div className="flex items-start justify-between pr-5">
-        <TechIcon name={t.icon} size={32} className="text-primary" />
+        <TemplateIcon template={t} size={32} />
         <div className="flex items-center gap-xs">
           {t.featured && <Badge tone="success" dot>Featured</Badge>}
           {t.verified ? (
-            <span className="px-1.5 py-0.5 rounded border border-[#4ade80]/30 font-code-md text-code-md text-[#4ade80]">verified</span>
+            <span className="px-1.5 py-0.5 rounded border border-status-success/30 font-code-md text-code-md text-status-success">verified</span>
           ) : (
             <span className="px-1.5 py-0.5 rounded border border-outline-variant font-code-md text-code-md text-on-surface-variant">community</span>
           )}
@@ -79,14 +81,15 @@ function Marketplace() {
       return next;
     });
   };
-  const { data: templates } = useTemplatesFiltered({ category: category || undefined, q: q || undefined, featured: featuredOnly || undefined });
-  const { data: allTemplates } = useTemplates();
+  const { data: templates, isError: templatesError } = useTemplatesFiltered({ category: category || undefined, q: q || undefined, featured: featuredOnly || undefined });
+  const { data: allTemplates, isError: allTemplatesError } = useTemplates();
   const latest = useMemo(() => [...(allTemplates ?? [])].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? "")).slice(0, 8), [allTemplates]);
   const favTemplates = useMemo(() => (allTemplates ?? []).filter((t) => favs.has(t.id)), [allTemplates, favs]);
   const { data: projects } = useProjects();
   const navigate = useNavigate();
   const install = useInstallTemplate();
   const { add } = useToast();
+  const installingRef = useRef(false);
   const [target, setTarget] = useState<TemplateItem | null>(null);
   const [detail, setDetail] = useState<TemplateItem | null>(null);
   const {
@@ -104,8 +107,10 @@ function Marketplace() {
   };
 
   const submit = async (values: z.infer<typeof installSchema>) => {
+    if (installingRef.current || !target) return;
+    installingRef.current = true;
     try {
-      await install.mutateAsync({ id: target!.id, project_id: values.project_id });
+      await install.mutateAsync({ id: target.id, project_id: values.project_id });
       add({ title: "Template installed", description: `Template "${target!.name}" installed as a compose stack.`, tone: "success" });
       setTarget(null);
       const services = await apiGet<{ id: string; name: string; kind: string }[]>(`/api/v1/services?project_id=${encodeURIComponent(values.project_id)}`);
@@ -113,16 +118,21 @@ function Marketplace() {
       if (service) navigate({ to: "/apps/$appId", params: { appId: service.id } });
     } catch (err) {
       add({ title: "Installation failed", description: err instanceof Error ? err.message : "Unable to install template.", tone: "error" });
+    } finally {
+      installingRef.current = false;
     }
   };
 
   return (
     <div className="space-y-lg">
       <div><h1 className="text-headline-lg text-foreground">Marketplace</h1><p className="mt-1 text-body-md text-muted-foreground">Curated catalog of one-click apps. Featured, trending and community templates.</p></div>
-      <div className="mb-lg flex flex-wrap items-center gap-md border-b border-outline-variant pb-0">
+      <div className="mb-lg flex flex-wrap items-center gap-md border-b border-outline-variant pb-0" role="tablist" aria-label="Marketplace views">
         {([["all", "All"], ["trending", "Trending"], ["latest", "Latest"], ["favorites", "Favorites"]] as const).map(([key, label]) => (
           <button
             key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={`px-3 py-2 font-label-caps text-label-caps uppercase border-b-2 -mb-px transition-colors ${tab === key ? "border-primary text-primary" : "border-transparent text-on-surface-variant hover:text-on-surface"}`}
           >
@@ -130,6 +140,8 @@ function Marketplace() {
           </button>
         ))}
       </div>
+
+      {templatesError || allTemplatesError ? <div role="alert" className="rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">Unable to load the template catalog. Try again later.</div> : null}
 
       <div className="flex items-center gap-sm flex-wrap">
         <Input
@@ -157,10 +169,11 @@ function Marketplace() {
             {trending!.slice(0, 6).map((t) => (
               <button
                 key={t.id}
+                type="button"
                 onClick={() => setDetail(t)}
                 className="bg-surface-container-low border border-outline-variant rounded-lg p-md hover:border-primary/40 transition-colors text-center"
               >
-                <TechIcon name={t.icon} size={28} className="block mb-sm text-primary" />
+                <TemplateIcon template={t} size={28} />
                 <span className="block font-body-md text-body-md text-on-surface truncate">{t.name}</span>
                 <span className="block font-code-md text-code-md text-on-surface-variant/60">{fmtCount(t.installs)} installs</span>
               </button>
@@ -194,7 +207,7 @@ function Marketplace() {
         {detail && (
           <div className="space-y-lg">
             <div className="flex items-center gap-md">
-              <TechIcon name={detail.icon} size={40} className="text-primary" />
+              <TemplateIcon template={detail} size={40} />
               <div>
                 <p className="font-body-sm text-body-sm text-on-surface-variant">{detail.description}</p>
                 <p className="font-code-md text-code-md text-on-surface-variant/60 mt-xs">

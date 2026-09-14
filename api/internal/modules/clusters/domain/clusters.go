@@ -69,5 +69,5 @@ type Store interface {
 	GetRegistry(ctx context.Context) (*Registry, error)
 	SetRegistryEnabled(ctx context.Context, enabled bool) (*Registry, error)
 
-	CreateServerToken(ctx context.Context, tokenHash string) error
+	CreateServerToken(ctx context.Context, tokenHash string, expiresAt time.Time) error
 }

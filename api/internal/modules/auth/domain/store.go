@@ -18,6 +18,7 @@ type UserStore interface {
 	AddMemberUser(ctx context.Context, orgID uuid.UUID, email, name, passwordHash string, role Role) (*User, error)
 	SetTOTP(ctx context.Context, userID uuid.UUID, secret []byte) error
 	DisableTOTP(ctx context.Context, userID uuid.UUID) error
+	UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error
 }
 
 type OrgStore interface {
@@ -46,11 +47,31 @@ type AuditStore interface {
 	List(ctx context.Context, orgID uuid.UUID, limit int32) ([]AuditEvent, error)
 }
 
+type SessionStore interface {
+	CreateSession(ctx context.Context, userID, orgID uuid.UUID, expiresAt time.Time) (uuid.UUID, error)
+	GetSession(ctx context.Context, id uuid.UUID) (*AuthSession, error)
+	RevokeSession(ctx context.Context, id uuid.UUID) error
+	RevokeUserSessions(ctx context.Context, userID uuid.UUID) error
+	RevokeOrgUserSessions(ctx context.Context, orgID, userID uuid.UUID) error
+	CreateRefreshToken(ctx context.Context, sessionID, tokenID uuid.UUID, tokenHash string, expiresAt time.Time) error
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (*AuthSession, error)
+}
+
 type TokenSigner interface {
 	Sign(ctx context.Context, subject, orgID uuid.UUID, role Role, global string, ttl time.Duration) (string, error)
 	SignRefresh(ctx context.Context, subject, orgID uuid.UUID, role Role, global string, ttl time.Duration) (string, error)
 	SignRefreshUntil(ctx context.Context, subject, orgID uuid.UUID, role Role, global string, expiresAt time.Time) (string, error)
 	Verify(ctx context.Context, token string) (*AuthToken, error)
+}
+
+type SessionTokenSigner interface {
+	SignWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role Role, global string, ttl time.Duration) (string, error)
+	SignRefreshWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role Role, global string, ttl time.Duration) (string, error)
+	SignRefreshUntilWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role Role, global string, expiresAt time.Time) (string, error)
+}
+
+type RefreshTokenIssuer interface {
+	IssueRefreshWithSession(ctx context.Context, sessionID, subject, orgID uuid.UUID, role Role, global string, expiresAt time.Time) (string, uuid.UUID, error)
 }
 
 type PasswordHasher interface {

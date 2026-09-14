@@ -1,0 +1,12 @@
+version: "3.8"
+services:
+  alltube:
+    image: dnomd343/alltube@sha256:cdff2a41ab79c51e303fc65381a8a542ed7116bc32719af986e25d7bf45e074a
+    restart: unless-stopped
+    expose:
+      - 80
+    environment:
+      - TITLE=${TITLE}
+      - CONVERT=${CONVERT}
+      - STREAM=${STREAM}
+      - REMUX=${REMUX} 

@@ -89,12 +89,22 @@ type Token struct {
 }
 
 type AuthToken struct {
-	Subject uuid.UUID
-	OrgID   uuid.UUID
-	Role    Role
-	Global  string
-	Expires time.Time
-	Kind    string
+	Subject   uuid.UUID
+	OrgID     uuid.UUID
+	Role      Role
+	Global    string
+	Expires   time.Time
+	Kind      string
+	SessionID uuid.UUID
+	TokenID   uuid.UUID
+}
+
+type AuthSession struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	OrgID     uuid.UUID
+	ExpiresAt time.Time
+	RevokedAt *time.Time
 }
 
 type AuditEvent struct {
