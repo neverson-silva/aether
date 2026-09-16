@@ -705,11 +705,15 @@ ensure_nats_auth() {
     fi
     printf '%s\n%s\n' "$NATS_USER" "$NATS_PASSWORD" > "$NATS_AUTH_FILE"
   fi
-  if ! command_exists htpasswd; then
-    fail "htpasswd is required to configure bcrypt authentication for the local NATS service."
-  fi
   local password_hash
-  password_hash="$(htpasswd -bnBC 12 '' "$NATS_PASSWORD" 2>/dev/null | tr -d ':\n')"
+  if command_exists htpasswd; then
+    password_hash="$(htpasswd -bnBC 12 '' "$NATS_PASSWORD" 2>/dev/null | tr -d ':\n')"
+  else
+    local htpasswd_image
+    htpasswd_image="${AETHER_HTPASSWD_IMAGE:-httpd:2.4-alpine}"
+    info "htpasswd is not available on the host; generating the NATS bcrypt hash in Docker."
+    password_hash="$("$RUNTIME" run --rm --entrypoint htpasswd "$htpasswd_image" -bnBC 12 '' "$NATS_PASSWORD" 2>/dev/null | tr -d ':\n')"
+  fi
   [[ "$password_hash" == '$2'* ]] || fail "Could not generate a bcrypt hash for the local NATS service."
   mkdir -p "$(dirname "$NATS_CONFIG_FILE")"
   umask 077
