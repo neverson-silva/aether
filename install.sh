@@ -43,7 +43,7 @@ distribution() {
 install_bootstrap_dependencies() {
   local distro
   distro="$(distribution)"
-  if command_exists git && command_exists curl; then
+  if command_exists git && command_exists curl && command_exists htpasswd; then
     return 0
   fi
 
@@ -51,30 +51,30 @@ install_bootstrap_dependencies() {
   case "$distro" in
     ubuntu|debian|linuxmint|pop)
       run_root apt-get update
-      run_root apt-get install -y git curl ca-certificates
+      run_root apt-get install -y git curl ca-certificates apache2-utils
       ;;
     fedora|rhel|centos|rocky|almalinux|ol|amzn)
       if command_exists dnf; then
-        run_root dnf install -y git curl ca-certificates
+        run_root dnf install -y git curl ca-certificates httpd-tools
       elif command_exists yum; then
-        run_root yum install -y git curl ca-certificates
+        run_root yum install -y git curl ca-certificates httpd-tools
       elif command_exists microdnf; then
-        run_root microdnf install -y git curl ca-certificates
+        run_root microdnf install -y git curl ca-certificates httpd-tools
       else
         fail "No supported RPM package manager was found on ${distro}."
       fi
       ;;
     opensuse*|sles)
-      run_root zypper --non-interactive install git curl ca-certificates
+      run_root zypper --non-interactive install git curl ca-certificates apache2-utils
       ;;
     arch|manjaro)
-      run_root pacman -Sy --noconfirm --needed git curl ca-certificates
+      run_root pacman -Sy --noconfirm --needed git curl ca-certificates apache
       ;;
     alpine)
-      run_root apk add --no-cache bash git curl ca-certificates
+      run_root apk add --no-cache bash git curl ca-certificates apache2-utils
       ;;
     *)
-      fail "Unsupported distribution '${distro}'. Install git and curl, then run this script again."
+      fail "Unsupported distribution '${distro}'. Install git, curl, and htpasswd, then run this script again."
       ;;
   esac
 }
