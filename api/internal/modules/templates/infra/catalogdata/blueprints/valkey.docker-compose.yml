@@ -1,9 +1,12 @@
 version: "3.8"
+x-aether-allow-host-ports: true
 
 services:
   valkey:
     image: valkey/valkey:8.1.4
     restart: unless-stopped
+    ports:
+      - "6380:6379"
     volumes:
       - ../files/valkey.conf:/etc/valkey/valkey.conf
       - valkey-data:/data
@@ -19,4 +22,3 @@ services:
 
 volumes:
   valkey-data: {}
-

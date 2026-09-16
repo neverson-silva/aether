@@ -1,7 +1,10 @@
 version: '3.8'
+x-aether-allow-host-ports: true
 services:
   dragonflydb:
     image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
+    ports:
+      - '6379:6379'
     expose:
       - 6379
     volumes:
