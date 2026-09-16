@@ -105,9 +105,6 @@ FRONTEND_DIR="$PROJECT_ROOT/frontend/web"
 WEB_PORT=4000
 DEV_MODE="${DEV_MODE:-true}"
 COOKIE_SECURE_DEFAULT=true
-if [[ "$DEV_MODE" == "1" || "$DEV_MODE" == "true" || "$DEV_MODE" == "TRUE" || "$DEV_MODE" == "yes" ]]; then
-  COOKIE_SECURE_DEFAULT=false
-fi
 
 MODE="${AETHER_MODE:-dev}"
 CRED_FILE="$STATE_DIR/.aether-db"
@@ -1286,8 +1283,10 @@ main() {
   PROGRESS_TOTAL=7
   export AETHER_PUBLIC_HOST="$(resolve_public_host)"
   export AETHER_PUBLIC_URL="$(resolve_public_url)"
-  if ! is_true "$DEV_MODE" && [[ -n "${AETHER_COOKIE_SECURE:-}" ]] && ! is_true "$AETHER_COOKIE_SECURE"; then
-    fail "Non-development mode requires AETHER_COOKIE_SECURE=true."
+  if [[ "$AETHER_PUBLIC_URL" == https://* ]]; then
+    COOKIE_SECURE_DEFAULT=true
+  else
+    COOKIE_SECURE_DEFAULT=false
   fi
   export AETHER_API_PUBLIC_URL="http://$AETHER_PUBLIC_HOST:$API_PORT"
   if [[ "$AETHER_PUBLIC_HOST" == "127.0.0.1" || "$AETHER_PUBLIC_HOST" == "localhost" ]]; then

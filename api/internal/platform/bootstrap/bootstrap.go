@@ -458,7 +458,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		Logger:          logger,
 		CORSOrigins:     cfg.CORSOrigins,
 		RequestTimeout:  60 * time.Second,
-		AuthRateLimiter: apihttp.NewPostgresRateLimiter(pool, 5, time.Minute),
+		AuthRateLimiter: apihttp.NewPostgresRateLimiter(pool, 30, time.Minute),
 	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler, servicesHandler)
 	router.WithDatabaseBackups(dbBackupsHandler)
 	router.WithSourceControl(sourceHandler)

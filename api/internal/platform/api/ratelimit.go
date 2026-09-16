@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/http"
 	"sync"
@@ -12,6 +13,10 @@ import (
 )
 
 type RateLimiterBackend interface{ Allow(key string) bool }
+
+type rateLimiterWithError interface {
+	AllowWithError(key string) (bool, error)
+}
 
 type bucket struct {
 	tokens float64
@@ -74,14 +79,19 @@ func NewPostgresRateLimiter(pool *pgxpool.Pool, limit int, window time.Duration)
 }
 
 func (rl *PostgresRateLimiter) Allow(key string) bool {
+	allowed, err := rl.AllowWithError(key)
+	return err == nil && allowed
+}
+
+func (rl *PostgresRateLimiter) AllowWithError(key string) (bool, error) {
 	if rl == nil || rl.pool == nil || rl.limit <= 0 || rl.window <= 0 {
-		return false
+		return false, fmt.Errorf("rate limiter is not configured")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var allowed bool
 	if _, err := rl.pool.Exec(ctx, `DELETE FROM rate_limit_buckets WHERE window_started < now() - interval '1 hour'`); err != nil {
-		return false
+		return false, fmt.Errorf("rate limiter cleanup: %w", err)
 	}
 	err := rl.pool.QueryRow(ctx, `
 		INSERT INTO rate_limit_buckets (bucket_key, window_started, request_count, window_seconds, max_requests)
@@ -92,12 +102,29 @@ func (rl *PostgresRateLimiter) Allow(key string) bool {
 			window_seconds = EXCLUDED.window_seconds,
 			max_requests = EXCLUDED.max_requests
 		RETURNING request_count <= max_requests`, key, int(rl.window.Seconds()), rl.limit).Scan(&allowed)
-	return err == nil && allowed
+	if err != nil {
+		return false, fmt.Errorf("rate limiter bucket: %w", err)
+	}
+	return allowed, nil
 }
 
 func RateLimit(rl RateLimiterBackend) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !rl.Allow(c.ClientIP()) {
+		key := c.Request.URL.Path + ":" + c.ClientIP()
+		if backend, ok := rl.(rateLimiterWithError); ok {
+			allowed, err := backend.AllowWithError(key)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication rate limit unavailable"})
+				return
+			}
+			if !allowed {
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
+				return
+			}
+			c.Next()
+			return
+		}
+		if !rl.Allow(key) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
 			return
 		}

@@ -196,7 +196,7 @@ func Load() (*Config, error) {
 		RestoreMaxUploadBytes:    int64(envInt("AETHER_RESTORE_MAX_UPLOAD_BYTES", 0)),
 		RestoreQuotaBytes:        int64(envInt("AETHER_RESTORE_QUOTA_BYTES", 0)),
 		BackupMaxBytes:           int64(envInt("AETHER_BACKUP_MAX_BYTES", 0)),
-		CookieSecure:             envBool("AETHER_COOKIE_SECURE", true),
+		CookieSecure:             cookieSecure(publicURL),
 	}
 	if err := validateInfrastructureImages(cfg); err != nil {
 		return nil, err
@@ -208,6 +208,11 @@ func Load() (*Config, error) {
 		cfg.ACMEDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 	}
 	return cfg, nil
+}
+
+func cookieSecure(publicURL string) bool {
+	parsed, err := url.Parse(publicURL)
+	return err == nil && parsed.Scheme == "https"
 }
 
 func validateImageSignaturePolicy(cfg *Config) error {
