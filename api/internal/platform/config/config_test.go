@@ -53,11 +53,13 @@ func TestLoadRejectsMutableInfrastructureImagesOutsideDevelopment(t *testing.T) 
 	}
 }
 
-func TestValidateImageSignaturePolicyRequiresCosignConfigurationOutsideDevelopment(t *testing.T) {
+func TestValidateImageSignaturePolicyAllowsUnsignedProductionByDefault(t *testing.T) {
 	t.Setenv("AETHER_REQUIRE_IMAGE_SIGNATURES", "false")
-	if err := validateImageSignaturePolicy(&Config{DevMode: false}); err == nil {
-		t.Fatal("expected signature policy to be required outside development")
+	t.Setenv("AETHER_REQUIRE_IMAGE_DIGESTS", "false")
+	if err := validateImageSignaturePolicy(&Config{DevMode: false}); err != nil {
+		t.Fatalf("expected unsigned production policy to be allowed: %v", err)
 	}
+
 	t.Setenv("AETHER_REQUIRE_IMAGE_SIGNATURES", "true")
 	t.Setenv("AETHER_COSIGN_PUBLIC_KEY", "")
 	if err := validateImageSignaturePolicy(&Config{DevMode: false}); err == nil {

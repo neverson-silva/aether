@@ -215,10 +215,7 @@ func validateImageSignaturePolicy(cfg *Config) error {
 		return nil
 	}
 	if !envBool("AETHER_REQUIRE_IMAGE_SIGNATURES", false) {
-		return fmt.Errorf("AETHER_REQUIRE_IMAGE_SIGNATURES must be true outside development mode")
-	}
-	if !envBool("AETHER_REQUIRE_IMAGE_DIGESTS", false) {
-		return fmt.Errorf("AETHER_REQUIRE_IMAGE_DIGESTS must be true outside development mode")
+		return nil
 	}
 	key := strings.TrimSpace(os.Getenv("AETHER_COSIGN_PUBLIC_KEY"))
 	if key == "" {

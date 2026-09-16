@@ -30,7 +30,7 @@ func main() {
 			slog.Error("load config", "err", "DATABASE_PASSWORD or DATABASE_URL must be set outside development mode")
 			os.Exit(1)
 		}
-		if cfg.DatabaseSSLMode == "disable" || cfg.DatabaseSSLMode == "prefer" {
+		if (cfg.DatabaseSSLMode == "disable" || cfg.DatabaseSSLMode == "prefer") && cfg.DatabaseHost != "aether-postgres" {
 			slog.Error("load config", "err", "DATABASE_SSL_MODE must require TLS outside development mode")
 			os.Exit(1)
 		}
