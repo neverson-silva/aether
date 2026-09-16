@@ -1254,9 +1254,6 @@ main() {
   PROGRESS_TOTAL=7
   export AETHER_PUBLIC_HOST="$(resolve_public_host)"
   export AETHER_PUBLIC_URL="$(resolve_public_url)"
-  if ! is_true "$DEV_MODE" && [[ "$AETHER_PUBLIC_URL" != https://* ]]; then
-    fail "Non-development mode requires AETHER_PUBLIC_URL to use HTTPS. Set DEV_MODE=true for local HTTP development."
-  fi
   if ! is_true "$DEV_MODE" && [[ -n "${AETHER_COOKIE_SECURE:-}" ]] && ! is_true "$AETHER_COOKIE_SECURE"; then
     fail "Non-development mode requires AETHER_COOKIE_SECURE=true."
   fi

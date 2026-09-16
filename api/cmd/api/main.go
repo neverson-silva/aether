@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -29,11 +28,6 @@ func main() {
 		os.Exit(1)
 	}
 	if !cfg.DevMode {
-		publicURL, publicURLError := url.Parse(cfg.PublicURL)
-		if publicURLError != nil || publicURL.Scheme != "https" || publicURL.Host == "" || publicURL.User != nil || publicURL.RawQuery != "" || publicURL.Fragment != "" {
-			slog.Error("load config", "err", "AETHER_PUBLIC_URL must be an HTTPS URL outside development mode")
-			os.Exit(1)
-		}
 		if cfg.DatabaseURL == "" && cfg.DatabasePassword == "" {
 			slog.Error("load config", "err", "DATABASE_PASSWORD or DATABASE_URL must be set outside development mode")
 			os.Exit(1)
