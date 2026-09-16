@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 
 	"aether/internal/modules/templates/domain"
@@ -55,6 +56,7 @@ func (c *DokployCatalog) List(ctx context.Context) ([]domain.Template, error) {
 		if compose, composeErr := c.ensureBlueprint(ctx, item.ID); composeErr == nil {
 			template.Environment = composeEnvironmentVariables(compose)
 		}
+		template.Domains = c.templateDomains(item.ID)
 		templates = append(templates, template)
 	}
 	return templates, nil
@@ -76,6 +78,7 @@ func (c *DokployCatalog) Get(ctx context.Context, id uuid.UUID) (*domain.Templat
 		template := remoteTemplate(item)
 		template.ComposeYAML = compose
 		template.Environment = composeEnvironmentVariables(compose)
+		template.Domains = c.templateDomains(item.ID)
 		return &template, nil
 	}
 	return nil, domain.ErrNotFound
@@ -222,6 +225,44 @@ func remoteTemplate(item DokployTemplateMetadata) domain.Template {
 	}
 	links := item.Links
 	return domain.Template{ID: remoteTemplateID(item.ID), RemoteID: item.ID, Name: item.Name, Description: item.Description, Category: category, Version: item.Version, Icon: item.Logo, GitHub: links["github"], Homepage: links["website"], Tags: item.Tags, Verified: true, UpdatedAt: time.Now().UTC()}
+}
+
+type dokployTemplateDefinition struct {
+	Config struct {
+		Domains []struct {
+			ServiceName string `toml:"serviceName"`
+			Port        int    `toml:"port"`
+			Host        string `toml:"host"`
+			Path        string `toml:"path"`
+		} `toml:"domains"`
+	} `toml:"config"`
+}
+
+func (c *DokployCatalog) templateDomains(id string) []domain.TemplateDomain {
+	if !safeRemoteID(id) {
+		return nil
+	}
+	data, err := bundledDokployAssets.ReadFile("catalogdata/blueprints/" + id + ".template.toml")
+	if err != nil {
+		return nil
+	}
+	var definition dokployTemplateDefinition
+	if err := toml.Unmarshal(data, &definition); err != nil {
+		return nil
+	}
+	domains := make([]domain.TemplateDomain, 0, len(definition.Config.Domains))
+	for _, item := range definition.Config.Domains {
+		serviceName := strings.TrimSpace(item.ServiceName)
+		if serviceName == "" || item.Port < 1 || item.Port > 65535 {
+			continue
+		}
+		path := strings.TrimSpace(item.Path)
+		if path == "" {
+			path = "/"
+		}
+		domains = append(domains, domain.TemplateDomain{ServiceName: serviceName, Port: item.Port, Host: strings.TrimSpace(item.Host), Path: path})
+	}
+	return domains
 }
 
 func (c *DokployCatalog) ensureBlueprint(ctx context.Context, id string) (string, error) {

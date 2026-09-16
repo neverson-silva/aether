@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,6 +79,7 @@ import (
 	statsApp "aether/internal/modules/stats/application"
 	statshttp "aether/internal/modules/stats/http"
 	templatesApp "aether/internal/modules/templates/application"
+	templatesdomain "aether/internal/modules/templates/domain"
 	templateshttp "aether/internal/modules/templates/http"
 	templatesInfra "aether/internal/modules/templates/infra"
 	variablesApp "aether/internal/modules/variables/application"
@@ -206,6 +208,24 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	deployHandler.WithCompose(composeSvc)
 	domainsSvc.Compose = composeSvc
+	templatesSvc.ProvisionTemplateDomains = func(ctx context.Context, orgID uuid.UUID, app *templatesdomain.ComposeApp, mappings []templatesdomain.TemplateDomain) error {
+		if app == nil || domainsSvc.Provisioner.EffectiveBase() == "" {
+			return nil
+		}
+		for _, mapping := range mappings {
+			serviceName := mapping.ServiceName
+			if serviceName == "" {
+				serviceName = app.Name
+			}
+			host := domainsSvc.Provisioner.GenerateFreeDomain(serviceName+"-"+strconv.Itoa(mapping.Port), app.ID)
+			if _, err := domainsSvc.Add(ctx, app.ID, orgID, domainsApp.ServiceTypeCompose, domainsApp.AddDomainInput{
+				Host: host, Path: mapping.Path, InternalPath: "/", ContainerPort: mapping.Port,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	templatesHandler := templateshttp.New(templatesSvc, composeSvc)
 	templatesHandler.WithRuntime(deployWorkerRuntime)
 

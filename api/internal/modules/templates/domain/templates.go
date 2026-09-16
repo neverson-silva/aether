@@ -37,11 +37,19 @@ type Template struct {
 	UpdatedAt      time.Time
 	ComposeYAML    string
 	Environment    []TemplateEnvironmentVariable
+	Domains        []TemplateDomain
 }
 
 type TemplateEnvironmentVariable struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+type TemplateDomain struct {
+	ServiceName string `json:"service_name"`
+	Port        int    `json:"port"`
+	Host        string `json:"host"`
+	Path        string `json:"path"`
 }
 
 type ComposeApp struct {

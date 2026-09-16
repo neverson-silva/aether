@@ -162,13 +162,19 @@ func (c *Compose) Create(ctx context.Context, orgID, projectID uuid.UUID, name, 
 		return nil, domain.ErrValidation
 	}
 	if !hasPort {
-		port, err = c.Store.NextComposePort(ctx)
+		port, err = composeContainerPort(content)
 		if err != nil {
-			return nil, fmt.Errorf("allocate compose port: %w", err)
+			return nil, fmt.Errorf("parse compose container port: %w", err)
 		}
-		content, err = addComposePort(content, port)
-		if err != nil {
-			return nil, fmt.Errorf("add compose port: %w", err)
+		if port == 0 {
+			port, err = c.Store.NextComposePort(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("allocate compose port: %w", err)
+			}
+			content, err = addComposePort(content, port)
+			if err != nil {
+				return nil, fmt.Errorf("add compose port: %w", err)
+			}
 		}
 	}
 	return c.Store.CreateComposeApp(ctx, &domain.ComposeApp{
@@ -879,14 +885,22 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if err != nil {
 			return "", fmt.Errorf("parse compose ports: %w", err)
 		}
-		if !hasPort && c.Store != nil {
-			publishedPort, err = c.Store.NextComposePort(ctx)
-			if err != nil {
-				return "", fmt.Errorf("allocate compose port: %w", err)
+		if !hasPort {
+			containerPort, portErr := composeContainerPort(content)
+			if portErr != nil {
+				return "", fmt.Errorf("parse compose container port: %w", portErr)
 			}
-			content, err = addComposePort(content, publishedPort)
-			if err != nil {
-				return "", fmt.Errorf("add compose port: %w", err)
+			if containerPort == 0 && c.Store != nil {
+				publishedPort, err = c.Store.NextComposePort(ctx)
+				if err != nil {
+					return "", fmt.Errorf("allocate compose port: %w", err)
+				}
+				content, err = addComposePort(content, publishedPort)
+				if err != nil {
+					return "", fmt.Errorf("add compose port: %w", err)
+				}
+			} else if app.Port == 0 {
+				publishedPort = containerPort
 			}
 		}
 		if updater, ok := c.Apps.(AppPortUpdater); ok && publishedPort > 0 && app.Port != publishedPort {

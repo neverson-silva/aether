@@ -157,7 +157,7 @@ func templateDTO(t *domain.Template) gin.H {
 	result := gin.H{
 		"id": t.ID, "name": t.Name, "description": t.Description, "category": t.Category,
 		"tags": t.Tags, "icon": t.Icon, "version": t.Version, "definition": t.Definition,
-		"compose_yaml": composeYAML, "environment": t.Environment, "readme": t.Readme, "homepage": t.Homepage,
+		"compose_yaml": composeYAML, "environment": t.Environment, "domains": t.Domains, "readme": t.Readme, "homepage": t.Homepage,
 		"github": t.GitHub, "license": t.License, "installs": t.Installs,
 		"featured": t.Featured, "editors_choice": t.EditorsChoice, "verified": t.Verified,
 		"updated_at": t.UpdatedAt,

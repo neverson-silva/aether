@@ -19,10 +19,11 @@ import (
 )
 
 type Templates struct {
-	Store     domain.Store
-	Apps      AppStore
-	Catalog   RemoteCatalog
-	Variables variablesDomain.Store
+	Store                    domain.Store
+	Apps                     AppStore
+	Catalog                  RemoteCatalog
+	Variables                variablesDomain.Store
+	ProvisionTemplateDomains func(context.Context, uuid.UUID, *domain.ComposeApp, []domain.TemplateDomain) error
 }
 
 var errCatalogUnavailable = errors.New("template catalog unavailable")
@@ -121,13 +122,19 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 		}
 	}
 	if !hasPort {
-		port, err = t.Store.NextComposePort(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("allocate compose port: %w", err)
-		}
-		compose, err = addComposePort(compose, port)
+		port, err = composeContainerPort(compose)
 		if err != nil {
 			return nil, domain.ErrValidation
+		}
+		if port == 0 {
+			port, err = t.Store.NextComposePort(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("allocate compose port: %w", err)
+			}
+			compose, err = addComposePort(compose, port)
+			if err != nil {
+				return nil, domain.ErrValidation
+			}
 		}
 	}
 	compose, err = injectComposeSecurityDefaults(compose)
@@ -148,6 +155,11 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 	}
 	if err := t.ensureServiceVariables(ctx, created, compose, overrides); err != nil {
 		return nil, err
+	}
+	if t.ProvisionTemplateDomains != nil && len(tpl.Domains) > 0 {
+		if err := t.ProvisionTemplateDomains(ctx, orgID, created, tpl.Domains); err != nil {
+			return nil, fmt.Errorf("provision template domains: %w", err)
+		}
 	}
 	tpl.Installs++
 	tpl.ComposeYAML = compose

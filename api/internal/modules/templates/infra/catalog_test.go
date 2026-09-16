@@ -63,3 +63,20 @@ func TestBundledRustFSComposeExposesEnvironmentVariables(t *testing.T) {
 		t.Fatalf("unexpected first RustFS environment variable: %+v", template.Environment[0])
 	}
 }
+
+func TestBundledRustFSTemplateExposesDokployDomains(t *testing.T) {
+	catalog := NewDokployCatalog(t.TempDir())
+	template, err := catalog.Get(context.Background(), remoteTemplateID("rustfs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(template.Domains) != 2 {
+		t.Fatalf("RustFS template domains = %d, want 2", len(template.Domains))
+	}
+	if template.Domains[0].ServiceName != "rustfs" || template.Domains[0].Port != 9001 {
+		t.Fatalf("unexpected RustFS console domain: %+v", template.Domains[0])
+	}
+	if template.Domains[1].ServiceName != "rustfs" || template.Domains[1].Port != 9000 {
+		t.Fatalf("unexpected RustFS API domain: %+v", template.Domains[1])
+	}
+}

@@ -38,10 +38,10 @@ import { Route as ShellSsoIndexRouteImport } from './routes/_shell/sso/index'
 import { Route as ShellStorageIndexRouteImport } from './routes/_shell/storage/index'
 import { Route as ShellWhitelabelIndexRouteImport } from './routes/_shell/whitelabel/index'
 import { Route as StudioDbIdIndexRouteImport } from './routes/studio.$dbId/index'
-import { Route as ShellAppsAppIdIndexRouteImport } from './routes/_shell/apps.$appId/index'
-import { Route as ShellDatabasesDbIdIndexRouteImport } from './routes/_shell/databases.$dbId/index'
-import { Route as ShellProjectsProjectIdIndexRouteImport } from './routes/_shell/projects.$projectId/index'
-import { Route as ShellProjectsNewIndexRouteImport } from './routes/_shell/projects.new/index'
+import { Route as ShellAppsAppIdIndexRouteImport } from './routes/_shell/apps/$appId/index'
+import { Route as ShellDatabasesDbIdIndexRouteImport } from './routes/_shell/databases/$dbId/index'
+import { Route as ShellProjectsProjectIdIndexRouteImport } from './routes/_shell/projects/$projectId/index'
+import { Route as ShellProjectsNewIndexRouteImport } from './routes/_shell/projects/new/index'
 
 const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
