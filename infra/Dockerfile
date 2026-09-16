@@ -36,7 +36,7 @@ COPY --from=build /out/aether-worker /usr/local/bin/aether-worker
 COPY --from=build /out/aether-monitoring /usr/local/bin/aether-monitoring
 COPY --from=build /out/bin/cosign /usr/local/bin/cosign
 COPY api/db/migrations /app/api/db/migrations
-EXPOSE 8080 8081 8082
+EXPOSE 8080
 ENV AETHER_STATE=/var/lib/aether
 ENV AETHER_API_ADDR=0.0.0.0:8080
 ENV DOCKER_HOST=unix:///var/run/docker.sock

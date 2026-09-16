@@ -137,6 +137,16 @@ is_true() {
   [[ "$1" == "1" || "$1" == "true" || "$1" == "TRUE" || "$1" == "yes" ]]
 }
 
+public_bind_address() {
+  if [[ -n "${AETHER_BIND_ADDRESS:-}" ]]; then
+    printf '%s' "$AETHER_BIND_ADDRESS"
+  elif is_true "$DEV_MODE"; then
+    printf '127.0.0.1'
+  else
+    printf '0.0.0.0'
+  fi
+}
+
 resolve_public_url() {
 	if [[ -n "${AETHER_PUBLIC_URL:-}" ]]; then
 		printf '%s' "${AETHER_PUBLIC_URL%/}"
@@ -843,6 +853,8 @@ start_api() {
   fi
 
   info "Starting API container ($API_CONTAINER) on $AETHER_API_PUBLIC_URL..."
+  local bind_address
+  bind_address="$(public_bind_address)"
   local args=(run -d)
   if [[ -f "$ENV_FILE" ]]; then
     args+=(--env-file "$ENV_FILE")
@@ -858,7 +870,7 @@ start_api() {
     --cap-drop ALL
     --read-only
     --tmpfs /tmp:rw,noexec,nosuid,size=128m
-    -p "127.0.0.1:$API_PORT:8080"
+    -p "$bind_address:$API_PORT:8080"
     -v "$STATE_DIR:/var/lib/aether"
     -v "aether-pack-cache:/home/aether/.cache/pack"
     --restart unless-stopped
@@ -1025,10 +1037,12 @@ EOF
 start_web() {
   local conf
   conf="$(write_nginx_conf)"
+  local bind_address
+  bind_address="$(public_bind_address)"
 
   $RUNTIME rm -f "$WEB_CONTAINER" >/dev/null 2>&1 || true
 
-  info "Starting web gateway ($WEB_CONTAINER) on 127.0.0.1:$WEB_PORT..."
+  info "Starting web gateway ($WEB_CONTAINER) on $bind_address:$WEB_PORT..."
   $RUNTIME run -d \
     --name "$WEB_CONTAINER" \
     --network "$NET_NAME" \
@@ -1045,7 +1059,7 @@ start_web() {
     --tmpfs /var/cache/nginx/scgi_temp:rw,noexec,nosuid,nodev,size=4m,uid=101,gid=101,mode=755 \
     --tmpfs /var/run:rw,nosuid,nodev,size=1m \
     --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
-    -p "127.0.0.1:$WEB_PORT:4000" \
+    -p "$bind_address:$WEB_PORT:4000" \
     -v "$conf:/etc/nginx/conf.d/default.conf:ro" \
     --restart unless-stopped \
     "$WEB_IMAGE" >/dev/null || fail "Failed to start the web container."
