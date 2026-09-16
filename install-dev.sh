@@ -1129,6 +1129,7 @@ ensure_builder() {
   builder_stamp="$STATE_DIR/cnb-builder.stamp"
   if "$DOCKER_RUNTIME" image inspect "$CNB_BUILDER" >/dev/null 2>&1 && [[ -f "$builder_stamp" ]] && grep -qx "$source_stamp" "$builder_stamp"; then
     info "CNB builder already present ($CNB_BUILDER)."
+    pin_cnb_builder
     return 0
   fi
   info "Building CNB builder ($CNB_BUILDER) — aether buildpacks + ubuntu run image..."
@@ -1137,7 +1138,20 @@ ensure_builder() {
   "$DOCKER_RUNTIME" image inspect "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$builder_stamp"
+  pin_cnb_builder
   info "CNB builder ready."
+}
+
+pin_cnb_builder() {
+  local repo_digest image_digest
+  repo_digest="$($DOCKER_RUNTIME image inspect "$CNB_BUILDER" --format '{{index .RepoDigests 0}}' 2>/dev/null || true)"
+  if [[ -n "$repo_digest" && "$repo_digest" == *@sha256:* ]]; then
+    CNB_BUILDER="${CNB_BUILDER%@*}@${repo_digest##*@}"
+    return 0
+  fi
+  image_digest="$($DOCKER_RUNTIME image inspect "$CNB_BUILDER" --format '{{.Id}}' 2>/dev/null || true)"
+  [[ "$image_digest" == sha256:* ]] || fail "CNB builder image digest is unavailable."
+  CNB_BUILDER="${CNB_BUILDER%@*}@$image_digest"
 }
 
 # ---------------------------------------------------------------------------
