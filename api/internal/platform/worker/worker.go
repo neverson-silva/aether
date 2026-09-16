@@ -358,6 +358,12 @@ func (w *Worker) processServiceQueueJob(ctx context.Context, dep *deploydomain.D
 		w.fail(deploymentCtx, dep, containerID, err)
 		return nil
 	}
+	if kind == "compose" {
+		if err := w.waitForComposeContainers(deploymentCtx, serviceID, specID); err != nil {
+			w.fail(deploymentCtx, dep, containerID, err)
+			return nil
+		}
+	}
 	if w.deploymentCancelled(dep.ID) {
 		return nil
 	}
@@ -371,6 +377,58 @@ func (w *Worker) processServiceQueueJob(ctx context.Context, dep *deploydomain.D
 		return err
 	}
 	return nil
+}
+
+func (w *Worker) waitForComposeContainers(ctx context.Context, serviceID, specID uuid.UUID) error {
+	lister, ok := w.Runtime.(ServiceContainerRuntime)
+	if !ok {
+		return errors.New("compose runtime does not expose container inspection")
+	}
+	deadline := time.NewTimer(2 * time.Minute)
+	defer deadline.Stop()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	var readySince time.Time
+	for {
+		containers, err := lister.ListServiceContainers(ctx, serviceID, specID)
+		if err != nil {
+			return fmt.Errorf("inspect compose containers: %w", err)
+		}
+		if len(containers) > 0 {
+			running := 0
+			for _, container := range containers {
+				switch container.State {
+				case "running", "restarting":
+					running++
+				case "exited", "dead":
+					if container.ExitCode != 0 {
+						return fmt.Errorf("compose container %s exited with code %d", container.Name, container.ExitCode)
+					}
+				default:
+					return fmt.Errorf("compose container %s is %s", container.Name, container.State)
+				}
+				if container.Healthy != nil && !*container.Healthy {
+					return fmt.Errorf("compose container %s is unhealthy", container.Name)
+				}
+			}
+			if running == 0 {
+				readySince = time.Time{}
+			} else if readySince.IsZero() {
+				readySince = time.Now()
+			} else if time.Since(readySince) >= 10*time.Second {
+				return nil
+			}
+		} else {
+			readySince = time.Time{}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return errors.New("compose containers did not become ready before timeout")
+		case <-ticker.C:
+		}
+	}
 }
 
 func (w *Worker) deploymentCancelled(id uuid.UUID) bool {

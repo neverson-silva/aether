@@ -4,6 +4,7 @@ services:
     image: ghcr.io/dockroute/dockroute:0.2.0
     restart: unless-stopped
     environment:
+      - DOCKER_HOST=tcp://aether-docker-socket-proxy:2375
       - DOCKROUTE_PROVIDER=${DOCKROUTE_PROVIDER}
       - DOCKROUTE_OWNER_ID=${DOCKROUTE_OWNER_ID}
       - DOCKROUTE_POLICY=${DOCKROUTE_POLICY}
@@ -12,5 +13,28 @@ services:
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
       - CLOUDFLARE_TUNNEL_ID=${CLOUDFLARE_TUNNEL_ID}
+    networks:
+      - default
+      - aether-docker-control
+    depends_on:
+      docker-socket-bridge:
+        condition: service_started
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dockroute-docker-socket:/var/run
+
+  docker-socket-bridge:
+    image: alpine/socat:1.8.0.3
+    command: ["UNIX-LISTEN:/var/run/docker.sock,fork,mode=666", "TCP:aether-docker-socket-proxy:2375"]
+    networks:
+      - default
+      - aether-docker-control
+    volumes:
+      - dockroute-docker-socket:/var/run
+
+networks:
+  aether-docker-control:
+    external: true
+    name: aether-docker-control
+
+volumes:
+  dockroute-docker-socket:

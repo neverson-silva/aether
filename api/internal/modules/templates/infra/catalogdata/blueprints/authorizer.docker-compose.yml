@@ -16,8 +16,10 @@ services:
       - REFRESH_TOKEN_EXPIRY_TIME=86400
       - DISABLE_PLAYGROUND=true
     depends_on:
-      - authorizer-db
-      - authorizer-redis
+      authorizer-db:
+        condition: service_healthy
+      authorizer-redis:
+        condition: service_healthy
 
   authorizer-db:
     image: postgres:15-alpine
@@ -28,12 +30,22 @@ services:
       - POSTGRES_DB=authorizer
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d authorizer"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   authorizer-redis:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
 volumes:
   db_data: {}

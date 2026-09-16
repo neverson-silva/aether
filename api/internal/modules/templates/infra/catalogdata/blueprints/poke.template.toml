@@ -4,16 +4,7 @@ main_domain = "${domain}"
 [config]
 [[config.domains]]
 serviceName = "poke"
-port = 6003
+port = 3000
 host = "${main_domain}"
 
 [config.env]
-
-[[config.mounts]]
-filePath = "/poketube/config.json"
-content = """
-{
-  "server_port": 6003,
-  "image_proxy": "" 
-}
-"""

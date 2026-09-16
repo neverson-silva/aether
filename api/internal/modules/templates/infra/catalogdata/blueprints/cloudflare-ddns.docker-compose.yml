@@ -12,5 +12,9 @@ services:
     environment:
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:?}
       - DOMAINS=${DOMAINS:?}
+      - IP4_PROVIDER=cloudflare.doh
+      - IP6_PROVIDER=none
+      - UPDATE_ON_START=false
+      - UPDATE_CRON=@every 24h
       - PROXIED=false
       - IP6_PROVIDER=none

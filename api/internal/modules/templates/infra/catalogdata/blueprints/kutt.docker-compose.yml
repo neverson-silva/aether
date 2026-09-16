@@ -3,7 +3,8 @@ services:
     image: kutt/kutt:main
     volumes:
       - kutt_db_data:/var/lib/kutt
-      - ./kutt/custom:/kutt/custom
+    expose:
+      - 3000
     environment:
       DB_FILENAME: "/var/lib/kutt/data.sqlite"
       JWT_SECRET: ${JWT_SECRET}

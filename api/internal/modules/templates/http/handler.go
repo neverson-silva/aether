@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -113,6 +114,7 @@ func (h *Handler) Install(c *gin.Context) {
 	}
 	tpl, err := h.templates.Install(c.Request.Context(), templateID, orgID(c), projectID, req.Name, req.Overrides)
 	if err != nil {
+		slog.Error("template installation failed", "error", err, "template_id", templateID, "project_id", projectID, "request_id", c.GetString("request_id"))
 		abort(c, err)
 		return
 	}
@@ -141,8 +143,7 @@ func (h *Handler) DeleteCompose(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	_ = h.compose.Down(c.Request.Context(), id, orgID(c))
-	if err := h.templates.DeleteCompose(c.Request.Context(), id, orgID(c)); err != nil {
+	if err := h.compose.Delete(c.Request.Context(), id, orgID(c)); err != nil {
 		abort(c, err)
 		return
 	}
@@ -157,7 +158,7 @@ func templateDTO(t *domain.Template) gin.H {
 	result := gin.H{
 		"id": t.ID, "name": t.Name, "description": t.Description, "category": t.Category,
 		"tags": t.Tags, "icon": t.Icon, "version": t.Version, "definition": t.Definition,
-		"compose_yaml": composeYAML, "environment": t.Environment, "domains": t.Domains, "readme": t.Readme, "homepage": t.Homepage,
+		"compose_yaml": composeYAML, "environment": t.Environment, "variables": t.Variables, "mounts": t.Mounts, "domains": t.Domains, "readme": t.Readme, "homepage": t.Homepage,
 		"github": t.GitHub, "license": t.License, "installs": t.Installs,
 		"featured": t.Featured, "editors_choice": t.EditorsChoice, "verified": t.Verified,
 		"updated_at": t.UpdatedAt,
@@ -200,7 +201,11 @@ func abort(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrConflict):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "conflict"})
 	case errors.Is(err, domain.ErrValidation):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		message := err.Error()
+		if message == domain.ErrValidation.Error() {
+			message = "invalid input"
+		}
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": message})
 	case errors.Is(err, domain.ErrForbidden):
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
 	default:

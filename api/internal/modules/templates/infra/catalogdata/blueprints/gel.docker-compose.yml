@@ -3,6 +3,7 @@ services:
   gel:
     image: geldata/gel:6
     restart: unless-stopped
+    mem_limit: 768m
     expose:
       - 5656
     environment:

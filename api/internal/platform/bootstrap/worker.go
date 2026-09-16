@@ -103,9 +103,6 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	defer imageRuntime.Close()
 	backupsEngine.Register(deployRuntime)
-	if err := ensureIngress(workerCtx, cfg, deployRuntime); err != nil {
-		return fmt.Errorf("bootstrap ingress: %w", err)
-	}
 	domainsStore := domainsInfra.NewStore(pool)
 	databasesStore := databasesInfra.NewStore(pool)
 	domainsSvc := &domainsApp.Domains{
@@ -179,7 +176,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		return err
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore, Variables: cronResolver}
-	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
+	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: deployRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
 	composeSvc.Variables = cronResolver
 	sourceStore := sourcecontrolInfra.NewStore(pool)
 	composeSvc.Source = sourceStore

@@ -2,12 +2,53 @@ package compose
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestInlineManagedTemplateConfigs(t *testing.T) {
+	baseDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(baseDir, "template-mounts"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(baseDir, "template-mounts", "0"), []byte("port = 6379\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	content, changed, err := inlineManagedTemplateConfigs(`services:
+  dragonfly:
+    image: dragonflydb/dragonfly
+    configs:
+      - source: aether-template-file-0
+        target: /etc/dragonfly.conf
+configs:
+  aether-template-file-0:
+    file: ./template-mounts/0
+`, baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || strings.Contains(content, "file: ./template-mounts/0") || !strings.Contains(content, "port = 6379") {
+		t.Fatalf("managed template config was not inlined: changed=%v content=%s", changed, content)
+	}
+}
+
+func TestInlineManagedTemplateConfigsRejectsWorkspaceEscape(t *testing.T) {
+	_, _, err := inlineManagedTemplateConfigs(`services:
+  dragonfly:
+    image: dragonflydb/dragonfly
+configs:
+  aether-template-file-0:
+    file: ./template-mounts/../../secret
+`, t.TempDir())
+	if err == nil {
+		t.Fatal("workspace escape was accepted")
+	}
+}
 
 func TestDockerExecuteBuildsExplicitProjectCommand(t *testing.T) {
 	dir := t.TempDir()
@@ -53,6 +94,128 @@ func TestDockerExecuteWithLogsStreamsOutput(t *testing.T) {
 	}
 }
 
+func TestDockerExecuteRetriesTransientNetworkEndpointError(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(file, []byte("services:\n  app:\n    image: nginx:alpine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, "attempted")
+	command := filepath.Join(dir, "docker")
+	script := fmt.Sprintf("#!/bin/sh\nif [ -f %q ]; then\n  printf 'started\\n'\n  exit 0\nfi\ntouch %q\nprintf 'Error response from daemon: Container cannot be created with multiple network endpoints: first, second\\n' >&2\nexit 1\n", marker, marker)
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	var lines []string
+	output, err := (&Docker{Binary: command}).ExecuteWithLogs(context.Background(), Project{Directory: dir, File: file, Name: "aether-test"}, func(line string) {
+		lines = append(lines, line)
+	}, "up", "-d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output != "started\n" {
+		t.Fatalf("output = %q, want successful retry output", output)
+	}
+	if strings.Contains(strings.ToLower(strings.Join(lines, "\n")), "multiple network endpoints") {
+		t.Fatalf("transient network error leaked to logs: %#v", lines)
+	}
+}
+
+func TestDetachExternalNetworkAttachments(t *testing.T) {
+	content := `version: "3.8"
+services:
+  web:
+    image: nginx:alpine
+    networks:
+      default: {}
+      aether-ingress:
+        aliases:
+          - app-example-web
+  worker:
+    image: nginx:alpine
+    networks:
+      - aether-ingress
+networks:
+  default: {}
+  aether-ingress:
+    name: aether-ingress
+    external: true
+`
+	fallback, attachments, err := detachExternalNetworkAttachments(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attachments) != 2 {
+		t.Fatalf("attachments = %#v, want two attachments", attachments)
+	}
+	if attachments[0].Service != "web" || attachments[0].Network != "aether-ingress" || len(attachments[0].Aliases) != 1 || attachments[0].Aliases[0] != "app-example-web" {
+		t.Fatalf("web attachment = %#v", attachments[0])
+	}
+	if strings.Contains(fallback, "aether-ingress") {
+		t.Fatalf("fallback still contains external network: %s", fallback)
+	}
+	if err := ValidatePolicy(fallback); err != nil {
+		t.Fatalf("fallback Compose rejected: %v", err)
+	}
+}
+
+func TestDockerExecuteFallsBackToNetworkConnect(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "compose.yml")
+	content := `services:
+  web:
+    image: nginx:alpine
+    networks:
+      aether-ingress:
+        aliases:
+          - app-example-web
+networks:
+  aether-ingress:
+    name: aether-ingress
+    external: true
+`
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(dir, "docker")
+	script := `#!/bin/sh
+args="$*"
+case "$args" in
+  *"network inspect aether-ingress"*)
+    exit 0
+    ;;
+  *"compose"*".compose-network-fallback-"*" up "*)
+    exit 0
+    ;;
+  *".compose-network-fallback-"*" ps -q web"*)
+    printf 'container-id\n'
+    exit 0
+    ;;
+  *"network connect"*)
+    exit 0
+    ;;
+  *"compose"*" up "*)
+    printf 'Error response from daemon: Container cannot be created with multiple network endpoints: first, second\n' >&2
+    exit 1
+    ;;
+esac
+printf 'unexpected command: %s\n' "$args" >&2
+exit 1
+`
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := (&Docker{Binary: command}).Execute(context.Background(), Project{Directory: dir, File: file, Name: "aether-test"}, "up", "-d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output != "" {
+		t.Fatalf("output = %q, want no fallback control output", output)
+	}
+}
+
 func TestDockerExecuteRejectsUnsafeComposeBeforeLaunchingRuntime(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "compose.yml")
@@ -70,6 +233,21 @@ func TestDockerExecuteRejectsUnsafeComposeBeforeLaunchingRuntime(t *testing.T) {
 	}
 	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
 		t.Fatalf("runtime launched after policy rejection: %v", statErr)
+	}
+}
+
+func TestNormalizeUnsupportedExposeRanges(t *testing.T) {
+	content, err := normalizeUnsupportedExposeRanges(`services:
+  agent:
+    expose:
+      - 8090
+      - 50000-50100/udp
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "50000-50100") || !strings.Contains(content, "8090") {
+		t.Fatalf("unsupported expose range was not removed: %s", content)
 	}
 }
 

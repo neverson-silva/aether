@@ -12,6 +12,4 @@ host = "${main_domain}"
 # Example: COMMAFEED_ADMIN_USER = "${username}"
 # Example: COMMAFEED_ADMIN_PASSWORD = "${password:32}"
 
-[[config.mounts]]
-filePath = "/files/commafeed-data"
 content = ""

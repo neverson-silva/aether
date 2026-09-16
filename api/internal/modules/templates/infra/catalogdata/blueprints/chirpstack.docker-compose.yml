@@ -1,10 +1,8 @@
 services:
   chirpstack:
     image: chirpstack/chirpstack:4 
-    command: -c /etc/chirpstack
+    command: -c /chirpstack
     restart: unless-stopped
-    volumes:
-      - ../files/chirpstack:/etc/chirpstack
     expose:
       - 8080
     environment:
@@ -12,15 +10,16 @@ services:
       - REDIS_HOST=redis
       - POSTGRESQL_HOST=postgres
     depends_on:
-      - postgres
-      - mosquitto
-      - redis
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      redis:
+        condition: service_started
 
   chirpstack-gateway-bridge:
     image: chirpstack/chirpstack-gateway-bridge:4
     restart: unless-stopped
-    volumes:
-      - ../files/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
     expose:
       - 1700/udp
     environment:
@@ -32,10 +31,8 @@ services:
 
   chirpstack-gateway-bridge-basicstation:
     image: chirpstack/chirpstack-gateway-bridge:4
-    command: -c /etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge-basicstation-eu868.toml
+    command: -c /chirpstack-gateway-bridge/chirpstack-gateway-bridge-basicstation-eu868.toml
     restart: unless-stopped
-    volumes:
-      - ../files/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
     expose:
       - 3001
     depends_on:
@@ -55,11 +52,16 @@ services:
     restart: unless-stopped
     volumes:
       - postgresqldata:/var/lib/postgresql/data
-      - ../files/postgresql/initdb:/docker-entrypoint-initdb.d
     environment:
       - POSTGRES_USER=chirpstack
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=chirpstack
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chirpstack -d chirpstack"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -71,8 +73,6 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     restart: unless-stopped
-    volumes:
-      - ../files/mosquitto/config/:/mosquitto/config/
     expose:
       - 1883
 volumes:

@@ -1,9 +1,10 @@
-variables = {}
+[variables]
+api_token = "${password:40}"
 
 [config]
 domains = []
 mounts = []
 
 [config.env]
-CLOUDFLARE_API_TOKEN = "<INSERT YOUR TOKEN>"
+CLOUDFLARE_API_TOKEN = "${api_token}"
 DOMAINS = "example.org,www.example.org,example.io"

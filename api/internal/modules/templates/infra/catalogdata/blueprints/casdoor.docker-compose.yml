@@ -1,11 +1,11 @@
 services:
   casdoor:
     image: casbin/casdoor@sha256:1c4424819af678635d55e6979088761f526fe5a58f331ba94c371c4c0c81521f
+    expose:
+      - 8000
     environment:
       - RUNNING_IN_DOCKER=true
     volumes:
-      - ../files/app.conf:/conf/app.conf
-      - ../files/init_data.json:/init_data.json
       - casdoor-data:/data
     depends_on:
       casdoor-db:

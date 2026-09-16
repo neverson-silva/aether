@@ -105,9 +105,11 @@ services:
     expose:
       - 51907
       - 51908
-    ports:
-      - 5060:5060/udp
-      - 5060-5063:5060-5063
+    expose:
+      - 5060
+      - 5061
+      - 5062
+      - 5063
     volumes:
       - ../files/config/keys/public.pem:/etc/routr/keys/public.pem
 
@@ -125,9 +127,9 @@ services:
     image: fonoster/rtpengine:0.3.17
     restart: unless-stopped
     platform: linux/x86_64
-    ports: 
-      - 10000-10100:10000-10100/udp
-      - 8080:8080
+    expose:
+      - 10000-10100
+      - 8080
     environment:
       PORT_MAX: ${RTPENGINE_PORT_MAX}
       PORT_MIN: ${RTPENGINE_PORT_MIN}
@@ -198,9 +200,8 @@ services:
     command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml"]
     volumes:
       - ../files/config:/etc/envoy:ro
-    ports:
-      - 8449:8449
+    expose:
+      - 8449
 volumes:
   db:
   influxdb:
-

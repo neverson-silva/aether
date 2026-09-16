@@ -230,6 +230,7 @@ type Querier interface {
 	UpdateApp(ctx context.Context, arg UpdateAppParams) (UpdateAppRow, error)
 	UpdateBackupConfiguration(ctx context.Context, arg UpdateBackupConfigurationParams) (BackupConfiguration, error)
 	UpdateBackupJob(ctx context.Context, arg UpdateBackupJobParams) (BackupJob, error)
+	UpdateComposeApp(ctx context.Context, arg UpdateComposeAppParams) error
 	UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (CronJob, error)
 	UpdateDatabasePort(ctx context.Context, arg UpdateDatabasePortParams) error
 	UpdateDatabaseStatus(ctx context.Context, arg UpdateDatabaseStatusParams) error

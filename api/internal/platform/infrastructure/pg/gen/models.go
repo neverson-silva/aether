@@ -131,6 +131,24 @@ type AuditLog struct {
 	CreatedAt    time.Time     `json:"created_at"`
 }
 
+type AuthRefreshToken struct {
+	ID        uuid.UUID    `json:"id"`
+	SessionID uuid.UUID    `json:"session_id"`
+	TokenHash string       `json:"token_hash"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	UsedAt    sql.NullTime `json:"used_at"`
+	CreatedAt time.Time    `json:"created_at"`
+}
+
+type AuthSession struct {
+	ID        uuid.UUID    `json:"id"`
+	UserID    uuid.UUID    `json:"user_id"`
+	OrgID     uuid.UUID    `json:"org_id"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	RevokedAt sql.NullTime `json:"revoked_at"`
+	CreatedAt time.Time    `json:"created_at"`
+}
+
 type AutopilotEvent struct {
 	ID        uuid.UUID     `json:"id"`
 	AppID     uuid.UUID     `json:"app_id"`
@@ -281,24 +299,25 @@ type Deployment struct {
 }
 
 type Domain struct {
-	ID            uuid.UUID     `json:"id"`
-	AppID         uuid.NullUUID `json:"app_id"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	CertStatus    string        `json:"cert_status"`
-	CreatedAt     time.Time     `json:"created_at"`
-	ServerID      uuid.NullUUID `json:"server_id"`
-	ContainerPort int32         `json:"container_port"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	Status        string        `json:"status"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-	RetryCount    int32         `json:"retry_count"`
-	LastError     string        `json:"last_error"`
-	NextRetryAt   sql.NullTime  `json:"next_retry_at"`
-	ServiceType   string        `json:"service_type"`
-	ServiceID     uuid.NullUUID `json:"service_id"`
+	ID                 uuid.UUID     `json:"id"`
+	AppID              uuid.NullUUID `json:"app_id"`
+	Host               string        `json:"host"`
+	Https              bool          `json:"https"`
+	CertStatus         string        `json:"cert_status"`
+	CreatedAt          time.Time     `json:"created_at"`
+	ServerID           uuid.NullUUID `json:"server_id"`
+	ContainerPort      int32         `json:"container_port"`
+	Path               string        `json:"path"`
+	InternalPath       string        `json:"internal_path"`
+	StripPath          bool          `json:"strip_path"`
+	Status             string        `json:"status"`
+	UpdatedAt          time.Time     `json:"updated_at"`
+	RetryCount         int32         `json:"retry_count"`
+	LastError          string        `json:"last_error"`
+	NextRetryAt        sql.NullTime  `json:"next_retry_at"`
+	ServiceType        string        `json:"service_type"`
+	ServiceID          uuid.NullUUID `json:"service_id"`
+	ComposeServiceName string        `json:"compose_service_name"`
 }
 
 type EnvVariable struct {
@@ -392,6 +411,14 @@ type NotificationChannel struct {
 	ConfigEnc string    `json:"config_enc"`
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type OidcAuthState struct {
+	StateKey   string    `json:"state_key"`
+	ProviderID string    `json:"provider_id"`
+	Nonce      string    `json:"nonce"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type OidcProvider struct {
@@ -494,6 +521,14 @@ type ProjectAssignment struct {
 	UserID    uuid.UUID `json:"user_id"`
 	ProjectID uuid.UUID `json:"project_id"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type RateLimitBucket struct {
+	BucketKey     string    `json:"bucket_key"`
+	WindowStarted time.Time `json:"window_started"`
+	RequestCount  int32     `json:"request_count"`
+	WindowSeconds int32     `json:"window_seconds"`
+	MaxRequests   int32     `json:"max_requests"`
 }
 
 type RegistryMirror struct {
@@ -615,7 +650,7 @@ type ServerToken struct {
 	TokenHash string        `json:"token_hash"`
 	ServerID  uuid.NullUUID `json:"server_id"`
 	CreatedAt time.Time     `json:"created_at"`
-	ExpiresAt sql.NullTime  `json:"expires_at"`
+	ExpiresAt time.Time     `json:"expires_at"`
 }
 
 type Service struct {

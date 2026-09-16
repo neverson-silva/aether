@@ -34,7 +34,7 @@ func (s *Store) CreateDomain(ctx context.Context, d *domain.Domain) (*domain.Dom
 	row, err := s.q.CreateDomain(ctx, gen.CreateDomainParams{
 		AppID: nullUUID(&d.AppID), ServiceID: nullUUIDPtr(d.ServiceID), ServerID: nullUUIDPtr(d.ServerID), ServiceType: d.ServiceType, Host: d.Host, Https: d.HTTPS,
 		Path: d.Path, InternalPath: d.InternalPath, StripPath: d.StripPath,
-		ContainerPort: int32(d.ContainerPort), Status: d.Status, CertStatus: d.CertStatus,
+		ContainerPort: int32(d.ContainerPort), Status: d.Status, CertStatus: d.CertStatus, ComposeServiceName: d.ComposeServiceName,
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -181,7 +181,7 @@ func domainFromRow(row gen.Domain) *domain.Domain {
 	return &domain.Domain{
 		ID: row.ID, AppID: uuidFromNull(row.AppID), ServiceID: uuidFromNull(row.ServiceID), ServiceType: row.ServiceType, ServerID: serverID, Host: row.Host, HTTPS: row.Https,
 		Path: row.Path, InternalPath: row.InternalPath, StripPath: row.StripPath,
-		ContainerPort: int(row.ContainerPort), Status: row.Status, CertStatus: row.CertStatus,
+		ContainerPort: int(row.ContainerPort), Status: row.Status, CertStatus: row.CertStatus, ComposeServiceName: row.ComposeServiceName,
 		RetryCount: int(row.RetryCount), LastError: row.LastError, NextRetryAt: nextRetryAt,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}

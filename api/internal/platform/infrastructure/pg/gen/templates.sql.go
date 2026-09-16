@@ -69,8 +69,18 @@ func (q *Queries) CreateComposeApp(ctx context.Context, arg CreateComposeAppPara
 }
 
 const deleteComposeApp = `-- name: DeleteComposeApp :exec
+WITH target AS (
+    SELECT service_id
+    FROM compose_apps
+    WHERE id = $1 AND org_id = $2
+), removed_service AS (
+    DELETE FROM services
+    WHERE services.id = (SELECT service_id FROM target)
+      AND services.org_id = $2
+    RETURNING services.id
+)
 DELETE FROM compose_apps
-WHERE id = $1 AND org_id = $2
+WHERE compose_apps.id = $1 AND compose_apps.org_id = $2
 `
 
 type DeleteComposeAppParams struct {
@@ -341,5 +351,22 @@ type SetComposeStatusParams struct {
 
 func (q *Queries) SetComposeStatus(ctx context.Context, arg SetComposeStatusParams) error {
 	_, err := q.db.ExecContext(ctx, setComposeStatus, arg.ID, arg.Status)
+	return err
+}
+
+const updateComposeApp = `-- name: UpdateComposeApp :exec
+UPDATE compose_apps
+SET compose = $2, port = $3
+WHERE id = $1
+`
+
+type UpdateComposeAppParams struct {
+	ID      uuid.UUID `json:"id"`
+	Compose string    `json:"compose"`
+	Port    int32     `json:"port"`
+}
+
+func (q *Queries) UpdateComposeApp(ctx context.Context, arg UpdateComposeAppParams) error {
+	_, err := q.db.ExecContext(ctx, updateComposeApp, arg.ID, arg.Compose, arg.Port)
 	return err
 }

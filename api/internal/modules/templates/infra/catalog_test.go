@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 )
 
 func TestBundledDokployCatalogIsAvailableOffline(t *testing.T) {
@@ -39,6 +40,26 @@ func TestBundledDokployCatalogIsAvailableOffline(t *testing.T) {
 	}
 }
 
+func TestBundledDragonflyComposeAvoidsUnsupportedLimits(t *testing.T) {
+	catalog := NewDokployCatalog(t.TempDir())
+	metadata, err := EnsureDokployCatalog(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range metadata {
+		if item.ID != "dragonfly-db" {
+			continue
+		}
+		compose, err := catalog.ensureBlueprint(context.Background(), item.ID)
+		if err != nil {
+			t.Fatalf("%s Compose: %v", item.ID, err)
+		}
+		if strings.Contains(compose, "ulimits:") {
+			t.Errorf("%s Compose contains unsupported ulimits", item.ID)
+		}
+	}
+}
+
 func TestBundledRustFSComposeUsesExplicitNamedVolumeDefinitions(t *testing.T) {
 	catalog := NewDokployCatalog(t.TempDir())
 	template, err := catalog.Get(context.Background(), remoteTemplateID("rustfs"))
@@ -56,10 +77,10 @@ func TestBundledRustFSComposeExposesEnvironmentVariables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(template.Environment) != 7 {
-		t.Fatalf("RustFS environment variables = %d, want 7", len(template.Environment))
+	if len(template.Environment) != 2 {
+		t.Fatalf("RustFS template environment variables = %d, want 2", len(template.Environment))
 	}
-	if template.Environment[0].Name != "RUSTFS_ACCESS_KEY" || template.Environment[0].Value != "" {
+	if template.Environment[0].Name != "RUSTFS_ACCESS_KEY" || template.Environment[0].Value != "${access_key}" {
 		t.Fatalf("unexpected first RustFS environment variable: %+v", template.Environment[0])
 	}
 }
@@ -78,5 +99,46 @@ func TestBundledRustFSTemplateExposesDokployDomains(t *testing.T) {
 	}
 	if template.Domains[1].ServiceName != "rustfs" || template.Domains[1].Port != 9000 {
 		t.Fatalf("unexpected RustFS API domain: %+v", template.Domains[1])
+	}
+}
+
+func TestBundledDokployTemplateConfigsMatchComposeServices(t *testing.T) {
+	catalog := NewDokployCatalog(t.TempDir())
+	metadata, err := EnsureDokployCatalog(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, item := range metadata {
+		if !safeRemoteID(item.ID) {
+			continue
+		}
+		compose, err := catalog.ensureBlueprint(context.Background(), item.ID)
+		if err != nil {
+			t.Fatalf("%s Compose: %v", item.ID, err)
+		}
+		var document struct {
+			Services map[string]any `yaml:"services"`
+		}
+		if err := yaml.Unmarshal([]byte(compose), &document); err != nil {
+			t.Fatalf("%s Compose: %v", item.ID, err)
+		}
+		variables, environment, mounts, domains := catalog.templateConfig(item.ID)
+		_ = variables
+		_ = environment
+		for _, mount := range mounts {
+			if mount.ServiceName != "" && document.Services[mount.ServiceName] == nil {
+				t.Fatalf("%s mount references missing service %s", item.ID, mount.ServiceName)
+			}
+		}
+		for _, domain := range domains {
+			if document.Services[domain.ServiceName] == nil {
+				t.Fatalf("%s domain references missing service %s", item.ID, domain.ServiceName)
+			}
+		}
+		checked++
+	}
+	if checked != len(metadata) {
+		t.Fatalf("checked templates = %d, want %d", checked, len(metadata))
 	}
 }

@@ -30,25 +30,51 @@ function genPassword(len = 24): string {
   return out;
 }
 
-function gen64(): string {
-  return genPassword(32) + genPassword(32);
+function resolveTemplateValue(value: string, variables: Record<string, string>, cache: Map<string, string>, seed: string, stack = new Set<string>()): string {
+  return value.replace(/\$\{([^}]+)\}/g, (_, token: string) => {
+    const parts = token.trim().split(":");
+    const name = parts[0].toLowerCase();
+    if (token.trim() in variables && !stack.has(token.trim())) {
+      const key = token.trim();
+      const cached = cache.get(key);
+      if (cached !== undefined) return cached;
+      const next = new Set(stack);
+      next.add(key);
+      const resolved = resolveTemplateValue(variables[key], variables, cache, seed, next);
+      cache.set(key, resolved);
+      return resolved;
+    }
+    const length = Number(parts[1]) > 0 ? Number(parts[1]) : 32;
+    if (name === "domain") return `${seed.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}.localhost`;
+    if (name === "password") return genPassword(length);
+    if (name === "hash") return genPassword(length).replace(/[^a-z0-9]/gi, "a").toLowerCase();
+    if (name === "base64") return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(length))));
+    if (name === "uuid") return crypto.randomUUID();
+    if (name === "randomport") return String(1024 + Math.floor(Math.random() * 64512));
+    if (name === "timestamp") return String(Date.now());
+    if (name === "timestamps") return String(Math.round(Date.now() / 1000));
+    if (name === "timestampms") return String(Date.now());
+    if (name === "email") return `user-${genPassword(8).toLowerCase()}@example.com`;
+    if (name === "username") return `user${genPassword(8).toLowerCase()}`;
+    if (name === "jwt") return genPassword(parts.length === 2 && Number.isFinite(length) ? length : 32);
+    return `\${${token}}`;
+  });
 }
 
-function resolveValue(v: string): string {
-  if (v === "{{password}}") return genPassword();
-  if (v === "{{random64}}") return gen64();
-  return v;
-}
-
-function resolveEnvironmentValue(name: string, value: string): string {
-  if (value) return resolveValue(value);
+function resolveEnvironmentValue(name: string, value: string, variables: Record<string, string>, cache: Map<string, string>): string {
+  if (value) return resolveTemplateValue(value, variables, cache, name);
   return /password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential/i.test(name) ? genPassword() : "";
 }
 
 function templateEnvironment(t: TemplateItem): { name: string; value: string }[] {
-  if (t.environment?.length) return t.environment.map((entry) => ({ name: entry.name, value: resolveEnvironmentValue(entry.name, entry.value) }));
+  const variables = Object.fromEntries((t.variables ?? []).map((entry) => [entry.name, entry.value]));
+  for (const entry of t.environment ?? []) {
+    if (!(entry.name in variables)) variables[entry.name] = entry.value;
+  }
+  const cache = new Map<string, string>();
+  if (t.environment?.length) return t.environment.map((entry) => ({ name: entry.name, value: resolveEnvironmentValue(entry.name, entry.value, variables, cache) }));
   const svc = parseDef(t).services[0];
-  return Object.entries(svc?.env ?? {}).map(([name, value]) => ({ name, value: resolveEnvironmentValue(name, value) }));
+  return Object.entries(svc?.env ?? {}).map(([name, value]) => ({ name, value: resolveEnvironmentValue(name, value, variables, cache) }));
 }
 
 function iconTone(t: TemplateItem): string {
@@ -83,6 +109,7 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
   const [envs, setEnvs] = useState<{ name: string; value: string }[]>([]);
+  const [initialEnvs, setInitialEnvs] = useState<{ name: string; value: string }[]>([]);
   const [cpu, setCpu] = useState(".5");
   const [ram, setRam] = useState(".5");
   const [vol, setVol] = useState("∞");
@@ -107,7 +134,9 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
     setVersion(svc?.versions?.[0] ?? "");
     setStep(2);
     setName(t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.floor(Math.random() * 900 + 100));
-    setEnvs(templateEnvironment(t));
+    const defaults = templateEnvironment(t);
+    setEnvs(defaults);
+    setInitialEnvs(defaults);
   };
 
   const envCount = (t: TemplateItem): number => {
@@ -125,7 +154,9 @@ export function TemplateWizard({ open, onClose }: { open: boolean; onClose: () =
     setCreating(true);
     try {
       if (selected.compose_yaml || selected.remote_id) {
-        await installTemplate.mutateAsync({ id: selected.id, project_id: projectId, name, overrides: Object.fromEntries(envs.filter((entry) => entry.name.trim()).map((entry) => [entry.name.trim(), entry.value])) });
+        const defaults = new Map(initialEnvs.map((entry) => [entry.name, entry.value]));
+        const overrides = Object.fromEntries(envs.filter((entry) => entry.name.trim() && defaults.get(entry.name) !== entry.value).map((entry) => [entry.name.trim(), entry.value]));
+        await installTemplate.mutateAsync({ id: selected.id, project_id: projectId, name, overrides });
         add({ title: "Deploy it manually from the services page", tone: "info" });
         onClose();
         navigate({ to: "/apps" } as never);

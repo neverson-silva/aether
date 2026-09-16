@@ -18,8 +18,10 @@ mounts = []
 serviceName = "rustfs"
 port = 9001
 host = "${console_domain}"
+publish = true
 
 [[config.domains]]
 serviceName = "rustfs"
 port = 9000
 host = "${api_domain}"
+publish = true

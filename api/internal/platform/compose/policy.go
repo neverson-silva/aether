@@ -35,13 +35,15 @@ func ValidatePolicy(content string) error {
 	if containsAlias(root) {
 		violations = append(violations, "YAML aliases are not supported")
 	}
-	for _, key := range []string{"secrets", "configs", "include"} {
+	for _, key := range []string{"secrets", "include"} {
 		if nodeMapValue(root, key) != nil {
 			violations = append(violations, "top-level "+key+" are not supported")
 		}
 	}
 	validateNamedResources(root, "volumes", &violations)
 	validateNamedResources(root, "networks", &violations)
+	validateManagedConfigs(root, &violations)
+	allowHostPorts := hasDokployHostPortsMarker(&document, root)
 
 	services := nodeMapValue(root, "services")
 	if services == nil || services.Kind != yaml.MappingNode || len(services.Content) == 0 {
@@ -57,7 +59,7 @@ func ValidatePolicy(content string) error {
 				violations = append(violations, "service "+name+" must be a mapping")
 				continue
 			}
-			validateServicePolicy(name, service, &violations)
+			validateServicePolicy(name, service, allowHostPorts, &violations)
 		}
 	}
 	if len(violations) > 0 {
@@ -75,6 +77,13 @@ func NormalizeNamedResourceDefinitions(content string) (string, error) {
 	if root == nil || root.Kind != yaml.MappingNode {
 		return "", fmt.Errorf("compose root must be a mapping")
 	}
+	if hasDokployHostPortsMarker(&document, root) && nodeMapValue(root, "x-aether-allow-host-ports") == nil {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x-aether-allow-host-ports"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"},
+		)
+	}
+	removeMapValue(root, "version")
 	for _, kind := range []string{"volumes", "networks"} {
 		resources := nodeMapValue(root, kind)
 		if resources == nil || resources.Kind != yaml.MappingNode {
@@ -97,6 +106,191 @@ func NormalizeNamedResourceDefinitions(content string) (string, error) {
 	return buffer.String(), nil
 }
 
+func NormalizeTemplateCompose(content string) (string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", fmt.Errorf("parse template compose configuration: %w", err)
+	}
+	root := documentRoot(&document)
+	if root == nil || root.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("template compose root must be a mapping")
+	}
+
+	root = resolveTemplateAliases(root)
+	document.Content[0] = root
+	normalizeTemplateResourceDefinitions(root)
+	services := nodeMapValue(root, "services")
+	if services != nil && services.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(services.Content); i += 2 {
+			serviceName := services.Content[i].Value
+			service := services.Content[i+1]
+			if service.Kind == yaml.MappingNode {
+				normalizeTemplateService(serviceName, service, root)
+			}
+		}
+	}
+
+	var buffer bytes.Buffer
+	encoder := yaml.NewEncoder(&buffer)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return "", fmt.Errorf("encode template compose configuration: %w", err)
+	}
+	_ = encoder.Close()
+	return buffer.String(), nil
+}
+
+func resolveTemplateAliases(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	if node.Kind == yaml.AliasNode && node.Alias != nil {
+		return resolveTemplateAliases(cloneTemplateNode(node.Alias))
+	}
+	for index, child := range node.Content {
+		node.Content[index] = resolveTemplateAliases(child)
+	}
+	node.Anchor = ""
+	node.Alias = nil
+	return node
+}
+
+func cloneTemplateNode(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	clone := *node
+	clone.Content = make([]*yaml.Node, len(node.Content))
+	for index, child := range node.Content {
+		clone.Content[index] = cloneTemplateNode(child)
+	}
+	clone.Alias = nil
+	return &clone
+}
+
+func normalizeTemplateResourceDefinitions(root *yaml.Node) {
+	volumes := nodeMapValue(root, "volumes")
+	if volumes != nil && volumes.Kind == yaml.MappingNode {
+		for i := 1; i < len(volumes.Content); i += 2 {
+			volumes.Content[i] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+	}
+	networks := nodeMapValue(root, "networks")
+	if networks != nil && networks.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(networks.Content); i += 2 {
+			name := networks.Content[i].Value
+			if strings.HasPrefix(name, "aether-") {
+				continue
+			}
+			networks.Content[i+1] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+	}
+}
+
+func normalizeTemplateService(serviceName string, service, root *yaml.Node) {
+	if volumes := nodeMapValue(service, "volumes"); volumes != nil && volumes.Kind == yaml.SequenceNode {
+		resources := nodeMapValue(root, "volumes")
+		if resources == nil {
+			resources = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+			setTemplateMapValue(root, "volumes", resources)
+		}
+		for index, volume := range volumes.Content {
+			name := "aether-template-" + sanitizeResourceName(serviceName) + "-" + strconv.Itoa(index)
+			switch volume.Kind {
+			case yaml.ScalarNode:
+				parts := strings.Split(volume.Value, ":")
+				if len(parts) > 1 && unsafeHostPath(parts[0]) {
+					parts[0] = name
+					volume.Value = strings.Join(parts, ":")
+					ensureNamedResource(resources, name)
+				}
+			case yaml.MappingNode:
+				source := nodeMapValue(volume, "source")
+				typeValue := nodeMapValue(volume, "type")
+				if (source != nil && unsafeHostPath(source.Value)) || (typeValue != nil && strings.EqualFold(strings.TrimSpace(typeValue.Value), "bind")) {
+					setTemplateScalarValue(volume, "type", "volume")
+					setTemplateScalarValue(volume, "source", name)
+					removeMapValue(volume, "bind")
+					ensureNamedResource(resources, name)
+				}
+			}
+		}
+	}
+	for _, key := range []string{"blkio_config", "cpu_rt_period", "cpu_rt_runtime", "memswap_limit", "oom_kill_disable", "shm_size", "storage_opt", "sysctls", "tmpfs", "ulimits", "network_mode", "pid", "ipc", "uts", "userns_mode", "cgroup", "isolation", "runtime", "credential_spec", "privileged", "devices", "cap_add", "volumes_from", "external_links"} {
+		removeMapValue(service, key)
+	}
+	if user := nodeMapValue(service, "user"); user != nil && isRootUser(user.Value) {
+		removeMapValue(service, "user")
+	}
+	if security := nodeMapValue(service, "security_opt"); security != nil {
+		if security.Kind != yaml.SequenceNode || len(security.Content) == 0 {
+			removeMapValue(service, "security_opt")
+		}
+	}
+	if deploy := nodeMapValue(service, "deploy"); deploy != nil && deploy.Kind == yaml.MappingNode {
+		removeMapValue(deploy, "devices")
+		removeMapValue(deploy, "resources")
+		if len(deploy.Content) == 0 {
+			removeMapValue(service, "deploy")
+		}
+	}
+}
+
+func sanitizeResourceName(value string) string {
+	var builder strings.Builder
+	for _, character := range strings.ToLower(value) {
+		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') {
+			builder.WriteRune(character)
+			continue
+		}
+		builder.WriteByte('-')
+	}
+	name := strings.Trim(builder.String(), "-")
+	if name == "" {
+		return "service"
+	}
+	return name
+}
+
+func ensureNamedResource(resources *yaml.Node, name string) {
+	if nodeMapValue(resources, name) == nil {
+		resources.Content = append(resources.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name},
+			&yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"},
+		)
+	}
+}
+
+func setTemplateMapValue(mapping *yaml.Node, key string, value *yaml.Node) {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			mapping.Content[i+1] = value
+			return
+		}
+	}
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		value,
+	)
+}
+
+func setTemplateScalarValue(mapping *yaml.Node, key, value string) {
+	setTemplateMapValue(mapping, key, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
+}
+
+func hasDokployHostPortsMarker(document, root *yaml.Node) bool {
+	comments := document.HeadComment + "\n" + document.LineComment + "\n" + document.FootComment
+	comments += "\n" + root.HeadComment + "\n" + root.LineComment + "\n" + root.FootComment
+	for _, node := range root.Content {
+		comments += "\n" + node.HeadComment + "\n" + node.LineComment + "\n" + node.FootComment
+	}
+	if strings.Contains(strings.ToLower(comments), "dokploy: allow-host-ports") {
+		return true
+	}
+	marker := nodeMapValue(root, "x-aether-allow-host-ports")
+	return marker != nil && strings.EqualFold(strings.TrimSpace(marker.Value), "true")
+}
+
 func documentRoot(document *yaml.Node) *yaml.Node {
 	if document.Kind == yaml.DocumentNode && len(document.Content) > 0 {
 		return document.Content[0]
@@ -114,6 +308,18 @@ func nodeMapValue(mapping *yaml.Node, key string) *yaml.Node {
 		}
 	}
 	return nil
+}
+
+func removeMapValue(mapping *yaml.Node, key string) {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			mapping.Content = append(mapping.Content[:i], mapping.Content[i+2:]...)
+			return
+		}
+	}
 }
 
 func validateNamedResources(root *yaml.Node, kind string, violations *[]string) {
@@ -139,8 +345,15 @@ func validateNamedResources(root *yaml.Node, kind string, violations *[]string) 
 			key := value.Content[j].Value
 			switch key {
 			case "external":
+				if explicitTrue(value.Content[j+1]) && kind == "networks" && strings.HasPrefix(name, "aether-") {
+					continue
+				}
 				if !explicitFalse(value.Content[j+1]) {
 					*violations = append(*violations, "top-level "+kind+" "+name+" cannot be external")
+				}
+			case "name":
+				if kind != "networks" || !strings.HasPrefix(name, "aether-") || strings.TrimSpace(value.Content[j+1].Value) != name {
+					*violations = append(*violations, "top-level "+kind+" "+name+" has an unsupported option")
 				}
 			case "internal":
 				if kind != "networks" || !explicitBoolean(value.Content[j+1]) {
@@ -153,7 +366,7 @@ func validateNamedResources(root *yaml.Node, kind string, violations *[]string) 
 	}
 }
 
-func validateServicePolicy(name string, service *yaml.Node, violations *[]string) {
+func validateServicePolicy(name string, service *yaml.Node, allowHostPorts bool, violations *[]string) {
 	if image := nodeMapValue(service, "image"); image != nil && strings.HasSuffix(strings.ToLower(strings.TrimSpace(image.Value)), ":latest") {
 		*violations = append(*violations, "service "+name+" cannot use mutable image tag latest")
 	}
@@ -179,8 +392,9 @@ func validateServicePolicy(name string, service *yaml.Node, violations *[]string
 		*violations = append(*violations, "service "+name+" cannot run as root")
 	}
 	validateServiceVolumes(name, nodeMapValue(service, "volumes"), violations)
+	validateServiceConfigs(name, nodeMapValue(service, "configs"), violations)
 	validateServiceNetworks(name, nodeMapValue(service, "networks"), violations)
-	validateServicePorts(name, nodeMapValue(service, "ports"), violations)
+	validateServicePorts(name, nodeMapValue(service, "ports"), allowHostPorts, violations)
 	validateServicePathList(name, nodeMapValue(service, "env_file"), "env_file", violations)
 	validateBuild(name, nodeMapValue(service, "build"), violations)
 	if hasItems(nodeMapValue(service, "extends")) {
@@ -196,7 +410,60 @@ func validateServicePolicy(name string, service *yaml.Node, violations *[]string
 	}
 }
 
-func validateServicePorts(name string, ports *yaml.Node, violations *[]string) {
+func validateManagedConfigs(root *yaml.Node, violations *[]string) {
+	configs := nodeMapValue(root, "configs")
+	if configs == nil {
+		return
+	}
+	if configs.Kind != yaml.MappingNode {
+		*violations = append(*violations, "top-level configs must be a mapping")
+		return
+	}
+	for i := 0; i+1 < len(configs.Content); i += 2 {
+		name := configs.Content[i].Value
+		value := configs.Content[i+1]
+		if !strings.HasPrefix(name, "aether-template-file-") || value.Kind != yaml.MappingNode {
+			*violations = append(*violations, "top-level configs only support managed template files")
+			continue
+		}
+		file := nodeMapValue(value, "file")
+		content := nodeMapValue(value, "content")
+		if (file == nil) == (content == nil) {
+			*violations = append(*violations, "managed template config must define exactly one content source")
+		}
+		if file != nil && (file.Kind != yaml.ScalarNode || !strings.HasPrefix(file.Value, "./template-mounts/") || strings.Contains(file.Value, "..")) {
+			*violations = append(*violations, "managed template config file must stay inside template-mounts")
+		}
+		for j := 0; j+1 < len(value.Content); j += 2 {
+			if value.Content[j].Value != "file" && value.Content[j].Value != "content" {
+				*violations = append(*violations, "managed template configs only support file or content")
+			}
+		}
+	}
+}
+
+func validateServiceConfigs(name string, configs *yaml.Node, violations *[]string) {
+	if configs == nil {
+		return
+	}
+	if configs.Kind != yaml.SequenceNode {
+		*violations = append(*violations, "service "+name+" configs must be a list")
+		return
+	}
+	for _, config := range configs.Content {
+		if config.Kind != yaml.MappingNode {
+			*violations = append(*violations, "service "+name+" has an invalid config definition")
+			continue
+		}
+		source := nodeMapValue(config, "source")
+		target := nodeMapValue(config, "target")
+		if source == nil || !strings.HasPrefix(source.Value, "aether-template-file-") || target == nil || !strings.HasPrefix(target.Value, "/") {
+			*violations = append(*violations, "service "+name+" has an invalid managed config")
+		}
+	}
+}
+
+func validateServicePorts(name string, ports *yaml.Node, allowHostPorts bool, violations *[]string) {
 	if ports == nil {
 		return
 	}
@@ -210,7 +477,7 @@ func validateServicePorts(name string, ports *yaml.Node, violations *[]string) {
 	for _, port := range ports.Content {
 		if port.Kind == yaml.ScalarNode {
 			parts := strings.Split(port.Value, ":")
-			if len(parts) > 3 || !validPublishedPort(parts, len(parts)-2) {
+			if len(parts) > 3 || !validPublishedPort(parts, len(parts)-2, allowHostPorts) {
 				*violations = append(*violations, "service "+name+" has an invalid published port")
 			}
 			continue
@@ -220,20 +487,20 @@ func validateServicePorts(name string, ports *yaml.Node, violations *[]string) {
 			continue
 		}
 		published := nodeMapValue(port, "published")
-		if published != nil && !validPortValue(published.Value, true) {
+		if published != nil && !validPortValue(published.Value, true, allowHostPorts) {
 			*violations = append(*violations, "service "+name+" has an invalid published port")
 		}
 	}
 }
 
-func validPublishedPort(parts []string, index int) bool {
+func validPublishedPort(parts []string, index int, allowHostPorts bool) bool {
 	if len(parts) == 1 {
-		return validPortValue(parts[0], false)
+		return validPortValue(parts[0], false, allowHostPorts)
 	}
-	return validPortValue(parts[index], true)
+	return validPortValue(parts[index], true, allowHostPorts)
 }
 
-func validPortValue(value string, published bool) bool {
+func validPortValue(value string, published, allowHostPorts bool) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return !published
@@ -242,7 +509,7 @@ func validPortValue(value string, published bool) bool {
 	if err != nil || port < 1 || port > 65535 {
 		return false
 	}
-	return !published || port >= 1024
+	return !published || allowHostPorts || port >= 1024
 }
 
 func validateResourceLimit(name string, service *yaml.Node, violations *[]string) {
@@ -399,6 +666,10 @@ func hasItems(node *yaml.Node) bool {
 
 func explicitFalse(node *yaml.Node) bool {
 	return node != nil && node.Tag == "!!bool" && strings.EqualFold(strings.TrimSpace(node.Value), "false")
+}
+
+func explicitTrue(node *yaml.Node) bool {
+	return node != nil && node.Tag == "!!bool" && strings.EqualFold(strings.TrimSpace(node.Value), "true")
 }
 
 func explicitBoolean(node *yaml.Node) bool {

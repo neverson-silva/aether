@@ -1,6 +1,6 @@
 services:
   booklore:
-    image: ghcr.io/booklore-app/booklore:${BOOKLORE_IMAGE_TAG}
+    image: ghcr.io/booklore-app/booklore@sha256:d3d3af34bc2cc44349178535ce19e86049968fba2e7d2acf965f770bf37bad01
     environment:
       - DATABASE_URL=jdbc:mariadb://mariadb:3306/${MYSQL_DATABASE}
       - DATABASE_USERNAME=${MYSQL_USER}

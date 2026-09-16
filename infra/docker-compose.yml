@@ -112,6 +112,7 @@ services:
       AETHER_NATS_URL: nats://nats:4222
       AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
+      AETHER_TRAEFIK_MOUNT_SOURCE: aether-state
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       AETHER_BUILD_DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
@@ -174,6 +175,7 @@ services:
       AETHER_NATS_URL: nats://nats:4222
       AETHER_NATS_USER: ${AETHER_NATS_USER:?AETHER_NATS_USER must be set}
       AETHER_NATS_PASSWORD: ${AETHER_NATS_PASSWORD:?AETHER_NATS_PASSWORD must be set}
+      AETHER_TRAEFIK_MOUNT_SOURCE: aether-state
       AETHER_SNAPSHOT_HOST_DIR: /var/lib/aether/snapshots
       AETHER_WORKER_HEALTH_ADDR: 0.0.0.0:8081
       DOCKER_HOST: tcp://docker-socket-proxy:2375

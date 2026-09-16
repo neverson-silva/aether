@@ -265,7 +265,7 @@ func domainDTO(d *domain.Domain) gin.H {
 	return gin.H{
 		"id": d.ID, "app_id": d.AppID, "service_id": d.ServiceID, "service_type": d.ServiceType, "server_id": d.ServerID, "host": d.Host, "https": d.HTTPS,
 		"path": d.Path, "internal_path": d.InternalPath, "strip_path": d.StripPath,
-		"container_port": d.ContainerPort, "status": d.Status, "cert_status": d.CertStatus,
+		"container_port": d.ContainerPort, "compose_service_name": d.ComposeServiceName, "status": d.Status, "cert_status": d.CertStatus,
 		"created_at": d.CreatedAt, "updated_at": d.UpdatedAt,
 	}
 }

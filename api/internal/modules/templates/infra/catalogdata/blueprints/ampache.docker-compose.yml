@@ -9,9 +9,10 @@ services:
       - config:/var/www/config
       - log:/var/log/ampache
       - mysql:/var/lib/mysql
-      - ${MEDIA_PATH}:/media
+      - media:/media
 
 volumes:
   config: {}
   log: {}
   mysql: {} 
+  media: {}

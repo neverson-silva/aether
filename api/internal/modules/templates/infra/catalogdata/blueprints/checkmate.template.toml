@@ -15,7 +15,3 @@ DB_CONNECTION_STRING = "mongodb://mongodb:27017/uptime_db?replicaSet=rs0"
 REDIS_URL = "redis://redis:6379"
 CLIENT_HOST = "http://${main_domain}"
 JWT_SECRET = "${jwt_secret}" # API key for JWT authentication
-
-[[config.mounts]]
-filePath = "/files/mongo-data"
-content = ""

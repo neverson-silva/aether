@@ -10,13 +10,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       tanstackRouter({
-        routesDirectory: "./src/routes",
-        generatedRouteTree: "./src/routeTree.gen.ts",
+        autoCodeSplitting: true,
       }),
       react(),
       tailwindcss(),
     ],
-    build: { outDir: "dist", emptyOutDir: true },
+    build: { outDir: "dist", emptyOutDir: true, },
     server: {
       port: 5173,
       allowedHosts: true,

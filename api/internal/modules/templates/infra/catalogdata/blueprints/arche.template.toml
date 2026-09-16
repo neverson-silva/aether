@@ -21,8 +21,8 @@ env = [
   "ARCHE_SEED_ADMIN_EMAIL=${seed_admin_email}",
   "ARCHE_SEED_ADMIN_PASSWORD=${seed_admin_password}",
   "ARCHE_SEED_ADMIN_SLUG=admin",
-  "ARCHE_WEB_IMAGE=ghcr.io/peaberry-studio/arche/web:latest",
-  "ARCHE_WORKSPACE_IMAGE=ghcr.io/peaberry-studio/arche/workspace:latest",
+  "ARCHE_WEB_IMAGE=ghcr.io/peaberry-studio/arche/web@sha256:d9b041d286c9fcb66d8d5858fe6d7d3da907e20cfefc80a43e22906df2b9005b",
+  "ARCHE_WORKSPACE_IMAGE=ghcr.io/peaberry-studio/arche/workspace@sha256:a3b97ed52c8e5f815b8ff4780b7f89f244527711ae981053e6269aac53bd05b8",
   "OPENCODE_NETWORK=",
 ]
 mounts = []

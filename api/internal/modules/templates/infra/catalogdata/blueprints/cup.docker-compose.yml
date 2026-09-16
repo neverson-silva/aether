@@ -5,7 +5,30 @@ services:
     image: ghcr.io/sergi0g/cup@sha256:badd075d6bf325cf21c98a95f08cef275bbe7a0d4f2abad6bd1fbc822e94d419
     restart: unless-stopped
     command: serve
+    depends_on:
+      docker-socket-bridge:
+        condition: service_started
     expose:
       - "8000"
+    networks:
+      - default
+      - aether-docker-control
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - cup-docker-socket:/var/run
+
+  docker-socket-bridge:
+    image: alpine/socat:1.8.0.3
+    command: ["UNIX-LISTEN:/var/run/docker.sock,fork,mode=666", "TCP:aether-docker-socket-proxy:2375"]
+    networks:
+      - default
+      - aether-docker-control
+    volumes:
+      - cup-docker-socket:/var/run
+
+networks:
+  aether-docker-control:
+    external: true
+    name: aether-docker-control
+
+volumes:
+  cup-docker-socket:

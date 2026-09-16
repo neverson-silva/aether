@@ -39,6 +39,7 @@ type Config struct {
 	IngressNetwork          string
 	PublishedNetwork        string
 	TraefikImage            string
+	TraefikMountSource      string
 	MetricsPath             string
 	DockerHost              string
 	BuildDockerHost         string
@@ -176,6 +177,7 @@ func Load() (*Config, error) {
 		IngressNetwork:           envOr("AETHER_INGRESS_NETWORK", "aether-ingress"),
 		PublishedNetwork:         envOr("AETHER_PUBLISHED_NETWORK", "aether-workload-host"),
 		TraefikImage:             envOr("AETHER_TRAEFIK_IMAGE", "docker.io/library/traefik:v3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9"),
+		TraefikMountSource:       envOr("AETHER_TRAEFIK_MOUNT_SOURCE", ""),
 		DockerHost:               dockerHost(),
 		BuildDockerHost:          buildDockerHost(),
 		RuntimeBackend:           envOr("AETHER_RUNTIME_BACKEND", "nats"),

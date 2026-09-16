@@ -4,10 +4,6 @@ services:
     stop_grace_period: 10s
     depends_on:
       - mariadb
-    security_opt:
-      - seccomp:unconfined
-      - apparmor:unconfined
-
     environment:
       PHOTOPRISM_ADMIN_USER: "admin"
       PHOTOPRISM_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
@@ -57,9 +53,6 @@ services:
     restart: unless-stopped
     stop_grace_period: 5s
 
-    security_opt:
-      - seccomp:unconfined
-      - apparmor:unconfined
     volumes:
       - db-data:/var/lib/mysql
     environment:

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,7 +57,12 @@ func (c *DokployCatalog) List(ctx context.Context) ([]domain.Template, error) {
 		if compose, composeErr := c.ensureBlueprint(ctx, item.ID); composeErr == nil {
 			template.Environment = composeEnvironmentVariables(compose)
 		}
-		template.Domains = c.templateDomains(item.ID)
+		template.Variables, template.Environment, template.Mounts, template.Domains = c.templateConfig(item.ID)
+		if len(template.Environment) == 0 {
+			if compose, composeErr := c.ensureBlueprint(ctx, item.ID); composeErr == nil {
+				template.Environment = composeEnvironmentVariables(compose)
+			}
+		}
 		templates = append(templates, template)
 	}
 	return templates, nil
@@ -77,8 +83,10 @@ func (c *DokployCatalog) Get(ctx context.Context, id uuid.UUID) (*domain.Templat
 		}
 		template := remoteTemplate(item)
 		template.ComposeYAML = compose
-		template.Environment = composeEnvironmentVariables(compose)
-		template.Domains = c.templateDomains(item.ID)
+		template.Variables, template.Environment, template.Mounts, template.Domains = c.templateConfig(item.ID)
+		if len(template.Environment) == 0 {
+			template.Environment = composeEnvironmentVariables(compose)
+		}
 		return &template, nil
 	}
 	return nil, domain.ErrNotFound
@@ -228,27 +236,49 @@ func remoteTemplate(item DokployTemplateMetadata) domain.Template {
 }
 
 type dokployTemplateDefinition struct {
-	Config struct {
+	Variables map[string]string `toml:"variables"`
+	Config    struct {
 		Domains []struct {
 			ServiceName string `toml:"serviceName"`
 			Port        int    `toml:"port"`
 			Host        string `toml:"host"`
 			Path        string `toml:"path"`
+			Publish     bool   `toml:"publish"`
 		} `toml:"domains"`
+		Env    any `toml:"env"`
+		Mounts []struct {
+			ServiceName string `toml:"serviceName"`
+			FilePath    string `toml:"filePath"`
+			Content     string `toml:"content"`
+		} `toml:"mounts"`
 	} `toml:"config"`
 }
 
-func (c *DokployCatalog) templateDomains(id string) []domain.TemplateDomain {
+func (c *DokployCatalog) templateConfig(id string) ([]domain.TemplateVariable, []domain.TemplateEnvironmentVariable, []domain.TemplateMount, []domain.TemplateDomain) {
 	if !safeRemoteID(id) {
-		return nil
+		return nil, nil, nil, nil
 	}
 	data, err := bundledDokployAssets.ReadFile("catalogdata/blueprints/" + id + ".template.toml")
 	if err != nil {
-		return nil
+		return nil, nil, nil, nil
 	}
 	var definition dokployTemplateDefinition
 	if err := toml.Unmarshal(data, &definition); err != nil {
-		return nil
+		return nil, nil, nil, nil
+	}
+	variables := make([]domain.TemplateVariable, 0, len(definition.Variables))
+	for name, value := range definition.Variables {
+		variables = append(variables, domain.TemplateVariable{Name: name, Value: value})
+	}
+	sort.Slice(variables, func(i, j int) bool { return variables[i].Name < variables[j].Name })
+	environment := templateEnvironment(definition.Config.Env)
+	sort.Slice(environment, func(i, j int) bool { return environment[i].Name < environment[j].Name })
+	mounts := make([]domain.TemplateMount, 0, len(definition.Config.Mounts))
+	for _, item := range definition.Config.Mounts {
+		if strings.TrimSpace(item.FilePath) == "" {
+			continue
+		}
+		mounts = append(mounts, domain.TemplateMount{ServiceName: strings.TrimSpace(item.ServiceName), FilePath: strings.TrimSpace(item.FilePath), Content: item.Content})
 	}
 	domains := make([]domain.TemplateDomain, 0, len(definition.Config.Domains))
 	for _, item := range definition.Config.Domains {
@@ -260,9 +290,28 @@ func (c *DokployCatalog) templateDomains(id string) []domain.TemplateDomain {
 		if path == "" {
 			path = "/"
 		}
-		domains = append(domains, domain.TemplateDomain{ServiceName: serviceName, Port: item.Port, Host: strings.TrimSpace(item.Host), Path: path})
+		domains = append(domains, domain.TemplateDomain{ServiceName: serviceName, Port: item.Port, Host: strings.TrimSpace(item.Host), Path: path, Publish: item.Publish})
 	}
-	return domains
+	return variables, environment, mounts, domains
+}
+
+func templateEnvironment(raw any) []domain.TemplateEnvironmentVariable {
+	variables := make([]domain.TemplateEnvironmentVariable, 0)
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			name, entry, ok := strings.Cut(strings.TrimSpace(fmt.Sprint(item)), "=")
+			if !ok || strings.TrimSpace(name) == "" {
+				continue
+			}
+			variables = append(variables, domain.TemplateEnvironmentVariable{Name: strings.TrimSpace(name), Value: entry})
+		}
+	case map[string]any:
+		for name, item := range value {
+			variables = append(variables, domain.TemplateEnvironmentVariable{Name: strings.TrimSpace(name), Value: fmt.Sprint(item)})
+		}
+	}
+	return variables
 }
 
 func (c *DokployCatalog) ensureBlueprint(ctx context.Context, id string) (string, error) {
@@ -270,7 +319,11 @@ func (c *DokployCatalog) ensureBlueprint(ctx context.Context, id string) (string
 		return "", fmt.Errorf("fetch Dokploy blueprint: invalid template ID")
 	}
 	if data, err := bundledDokployAssets.ReadFile("catalogdata/blueprints/" + id + ".docker-compose.yml"); err == nil && strings.TrimSpace(string(data)) != "" {
-		return composeengine.NormalizeNamedResourceDefinitions(string(data))
+		normalized, err := composeengine.NormalizeNamedResourceDefinitions(string(data))
+		if err != nil {
+			return "", err
+		}
+		return composeengine.NormalizeTemplateCompose(normalized)
 	}
 	_ = ctx
 	return "", fmt.Errorf("Dokploy Compose is not available in the bundled catalog")

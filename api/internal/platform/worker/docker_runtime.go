@@ -308,14 +308,17 @@ func (r *DockerRuntime) ListServiceContainers(ctx context.Context, serviceID, sp
 				name = strings.TrimPrefix(item.Names[0], "/")
 			}
 			info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels, CreatedAt: time.Unix(item.Created, 0)}
-			if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil && inspected.State.Health != nil {
-				switch inspected.State.Health.Status {
-				case "healthy":
-					healthy := true
-					info.Healthy = &healthy
-				case "unhealthy":
-					healthy := false
-					info.Healthy = &healthy
+			if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil {
+				info.ExitCode = inspected.State.ExitCode
+				if inspected.State.Health != nil {
+					switch inspected.State.Health.Status {
+					case "healthy":
+						healthy := true
+						info.Healthy = &healthy
+					case "unhealthy":
+						healthy := false
+						info.Healthy = &healthy
+					}
 				}
 			}
 			out = append(out, info)
@@ -336,14 +339,17 @@ func (r *DockerRuntime) listContainers(ctx context.Context, includeStats bool) (
 			name = strings.TrimPrefix(item.Names[0], "/")
 		}
 		info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels, CreatedAt: time.Unix(item.Created, 0)}
-		if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil && inspected.State.Health != nil {
-			switch inspected.State.Health.Status {
-			case "healthy":
-				healthy := true
-				info.Healthy = &healthy
-			case "unhealthy":
-				healthy := false
-				info.Healthy = &healthy
+		if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil {
+			info.ExitCode = inspected.State.ExitCode
+			if inspected.State.Health != nil {
+				switch inspected.State.Health.Status {
+				case "healthy":
+					healthy := true
+					info.Healthy = &healthy
+				case "unhealthy":
+					healthy := false
+					info.Healthy = &healthy
+				}
 			}
 		}
 		if includeStats && (item.State == container.StateRunning || item.State == container.StateRestarting) {

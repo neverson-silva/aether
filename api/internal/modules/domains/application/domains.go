@@ -52,13 +52,14 @@ type serviceRef struct {
 }
 
 type AddDomainInput struct {
-	Host          string
-	HTTPS         bool
-	Path          string
-	InternalPath  string
-	StripPath     bool
-	ContainerPort int
-	ServerID      uuid.UUID
+	Host               string
+	HTTPS              bool
+	Path               string
+	InternalPath       string
+	StripPath          bool
+	ContainerPort      int
+	ComposeServiceName string
+	ServerID           uuid.UUID
 }
 
 func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, serviceType string, orgID uuid.UUID) (*serviceRef, error) {
@@ -137,7 +138,7 @@ func (d *Domains) Add(ctx context.Context, serviceID, orgID uuid.UUID, serviceTy
 	dom, err := d.Store.CreateDomain(ctx, &domain.Domain{
 		AppID: serviceID, ServiceID: ref.serviceID, ServiceType: serviceType, ServerID: in.ServerID, Host: in.Host, HTTPS: in.HTTPS,
 		Path: in.Path, InternalPath: in.InternalPath,
-		StripPath: in.StripPath, ContainerPort: in.ContainerPort,
+		StripPath: in.StripPath, ContainerPort: in.ContainerPort, ComposeServiceName: in.ComposeServiceName,
 		Status: string(domain.DomainProvisioning),
 	})
 	if err != nil {

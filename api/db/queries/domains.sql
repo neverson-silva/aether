@@ -1,21 +1,21 @@
 -- name: CreateDomain :one
-INSERT INTO domains (app_id, service_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id;
+INSERT INTO domains (app_id, service_id, server_id, service_type, host, https, path, internal_path, strip_path, container_port, status, cert_status, compose_service_name)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id, compose_service_name;
 
 -- name: ListDomains :many
-SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id, compose_service_name
 FROM domains
 WHERE service_id = $1 OR app_id = $1
 ORDER BY host;
 
 -- name: GetDomainByHost :one
-SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id, compose_service_name
 FROM domains
 WHERE (service_id = $1 OR app_id = $1) AND host = $2;
 
 -- name: GetDomainByID :one
-SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id, compose_service_name
 FROM domains
 WHERE id = $1;
 
@@ -52,7 +52,7 @@ SET status = $3,
 WHERE id = $1 AND (service_id = $2 OR app_id = $2);
 
 -- name: ListProvisioningDomains :many
-SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id
+SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id, compose_service_name
 FROM domains
 WHERE status IN ('PENDING', 'PROVISIONING', 'ERROR')
   AND retry_count < $1

@@ -620,7 +620,6 @@ function Notifications() {
     </div>
   );
 }
-export default Notifications;
 export const Route = createFileRoute("/_shell/notifications/")({
   component: Notifications,
 });

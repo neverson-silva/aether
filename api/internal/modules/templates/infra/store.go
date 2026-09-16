@@ -41,25 +41,16 @@ func (s *Store) CreateComposeApp(ctx context.Context, app *domain.ComposeApp) (*
 	return composeFromParts(row.ID, row.ServiceID, row.OrgID, row.ProjectID, row.EnvironmentID, row.Name, row.Compose, int(row.Port), row.Status, row.CreatedAt), nil
 }
 
-func (s *Store) NextComposePort(ctx context.Context) (int, error) {
-	var port int
-	err := s.db.QueryRowContext(ctx, `
-SELECT candidate
-FROM generate_series(1024, 1999) AS candidate
-WHERE NOT EXISTS (SELECT 1 FROM compose_apps WHERE compose_apps.port = candidate)
-  AND NOT EXISTS (SELECT 1 FROM apps WHERE apps.port = candidate)
-  AND NOT EXISTS (SELECT 1 FROM databases WHERE databases.port = candidate)
-ORDER BY candidate
-LIMIT 1`).Scan(&port)
-	return port, mapErr(err)
-}
-
 func (s *Store) GetComposeApp(ctx context.Context, id uuid.UUID) (*domain.ComposeApp, error) {
 	row, err := s.q.GetComposeApp(ctx, id)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	return composeFromParts(row.ID, row.ServiceID, row.OrgID, row.ProjectID, row.EnvironmentID, row.Name, row.Compose, int(row.Port), row.Status, row.CreatedAt), nil
+}
+
+func (s *Store) UpdateComposeApp(ctx context.Context, id uuid.UUID, compose string, port int) error {
+	return mapErr(s.q.UpdateComposeApp(ctx, gen.UpdateComposeAppParams{ID: id, Compose: compose, Port: int32(port)}))
 }
 
 func (s *Store) GetServiceID(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {

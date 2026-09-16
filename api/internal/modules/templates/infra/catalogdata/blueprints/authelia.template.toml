@@ -27,7 +27,7 @@ admin_username = "${admin_username}"
 admin_email = "${admin_email}"
 
 [[config.mounts]]
-filePath = "configuration.yml"
+filePath = "/config/configuration.yml"
 content = """
 ###############################################################
 #                   Authelia configuration                    #
@@ -168,7 +168,7 @@ access_control:
 """
 
 [[config.mounts]]
-filePath = "users_database.yml"
+filePath = "/config/users_database.yml"
 content = """
 ###############################################################
 #                         Users Database                     #
@@ -187,7 +187,7 @@ users:
   ${admin_username}:
     disabled: false
     displayname: "Authelia Admin"
-    password: "${admin_password_hash}"
+    password: "\\u0024argon2id\\u0024v=19\\u0024m=65536,t=3,p=4\\u0024170PGJ1MskQyxfFknfBPFQ\\u0024VqD1/pqC3fBHo+Zk58bC2xQm1ltOFTr0w2wx93vJgC4"
     email: ${admin_email}
     groups:
       - admins

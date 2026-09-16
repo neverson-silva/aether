@@ -20,13 +20,14 @@ services:
 
   tickets-app:
     image: eartharoid/discord-tickets:4.0.21
+    expose:
+      - "8169"
     depends_on:
       tickets-postgres:
         condition: service_healthy
     restart: unless-stopped
 
     volumes:
-      - tickets-app-data:/home/container/user
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     tty: true
@@ -47,4 +48,3 @@ services:
 
 volumes:
   tickets-mysql-data:
-  tickets-app-data: 

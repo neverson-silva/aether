@@ -26,7 +26,8 @@ host = "${main_domain}"
 # Internal nginx gateway replicating the upstream Dify nginx routing
 # (TLS terminates at Traefik, which forwards everything to this nginx).
 [[config.mounts]]
-filePath = "dify-nginx.conf"
+serviceName = "nginx"
+filePath = "/etc/nginx/conf.d/default.conf"
 content = '''
 map $http_x_forwarded_proto $dify_forwarded_proto {
     default $http_x_forwarded_proto;
@@ -75,7 +76,8 @@ server {
 # Squid SSRF proxy configuration, rendered from the upstream
 # docker/ssrf_proxy/squid.conf.template with its default values.
 [[config.mounts]]
-filePath = "dify-squid.conf"
+serviceName = "ssrf_proxy"
+filePath = "/etc/squid/squid.conf"
 content = '''
 acl client_localnet src 0.0.0.1-0.255.255.255
 acl client_localnet src 10.0.0.0/8

@@ -1,8 +1,33 @@
 services:
+  docker-socket-bridge:
+    image: alpine/socat:1.8.0.3
+    command: ["UNIX-LISTEN:/var/run/docker.sock,fork,mode=666", "TCP:aether-docker-socket-proxy:2375"]
+    networks:
+      - default
+      - aether-docker-control
+    volumes:
+      - dozzle-docker-socket:/var/run
+
   dozzle:
     image: amir20/dozzle@sha256:7f01a2504f89788b60ad0efddd94472fd66f9a225c708356cdb815d9d8abd184
+    depends_on:
+      docker-socket-bridge:
+        condition: service_started
     restart: unless-stopped
+    environment:
+      DOCKER_API_VERSION: "1.51"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dozzle-docker-socket:/var/run
     expose:
       - 8080
+
+    networks:
+      - default
+      - aether-docker-control
+
+volumes:
+  dozzle-docker-socket:
+
+networks:
+  aether-docker-control:
+    external: true

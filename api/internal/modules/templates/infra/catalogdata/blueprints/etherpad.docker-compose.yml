@@ -14,12 +14,12 @@ services:
       NODE_ENV: ${NODE_ENV}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       DB_CHARSET: ${DB_CHARSET}
-      DB_HOST: ${DB_HOST}
-      DB_NAME: ${DB_NAME}
-      DB_PASS: ${DB_PASS}
-      DB_PORT: ${DB_PORT}
-      DB_TYPE: ${DB_TYPE}
-      DB_USER: ${DB_USER}
+      DB_HOST: postgres
+      DB_NAME: etherpad
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_PORT: "5432"
+      DB_TYPE: postgres
+      DB_USER: admin
       DEFAULT_PAD_TEXT: ${DEFAULT_PAD_TEXT}
       DISABLE_IP_LOGGING: ${DISABLE_IP_LOGGING}
       SOFFICE: ${SOFFICE}

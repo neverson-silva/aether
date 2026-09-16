@@ -180,6 +180,13 @@ resolve_public_host() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+container_port_binding() {
+  local runtime="$1"
+  local container="$2"
+  local container_port="$3"
+  "$runtime" inspect "$container" --format "{{range (index .HostConfig.PortBindings \"$container_port\")}}{{if .HostIp}}{{.HostIp}}{{else}}0.0.0.0{{end}}:{{.HostPort}}{{end}}" 2>/dev/null | head -1
+}
+
 # host_log — registro por passo da configuração de host (Linux nativo).
 host_log() {
   mkdir -p "$(dirname "$HOST_LOG")"
@@ -484,7 +491,7 @@ ensure_docker_proxy() {
     --tmpfs /tmp:noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges:true \
     -v "$docker_socket:/var/run/docker.sock:ro" \
     -e CONTAINERS=1 -e IMAGES=1 -e NETWORKS=1 -e VOLUMES=1 -e POST=1 -e BUILD=1 -e EXEC=1 \
-    -e PING=1 -e VERSION=1 -e SYSTEM=1 -e AUTH=0 -e SECRETS=0 -e SWARM=0 \
+    -e PING=1 -e VERSION=1 -e SYSTEM=1 -e INFO=1 -e LOGS=1 -e EVENTS=1 -e AUTH=0 -e SECRETS=0 -e SWARM=0 \
     -e PLUGINS=0 -e SERVICES=0 -e TASKS=0 -e NODES=0 "$DOCKER_PROXY_IMAGE" >/dev/null || fail "Could not start the Docker socket proxy."
 }
 
@@ -513,7 +520,7 @@ ensure_postgres() {
     local published_port
     local published_binding
     local configured_readonly_rootfs
-    published_binding="$($runtime port "$PG_CONTAINER" 5432/tcp 2>/dev/null | head -1)"
+    published_binding="$(container_port_binding "$runtime" "$PG_CONTAINER" 5432/tcp)"
     published_port="$(printf '%s\n' "$published_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
     configured_readonly_rootfs="$($runtime inspect "$PG_CONTAINER" --format '{{.HostConfig.ReadonlyRootfs}}' 2>/dev/null || true)"
     if [[ "$configured_readonly_rootfs" != "true" ]]; then
@@ -610,8 +617,8 @@ ensure_nats() {
   exists="$($runtime ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$NATS_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
     local configured_port configured_monitor_port configured_binding configured_monitor_binding
-    configured_binding="$($runtime port "$NATS_CONTAINER" 4222/tcp 2>/dev/null | head -1 || true)"
-    configured_monitor_binding="$($runtime port "$NATS_CONTAINER" 8222/tcp 2>/dev/null | head -1 || true)"
+    configured_binding="$(container_port_binding "$runtime" "$NATS_CONTAINER" 4222/tcp)"
+    configured_monitor_binding="$(container_port_binding "$runtime" "$NATS_CONTAINER" 8222/tcp)"
     configured_port="$(printf '%s\n' "$configured_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
     configured_monitor_port="$(printf '%s\n' "$configured_monitor_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
     if [[ "$configured_port" != "$NATS_PORT" || "$configured_monitor_port" != "$NATS_MONITOR_PORT" || "$configured_binding" != 127.0.0.1:* || "$configured_monitor_binding" != 127.0.0.1:* ]]; then
@@ -871,6 +878,7 @@ start_api() {
     -e "DEV_MODE=$DEV_MODE"
     -e "AETHER_FREE_DOMAIN_PROVIDER=${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
     -e "AETHER_TRAEFIK_IMAGE=$TRAEFIK_IMAGE"
+    -e "AETHER_TRAEFIK_MOUNT_SOURCE=$STATE_DIR"
     -e "AETHER_PUBLISHED_NETWORK=$PUBLISHED_NET_NAME"
     -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-$COOKIE_SECURE_DEFAULT}"
     -e "AETHER_MODE=$MODE"
@@ -933,6 +941,7 @@ start_auxiliary() {
     -e "AETHER_NATS_USER=$NATS_USER"
     -e "AETHER_NATS_PASSWORD=$NATS_PASSWORD"
     -e "AETHER_RUNTIME_BACKEND=nats"
+    -e "AETHER_TRAEFIK_MOUNT_SOURCE=$STATE_DIR"
     -e "AETHER_CNB_BUILDER=$CNB_BUILDER"
     -e "AETHER_PUBLIC_URL=$AETHER_PUBLIC_URL"
     -e "DEV_MODE=$DEV_MODE"
@@ -1068,7 +1077,7 @@ ensure_registry() {
   exists="$($DOCKER_RUNTIME ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$REGISTRY_CONTAINER" || true)"
   if [[ -n "$exists" ]]; then
     local configured_port configured_image configured_binding
-    configured_binding="$($DOCKER_RUNTIME port "$REGISTRY_CONTAINER" 5000/tcp 2>/dev/null | head -1 || true)"
+    configured_binding="$(container_port_binding "$DOCKER_RUNTIME" "$REGISTRY_CONTAINER" 5000/tcp)"
     configured_port="$(printf '%s\n' "$configured_binding" | sed -nE 's/.*:([0-9]+)$/\1/p')"
     configured_image="$($DOCKER_RUNTIME inspect "$REGISTRY_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)"
     if [[ "$configured_port" != "1500" || "$configured_binding" != 127.0.0.1:* || "$configured_image" != "$REGISTRY_IMAGE" ]]; then

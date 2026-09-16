@@ -37,6 +37,8 @@ type Template struct {
 	UpdatedAt      time.Time
 	ComposeYAML    string
 	Environment    []TemplateEnvironmentVariable
+	Variables      []TemplateVariable
+	Mounts         []TemplateMount
 	Domains        []TemplateDomain
 }
 
@@ -45,11 +47,23 @@ type TemplateEnvironmentVariable struct {
 	Value string `json:"value"`
 }
 
+type TemplateVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type TemplateMount struct {
+	ServiceName string `json:"service_name,omitempty"`
+	FilePath    string `json:"file_path"`
+	Content     string `json:"content"`
+}
+
 type TemplateDomain struct {
 	ServiceName string `json:"service_name"`
 	Port        int    `json:"port"`
 	Host        string `json:"host"`
 	Path        string `json:"path"`
+	Publish     bool   `json:"publish,omitempty"`
 }
 
 type ComposeApp struct {
@@ -75,7 +89,7 @@ type Filter struct {
 
 type Store interface {
 	CreateComposeApp(ctx context.Context, app *ComposeApp) (*ComposeApp, error)
-	NextComposePort(ctx context.Context) (int, error)
+	UpdateComposeApp(ctx context.Context, id uuid.UUID, compose string, port int) error
 	GetComposeApp(ctx context.Context, id uuid.UUID) (*ComposeApp, error)
 	ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ComposeApp, error)
 	SetComposeStatus(ctx context.Context, id uuid.UUID, status string) error

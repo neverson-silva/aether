@@ -14,12 +14,13 @@ services:
       - "993:993"
       - "995:995"
       - "4190:4190"
+    expose:
+      - 8080
     environment:
       - TZ=${TZ}
       - HTTPS=OFF
       - HTTP_PORT=8080
     volumes:
-      - /etc/localtime:/etc/localtime:ro
       - poste-data:/data
 
 volumes:

@@ -30,6 +30,11 @@ SELECT id, org_id, project_id, name, compose, port, status, created_at, environm
 FROM compose_apps
 WHERE id = $1;
 
+-- name: UpdateComposeApp :exec
+UPDATE compose_apps
+SET compose = $2, port = $3
+WHERE id = $1;
+
 -- name: ListComposeAppsByOrg :many
 SELECT id, org_id, project_id, name, compose, port, status, created_at, environment_id, service_id
 FROM compose_apps
@@ -37,8 +42,18 @@ WHERE org_id = $1
 ORDER BY name;
 
 -- name: DeleteComposeApp :exec
+WITH target AS (
+    SELECT service_id
+    FROM compose_apps
+    WHERE id = $1 AND org_id = $2
+), removed_service AS (
+    DELETE FROM services
+    WHERE services.id = (SELECT service_id FROM target)
+      AND services.org_id = $2
+    RETURNING services.id
+)
 DELETE FROM compose_apps
-WHERE id = $1 AND org_id = $2;
+WHERE compose_apps.id = $1 AND compose_apps.org_id = $2;
 
 -- name: SetComposeStatus :exec
 UPDATE compose_apps

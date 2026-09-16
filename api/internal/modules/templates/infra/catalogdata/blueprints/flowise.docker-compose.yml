@@ -40,6 +40,9 @@ services:
       WORKER_PORT: 5566
       DATABASE_PATH: /root/.flowise
       REDIS_URL: redis://redis:6379
+      JWT_AUTH_TOKEN_SECRET: ${JWT_AUTH_TOKEN_SECRET}
+      JWT_REFRESH_TOKEN_SECRET: ${JWT_REFRESH_TOKEN_SECRET}
+      EXPRESS_SESSION_SECRET: ${EXPRESS_SESSION_SECRET}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5566/healthz"]
       interval: 10s

@@ -15,7 +15,7 @@ POSTGRES_PASSWORD = "${postgres_password}"
 ADMIN_FIRST_LOGIN_PASSWD = "${admin_password}"
 
 [[config.mounts]]
-filePath = "app.conf"
+filePath = "/conf/app.conf"
 content = """
 appname = casdoor
 httpport = 8000
@@ -50,7 +50,7 @@ frontendBaseDir = "../web/build"
 """
 
 [[config.mounts]]
-filePath = "init_data.json"
+filePath = "/init_data.json"
 content = """
 {
   "organizations": [

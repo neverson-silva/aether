@@ -81,6 +81,8 @@ services:
   frontend:
     <<: *custom_image
     entrypoint: ["bash", "-c"]
+    expose:
+      - 8080
     command:
       - >
         echo "Starting Nginx with port_in_redirect fix...";
@@ -393,7 +395,7 @@ services:
         echo "apps.txt contents:";
         cat sites/apps.txt;
         bench set-mariadb-host $${DB_HOST:-db};
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=$${ADMIN_PASSWORD} --db-root-username=root --db-root-password=$${DB_ROOT_PASSWORD} $${INSTALL_APP_ARGS} $${SITE_NAME};
+        bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD} --db-root-username=root --db-root-password=${DB_ROOT_PASSWORD} --install-app erpnext --install-app lending ${SITE_NAME};
         if [ ! -d "sites/${SITE_NAME}" ]; then
           echo "ERROR: Site ${SITE_NAME} was not created successfully";
           exit 1;
@@ -444,7 +446,6 @@ services:
       DB_HOST: ${DB_HOST:-db}
       DB_PORT: "${DB_PORT:-3306}"
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      INSTALL_APP_ARGS: ${INSTALL_APP_ARGS}
 
   migration:
     <<: *custom_image
@@ -547,4 +548,3 @@ volumes:
       o: "${SITE_VOLUME_OPTS}"
       device: "${SITE_VOLUME_DEV}"
   apps:
-

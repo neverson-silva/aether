@@ -16,24 +16,25 @@ var (
 )
 
 type Domain struct {
-	ID            uuid.UUID
-	AppID         uuid.UUID
-	ServiceID     uuid.UUID
-	ServiceType   string
-	ServerID      uuid.UUID
-	Host          string
-	HTTPS         bool
-	Path          string
-	InternalPath  string
-	StripPath     bool
-	ContainerPort int
-	Status        string
-	CertStatus    string
-	RetryCount    int
-	LastError     string
-	NextRetryAt   *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                 uuid.UUID
+	AppID              uuid.UUID
+	ServiceID          uuid.UUID
+	ServiceType        string
+	ServerID           uuid.UUID
+	Host               string
+	HTTPS              bool
+	Path               string
+	InternalPath       string
+	StripPath          bool
+	ContainerPort      int
+	ComposeServiceName string
+	Status             string
+	CertStatus         string
+	RetryCount         int
+	LastError          string
+	NextRetryAt        *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type DomainStatus string

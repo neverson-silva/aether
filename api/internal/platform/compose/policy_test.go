@@ -25,6 +25,92 @@ networks:
 	}
 }
 
+func TestValidatePolicyAllowsDokployHostPortsMarker(t *testing.T) {
+	content := `# dokploy: allow-host-ports
+services:
+  dns:
+    image: adguard/adguardhome
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("Dokploy host ports rejected: %v", err)
+	}
+	normalized, err := NormalizeNamedResourceDefinitions(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePolicy(normalized); err != nil {
+		t.Fatalf("normalized Dokploy host ports rejected: %v\n%s", err, normalized)
+	}
+}
+
+func TestValidatePolicyRejectsPrivilegedHostPortsWithoutMarker(t *testing.T) {
+	content := `services:
+  dns:
+    image: adguard/adguardhome
+    ports:
+      - "53:53/tcp"
+`
+	if err := ValidatePolicy(content); err == nil {
+		t.Fatal("privileged host port accepted without marker")
+	}
+}
+
+func TestValidatePolicyAllowsManagedTemplateConfigs(t *testing.T) {
+	content := `services:
+  web:
+    image: nginx:alpine
+    configs:
+      - source: aether-template-file-0
+        target: /etc/nginx/nginx.conf
+configs:
+  aether-template-file-0:
+    file: ./template-mounts/0
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("managed template config rejected: %v", err)
+	}
+	if err := ValidatePolicy(strings.ReplaceAll(content, "./template-mounts/0", "../../secret")); err == nil {
+		t.Fatal("template config workspace escape accepted")
+	}
+}
+
+func TestValidatePolicyAllowsInlineManagedTemplateConfigs(t *testing.T) {
+	content := `services:
+  web:
+    image: nginx:alpine
+    configs:
+      - source: aether-template-file-0
+        target: /etc/nginx/nginx.conf
+configs:
+  aether-template-file-0:
+    content: "worker_processes 1;"
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("inline managed template config rejected: %v", err)
+	}
+}
+
+func TestValidatePolicyAllowsManagedIngressNetwork(t *testing.T) {
+	content := `services:
+  web:
+    image: nginx:1.27
+    networks:
+      aether-ingress:
+        aliases:
+          - app-12345678-web
+networks:
+  aether-ingress:
+    name: aether-ingress
+    external: true
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("managed ingress network rejected: %v", err)
+	}
+}
+
 func TestValidatePolicyAllowsImplicitNamedResourceDefinitions(t *testing.T) {
 	content := `services:
   web:
@@ -40,15 +126,47 @@ volumes:
 }
 
 func TestNormalizeNamedResourceDefinitions(t *testing.T) {
-	content, err := NormalizeNamedResourceDefinitions("services:\n  web:\n    image: nginx:alpine\nvolumes:\n  web-data:\nnetworks:\n  private:\n")
+	content, err := NormalizeNamedResourceDefinitions("version: \"3.8\"\nservices:\n  web:\n    image: nginx:alpine\nvolumes:\n  web-data:\nnetworks:\n  private:\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(content, "web-data:\n") || strings.Contains(content, "private:\n") {
+	if strings.Contains(content, "version:") || strings.Contains(content, "web-data:\n") || strings.Contains(content, "private:\n") {
 		t.Fatalf("named resources were not normalized: %s", content)
 	}
 	if err := ValidatePolicy(content); err != nil {
 		t.Fatalf("normalized Compose rejected: %v", err)
+	}
+}
+
+func TestNormalizeTemplateComposeReplacesHostStateAndUnsupportedOptions(t *testing.T) {
+	content, err := NormalizeTemplateCompose(`services:
+  web:
+    image: example/web:1
+    user: "0:0"
+    shm_size: 1gb
+    volumes:
+      - ./data:/var/lib/web
+      - type: bind
+        source: /var/lib/web-config
+        target: /etc/web
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: none
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("normalized template compose rejected: %v\n%s", err, content)
+	}
+	if strings.Contains(content, "./data:/var/lib/web") || strings.Contains(content, "shm_size:") || strings.Contains(content, "user: 0:0") {
+		t.Fatalf("unsupported template settings remained: %s", content)
 	}
 }
 

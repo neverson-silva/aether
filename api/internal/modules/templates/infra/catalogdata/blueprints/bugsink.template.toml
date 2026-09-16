@@ -4,7 +4,7 @@ postgres_user = "bugsinkuser"
 postgres_password = "${password:32}"
 postgres_db = "bugsink"
 secret_key = "${password:64}"
-superuser = "admin:admin"
+superuser = "admin@example.com:admin"
 behind_https_proxy = "false"
 
 [config]

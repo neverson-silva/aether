@@ -14,7 +14,7 @@ const brandSchema = z.object({
   dark_mode: z.boolean(),
 });
 
-export function Whitelabel() {
+function Whitelabel() {
   const { data: branding, isLoading } = useBranding();
   const save = useSaveBranding();
   const { add } = useToast();

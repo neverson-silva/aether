@@ -16,7 +16,7 @@ port = 3900
 host = "${main_domain}"
 
 [[config.mounts]]
-filePath = "garage.toml"
+filePath = "/etc/garage.toml"
 content = """
 metadata_dir = "/var/lib/garage/meta"
 data_dir = "/var/lib/garage/data"

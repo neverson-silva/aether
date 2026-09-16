@@ -14,7 +14,10 @@ services:
       - "33010:33010"
       - "33020:33020/udp"
     volumes:
-      - ../files/anytype-data:/data
+      - anytype-data:/data
     environment:
       # Advertise addresses clients should use. Replace with your server hostname/IP.
       ANY_SYNC_BUNDLE_INIT_EXTERNAL_ADDRS: "192.168.100.9"
+
+volumes:
+  anytype-data:

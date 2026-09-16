@@ -9803,7 +9803,7 @@ allow_anonymous true
 
 [[config.mounts]]
 serviceName = "postgres"
-filePath = "/postgresql/initdb/001-chirpstack_extensions.sh"
+filePath = "/docker-entrypoint-initdb.d/001-chirpstack_extensions.sh"
 content = """
 #!/bin/bash
 set -e

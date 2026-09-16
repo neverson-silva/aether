@@ -7,6 +7,11 @@ services:
       POSTGRES_PASSWORD: ${KANEO_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${KANEO_DB_USER} -d $${KANEO_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   backend:
@@ -18,7 +23,7 @@ services:
       - 1337
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:

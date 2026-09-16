@@ -21,11 +21,3 @@ TZ_DATA_DIR = "/etc/elixir_tzdata_data"
 BASE_ROUTE_PATH = "/"
 YT_DLP_WORKER_CONCURRENCY = "2"
 ENABLE_PROMETHEUS = "false"
-
-[[config.mounts]]
-filePath = "/files/config"
-content = ""
-
-[[config.mounts]]
-filePath = "/files/downloads"
-content = ""

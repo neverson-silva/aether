@@ -6,7 +6,6 @@ services:
 
     volumes:
       - immich-library:/data
-      - /etc/localtime:/etc/localtime:ro
     depends_on:
       immich-redis:
         condition: service_healthy

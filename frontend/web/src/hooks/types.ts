@@ -417,6 +417,9 @@ export interface TemplateItem {
 	remote_id?: string;
 	compose_yaml?: string;
 	environment?: Array<{ name: string; value: string }>;
+	variables?: Array<{ name: string; value: string }>;
+	mounts?: Array<{ service_name?: string; file_path: string; content: string }>;
+	domains?: Array<{ service_name: string; port: number; host: string; path: string }>;
   readme: string;
   homepage: string;
   github: string;

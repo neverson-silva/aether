@@ -4,6 +4,8 @@ services:
   kokoro-web:
     image: ghcr.io/eduardolat/kokoro-web@sha256:58202493d16e2b116a9593fc02adf8ceaca6e8a95ad72369733059707a7d3d17
     restart: unless-stopped
+    expose:
+      - 3000
     environment:
       - KW_SECRET_API_KEY=${KW_SECRET_API_KEY}
       - KW_PUBLIC_NO_TRACK=${KW_PUBLIC_NO_TRACK}

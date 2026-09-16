@@ -8,7 +8,6 @@ services:
       - 8080
     volumes:
       - gatus-data:/data
-      - ../files/config.yaml:/config/config.yaml:ro
 
 volumes:
   gatus-data: {}

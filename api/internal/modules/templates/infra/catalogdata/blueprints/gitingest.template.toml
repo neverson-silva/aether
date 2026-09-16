@@ -9,5 +9,5 @@ port = 8000
 host = "${main_domain}"
 
 [config.env]
-SOFTWARE_VERSION_TAG = "latest"
+SOFTWARE_VERSION_TAG = "v0.1.5"
 ALLOWED_HOSTS = "${main_domain}"

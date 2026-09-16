@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     image: ghcr.io/teelur/budget-board/client:release
     environment:
-      VITE_API_URL: http://budget-board-server
+      VITE_SERVER_ADDRESS: budget-board-server
       PORT: 6253
     expose:
       - 6253
@@ -34,9 +34,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: budgetboard
     volumes:
-      - "../files/db-data:/var/lib/postgresql/data"
+      - budget_board_db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d budgetboard"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+volumes:
+  budget_board_db_data:

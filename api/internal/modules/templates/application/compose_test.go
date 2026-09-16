@@ -13,6 +13,7 @@ import (
 	appsdomain "aether/internal/modules/apps/domain"
 	sourcedomain "aether/internal/modules/sourcecontrol/domain"
 	"aether/internal/modules/templates/domain"
+	templatesinfra "aether/internal/modules/templates/infra"
 	variablesDomain "aether/internal/modules/variables/domain"
 	composeengine "aether/internal/platform/compose"
 )
@@ -100,28 +101,173 @@ func TestComposeContainerPortUsesAddress(t *testing.T) {
 	if port != 9000 {
 		t.Fatalf("container port = %d, want 9000", port)
 	}
-	content, err = addComposePort(content, 1024)
+}
+
+func TestBundledDragonflyComposePassesTemplateSecurityPolicy(t *testing.T) {
+	catalog := templatesinfra.NewDokployCatalog(t.TempDir())
+	template, err := catalog.Get(context.Background(), uuid.NewSHA1(uuid.NameSpaceURL, []byte("dokploy:dragonfly-db")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(content, "1024:9000") {
-		t.Fatalf("published mapping = %s", content)
+	secured, err := injectComposeSecurityDefaults(template.ComposeYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := composeengine.ValidatePolicy(secured); err != nil {
+		t.Fatalf("Dragonfly Compose rejected: %v", err)
 	}
 }
 
-func TestRepairComposePortMapping(t *testing.T) {
-	content, repaired, err := repairComposePortMapping(`services:
-  rustfs:
-    ports:
-      - "1024:1024"
-    environment:
-      - RUSTFS_ADDRESS=0.0.0.0:9000
-`, 1024)
+func TestBundledAdGuardComposePassesTemplateSecurityPolicy(t *testing.T) {
+	catalog := templatesinfra.NewDokployCatalog(t.TempDir())
+	template, err := catalog.Get(context.Background(), uuid.NewSHA1(uuid.NameSpaceURL, []byte("dokploy:adguardhome")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !repaired || !strings.Contains(content, "1024:9000") {
-		t.Fatalf("compose mapping was not repaired: repaired=%v content=%s", repaired, content)
+	secured, err := injectComposeSecurityDefaults(template.ComposeYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := composeengine.ValidatePolicy(secured); err != nil {
+		t.Fatalf("AdGuard Compose rejected: %v\n%s", err, secured)
+	}
+	if strings.Contains(secured, "cap_drop:") || strings.Contains(secured, "no-new-privileges:true") {
+		t.Fatalf("AdGuard host-port profile received incompatible runtime restrictions: %s", secured)
+	}
+}
+
+func TestMaterializeTemplateMountsUsesInlineConfig(t *testing.T) {
+	service := &Templates{}
+	app := &domain.ComposeApp{ID: uuid.New(), Compose: `services:
+  web:
+    image: nginx:alpine
+`}
+	content, err := service.materializeTemplateMounts(app, []domain.TemplateMount{{FilePath: "/etc/nginx/nginx.conf", Content: "worker_processes 1;"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "template-mounts") || !strings.Contains(content, "content: worker_processes 1;") {
+		t.Fatalf("template mount was not materialized inline: %s", content)
+	}
+	if err := composeengine.ValidatePolicy(content); err != nil {
+		t.Fatalf("inline template mount rejected: %v\n%s", err, content)
+	}
+}
+
+func TestInlineTemplateConfigFilesMigratesLegacyMounts(t *testing.T) {
+	baseDir := t.TempDir()
+	mountDir := filepath.Join(baseDir, "template-mounts")
+	if err := os.MkdirAll(mountDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mountDir, "0"), []byte("worker_processes 1;"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	content, err := inlineTemplateConfigFiles(`services:
+  web:
+    image: nginx:alpine
+configs:
+  aether-template-file-0:
+    file: ./template-mounts/0
+`, baseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "file: ./template-mounts/0") || !strings.Contains(content, "content: worker_processes 1;") {
+		t.Fatalf("legacy template config was not migrated: %s", content)
+	}
+}
+
+func TestComposePortSelectionKeepsInternalAddressPort(t *testing.T) {
+	port, published, err := composePortSelection(`services:
+  rustfs:
+    environment:
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published || port != 9000 {
+		t.Fatalf("RustFS port selection = %d published=%v, want internal 9000", port, published)
+	}
+}
+
+func TestComposePortSelectionKeepsInternalEnvironmentPort(t *testing.T) {
+	port, published, err := composePortSelection(`services:
+  web:
+    environment:
+      PORT: "8080"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published || port != 8080 {
+		t.Fatalf("environment port selection = %d published=%v, want internal 8080", port, published)
+	}
+}
+
+func TestEnsureRustFSPublishedPorts(t *testing.T) {
+	content, err := ensureRustFSPublishedPorts(`services:
+  rustfs:
+    image: rustfs/rustfs:1.0
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "9000:9000") || !strings.Contains(content, "9001:9001") {
+		t.Fatalf("RustFS ports were not published: %s", content)
+	}
+}
+
+func TestResolveTemplateConfigUsesDokployVariables(t *testing.T) {
+	service := &Templates{TemplateDomainGenerator: func(seed string) string { return seed + ".example.com" }}
+	configured, domains, mounts := service.resolveTemplateConfig(&domain.Template{
+		Variables:   []domain.TemplateVariable{{Name: "main_domain", Value: "${domain}"}, {Name: "secret", Value: "${password:16}"}},
+		Environment: []domain.TemplateEnvironmentVariable{{Name: "PUBLIC_URL", Value: "https://${main_domain}"}, {Name: "SECRET", Value: "${secret}"}},
+		Domains:     []domain.TemplateDomain{{ServiceName: "web", Port: 3000, Host: "${main_domain}", Path: "/"}},
+	}, "my-service", nil)
+	if len(mounts) != 0 {
+		t.Fatalf("resolved template mounts = %+v", mounts)
+	}
+	if len(configured) != 2 || configured[0].Value == "" || configured[1].Value == "" {
+		t.Fatalf("resolved template environment = %+v", configured)
+	}
+	if len(configured[1].Value) != 16 {
+		t.Fatalf("resolved secret length = %d", len(configured[1].Value))
+	}
+	if len(domains) != 1 || domains[0].Host != "main_domain.example.com" {
+		t.Fatalf("resolved template domains = %+v", domains)
+	}
+}
+
+func TestMaterializeTemplateIngressUsesServiceAliases(t *testing.T) {
+	app := &domain.ComposeApp{ID: uuid.MustParse("12345678-1234-1234-1234-123456789abc"), Compose: `services:
+  web:
+    image: nginx:1.27
+  worker:
+    image: busybox:1.36
+`}
+	service := &Templates{IngressNetwork: "aether-ingress"}
+	content, err := service.materializeTemplateIngress(app, []domain.TemplateDomain{{ServiceName: "web", Port: 3000, Host: "web.example.com", Path: "/"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := composeengine.ValidatePolicy(content); err != nil {
+		t.Fatalf("materialized ingress compose rejected: %v\n%s", err, content)
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		t.Fatal(err)
+	}
+	services := document["services"].(map[string]any)
+	web := services["web"].(map[string]any)
+	networks := web["networks"].(map[string]any)
+	if _, ok := networks["aether-ingress"]; !ok {
+		t.Fatalf("web service is not attached to ingress: %v", networks)
+	}
+	if _, ok := services["worker"].(map[string]any)["networks"]; ok {
+		t.Fatal("worker without a template domain must not be attached to ingress")
 	}
 }
 
@@ -133,11 +279,18 @@ func TestInjectComposeSecurityDefaults(t *testing.T) {
 	if err := composeengine.ValidatePolicy(content); err != nil {
 		t.Fatalf("security defaults rejected: %v", err)
 	}
-	if !strings.Contains(content, "cap_drop") || !strings.Contains(content, "no-new-privileges:true") {
-		t.Fatalf("security defaults missing: %s", content)
-	}
 	if !strings.Contains(content, "restart: no") {
 		t.Fatalf("restart policy was not normalized: %s", content)
+	}
+}
+
+func TestInterpolateComposeVariableReferences(t *testing.T) {
+	content, err := interpolateComposeVariables("services:\n  app:\n    environment:\n      PASSWORD: ${APP_PASSWORD}\n      URL: https://${APP_HOST:-localhost}\n", map[string]string{"APP_PASSWORD": "secret", "APP_HOST": "example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "${APP_PASSWORD}") || strings.Contains(content, "${APP_HOST") || !strings.Contains(content, "PASSWORD: secret") || !strings.Contains(content, "URL: https://example.com") {
+		t.Fatalf("compose variables were not interpolated: %s", content)
 	}
 }
 
@@ -146,6 +299,9 @@ func TestRustFSComposeAdmission(t *testing.T) {
 services:
   rustfs:
     image: rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - rustfs-data:/data
     environment:
@@ -160,12 +316,8 @@ volumes:
 	if err != nil {
 		t.Fatalf("parse RustFS ports: %v", err)
 	}
-	if hasPort || port != 0 {
-		t.Fatalf("RustFS should not have a published port: has=%v port=%d", hasPort, port)
-	}
-	content, err = addComposePort(content, 1024)
-	if err != nil {
-		t.Fatalf("add RustFS port: %v", err)
+	if !hasPort || port != 9000 {
+		t.Fatalf("RustFS published port = %d, has=%v; want 9000", port, hasPort)
 	}
 	content, err = injectComposeSecurityDefaults(content)
 	if err != nil {
@@ -192,6 +344,18 @@ func TestTemplateEnvironmentVariablesReadsBareAndExplicitValues(t *testing.T) {
 	}
 	if variables[2].Name != "RUSTFS_ADDRESS" || variables[2].Value != "0.0.0.0:9000" {
 		t.Fatalf("unexpected address variable: %+v", variables[2])
+	}
+}
+
+func TestTemplateEnvironmentVariablesSkipsReferences(t *testing.T) {
+	variables := templateEnvironmentVariables(`services:
+  app:
+    environment:
+      PASSWORD: ${APP_PASSWORD}
+      APP_PASSWORD:
+`)
+	if len(variables) != 1 || variables[0].Name != "APP_PASSWORD" {
+		t.Fatalf("template references were treated as independent variables: %v", variables)
 	}
 }
 
@@ -479,5 +643,11 @@ func TestComposeGitDeploymentUsesNestedComposeDirectory(t *testing.T) {
 	}
 	if len(executor.args) != 2 || executor.args[0] != "up" || executor.args[1] != "-d" {
 		t.Fatalf("compose args = %v", executor.args)
+	}
+	if _, err := compose.runCompose(context.Background(), app, false, "down"); err != nil {
+		t.Fatal(err)
+	}
+	if executor.project.File != filepath.Join(dir, "compose", appID.String(), "compose.generated.yml") {
+		t.Fatalf("down project file = %q", executor.project.File)
 	}
 }

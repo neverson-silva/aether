@@ -1043,16 +1043,10 @@ func (h *Handler) Deployments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
 		return
 	}
-	kind, specID, err := h.resolve(c, id)
+	_, _, err = h.resolve(c, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
-	}
-	composeReady := false
-	if servicedomain.Kind(kind) == servicedomain.KindCompose {
-		if states, statesErr := runtimeContainerStates(c, h.runtime, id, specID); statesErr == nil {
-			composeReady = hasRunningContainer(states)
-		}
 	}
 	rows, err := h.db.Query(c.Request.Context(), `
 SELECT d.id, d.number, d.status, d.created_at, d.started_at, d.finished_at
@@ -1073,9 +1067,6 @@ ORDER BY d.number DESC LIMIT 50`, id)
 		if err := rows.Scan(&deploymentID, &number, &status, &createdAt, &startedAt, &finishedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
-		}
-		if len(result) == 0 && composeReady && deploymentInProgress(status) {
-			status = string(deploydomain.StatusReady)
 		}
 		result = append(result, gin.H{"id": deploymentID, "service_id": id, "number": number, "status": status, "created_at": createdAt, "started_at": startedAt, "finished_at": finishedAt})
 	}

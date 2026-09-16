@@ -1,6 +1,6 @@
 [variables]
 main_domain = "${domain}"
-username = "${username}"
+username = "admin"
 password = "${password:16}"
 secret_key = "${password:32}"
 

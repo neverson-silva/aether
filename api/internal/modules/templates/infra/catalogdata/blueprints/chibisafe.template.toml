@@ -8,11 +8,11 @@ host = "${main_domain}"
 
 
 [[config.mounts]]
-filePath = "./Caddyfile"
+filePath = "/etc/caddy/Caddyfile"
 content = """
 # chibisafe/Caddyfile
 # https://chibisafe.app/docs/installation/running-with-docker
-{$BASE_URL} {
+:80 {
 	route {
 		file_server * {
 				root /app/uploads

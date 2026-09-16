@@ -17,13 +17,13 @@ path = "/"
 [[config.domains]]
 serviceName = "minio"
 port = 3902
-host = "minio_domain_1"
+host = "${minio_domain_1}"
 path = "/"
 
 [[config.domains]]
 serviceName = "minio"
 port = 3903
-host = "minio_domain_2"
+host = "${minio_domain_2}"
 path = "/"
 
 [config.env]
@@ -40,7 +40,3 @@ CAP_AWS_BUCKET = "${cap_aws_bucket}"
 CAP_AWS_REGION = "${cap_aws_region}"
 MINIO_ROOT_USER = "${password:16}" # MinIO root user
 MINIO_ROOT_PASSWORD = "${password:16}" # MinIO root password
-
-[[config.mounts]]
-filePath = "/certs"
-content = ""

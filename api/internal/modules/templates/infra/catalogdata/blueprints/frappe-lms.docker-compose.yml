@@ -29,6 +29,8 @@ services:
     <<: *custom_image
     command:
       - nginx-entrypoint.sh
+    expose:
+      - 8080
     depends_on:
       backend:
         condition: service_started
@@ -202,7 +204,7 @@ services:
         echo "sites/common_site_config.json found";
         [[ -d "sites/${SITE_NAME}" ]] && echo "${SITE_NAME} already exists" && touch sites/${SITE_NAME}/.create-site-done && exit 0;
         sed -i "s/^required_apps.*/required_apps = []/" apps/lms/lms/hooks.py;
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=$${ADMIN_PASSWORD} --db-root-username=root --db-root-password=$${DB_ROOT_PASSWORD} $${INSTALL_APP_ARGS} $${SITE_NAME} || exit 1;
+        bench new-site --mariadb-user-host-login-scope='%' --admin-password=${ADMIN_PASSWORD} --db-root-username=root --db-root-password=${DB_ROOT_PASSWORD} --install-app lms ${SITE_NAME} || exit 1;
         if [[ $${ENABLE_SCHEDULER} == "1" ]]; then
           bench --site $${SITE_NAME} enable-scheduler;
         else
@@ -218,7 +220,6 @@ services:
       DB_HOST: ${DB_HOST:-db}
       DB_PORT: "${DB_PORT:-3306}"
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      INSTALL_APP_ARGS: ${INSTALL_APP_ARGS}
       ENABLE_SCHEDULER: "${ENABLE_SCHEDULER}"
 
   migration:

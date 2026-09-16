@@ -2,6 +2,8 @@ services:
   doublezero:
     restart: always
     image: liltechnomancer/double-zero:0.2.1
+    expose:
+      - 4000
     volumes:
       - db-data:/var/lib/doublezero/data
     environment:

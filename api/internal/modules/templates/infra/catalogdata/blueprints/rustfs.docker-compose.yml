@@ -3,6 +3,9 @@ version: "3.8"
 services:
   rustfs:
     image: rustfs/rustfs@sha256:41fe89380f4120a337790c02af192c3fe7bb55c3edc2e6e9357b487b47c6ab21
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - rustfs-data:/data
     environment:

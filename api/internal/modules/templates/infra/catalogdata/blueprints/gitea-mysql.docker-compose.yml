@@ -33,7 +33,6 @@ services:
       - MYSQL_USER=gitea
       - MYSQL_PASSWORD=${GITEA_DB_PASSWORD:-gitea}
       - MYSQL_DATABASE=gitea
-    command: ["--default-authentication-plugin=mysql_native_password"]
     volumes:
       - mysql-data:/var/lib/mysql
     expose:

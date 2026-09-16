@@ -15,9 +15,8 @@ env = [
   "CREATE_SITE=1",
   "CONFIGURE=1",
   "REGENERATE_APPS_TXT=1",
-  "INSTALL_APP_ARGS=--install-app erpnext --install-app lending",
+  "VERSION=version-15",
   "IMAGE_NAME=frappe/erpnext",
-  "VERSION=latest",
   "FRAPPE_SITE_NAME_HEADER=",
   "MAIN_DOMAIN=${main_domain}",
 ]

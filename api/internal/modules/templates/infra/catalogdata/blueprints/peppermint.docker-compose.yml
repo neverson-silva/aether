@@ -6,7 +6,7 @@ services:
     restart: always
 
     volumes:
-      - peppermint-postgres-data:/var/lib/postgresql/data
+      - peppermint-postgres-data:/var/lib/postgresql
     environment:
       POSTGRES_USER: peppermint
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

@@ -48,19 +48,25 @@ services:
       POSTGRES_DB: us-db-ci_purgeable
       POSTGRES_USER: us
       POSTGRES_PASSWORD: us
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U us -d us-db-ci_purgeable"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     volumes:
-      - ${VOLUME_US:-./metadata}:/var/lib/postgresql/data
+      - datalens_us_data:/var/lib/postgresql/data
 
   us:
     image: ghcr.io/datalens-tech/datalens-us:0.310.0
     restart: always
     depends_on:
-      - pg-us
+      pg-us:
+        condition: service_healthy
     environment:
       APP_INSTALLATION: "opensource"
       APP_ENV: "prod"
       MASTER_TOKEN: "fake-us-master-token"
-      POSTGRES_DSN_LIST: ${METADATA_POSTGRES_DSN_LIST:-postgres://us:us@pg-us:5432/us-db-ci_purgeable}
+      POSTGRES_DSN_LIST: "postgres://us:us@pg-us:5432/us-db-ci_purgeable"
       SKIP_INSTALL_DB_EXTENSIONS: ${METADATA_SKIP_INSTALL_DB_EXTENSIONS:-0}
       USE_DEMO_DATA: ${USE_DEMO_DATA:-0}
       HC: ${HC:-0}
@@ -92,3 +98,6 @@ services:
       HC: ${HC:-0}
       YANDEX_MAP_ENABLED: ${YANDEX_MAP_ENABLED:-0}
       YANDEX_MAP_TOKEN: ${YANDEX_MAP_TOKEN:-0}
+
+volumes:
+  datalens_us_data:

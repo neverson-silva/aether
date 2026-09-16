@@ -8,5 +8,5 @@ mounts = []
 
 [[config.domains]]
 serviceName = "answer"
-port = 9_080
+port = 80
 host = "${main_domain}"

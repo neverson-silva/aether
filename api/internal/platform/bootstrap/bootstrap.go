@@ -174,7 +174,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		},
 	}
 	domainsHandler := domainshttp.New(domainsSvc)
-	if err := ensureIngress(ctx, cfg, deployWorkerRuntime); err != nil {
+	if err := ensureIngressWithRetry(ctx, cfg, deployWorkerRuntime); err != nil {
 		slog.Error("bootstrap ingress failed", "error", err)
 	}
 
@@ -197,8 +197,8 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	backupsHandler := backupshttp.New(backupsSvc)
 
 	templatesStore := templatesInfra.NewStore(pool)
-	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore, Catalog: templatesInfra.NewDokployCatalog(cfg.StateDir)}
-	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: imageRuntime, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
+	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore, Catalog: templatesInfra.NewDokployCatalog(cfg.StateDir), IngressNetwork: cfg.IngressNetwork, DataDir: cfg.DataDir}
+	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: deployWorkerRuntime, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
 	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {
@@ -208,6 +208,9 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	deployHandler.WithCompose(composeSvc)
 	domainsSvc.Compose = composeSvc
+	templatesSvc.TemplateDomainGenerator = func(seed string) string {
+		return domainsSvc.Provisioner.GenerateFreeDomain(seed, uuid.New())
+	}
 	templatesSvc.ProvisionTemplateDomains = func(ctx context.Context, orgID uuid.UUID, app *templatesdomain.ComposeApp, mappings []templatesdomain.TemplateDomain) error {
 		if app == nil || domainsSvc.Provisioner.EffectiveBase() == "" {
 			return nil
@@ -217,9 +220,12 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 			if serviceName == "" {
 				serviceName = app.Name
 			}
-			host := domainsSvc.Provisioner.GenerateFreeDomain(serviceName+"-"+strconv.Itoa(mapping.Port), app.ID)
+			host := mapping.Host
+			if host == "" {
+				host = domainsSvc.Provisioner.GenerateFreeDomain(serviceName+"-"+strconv.Itoa(mapping.Port), app.ID)
+			}
 			if _, err := domainsSvc.Add(ctx, app.ID, orgID, domainsApp.ServiceTypeCompose, domainsApp.AddDomainInput{
-				Host: host, Path: mapping.Path, InternalPath: "/", ContainerPort: mapping.Port,
+				Host: host, Path: mapping.Path, InternalPath: "/", ContainerPort: mapping.Port, ComposeServiceName: serviceName,
 			}); err != nil {
 				return err
 			}

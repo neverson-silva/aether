@@ -1,5 +1,9 @@
 version: "3.8"
 services:
   poke:
-    image: codeberg.org/poketube/poke:amd64
+    image: node:22-alpine
     restart: unless-stopped
+    working_dir: /app
+    command: sh -c "apk add --no-cache git python3 make g++ && git clone --depth=1 https://github.com/np22-jpg/poketube-Docker.git /app && npm install --omit=dev && node server.js"
+    expose:
+      - 3000

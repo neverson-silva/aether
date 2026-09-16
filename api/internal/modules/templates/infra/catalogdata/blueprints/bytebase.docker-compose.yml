@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   bytebase:
-    image: bytebase/bytebase:3.3.0
+    image: bytebase/bytebase@sha256:793b5abe5f2d3a82ad03a528638d38080146f4d29288d821660e9678ae381b54
     restart: unless-stopped
     expose:
       - 8080

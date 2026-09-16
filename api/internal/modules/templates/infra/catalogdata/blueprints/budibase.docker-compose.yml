@@ -15,7 +15,7 @@ services:
       MINIO_URL: http://minio:9000
       REDIS_URL: redis:6379
       REDIS_PASSWORD: ${BB_REDIS_PASSWORD}
-      WORKER_URL: http://worker:4003
+      WORKER_URL: http://worker:4002
       COUCH_DB_USERNAME: budibase
       COUCH_DB_PASSWORD: ${BB_COUCHDB_PASSWORD}
       COUCH_DB_URL: http://budibase:${BB_COUCHDB_PASSWORD}@couchdb:5984
@@ -46,7 +46,7 @@ services:
     environment:
       SELF_HOSTED: 1
       LOG_LEVEL: info
-      PORT: 4003
+      PORT: 4002
       CLUSTER_PORT: 10000
       INTERNAL_API_KEY: ${BB_INTERNAL_API_KEY}
       API_ENCRYPTION_KEY: ${BB_API_ENCRYPTION_KEY}
@@ -73,14 +73,14 @@ services:
         - wget
         - '--spider'
         - '-qO-'
-        - 'http://localhost:4003/health'
+        - 'http://localhost:4002/health'
       interval: 15s
       timeout: 15s
       retries: 5
       start_period: 10s
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: unless-stopped
     volumes:
       - 'minio_data:/data'
@@ -102,11 +102,13 @@ services:
   proxy:
     image: budibase/proxy:3.23.47
     restart: unless-stopped
+    expose:
+      - 10000
     environment:
       PROXY_RATE_LIMIT_WEBHOOKS_PER_SECOND: 10
       PROXY_RATE_LIMIT_API_PER_SECOND: 20
       APPS_UPSTREAM_URL: http://apps:4002
-      WORKER_UPSTREAM_URL: http://worker:4003
+      WORKER_UPSTREAM_URL: http://worker:4002
       MINIO_UPSTREAM_URL: http://minio:9000
       COUCHDB_UPSTREAM_URL: http://couchdb:5984
       WATCHTOWER_UPSTREAM_URL: http://watchtower:8080

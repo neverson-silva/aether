@@ -82,7 +82,7 @@ function derivedEndpoint(type: DestinationType, values: Record<string, string>):
   return "";
 }
 
-export function Storage() {
+function Storage() {
   const { data: dests } = useS3Destinations();
   const createS3 = useCreateS3();
   const updateS3 = useUpdateS3();

@@ -43,7 +43,7 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -128,10 +128,6 @@ services:
       # Internal
       PLUNK_API_KEY: ${PLUNK_API_KEY}
       PLUNK_FROM_ADDRESS: ${PLUNK_FROM_ADDRESS}
-
-    volumes:
-      # Mount Traefik certificates for SSL
-      - /etc/dokploy/traefik/dynamic/acme.json:/certs/acme.json:ro
 
     expose:
       - 80

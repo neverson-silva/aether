@@ -1,6 +1,6 @@
 services:
   freshrss:
-    image: freshrss/freshrss:${FRESHRSS_VERSION:-latest}
+    image: freshrss/freshrss:${FRESHRSS_VERSION:-1.27.0}
     restart: unless-stopped
     volumes:
       # FreshRSS persistent data such as configuration and SQLite databases

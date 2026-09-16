@@ -2,8 +2,6 @@ version: '3.8'
 services:
   dragonflydb:
     image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
-    ulimits:
-      memlock: -1
     expose:
       - 6379
     volumes:
