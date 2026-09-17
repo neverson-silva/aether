@@ -111,6 +111,7 @@ CRED_FILE="$STATE_DIR/.aether-db"
 HOST_LOG="$STATE_DIR/logs/host-setup.log"
 INSTALL_LOG="${AETHER_INSTALL_LOG:-/dev/stderr}"
 FORCE_API_RECREATE=0
+FORCE_IMAGE_REBUILD=0
 
 content_fingerprint() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -763,7 +764,7 @@ build_api_image() {
   local image_stamp="$STATE_DIR/.api-image.stamp"
   local source_stamp
   source_stamp="$(content_fingerprint "$PROJECT_ROOT/api" "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT/.dockerignore")|$API_IMAGE"
-  if $RUNTIME image inspect "$API_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
+  if [[ "$FORCE_IMAGE_REBUILD" -eq 0 ]] && $RUNTIME image inspect "$API_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
     info "Application services unchanged — reusing the cached image."
     return 0
   fi
@@ -795,7 +796,7 @@ ensure_web_image() {
   local image_stamp="$STATE_DIR/.web-image.stamp"
   local source_stamp
   source_stamp="$(content_fingerprint "$PROJECT_ROOT/frontend/aether_ds" "$PROJECT_ROOT/frontend/web" "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT/infra/nginx.conf")|$WEB_IMAGE|$AETHER_API_PUBLIC_URL|$AETHER_PUBLIC_URL"
-  if $RUNTIME image inspect "$WEB_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
+  if [[ "$FORCE_IMAGE_REBUILD" -eq 0 ]] && $RUNTIME image inspect "$WEB_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
     cleanup_web_build_env
     info "Application interface unchanged — reusing the cached image."
     return 0
@@ -1343,7 +1344,10 @@ main() {
       info "Aether is running."
       return 0
       ;;
-    install|update)
+    install)
+      ;;
+    update)
+      FORCE_IMAGE_REBUILD=1
       ;;
   esac
 
