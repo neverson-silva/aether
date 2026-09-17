@@ -224,15 +224,19 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (sessionRef.current !== session) return;
       attemptRef.current += 1;
       const delay = Math.min(30000, Math.pow(2, Math.min(attemptRef.current - 1, 5)) * 1000);
-      setTimeout(() => connect(), delay);
-      if (attemptRef.current >= 3 && !isPublicRoute()) {
-        apiGet("/api/v1/me").catch((err: unknown) => {
-          if (err instanceof ApiError && err.status === 401 && !isPublicRoute()) {
-            clearToken();
-            window.location.href = "/login";
-          }
-        });
-      }
+      setTimeout(() => {
+        if (isPublicRoute()) return;
+        apiGet("/api/v1/me")
+          .then(() => connect())
+          .catch((err: unknown) => {
+            if (err instanceof ApiError && err.status === 401 && !isPublicRoute()) {
+              clearToken();
+              window.location.href = "/login";
+              return;
+            }
+            connect();
+          });
+      }, delay);
     };
     wsRef.current = ws;
   }, [handle, seqKey]);
