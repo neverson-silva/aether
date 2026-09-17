@@ -5,14 +5,6 @@ import { ApiError, apiGet, clearToken, getServer, isPublicRoute } from "../api/c
 import type { Deployment } from "../api/types";
 import type { EventEnvelope, RealtimeInbound } from "../hooks/types";
 
-function realtimeLog(message: string, details?: unknown) {
-  if (details === undefined) {
-    console.info(`[aether:realtime] ${message}`);
-    return;
-  }
-  console.info(`[aether:realtime] ${message} ${JSON.stringify(details)}`);
-}
-
 interface RealtimeContextValue {
   connected: boolean;
   lastSeq: number;
@@ -191,10 +183,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const connect = useCallback(() => {
-    if (isPublicRoute()) {
-      realtimeLog("connect skipped on public route", { path: window.location.pathname });
-      return;
-    }
+    if (isPublicRoute()) return;
     const session = ++sessionRef.current;
     wsRef.current?.close();
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -202,22 +191,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const seq = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
     seqRef.current = seq;
     const wsURL = `${proto}//${window.location.host}${base}/api/v1/ws/realtime`;
-    realtimeLog("opening connection", {
-      wsURL,
-      pageURL: window.location.href,
-      server: getServer() || "same-origin",
-      protocol: window.location.protocol,
-      session,
-      attempt: attemptRef.current,
-      seq,
-      visibleCookieNames: document.cookie.split(";").map((entry) => entry.trim().split("=")[0]).filter(Boolean),
-    });
     useRealtimeStore.getState().setLastSeq(seq);
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsURL);
-    } catch (error) {
-      realtimeLog("constructor failed", { error: error instanceof Error ? error.message : String(error) });
+    } catch {
       return;
     }
     const pingRef = { id: 0 as number | undefined };
@@ -225,7 +203,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       attemptRef.current = 0;
       useRealtimeStore.getState().setConnected(true);
       ws.send(JSON.stringify({ op: "subscribe", subs: ["org"], seq }));
-      realtimeLog("connection opened", { readyState: ws.readyState, session, seq });
       pingRef.id = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: "ping" }));
       }, 25000);
@@ -238,21 +215,16 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (msg.op === "event" && msg.ev) {
-        realtimeLog("event received", { type: msg.ev.type, seq: msg.ev.seq, replay: !!msg.replay });
         handle(msg.ev, !!msg.replay);
       }
       if (msg.op === "presence" && msg.scope) {
         presenceListeners.current.forEach((fn) => fn(msg.scope!, msg.n ?? 0));
       }
     };
-    ws.onerror = (event) => {
-      realtimeLog("connection error", { eventType: event.type, readyState: ws.readyState, url: ws.url, session });
-      ws.close();
-    };
-    ws.onclose = (event) => {
+    ws.onerror = () => ws.close();
+    ws.onclose = () => {
       if (pingRef.id !== undefined) window.clearInterval(pingRef.id);
       useRealtimeStore.getState().setConnected(false);
-      realtimeLog("connection closed", { code: event.code, reason: event.reason, clean: event.wasClean, readyState: ws.readyState, session });
       const saved = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
       if (seqRef.current > 0 && saved < seqRef.current) {
         localStorage.setItem(seqKey(), String(seqRef.current));
@@ -262,20 +234,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       const delay = Math.min(30000, Math.pow(2, Math.min(attemptRef.current - 1, 5)) * 1000);
       setTimeout(() => {
         if (isPublicRoute()) return;
-        realtimeLog("checking session before reconnect", { attempt: attemptRef.current });
         apiGet("/api/v1/me")
-          .then(() => {
-            realtimeLog("session check succeeded; reconnecting");
-            connect();
-          })
+          .then(() => connect())
           .catch((err: unknown) => {
-            realtimeLog("session check failed", { status: err instanceof ApiError ? err.status : undefined, message: err instanceof Error ? err.message : String(err) });
             if (err instanceof ApiError && err.status === 401 && !isPublicRoute()) {
               clearToken();
               window.location.href = "/login";
               return;
             }
-            realtimeLog("reconnecting after session check failure");
             connect();
           });
       }, delay);
