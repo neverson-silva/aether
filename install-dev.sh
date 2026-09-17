@@ -770,7 +770,12 @@ build_api_image() {
   fi
   info "Preparing the application services..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
-  $RUNTIME build --sbom=true --provenance=true -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile" "$PROJECT_ROOT" \
+  local build_args=(build --sbom=true --provenance=true -t "$API_IMAGE" -f "$PROJECT_ROOT/infra/Dockerfile")
+  if [[ "$FORCE_IMAGE_REBUILD" -eq 1 ]]; then
+    build_args+=(--no-cache)
+  fi
+  build_args+=("$PROJECT_ROOT")
+  $RUNTIME "${build_args[@]}" \
     >>"$INSTALL_LOG" 2>&1 || fail "The application services could not be prepared."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$image_stamp"
@@ -803,7 +808,12 @@ ensure_web_image() {
   fi
   info "Preparing the application interface..."
   mkdir -p "$(dirname "$INSTALL_LOG")"
-  if ! $RUNTIME build --sbom=true --provenance=true -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT" >>"$INSTALL_LOG" 2>&1; then
+  local build_args=(build --sbom=true --provenance=true -t "$WEB_IMAGE" -f "$PROJECT_ROOT/infra/web.Dockerfile")
+  if [[ "$FORCE_IMAGE_REBUILD" -eq 1 ]]; then
+    build_args+=(--no-cache)
+  fi
+  build_args+=("$PROJECT_ROOT")
+  if ! $RUNTIME "${build_args[@]}" >>"$INSTALL_LOG" 2>&1; then
     cleanup_web_build_env
     fail "The application interface could not be prepared."
   fi
