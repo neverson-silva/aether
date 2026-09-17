@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,7 +24,11 @@ func (h *Handler) RealtimeWS(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{OriginPatterns: h.originPatterns})
+	patterns := append([]string(nil), h.originPatterns...)
+	if host := requestHostname(c.Request.Host); host != "" && !containsString(patterns, host) {
+		patterns = append(patterns, host)
+	}
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{OriginPatterns: patterns})
 	if err != nil {
 		return
 	}
@@ -34,4 +39,21 @@ func (h *Handler) RealtimeWS(c *gin.Context) {
 		return
 	}
 	h.hub.Run(client, c.Request.Context())
+}
+
+func requestHostname(host string) string {
+	parsed, err := url.Parse("http://" + host)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

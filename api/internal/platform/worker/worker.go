@@ -358,7 +358,10 @@ func (w *Worker) processServiceQueueJob(ctx context.Context, dep *deploydomain.D
 		w.fail(deploymentCtx, dep, containerID, err)
 		return nil
 	}
-	if kind == "compose" {
+	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusStarting, dep.ImageRef, containerID); err != nil {
+		return err
+	}
+	if kind == "compose" && w.Runtime != nil {
 		if err := w.waitForComposeContainers(deploymentCtx, serviceID, specID); err != nil {
 			w.fail(deploymentCtx, dep, containerID, err)
 			return nil
@@ -366,9 +369,6 @@ func (w *Worker) processServiceQueueJob(ctx context.Context, dep *deploydomain.D
 	}
 	if w.deploymentCancelled(dep.ID) {
 		return nil
-	}
-	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusStarting, dep.ImageRef, containerID); err != nil {
-		return err
 	}
 	if err := w.setStatus(deploymentCtx, dep, deploydomain.StatusHealthChecking, dep.ImageRef, containerID); err != nil {
 		return err

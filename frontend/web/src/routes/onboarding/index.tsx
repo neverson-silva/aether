@@ -60,6 +60,7 @@ function Onboarding() {
       await api<{ user: { id: string } }>("/api/v1/auth/register", { method: "POST", body: { name: values.name, email: values.email, password: values.password } });
       add({ title: "Account created", tone: "success" });
       await navigate({ to: "/" });
+      window.dispatchEvent(new Event("aether:auth"));
     } catch (error) {
       add({ title: "Unable to create account", description: error instanceof Error ? error.message : "Try again.", tone: "error" });
     }

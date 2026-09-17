@@ -48,6 +48,7 @@ function Login() {
       if (values.remember) setServer(getServer() || "");
       add({ title: "Authenticated successfully", tone: "success" });
       await navigate({ to: "/" });
+      window.dispatchEvent(new Event("aether:auth"));
     } catch (error) {
       add({ title: "Authentication failed", description: error instanceof Error ? error.message : "Check your credentials and try again.", tone: "error" });
     }

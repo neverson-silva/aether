@@ -152,6 +152,8 @@ function shouldApplyDeploymentStatus(current: string, next: string): boolean {
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
+  const connected = useRealtimeStore((st) => st.connected);
+  const lastSeq = useRealtimeStore((st) => st.lastSeq);
   const wsRef = useRef<WebSocket | null>(null);
   const listeners = useRef(new Set<(ev: EventEnvelope, replay: boolean) => void>());
   const presenceListeners = useRef(new Set<(scope: string, count: number) => void>());
@@ -238,13 +240,16 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     connect();
     const onOrgChange = () => connect();
+    const onAuthChange = () => connect();
     const onFocus = () => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) connect();
     };
     window.addEventListener("aether:org", onOrgChange);
+    window.addEventListener("aether:auth", onAuthChange);
     window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("aether:org", onOrgChange);
+      window.removeEventListener("aether:auth", onAuthChange);
       window.removeEventListener("focus", onFocus);
       wsRef.current?.close();
     };
@@ -270,7 +275,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const value: RealtimeContextValue = { connected: useRealtimeStore.getState().connected, lastSeq: useRealtimeStore.getState().lastSeq, subscribe, subscribePresence, send };
+  const value: RealtimeContextValue = { connected, lastSeq, subscribe, subscribePresence, send };
 
   return <RealtimeCtx.Provider value={value}>{children}</RealtimeCtx.Provider>;
 }
