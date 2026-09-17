@@ -155,7 +155,7 @@ func (c *Compose) Create(ctx context.Context, orgID, projectID uuid.UUID, name, 
 		return nil, domain.ErrValidation
 	}
 	if err := composeengine.ValidatePolicy(content); err != nil {
-		return nil, domain.ErrValidation
+		return nil, fmt.Errorf("%w: %v", domain.ErrValidation, err)
 	}
 	port, hasPort, err := composePortSelection(content)
 	if err != nil {

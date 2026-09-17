@@ -12,6 +12,12 @@ export interface SourceControlConnection {
   updated_at: string;
 }
 
+export function selectGitHubConnection(connections: SourceControlConnection[] | undefined): SourceControlConnection | undefined {
+  return connections
+    ?.filter((connection) => connection.provider === "github" && connection.status === "active" && !!connection.installation_id)
+    .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))[0];
+}
+
 export interface SourceControlRepository {
   id: string;
   owner: string;

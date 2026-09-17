@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Code, NotePencil } from "@phosphor-icons/react";
 import { apiGet, apiPut } from "../api/client";
-import { useCreateCompose, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { selectGitHubConnection, useCreateCompose, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
 import { ComposeEditor } from "./ComposeEditor";
 import { Button, Input, Modal, Select, SelectSearch, Skeleton, VariableEditor, type VariableRow, useToast } from "@aether/design-system";
 
@@ -18,7 +18,7 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
   const { data: connections } = useSourceControlConnections();
   const startGitHubManifest = useStartGitHubManifest();
   const { add } = useToast();
-  const githubConnection = connections?.find((connection) => connection.provider === "github" && connection.status === "active");
+  const githubConnection = selectGitHubConnection(connections);
   const { data: repositories, isLoading: repositoriesLoading } = useSourceControlRepositories(githubConnection?.installation_id);
   const [projectId, setProjectId] = useState(fixedProjectId ?? "");
   const [name, setName] = useState("");

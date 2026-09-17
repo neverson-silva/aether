@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CaretDown, Check, CheckCircle, Code, Database, FileArrowUp, FileText, FolderOpen, Gear, Globe, Info, LinkSimple, MagnifyingGlass, Package, Pulse, SpinnerGap, Warning, Wrench } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import { selectGitHubConnection, useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
 import { ApiError, apiGet, apiPut, getServer } from "../api/client";
 import { TechIcon } from "./TechIcon";
 import { AdvancedSettings } from "./AdvancedSettings";
@@ -89,7 +89,7 @@ export function ApplicationWizard({
   const { data: connections } = useSourceControlConnections();
   const startGitHubManifest = useStartGitHubManifest();
   const disconnectGitHub = useDisconnectGitHub();
-  const githubConnection = connections?.find((connection) => connection.provider === "github" && connection.status === "active" && !!connection.installation_id);
+  const githubConnection = selectGitHubConnection(connections);
   const { data: repositories, isLoading: repositoriesLoading, isError: repositoriesError, error: repositoriesQueryError, refetch: refetchRepositories } = useSourceControlRepositories(githubConnection?.installation_id);
   const githubInstallationUnavailable = repositoriesQueryError instanceof ApiError && repositoriesQueryError.status === 404;
   const createApp = useCreateApp();
