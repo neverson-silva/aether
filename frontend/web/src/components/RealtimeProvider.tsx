@@ -10,7 +10,7 @@ function realtimeLog(message: string, details?: unknown) {
     console.info(`[aether:realtime] ${message}`);
     return;
   }
-  console.info(`[aether:realtime] ${message}`, details);
+  console.info(`[aether:realtime] ${message} ${JSON.stringify(details)}`);
 }
 
 interface RealtimeContextValue {
@@ -246,7 +246,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       }
     };
     ws.onerror = (event) => {
-      realtimeLog("connection error", { event, readyState: ws.readyState, url: ws.url, session });
+      realtimeLog("connection error", { eventType: event.type, readyState: ws.readyState, url: ws.url, session });
       ws.close();
     };
     ws.onclose = (event) => {

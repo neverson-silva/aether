@@ -8,7 +8,7 @@ function authLog(message: string, details?: unknown) {
     console.info(`[aether:auth] ${message}`);
     return;
   }
-  console.info(`[aether:auth] ${message}`, details);
+  console.info(`[aether:auth] ${message} ${JSON.stringify(details)}`);
 }
 
 export function getToken(): string {

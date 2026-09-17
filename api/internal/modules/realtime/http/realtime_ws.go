@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -30,6 +31,7 @@ func (h *Handler) RealtimeWS(c *gin.Context) {
 	}
 	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{OriginPatterns: patterns})
 	if err != nil {
+		slog.Warn("realtime websocket handshake failed", "err", err, "origin", c.GetHeader("Origin"), "host", c.Request.Host, "upgrade", c.GetHeader("Upgrade"), "connection", c.GetHeader("Connection"), "patterns", patterns)
 		return
 	}
 	conn.SetReadLimit(64 << 10)
