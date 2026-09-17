@@ -191,13 +191,10 @@ main() {
   validate_checkout
   preserve_install_configuration
 
-  if [[ "$command" == "update" ]]; then
-    command="install"
-  fi
   export AETHER_INSTALL_LOG="$INSTALL_LOG"
   info "Preparing the Aether installation."
   run_development_installer "$command"
-  if [[ "$command" == "install" || "$command" == "start" ]]; then
+  if [[ "$command" == "install" || "$command" == "update" || "$command" == "start" ]]; then
     cleanup_install_dir
   fi
 }
