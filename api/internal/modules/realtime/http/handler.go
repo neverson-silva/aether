@@ -30,6 +30,9 @@ func New(realtime *application.Realtime, hub *infra.Hub, origins ...string) *Han
 	for _, origin := range origins {
 		if parsed, err := url.Parse(origin); err == nil && parsed.Hostname() != "" {
 			patterns = append(patterns, parsed.Hostname())
+			if parsed.Host != parsed.Hostname() {
+				patterns = append(patterns, parsed.Host)
+			}
 		}
 	}
 	return &Handler{realtime: realtime, hub: hub, streams: security.NewStreamLimiter(32), originPatterns: patterns}

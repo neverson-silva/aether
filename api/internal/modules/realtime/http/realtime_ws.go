@@ -26,8 +26,15 @@ func (h *Handler) RealtimeWS(c *gin.Context) {
 		return
 	}
 	patterns := append([]string(nil), h.originPatterns...)
-	if host := requestHostname(c.Request.Host); host != "" && !containsString(patterns, host) {
+	requestHost := c.GetHeader("X-Forwarded-Host")
+	if requestHost == "" {
+		requestHost = c.Request.Host
+	}
+	if host := requestHostname(requestHost); host != "" && !containsString(patterns, host) {
 		patterns = append(patterns, host)
+	}
+	if requestHost != "" && !containsString(patterns, requestHost) {
+		patterns = append(patterns, requestHost)
 	}
 	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{OriginPatterns: patterns})
 	if err != nil {
