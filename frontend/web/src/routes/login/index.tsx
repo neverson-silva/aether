@@ -41,7 +41,6 @@ function Login() {
 
   const submit = async (values: LoginForm) => {
     try {
-      console.log("Submitting login form with values:", values);
       await login.mutateAsync({ email: values.email, password: values.password, server: getServer() || "" });
       const me = await apiGet<Me>("/api/v1/me");
       useAuthStore.getState().setUser(me);

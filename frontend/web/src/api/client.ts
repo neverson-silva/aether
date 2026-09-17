@@ -3,6 +3,14 @@ import axios, { AxiosError } from "axios";
 const ORG_KEY = "aether_org";
 let refreshPromise: Promise<void> | null = null;
 
+function authLog(message: string, details?: unknown) {
+  if (details === undefined) {
+    console.info(`[aether:auth] ${message}`);
+    return;
+  }
+  console.info(`[aether:auth] ${message}`, details);
+}
+
 export function getToken(): string {
 	return "";
 }
@@ -100,12 +108,18 @@ export async function api<T>(path: string, options: { method?: string; body?: un
         "Content-Type": "application/json",
       },
     });
+    if (path.includes("/auth/") || path === "/api/v1/me") {
+      authLog("request succeeded", { method: options.method ?? "GET", path, status: res.status, visibleCookieNames: document.cookie.split(";").map((entry) => entry.trim().split("=")[0]).filter(Boolean) });
+    }
     return res.data;
   } catch (err) {
     const axiosErr = err as AxiosError<{ error?: string }>;
     const status = axiosErr.response?.status ?? 0;
     const message =
       axiosErr.response?.data?.error || axiosErr.message || "network error";
+    if (path.includes("/auth/") || path === "/api/v1/me") {
+      authLog("request failed", { method: options.method ?? "GET", path, status, message, visibleCookieNames: document.cookie.split(";").map((entry) => entry.trim().split("=")[0]).filter(Boolean) });
+    }
     throw new ApiError(status, message);
   }
 }
