@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -381,8 +382,8 @@ func (h *Handler) Logout(c *gin.Context) {
 		}
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecure, true)
-	c.SetCookie("aether_refresh", "", -1, "/api/v1/auth", "", h.cookieSecure, true)
+	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecureForRequest(c), true)
+	c.SetCookie("aether_refresh", "", -1, "/api/v1/auth", "", h.cookieSecureForRequest(c), true)
 	c.JSON(http.StatusOK, gin.H{"status": "logged_out"})
 }
 
@@ -408,17 +409,28 @@ func orgID(c *gin.Context) uuid.UUID {
 
 func (h *Handler) setAuthCookie(c *gin.Context, token string) {
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("aether_token", token, 600, "/", "", h.cookieSecure, true)
+	c.SetCookie("aether_token", token, 600, "/", "", h.cookieSecureForRequest(c), true)
 }
 
 func (h *Handler) setRefreshCookie(c *gin.Context, token string) {
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("aether_refresh", token, 1200, "/api/v1/auth", "", h.cookieSecure, true)
+	c.SetCookie("aether_refresh", token, 1200, "/api/v1/auth", "", h.cookieSecureForRequest(c), true)
 }
 
 func (h *Handler) clearAuthCookies(c *gin.Context) {
-	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecure, true)
-	c.SetCookie("aether_refresh", "", -1, "/api/v1/auth", "", h.cookieSecure, true)
+	c.SetCookie("aether_token", "", -1, "/", "", h.cookieSecureForRequest(c), true)
+	c.SetCookie("aether_refresh", "", -1, "/api/v1/auth", "", h.cookieSecureForRequest(c), true)
+}
+
+func (h *Handler) cookieSecureForRequest(c *gin.Context) bool {
+	if !h.cookieSecure {
+		return false
+	}
+	forwardedProto := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])
+	if forwardedProto != "" {
+		return strings.EqualFold(forwardedProto, "https")
+	}
+	return c.Request.TLS != nil
 }
 
 func abort(c *gin.Context, err error) {
