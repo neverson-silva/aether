@@ -18,6 +18,7 @@ import {
   useToast,
 } from "@aether/design-system";
 import { useExportOrg, useSystemSummary } from "../../hooks";
+import { PageHeader } from "../../components/PageHeader";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -73,28 +74,13 @@ function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-label-caps uppercase tracking-[0.18em] text-muted-foreground">
-            Platform overview
-          </p>
-          <h1 className="mt-2 text-display-lg font-semibold text-foreground">
-            Fleet Overview
-          </h1>
-          <div className="mt-3 flex items-center gap-2 text-body-sm text-muted-foreground">
-            <RuntimeStatus status="healthy" label="System operational" live />
-            <span>Updated just now</span>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          loading={exportOrg.isPending}
-          onClick={exportReport}
-        >
-          <Export size={18} />
-          Export report
-        </Button>
-      </header>
+      <PageHeader
+        eyebrow="Platform overview"
+        title="Fleet Overview"
+        description="Operate infrastructure with a clear view of health, traffic, and delivery."
+        meta={<><RuntimeStatus status="healthy" label="System operational" live /><span className="font-body-sm text-body-sm text-on-surface-variant">Updated just now</span></>}
+        actions={<Button variant="outline" loading={exportOrg.isPending} onClick={exportReport}><Export size={18} />Export report</Button>}
+      />
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard

@@ -1,17 +1,17 @@
-import type { ReactNode } from 'react'
-import { Message, type MessageProps } from '../message/message'
-export interface MessageScrollerItem extends Omit<MessageProps, 'className'> {
-  id: string
+import type { ReactNode } from "react";
+import { Message, type MessageProps } from "../message/message";
+export interface MessageScrollerItem extends Omit<MessageProps, "className"> {
+  id: string;
 }
 export interface MessageScrollerProps {
-  items: MessageScrollerItem[]
-  maxHeight?: number
-  empty?: ReactNode
-  className?: string
+  items: MessageScrollerItem[];
+  maxHeight?: number;
+  empty?: ReactNode;
+  className?: string;
 }
 export function MessageScroller({
-  className = '',
-  empty = 'No messages.',
+  className = "",
+  empty = "No messages.",
   items,
   maxHeight = 360,
 }: MessageScrollerProps) {
@@ -24,10 +24,10 @@ export function MessageScroller({
       {items.length ? (
         items.map(({ id, ...item }) => <Message key={id} {...item} />)
       ) : (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center text-body-sm text-muted-foreground">
+        <div className="rounded-2xl border border-dashed border-border bg-surface-card p-8 text-center text-body-sm text-muted-foreground shadow-sm">
           {empty}
         </div>
       )}
     </div>
-  )
+  );
 }

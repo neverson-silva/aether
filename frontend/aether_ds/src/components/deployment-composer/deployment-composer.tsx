@@ -1,18 +1,18 @@
-import type { ReactNode } from 'react'
-import { FormActions } from '../form-actions/form-actions'
-import { Progress } from '../progress/progress'
-import { Tabs } from '../tabs/tabs'
+import type { ReactNode } from "react";
+import { FormActions } from "../form-actions/form-actions";
+import { Progress } from "../progress/progress";
+import { Tabs } from "../tabs/tabs";
 export interface DeploymentComposerProps {
-  source?: ReactNode
-  environment?: ReactNode
-  variables?: ReactNode
-  review?: ReactNode
-  progress?: number
-  status?: 'draft' | 'deploying' | 'success' | 'error' | 'rollback'
-  onDeploy?: () => void
-  onRollback?: () => void
-  dirty?: boolean
-  loading?: boolean
+  source?: ReactNode;
+  environment?: ReactNode;
+  variables?: ReactNode;
+  review?: ReactNode;
+  progress?: number;
+  status?: "draft" | "deploying" | "success" | "error" | "rollback";
+  onDeploy?: () => void;
+  onRollback?: () => void;
+  dirty?: boolean;
+  loading?: boolean;
 }
 export function DeploymentComposer({
   dirty,
@@ -23,16 +23,16 @@ export function DeploymentComposer({
   progress = 0,
   review,
   source,
-  status = 'draft',
+  status = "draft",
   variables,
 }: DeploymentComposerProps) {
   return (
-    <section className="rounded-xl border border-border bg-surface-card p-5">
+    <section className="rounded-2xl border border-border bg-surface-card p-5 shadow-sm sm:p-6">
       <Tabs
         items={[
           {
-            value: 'source',
-            label: 'Source',
+            value: "source",
+            label: "Source",
             content: source ?? (
               <p className="text-body-sm text-muted-foreground">
                 Select a source branch or commit.
@@ -40,8 +40,8 @@ export function DeploymentComposer({
             ),
           },
           {
-            value: 'environment',
-            label: 'Environment',
+            value: "environment",
+            label: "Environment",
             content: environment ?? (
               <p className="text-body-sm text-muted-foreground">
                 Choose a target environment.
@@ -49,8 +49,8 @@ export function DeploymentComposer({
             ),
           },
           {
-            value: 'variables',
-            label: 'Variables',
+            value: "variables",
+            label: "Variables",
             content: variables ?? (
               <p className="text-body-sm text-muted-foreground">
                 Configure runtime variables.
@@ -58,8 +58,8 @@ export function DeploymentComposer({
             ),
           },
           {
-            value: 'review',
-            label: 'Review',
+            value: "review",
+            label: "Review",
             content: review ?? (
               <p className="text-body-sm text-muted-foreground">
                 Review deployment changes.
@@ -68,13 +68,16 @@ export function DeploymentComposer({
           },
         ]}
       />
-      {status === 'deploying' ? (
+      {status === "deploying" ? (
         <div className="mt-6">
           <Progress value={progress} label="Deployment progress" />
         </div>
       ) : null}
-      {status === 'error' ? (
-        <p role="alert" className="mt-4 text-body-sm text-status-danger">
+      {status === "error" ? (
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-status-danger/30 bg-status-danger-container/10 p-3 text-body-sm text-status-danger"
+        >
           Deployment failed. Review logs or rollback.
         </p>
       ) : null}
@@ -83,11 +86,11 @@ export function DeploymentComposer({
           dirty={dirty}
           loading={loading}
           onSave={onDeploy}
-          saveLabel={status === 'deploying' ? 'Deploying...' : 'Deploy'}
-          success={status === 'success' ? 'Deployment complete' : undefined}
-          error={status === 'error' ? 'Deployment failed' : undefined}
+          saveLabel={status === "deploying" ? "Deploying..." : "Deploy"}
+          success={status === "success" ? "Deployment complete" : undefined}
+          error={status === "error" ? "Deployment failed" : undefined}
         >
-          {status === 'rollback' ? (
+          {status === "rollback" ? (
             <button
               type="button"
               onClick={onRollback}
@@ -99,5 +102,5 @@ export function DeploymentComposer({
         </FormActions>
       </div>
     </section>
-  )
+  );
 }

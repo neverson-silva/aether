@@ -17,7 +17,7 @@ export function InputGroup({
 }: InputGroupProps) {
   return (
     <div
-      className={`flex items-center rounded-md border border-border bg-surface-control focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/20 ${className}`}
+      className={`flex items-center rounded-lg border border-border bg-surface-control transition-[background-color,border-color,box-shadow] duration-200 hover:bg-surface-container-highest/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/20 ${className}`}
       {...props}
     >
       {prefix ? (

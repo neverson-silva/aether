@@ -29,7 +29,7 @@ export function Switch({
       defaultChecked={defaultChecked}
       disabled={disabled || loading}
       onCheckedChange={onCheckedChange}
-      className={`aether-switch group relative inline-flex h-6 w-10 shrink-0 cursor-pointer rounded-full bg-surface-container transition-colors data-[checked]:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`aether-switch group relative inline-flex h-6 w-10 shrink-0 cursor-pointer rounded-full bg-surface-container shadow-inner transition-[background-color,box-shadow] duration-200 data-[checked]:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       <BaseSwitch.Thumb
         className="aether-switch-thumb m-0.5 size-5 rounded-full shadow-sm transition-transform group-data-[checked]:translate-x-4"

@@ -22,6 +22,7 @@ import {
 } from "@aether/design-system";
 import { useProjects, useServices } from "../../../hooks";
 import { api } from "../../../api/client";
+import { PageHeader } from "../../../components/PageHeader";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(64, "Maximum 64 characters"),
@@ -70,13 +71,11 @@ function Projects() {
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 p-6 lg:p-8">
-      <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
-          <Typography as="p" level="label" tone="primary">Workspace</Typography>
-          <Typography as="h1" level="display">Projects</Typography>
-          <Typography as="p" level="body" tone="muted">Organize services, environments and delivery workflows by project.</Typography>
-        </div>
-        <Dialog
+      <PageHeader
+        eyebrow="Workspace"
+        title="Projects"
+        description="Organize services, environments and delivery workflows by project."
+        actions={<Dialog
           open={newOpen}
           onOpenChange={setNewOpen}
           title="Create project"
@@ -90,8 +89,8 @@ function Projects() {
               <Typography as="span" level="small" tone="muted">Group applications and environments.</Typography>
             </span>
           </Link>
-        </Dialog>
-      </header>
+        </Dialog>}
+      />
 
       <section className="space-y-4" aria-labelledby="projects-heading">
         <div className="flex items-center gap-3">

@@ -1,7 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
-import { AppWindow, Database, HardDrive, Monitor, Pause, Play, Pulse } from "@phosphor-icons/react";
-import { ActivityFeed, EmptyState, Gauge, Skeleton, type ActivityItem } from "@aether/design-system";
+import {
+  AppWindow,
+  Database,
+  HardDrive,
+  Monitor,
+  Pause,
+  Play,
+  Pulse,
+} from "@phosphor-icons/react";
+import {
+  ActivityFeed,
+  EmptyState,
+  Gauge,
+  Skeleton,
+  type ActivityItem,
+} from "@aether/design-system";
 import {
   useHostEvents,
   useHostLogs,
@@ -13,6 +27,7 @@ import {
 import { LineChart } from "./-components/LineChart";
 import { ResourcesTable } from "./-components/ResourcesTable";
 import { fmtBytes, fmtRate, fmtUptime } from "./-components/format";
+import { PageHeader } from "../../../components/PageHeader";
 
 const COLORS = {
   host: "var(--color-primary)",
@@ -32,30 +47,75 @@ const WINDOWS: { id: MonitoringWindow; label: string }[] = [
   { id: "7d", label: "7d" },
 ];
 
-function cn(...classes: Array<string | false | undefined>) { return classes.filter(Boolean).join(" "); }
+function cn(...classes: Array<string | false | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 function getActivityType(type: string): ActivityItem["type"] {
   const normalized = type.toLowerCase();
   if (normalized.includes("deploy")) return "deployment";
-  if (normalized.includes("error") || normalized.includes("fail") || normalized.includes("danger")) return "warning";
-  if (normalized.includes("success") || normalized.includes("complete")) return "success";
-  if (normalized.includes("change") || normalized.includes("update")) return "change";
+  if (
+    normalized.includes("error") ||
+    normalized.includes("fail") ||
+    normalized.includes("danger")
+  )
+    return "warning";
+  if (normalized.includes("success") || normalized.includes("complete"))
+    return "success";
+  if (normalized.includes("change") || normalized.includes("update"))
+    return "change";
   return "info";
 }
 
-const SYMBOLS = { memory: Pulse, data_usage: Database, hard_drive: HardDrive, swap_vert: Pulse };
+const SYMBOLS = {
+  memory: Pulse,
+  data_usage: Database,
+  hard_drive: HardDrive,
+  swap_vert: Pulse,
+};
 
-function SymbolIcon({ name, className = "" }: { name: keyof typeof SYMBOLS; className?: string }) {
+function SymbolIcon({
+  name,
+  className = "",
+}: {
+  name: keyof typeof SYMBOLS;
+  className?: string;
+}) {
   const Icon = SYMBOLS[name] ?? Pulse;
   return <Icon size={18} className={className} aria-hidden="true" />;
 }
 
-function Card({ label, icon, value, sub, gauge, network }: { label: string; icon: keyof typeof SYMBOLS; value: string; sub?: string; bar?: number; barClass?: string; gauge?: number; network?: { rx: string; tx: string } }) {
-  const gaugeStatus = gauge === undefined ? "default" : gauge >= 90 ? "danger" : gauge >= 75 ? "warning" : "success";
+function Card({
+  label,
+  icon,
+  value,
+  sub,
+  gauge,
+  network,
+}: {
+  label: string;
+  icon: keyof typeof SYMBOLS;
+  value: string;
+  sub?: string;
+  bar?: number;
+  barClass?: string;
+  gauge?: number;
+  network?: { rx: string; tx: string };
+}) {
+  const gaugeStatus =
+    gauge === undefined
+      ? "default"
+      : gauge >= 90
+        ? "danger"
+        : gauge >= 75
+          ? "warning"
+          : "success";
   return (
-    <div className="flex min-h-[10.5rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
+    <div className="flex min-h-[10.5rem] flex-col rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
       <div className="mb-sm flex min-h-5 items-center justify-between">
-        <span className="font-label-caps text-label-caps text-on-surface-variant">{label}</span>
+        <span className="font-label-caps text-label-caps text-on-surface-variant">
+          {label}
+        </span>
         <SymbolIcon name={icon} className="text-muted-foreground" />
       </div>
       {gauge !== undefined ? (
@@ -71,24 +131,34 @@ function Card({ label, icon, value, sub, gauge, network }: { label: string; icon
       ) : network ? (
         <div className="flex min-h-[8.5rem] items-center justify-center">
           <div className="flex flex-wrap items-center justify-center gap-x-md gap-y-xs whitespace-nowrap font-body-md text-body-md text-on-surface">
-            <span className="inline-flex items-center gap-xs text-status-success">↓ {network.rx}</span>
-            <span className="inline-flex items-center gap-xs text-on-surface-variant">↑ {network.tx}</span>
+            <span className="inline-flex items-center gap-xs text-status-success">
+              ↓ {network.rx}
+            </span>
+            <span className="inline-flex items-center gap-xs text-on-surface-variant">
+              ↑ {network.tx}
+            </span>
           </div>
         </div>
       ) : (
-        <div className="flex min-h-[8.5rem] items-center justify-center font-headline-sm text-headline-sm text-on-surface mb-xs truncate">{value}</div>
+        <div className="flex min-h-[8.5rem] items-center justify-center font-headline-sm text-headline-sm text-on-surface mb-xs truncate">
+          {value}
+        </div>
       )}
-      {sub && <div className="mt-auto truncate font-label-caps text-label-caps text-on-surface-variant/70">{sub}</div>}
+      {sub && (
+        <div className="mt-auto truncate font-label-caps text-label-caps text-on-surface-variant/70">
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
 
 function SkeletonCard() {
   return (
-    <div className="bg-surface-container border border-outline-variant rounded-lg p-md animate-pulse">
-      <div className="h-3 w-20 bg-surface-bright rounded mb-md" />
-      <div className="h-6 w-28 bg-surface-bright rounded mb-sm" />
-      <div className="h-1 w-full bg-surface-bright rounded" />
+    <div className="rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm animate-pulse">
+      <div className="mb-md h-3 w-20 rounded-full bg-surface-bright" />
+      <div className="mb-sm h-6 w-28 rounded-lg bg-surface-bright" />
+      <div className="h-1 w-full rounded-full bg-surface-bright" />
     </div>
   );
 }
@@ -102,72 +172,146 @@ function DistributionCard({
 }: {
   title: string;
   color: string;
-  agg: { cpu_of_host: number; mem_usage: number; net_rx_rate: number; net_tx_rate: number; storage_usage: number; available: boolean; running_count: number; count: number } | undefined;
+  agg:
+    | {
+        cpu_of_host: number;
+        mem_usage: number;
+        net_rx_rate: number;
+        net_tx_rate: number;
+        storage_usage: number;
+        available: boolean;
+        running_count: number;
+        count: number;
+      }
+    | undefined;
   detail: string;
   loading?: boolean;
 }) {
   if (loading) {
-    return <Skeleton variant="card" className="min-h-[14rem]" aria-label={`Loading ${title} metrics`} />;
+    return (
+      <Skeleton
+        variant="card"
+        className="min-h-[14rem]"
+        aria-label={`Loading ${title} metrics`}
+      />
+    );
   }
   if (!agg || !agg.available) {
     return (
-      <div className="flex min-h-[14rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
+      <div className="flex min-h-[14rem] flex-col rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm">
         <div className="mb-md flex min-h-5 items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-          <span className="font-label-caps text-label-caps text-on-surface">{title}</span>
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ background: color }}
+          />
+          <span className="font-label-caps text-label-caps text-on-surface">
+            {title}
+          </span>
         </div>
-        <p className="font-body-sm text-body-sm text-on-surface-variant/60">unavailable</p>
+        <p className="font-body-sm text-body-sm text-on-surface-variant/60">
+          unavailable
+        </p>
       </div>
     );
   }
   return (
-    <div className="flex min-h-[14rem] flex-col rounded-lg border border-outline-variant bg-surface-container p-md">
+    <div className="flex min-h-[14rem] flex-col rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
       <div className="mb-md flex min-h-5 items-center gap-2">
         <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-        <span className="font-label-caps text-label-caps text-on-surface">{title}</span>
+        <span className="font-label-caps text-label-caps text-on-surface">
+          {title}
+        </span>
       </div>
       <div className="grid flex-1 grid-cols-2 content-start gap-x-md gap-y-md">
         <div className="flex min-h-[4.5rem] flex-col">
-          <div className="font-label-caps text-label-caps text-on-surface-variant/60">CPU</div>
-          <div className="font-headline-sm text-headline-sm text-on-surface">{agg.cpu_of_host.toFixed(1)}%</div>
-          <div className="h-1 w-full bg-surface-bright rounded-full overflow-hidden mt-xs">
-            <div className="h-full rounded-full" style={{ width: `${Math.min(100, agg.cpu_of_host)}%`, background: color }} />
+          <div className="font-label-caps text-label-caps text-on-surface-variant/60">
+            CPU
+          </div>
+          <div className="font-headline-sm text-headline-sm text-on-surface">
+            {agg.cpu_of_host.toFixed(1)}%
+          </div>
+          <div className="mt-xs h-1 w-full overflow-hidden rounded-full bg-surface-bright">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.min(100, agg.cpu_of_host)}%`,
+                background: color,
+              }}
+            />
           </div>
         </div>
         <div className="flex min-h-[4.5rem] flex-col">
-          <div className="font-label-caps text-label-caps text-on-surface-variant/60">Memory</div>
-          <div className="flex min-h-[2.25rem] items-center font-headline-sm text-headline-sm text-on-surface">{fmtBytes(agg.mem_usage)}</div>
+          <div className="font-label-caps text-label-caps text-on-surface-variant/60">
+            Memory
+          </div>
+          <div className="flex min-h-[2.25rem] items-center font-headline-sm text-headline-sm text-on-surface">
+            {fmtBytes(agg.mem_usage)}
+          </div>
         </div>
         <div className="flex min-h-[4.5rem] flex-col">
-          <div className="font-label-caps text-label-caps text-on-surface-variant/60">Storage</div>
-          <div className="flex min-h-[2.25rem] items-center font-headline-sm text-headline-sm text-on-surface">{fmtBytes(agg.storage_usage)}</div>
-          <p className="font-label-caps text-label-caps text-on-surface-variant/40 mt-0.5">incl. stopped containers</p>
+          <div className="font-label-caps text-label-caps text-on-surface-variant/60">
+            Storage
+          </div>
+          <div className="flex min-h-[2.25rem] items-center font-headline-sm text-headline-sm text-on-surface">
+            {fmtBytes(agg.storage_usage)}
+          </div>
+          <p className="font-label-caps text-label-caps text-on-surface-variant/40 mt-0.5">
+            incl. stopped containers
+          </p>
         </div>
         <div className="flex min-h-[4.5rem] flex-col">
-          <div className="font-label-caps text-label-caps text-on-surface-variant/60">Network</div>
+          <div className="font-label-caps text-label-caps text-on-surface-variant/60">
+            Network
+          </div>
           <div className="flex min-h-[2.25rem] flex-wrap items-center gap-x-sm gap-y-0.5 font-body-md text-body-md whitespace-nowrap">
-            <span className="inline-flex items-center gap-xs text-status-success">↓ {fmtRate(agg.net_rx_rate)}</span>
-            <span className="inline-flex items-center gap-xs text-on-surface-variant">↑ {fmtRate(agg.net_tx_rate)}</span>
+            <span className="inline-flex items-center gap-xs text-status-success">
+              ↓ {fmtRate(agg.net_rx_rate)}
+            </span>
+            <span className="inline-flex items-center gap-xs text-on-surface-variant">
+              ↑ {fmtRate(agg.net_tx_rate)}
+            </span>
           </div>
         </div>
       </div>
-      <p className="mt-auto pt-sm font-label-caps text-label-caps text-on-surface-variant/50">{detail}</p>
+      <p className="mt-auto pt-sm font-label-caps text-label-caps text-on-surface-variant/50">
+        {detail}
+      </p>
     </div>
   );
 }
 
-function ChartPanel({ title, subtitle, legend, children }: { title: string; subtitle: string; legend: { label: string; color: string }[]; children: React.ReactNode }) {
+function ChartPanel({
+  title,
+  subtitle,
+  legend,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  legend: { label: string; color: string }[];
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex min-h-[14rem] flex-col rounded-lg bg-surface/40 p-md">
+    <div className="flex min-h-[14rem] flex-col rounded-2xl border border-outline-variant/70 bg-surface-card/70 p-lg shadow-sm">
       <div className="mb-md flex min-h-12 flex-wrap items-center justify-between gap-sm border-b border-outline-variant pb-sm">
         <div>
-          <h2 className="font-label-caps text-label-caps text-on-surface">{title}</h2>
-          <p className="font-body-sm text-body-sm text-on-surface-variant/60 mt-0.5">{subtitle}</p>
+          <h2 className="font-label-caps text-label-caps text-on-surface">
+            {title}
+          </h2>
+          <p className="font-body-sm text-body-sm text-on-surface-variant/60 mt-0.5">
+            {subtitle}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-sm">
           {legend.map((l) => (
-            <span key={l.label} className="flex items-center gap-xs font-label-caps text-label-caps text-on-surface-variant">
-              <span className="w-2 h-2 rounded-full inline-block" style={{ background: l.color }} />
+            <span
+              key={l.label}
+              className="flex items-center gap-xs font-label-caps text-label-caps text-on-surface-variant"
+            >
+              <span
+                className="w-2 h-2 rounded-full inline-block"
+                style={{ background: l.color }}
+              />
               {l.label}
             </span>
           ))}
@@ -179,7 +323,13 @@ function ChartPanel({ title, subtitle, legend, children }: { title: string; subt
 }
 
 function ChartSkeleton() {
-  return <Skeleton variant="card" className="h-36" aria-label="Loading monitoring chart" />;
+  return (
+    <Skeleton
+      variant="card"
+      className="h-36"
+      aria-label="Loading monitoring chart"
+    />
+  );
 }
 
 function Monitoring() {
@@ -195,70 +345,106 @@ function Monitoring() {
   const resourceHistory = useResourceHistory(selectedId, window);
 
   const scrollToBottom = () => {
-    if (logRef.current) logRef.current.scrollTo({ top: logRef.current.scrollHeight });
+    if (logRef.current)
+      logRef.current.scrollTo({ top: logRef.current.scrollHeight });
   };
 
   const stats = snapshot?.host;
   const loading = !snapshot || !stats;
   const points = history.data ?? [];
-  const selected = useMemo(() => (snapshot?.resources ?? []).find((r) => r.id === selectedId) ?? null, [snapshot, selectedId]);
+  const selected = useMemo(
+    () => (snapshot?.resources ?? []).find((r) => r.id === selectedId) ?? null,
+    [snapshot, selectedId],
+  );
 
-  const filteredLogs = useMemo(() => logLines.filter((l) => l.line.trim()), [logLines]);
-  const activityItems: ActivityItem[] = (events.data ?? []).map((event, index) => ({
-    id: `${event.ts}-${event.type}-${index}`,
-    title: event.title || event.type,
-    description: event.detail,
-    timestamp: event.ts,
-    type: getActivityType(event.type),
-  }));
+  const filteredLogs = useMemo(
+    () => logLines.filter((l) => l.line.trim()),
+    [logLines],
+  );
+  const activityItems: ActivityItem[] = (events.data ?? []).map(
+    (event, index) => ({
+      id: `${event.ts}-${event.type}-${index}`,
+      title: event.title || event.type,
+      description: event.detail,
+      timestamp: event.ts,
+      type: getActivityType(event.type),
+    }),
+  );
 
   return (
     <div className="space-y-lg">
-      <div className="flex flex-wrap items-center justify-between gap-lg">
-        <div className="min-w-0">
-          <h1 className="mb-xs font-display-lg text-[clamp(1.5rem,4vw,3rem)] leading-[1.1] text-on-surface">Monitoring</h1>
-          <p className="font-body-md text-body-md text-on-surface-variant">
-            Host telemetry for <span className="font-code-md text-primary bg-primary/10 px-1 rounded">{stats?.hostname || "this host"}</span>
-          </p>
+      <PageHeader
+        eyebrow="Observability"
+        title="Monitoring"
+        description={`Host telemetry for ${stats?.hostname || "this host"}.`}
+        meta={
+          <>
+            <span className="flex items-center gap-2 rounded-xl border border-outline-variant bg-surface px-md py-sm font-body-sm text-on-surface transition-[border-color,background-color] duration-200 hover:border-primary/40 hover:bg-surface-container">
+              <span
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  connected ? "bg-status-success" : "bg-error",
+                )}
+              />
+              {connected ? "Live" : "Reconnecting…"}
+            </span>
+            <span
+              className={cn(
+                "flex items-center gap-2 rounded-xl border bg-surface px-md py-sm font-body-sm transition-[border-color,background-color] duration-200 hover:border-primary/40 hover:bg-surface-container",
+                stats?.source && stats.source !== "runtime"
+                  ? "border-status-success/30 text-status-success"
+                  : "border-outline-variant text-on-surface-variant",
+              )}
+              title={
+                stats?.source && stats.source !== "runtime"
+                  ? "Metrics collected by the host agent running natively on the host machine"
+                  : "No host agent detected — metrics come from the container runtime (VM). Install infra/scripts/host-agent.sh on the host."
+              }
+            >
+              <Monitor size={16} aria-hidden="true" />
+              {stats?.source && stats.source !== "runtime"
+                ? "Host: real machine"
+                : "Host: runtime (VM)"}
+            </span>
+            <span className="flex items-center gap-2 rounded-xl border border-outline-variant bg-surface px-md py-sm font-body-sm text-on-surface-variant">
+              <Database size={16} aria-hidden="true" />
+              {stats?.os ? (
+                stats.os
+              ) : (
+                <span className="inline-block w-24">
+                  <Skeleton variant="text" />
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setFollow((f) => !f)}
+              aria-pressed={follow}
+              className={cn(
+                "flex items-center gap-2 rounded-xl px-md py-sm font-body-sm font-semibold outline-none transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]",
+                follow
+                  ? "bg-primary text-on-primary hover:bg-primary-fixed"
+                  : "bg-surface border border-outline-variant text-on-surface-variant",
+              )}
+            >
+              {follow ? (
+                <Pause size={16} aria-hidden="true" />
+              ) : (
+                <Play size={16} aria-hidden="true" />
+              )}
+              {follow ? "Live logs" : "Paused"}
+            </button>
+          </>
+        }
+      />
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error shadow-sm"
+        >
+          {error}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-sm">
-          <span className="px-md py-sm border border-outline-variant rounded bg-surface text-on-surface font-body-sm flex items-center gap-2">
-            <span className={cn("w-2 h-2 rounded-full", connected ? "bg-status-success" : "bg-error")} />
-            {connected ? "Live" : "Reconnecting…"}
-          </span>
-          <span
-            className={cn(
-              "px-md py-sm border rounded bg-surface font-body-sm flex items-center gap-2",
-              stats?.source && stats.source !== "runtime" ? "border-status-success/30 text-status-success" : "border-outline-variant text-on-surface-variant",
-            )}
-            title={
-              stats?.source && stats.source !== "runtime"
-                ? "Metrics collected by the host agent running natively on the host machine"
-                : "No host agent detected — metrics come from the container runtime (VM). Install infra/scripts/host-agent.sh on the host."
-            }
-          >
-            <Monitor size={16} aria-hidden="true" />
-            {stats?.source && stats.source !== "runtime" ? "Host: real machine" : "Host: runtime (VM)"}
-          </span>
-          <span className="px-md py-sm border border-outline-variant rounded bg-surface text-on-surface-variant font-body-sm flex items-center gap-2">
-            <Database size={16} aria-hidden="true" />
-            {stats?.os ? stats.os : <span className="inline-block w-24"><Skeleton variant="text" /></span>}
-          </span>
-          <button
-            type="button"
-            onClick={() => setFollow((f) => !f)}
-            aria-pressed={follow}
-            className={cn(
-              "px-md py-sm rounded font-body-sm font-semibold transition-colors flex items-center gap-2",
-              follow ? "bg-primary text-on-primary hover:bg-primary-fixed" : "bg-surface border border-outline-variant text-on-surface-variant"
-            )}
-          >
-            {follow ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
-            {follow ? "Live logs" : "Paused"}
-          </button>
-        </div>
-      </div>
-      {error ? <div role="alert" className="rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">{error}</div> : null}
+      ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
         {!snapshot ? (
@@ -301,7 +487,10 @@ function Monitoring() {
               icon="swap_vert"
               value={`↓${fmtRate(stats!.net_rx_rate)} ↑${fmtRate(stats!.net_tx_rate)}`}
               sub={`uptime ${fmtUptime(stats!.uptime)}`}
-              network={{ rx: fmtRate(stats!.net_rx_rate), tx: fmtRate(stats!.net_tx_rate) }}
+              network={{
+                rx: fmtRate(stats!.net_rx_rate),
+                tx: fmtRate(stats!.net_tx_rate),
+              }}
             />
           </>
         )}
@@ -331,19 +520,27 @@ function Monitoring() {
         />
       </div>
       <p className="font-body-sm text-body-sm text-on-surface-variant/60 -mt-md">
-        Approximate reconciliation: host used memory excludes filesystem cache, while container working-set memory includes part of it, so the three
+        Approximate reconciliation: host used memory excludes filesystem cache,
+        while container working-set memory includes part of it, so the three
         buckets may not sum exactly to the host.
       </p>
 
-      <div className="rounded-lg border border-outline-variant bg-surface-container p-md">
+      <div className="rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm">
         <div className="mb-md flex flex-wrap items-center justify-between gap-md border-b border-outline-variant pb-md">
           <div>
-            <h2 className="font-label-caps text-label-caps text-on-surface">Trends</h2>
+            <h2 className="font-label-caps text-label-caps text-on-surface">
+              Trends
+            </h2>
             <p className="font-body-sm text-body-sm text-on-surface-variant/60 mt-0.5">
-              History is persisted in the platform database; windows 5m through 7d.
+              History is persisted in the platform database; windows 5m through
+              7d.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-xs rounded-md border border-outline-variant/50 p-0.5" role="group" aria-label="Monitoring history window">
+          <div
+            className="flex flex-wrap items-center gap-xs rounded-xl border border-outline-variant/60 bg-surface-container-low p-1"
+            role="group"
+            aria-label="Monitoring history window"
+          >
             {WINDOWS.map((w) => (
               <button
                 key={w.id}
@@ -351,8 +548,10 @@ function Monitoring() {
                 onClick={() => setWindow(w.id)}
                 aria-pressed={window === w.id}
                 className={cn(
-                  "min-w-10 rounded px-sm py-xs text-center font-label-caps text-label-caps transition-colors",
-                  window === w.id ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:text-on-surface"
+                  "min-w-10 rounded-lg px-sm py-xs text-center font-label-caps text-label-caps outline-none transition-[background-color,color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]",
+                  window === w.id
+                    ? "bg-primary/10 text-primary"
+                    : "text-on-surface-variant hover:text-on-surface",
                 )}
               >
                 {w.label}
@@ -360,7 +559,14 @@ function Monitoring() {
             ))}
           </div>
         </div>
-        {history.isError ? <div role="alert" className="mb-md rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">Unable to load monitoring history.</div> : null}
+        {history.isError ? (
+          <div
+            role="alert"
+            className="mb-md rounded-xl border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error"
+          >
+            Unable to load monitoring history.
+          </div>
+        ) : null}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
           <ChartPanel
             title="CPU"
@@ -371,14 +577,30 @@ function Monitoring() {
               { label: "User", color: COLORS.user },
             ]}
           >
-            {loading ? <ChartSkeleton /> : <LineChart
-              unit={(v) => v.toFixed(0) + "%"}
-              series={[
-                { name: "Host", color: COLORS.host, points: points.map((p) => p.host_cpu) },
-                { name: "Aether", color: COLORS.aether, points: points.map((p) => p.aether_cpu) },
-                { name: "User", color: COLORS.user, points: points.map((p) => p.user_cpu) },
-              ]}
-            />}
+            {loading ? (
+              <ChartSkeleton />
+            ) : (
+              <LineChart
+                unit={(v) => v.toFixed(0) + "%"}
+                series={[
+                  {
+                    name: "Host",
+                    color: COLORS.host,
+                    points: points.map((p) => p.host_cpu),
+                  },
+                  {
+                    name: "Aether",
+                    color: COLORS.aether,
+                    points: points.map((p) => p.aether_cpu),
+                  },
+                  {
+                    name: "User",
+                    color: COLORS.user,
+                    points: points.map((p) => p.user_cpu),
+                  },
+                ]}
+              />
+            )}
           </ChartPanel>
           <ChartPanel
             title="Memory"
@@ -389,14 +611,30 @@ function Monitoring() {
               { label: "User", color: COLORS.user },
             ]}
           >
-            {loading ? <ChartSkeleton /> : <LineChart
-              unit={(v) => v.toFixed(0) + "%"}
-              series={[
-                { name: "Host", color: COLORS.host, points: points.map((p) => p.host_mem) },
-                { name: "Aether", color: COLORS.aether, points: points.map((p) => p.aether_mem_pct) },
-                { name: "User", color: COLORS.user, points: points.map((p) => p.user_mem_pct) },
-              ]}
-            />}
+            {loading ? (
+              <ChartSkeleton />
+            ) : (
+              <LineChart
+                unit={(v) => v.toFixed(0) + "%"}
+                series={[
+                  {
+                    name: "Host",
+                    color: COLORS.host,
+                    points: points.map((p) => p.host_mem),
+                  },
+                  {
+                    name: "Aether",
+                    color: COLORS.aether,
+                    points: points.map((p) => p.aether_mem_pct),
+                  },
+                  {
+                    name: "User",
+                    color: COLORS.user,
+                    points: points.map((p) => p.user_mem_pct),
+                  },
+                ]}
+              />
+            )}
           </ChartPanel>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-md mt-md">
@@ -408,13 +646,25 @@ function Monitoring() {
               { label: "Sent", color: COLORS.netTx },
             ]}
           >
-            {loading ? <ChartSkeleton /> : <LineChart
-              unit={fmtRate}
-              series={[
-                { name: "RX", color: COLORS.netRx, points: points.map((p) => p.net_rx) },
-                { name: "TX", color: COLORS.netTx, points: points.map((p) => p.net_tx) },
-              ]}
-            />}
+            {loading ? (
+              <ChartSkeleton />
+            ) : (
+              <LineChart
+                unit={fmtRate}
+                series={[
+                  {
+                    name: "RX",
+                    color: COLORS.netRx,
+                    points: points.map((p) => p.net_rx),
+                  },
+                  {
+                    name: "TX",
+                    color: COLORS.netTx,
+                    points: points.map((p) => p.net_tx),
+                  },
+                ]}
+              />
+            )}
           </ChartPanel>
           <ChartPanel
             title="Distribution"
@@ -424,63 +674,133 @@ function Monitoring() {
               { label: "User", color: COLORS.user },
             ]}
           >
-            {loading ? <ChartSkeleton /> : <LineChart
-              unit={(v) => v.toFixed(0) + "%"}
-              series={[
-                { name: "Aether", color: COLORS.aether, points: points.map((p) => p.aether_cpu) },
-                { name: "User", color: COLORS.user, points: points.map((p) => p.user_cpu) },
-              ]}
-            />}
+            {loading ? (
+              <ChartSkeleton />
+            ) : (
+              <LineChart
+                unit={(v) => v.toFixed(0) + "%"}
+                series={[
+                  {
+                    name: "Aether",
+                    color: COLORS.aether,
+                    points: points.map((p) => p.aether_cpu),
+                  },
+                  {
+                    name: "User",
+                    color: COLORS.user,
+                    points: points.map((p) => p.user_cpu),
+                  },
+                ]}
+              />
+            )}
           </ChartPanel>
         </div>
       </div>
 
-      <ResourcesTable loading={loading} resources={snapshot?.resources ?? []} selectedId={selectedId} onSelect={setSelectedId} />
+      <ResourcesTable
+        loading={loading}
+        resources={snapshot?.resources ?? []}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+      />
 
       {selected && (
-        <div className="bg-surface-container border border-outline-variant rounded-lg p-md">
+        <div className="rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm">
           <div className="flex flex-wrap justify-between items-center gap-sm mb-md border-b border-outline-variant pb-sm">
             <div className="flex items-center gap-2">
-              <AppWindow size={18} className="text-muted-foreground" aria-hidden="true" />
-              <h2 className="font-label-caps text-label-caps text-on-surface">{selected.name}</h2>
-              <span className={cn("px-2 py-0.5 rounded border font-label-caps text-label-caps capitalize", selected.state === "running" ? "bg-status-success/10 text-status-success border-status-success/20" : "bg-outline/10 text-on-surface-variant border-outline-variant/30")}>
+              <AppWindow
+                size={18}
+                className="text-muted-foreground"
+                aria-hidden="true"
+              />
+              <h2 className="font-label-caps text-label-caps text-on-surface">
+                {selected.name}
+              </h2>
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded border font-label-caps text-label-caps capitalize",
+                  selected.state === "running"
+                    ? "bg-status-success/10 text-status-success border-status-success/20"
+                    : "bg-outline/10 text-on-surface-variant border-outline-variant/30",
+                )}
+              >
                 {selected.state}
               </span>
             </div>
-            <button type="button" onClick={() => setSelectedId(null)} aria-label={`Close ${selected.name} details`} className="font-label-caps text-label-caps text-primary hover:text-primary-fixed">
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              aria-label={`Close ${selected.name} details`}
+              className="rounded-lg px-sm py-xs font-label-caps text-label-caps text-primary outline-none transition-[background-color,color,transform] duration-150 hover:bg-primary/10 hover:text-primary-fixed focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+            >
               Close
             </button>
           </div>
-          {resourceHistory.isError ? <div role="alert" className="mb-md rounded border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error">Unable to load resource history.</div> : null}
+          {resourceHistory.isError ? (
+            <div
+              role="alert"
+              className="mb-md rounded-xl border border-error/40 bg-error/10 px-md py-sm font-body-sm text-body-sm text-error"
+            >
+              Unable to load resource history.
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
-            <div className="bg-surface rounded-lg border border-outline-variant/50 p-md">
-              <div className="font-label-caps text-label-caps text-on-surface-variant mb-sm">CPU ({window})</div>
+            <div className="rounded-xl border border-outline-variant/60 bg-surface-container-low p-md">
+              <div className="font-label-caps text-label-caps text-on-surface-variant mb-sm">
+                CPU ({window})
+              </div>
               {resourceHistory.data && resourceHistory.data.length >= 2 ? (
-                <LineChart unit={(v) => v.toFixed(1) + "%"} series={[{ name: "CPU", color: COLORS.user, points: resourceHistory.data.map((p) => p.cpu) }]} />
+                <LineChart
+                  unit={(v) => v.toFixed(1) + "%"}
+                  series={[
+                    {
+                      name: "CPU",
+                      color: COLORS.user,
+                      points: resourceHistory.data.map((p) => p.cpu),
+                    },
+                  ]}
+                />
               ) : (
-                <p className="font-body-sm text-body-sm text-on-surface-variant/50">Collecting history…</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant/50">
+                  Collecting history…
+                </p>
               )}
             </div>
-            <div className="bg-surface rounded-lg border border-outline-variant/50 p-md">
-              <div className="font-label-caps text-label-caps text-on-surface-variant mb-sm">Memory ({window})</div>
+            <div className="rounded-xl border border-outline-variant/60 bg-surface-container-low p-md">
+              <div className="font-label-caps text-label-caps text-on-surface-variant mb-sm">
+                Memory ({window})
+              </div>
               {resourceHistory.data && resourceHistory.data.length >= 2 ? (
-                <LineChart unit={fmtBytes} series={[{ name: "Mem", color: COLORS.aether, points: resourceHistory.data.map((p) => p.mem) }]} />
+                <LineChart
+                  unit={fmtBytes}
+                  series={[
+                    {
+                      name: "Mem",
+                      color: COLORS.aether,
+                      points: resourceHistory.data.map((p) => p.mem),
+                    },
+                  ]}
+                />
               ) : (
-                <p className="font-body-sm text-body-sm text-on-surface-variant/50">Collecting history…</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant/50">
+                  Collecting history…
+                </p>
               )}
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex max-h-[400px] min-h-[11rem] flex-col rounded-lg border border-outline-variant bg-surface-container">
-        <div className="flex flex-wrap items-center justify-between gap-sm p-sm border-b border-outline-variant bg-surface-container-high rounded-t-lg">
+      <div className="flex max-h-[400px] min-h-[11rem] flex-col rounded-2xl border border-outline-variant/80 bg-surface-card shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-sm rounded-t-2xl border-b border-outline-variant bg-surface-container-high p-md">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-primary pulse-live inline-block" />
-            <h2 className="font-label-caps text-label-caps text-on-surface">System Events &amp; Host Logs</h2>
+            <h2 className="font-label-caps text-label-caps text-on-surface">
+              System Events &amp; Host Logs
+            </h2>
           </div>
           <div className="flex items-center gap-xs">
-            <span className="px-2 py-1 bg-surface border border-outline-variant rounded font-label-caps text-label-caps text-on-surface-variant">
+            <span className="rounded-lg border border-outline-variant bg-surface px-sm py-xs font-label-caps text-label-caps text-on-surface-variant">
               {stats?.hostname || "host"}
             </span>
           </div>
@@ -488,31 +808,62 @@ function Monitoring() {
         <div
           ref={logRef}
           onScroll={() => {
-            if (logRef.current && logRef.current.scrollTop + logRef.current.clientHeight > logRef.current.scrollHeight - 60) scrollToBottom();
+            if (
+              logRef.current &&
+              logRef.current.scrollTop + logRef.current.clientHeight >
+                logRef.current.scrollHeight - 60
+            )
+              scrollToBottom();
           }}
           className={cn(
-              "bg-surface-container-low p-sm font-code-md text-code-md leading-relaxed rounded-b-lg",
-            filteredLogs.length ? "min-h-[11rem] flex-1 overflow-y-auto" : "flex min-h-[7rem] items-center justify-center",
+            "rounded-b-2xl bg-surface-container-low p-md font-code-md text-code-md leading-relaxed",
+            filteredLogs.length
+              ? "min-h-[11rem] flex-1 overflow-y-auto"
+              : "flex min-h-[7rem] items-center justify-center",
           )}
         >
           {filteredLogs.map((l, i) => (
-            <div key={i} className="whitespace-pre-wrap break-all text-on-surface/85">{l.line}</div>
+            <div
+              key={i}
+              className="whitespace-pre-wrap break-all text-on-surface/85"
+            >
+              {l.line}
+            </div>
           ))}
-          {filteredLogs.length === 0 && <p className="text-on-surface-variant/50 py-lg text-center">Waiting for host logs…</p>}
+          {filteredLogs.length === 0 && (
+            <p className="text-on-surface-variant/50 py-lg text-center">
+              Waiting for host logs…
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="rounded-lg border border-outline-variant bg-surface-container p-md">
+      <div className="rounded-2xl border border-outline-variant/80 bg-surface-card p-lg shadow-sm">
         <div className="mb-md flex items-center justify-between border-b border-outline-variant pb-sm">
-          <h2 className="font-label-caps text-label-caps text-on-surface">Activity Feed</h2>
+          <h2 className="font-label-caps text-label-caps text-on-surface">
+            Activity Feed
+          </h2>
         </div>
         <div className="max-h-[320px] overflow-y-auto sidebar-scroll">
           {events.isLoading ? (
-            <ActivityFeed items={activityItems} loading realtime={connected} empty="Loading activity…" />
+            <ActivityFeed
+              items={activityItems}
+              loading
+              realtime={connected}
+              empty="Loading activity…"
+            />
           ) : activityItems.length ? (
-            <ActivityFeed items={activityItems} realtime={connected} empty="No activity yet." />
+            <ActivityFeed
+              items={activityItems}
+              realtime={connected}
+              empty="No activity yet."
+            />
+          ) : events.isError ? (
+            <p className="py-lg text-center font-body-sm text-body-sm text-on-surface-variant/60">
+              Unable to load activity.
+            </p>
           ) : (
-            events.isError ? <p className="py-lg text-center font-body-sm text-body-sm text-on-surface-variant/60">Unable to load activity.</p> : <EmptyState title="No activity yet" className="border-0 p-4" />
+            <EmptyState title="No activity yet" className="border-0 p-4" />
           )}
         </div>
       </div>

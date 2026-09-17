@@ -1,42 +1,42 @@
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes } from "react";
 export interface ProgressRingProps extends HTMLAttributes<HTMLDivElement> {
-  value?: number
-  max?: number
-  size?: number
-  strokeWidth?: number
-  label?: string
-  indeterminate?: boolean
-  status?: 'default' | 'success' | 'warning' | 'danger'
+  value?: number;
+  max?: number;
+  size?: number;
+  strokeWidth?: number;
+  label?: string;
+  indeterminate?: boolean;
+  status?: "default" | "success" | "warning" | "danger";
 }
 export function ProgressRing({
-  className = '',
+  className = "",
   indeterminate,
   label,
   max = 100,
   size = 64,
-  status = 'default',
+  status = "default",
   strokeWidth = 6,
   value = 0,
   ...props
 }: ProgressRingProps) {
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const progress = Math.min(1, Math.max(0, value / max))
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.min(1, Math.max(0, value / max));
   const colors = {
-    default: 'text-primary',
-    success: 'text-status-success',
-    warning: 'text-status-warning',
-    danger: 'text-status-danger',
-  }
+    default: "text-primary",
+    success: "text-status-success",
+    warning: "text-status-warning",
+    danger: "text-status-danger",
+  };
   return (
     <div
-      className={`relative inline-flex items-center justify-center ${colors[status]} ${className}`}
+      className={`relative inline-flex items-center justify-center drop-shadow-sm ${colors[status]} ${className}`}
       style={{ width: size, height: size }}
       {...props}
     >
       <svg
         viewBox={`0 0 ${size} ${size}`}
-        className={indeterminate ? 'animate-spin' : ''}
+        className={indeterminate ? "animate-spin" : ""}
         aria-hidden="true"
       >
         <circle
@@ -72,5 +72,5 @@ export function ProgressRing({
         {label ?? `${Math.round(progress * 100)} percent`}
       </span>
     </div>
-  )
+  );
 }

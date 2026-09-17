@@ -1,35 +1,34 @@
-import type { Icon } from '@phosphor-icons/react'
-import type { HTMLAttributes } from 'react'
-import { tv, type VariantProps } from 'tailwind-variants'
+import type { Icon } from "@phosphor-icons/react";
+import type { HTMLAttributes } from "react";
+import { tv, type VariantProps } from "tailwind-variants";
 
 const badge = tv({
-  base: 'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-semibold',
+  base: "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold leading-none",
   variants: {
     tone: {
-      neutral: 'border-border bg-surface-container text-muted-foreground',
-      info: 'border-status-info/30 bg-status-info-container text-status-info',
+      neutral: "border-border bg-surface-container text-muted-foreground",
+      info: "border-status-info/30 bg-status-info-container text-status-info",
       success:
-        'border-status-success/30 bg-status-success-container text-status-success',
+        "border-status-success/30 bg-status-success-container text-status-success",
       warning:
-        'border-status-warning/30 bg-status-warning-container text-status-warning',
+        "border-status-warning/30 bg-status-warning-container text-status-warning",
       danger:
-        'border-status-danger/30 bg-status-danger-container text-status-danger',
-      accent: 'border-secondary/30 bg-secondary-container text-secondary',
+        "border-status-danger/30 bg-status-danger-container text-status-danger",
+      accent: "border-secondary/30 bg-secondary-container text-secondary",
     },
-    size: { sm: 'text-[11px]', md: 'text-body-sm' },
+    size: { sm: "text-[11px]", md: "text-body-sm" },
   },
-  defaultVariants: { tone: 'neutral', size: 'sm' },
-})
+  defaultVariants: { tone: "neutral", size: "sm" },
+});
 export interface BadgeProps
-  extends HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof badge> {
-  icon?: Icon
-  dot?: boolean
-  onRemove?: () => void
-  live?: boolean
+  extends HTMLAttributes<HTMLSpanElement>, VariantProps<typeof badge> {
+  icon?: Icon;
+  dot?: boolean;
+  onRemove?: () => void;
+  live?: boolean;
 }
 export function Badge({
-  className = '',
+  className = "",
   children,
   icon: IconComponent,
   dot,
@@ -42,7 +41,7 @@ export function Badge({
   return (
     <span
       className={badge({ tone, size, className })}
-      aria-live={live ? 'polite' : undefined}
+      aria-live={live ? "polite" : undefined}
       {...props}
     >
       {dot ? (
@@ -53,7 +52,7 @@ export function Badge({
       {onRemove ? (
         <button
           type="button"
-          className="ml-0.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="ml-0.5 rounded-full p-0.5 outline-none transition-[background-color,transform] duration-150 hover:bg-current/10 focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
           aria-label={`Remove ${children}`}
           onClick={onRemove}
         >
@@ -61,5 +60,5 @@ export function Badge({
         </button>
       ) : null}
     </span>
-  )
+  );
 }

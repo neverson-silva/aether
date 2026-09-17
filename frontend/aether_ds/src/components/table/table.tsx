@@ -26,12 +26,12 @@ export function Table<T extends Record<string, unknown>>({
   ...props
 }: TableProps<T>) {
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-border">
+    <div className="w-full overflow-x-auto rounded-xl border border-border bg-surface-card shadow-sm">
       <table
         className={`w-full border-collapse text-body-sm ${className}`}
         {...props}
       >
-        <thead className="bg-surface-container text-label-caps text-muted-foreground">
+        <thead className="bg-surface-container-low text-label-caps text-muted-foreground">
           <tr>
             {columns.map((column) => (
               <th
@@ -69,7 +69,7 @@ export function Table<T extends Record<string, unknown>>({
                 key={String(row[rowKey] ?? index)}
                 className={
                   onRowClick
-                    ? 'cursor-pointer transition-colors hover:bg-surface-container'
+                    ? 'cursor-pointer transition-[background-color,box-shadow] duration-200 hover:bg-surface-container'
                     : ''
                 }
                 onClick={() => onRowClick?.(row)}

@@ -1,26 +1,26 @@
-import { Tabs as BaseTabs } from '@base-ui/react/tabs'
-import type { ReactNode } from 'react'
+import { Tabs as BaseTabs } from "@base-ui/react/tabs";
+import type { ReactNode } from "react";
 export interface TabItem {
-  value: string
-  label: ReactNode
-  content: ReactNode
-  disabled?: boolean
+  value: string;
+  label: ReactNode;
+  content: ReactNode;
+  disabled?: boolean;
 }
 export interface TabsProps {
-  items: TabItem[]
-  value?: string
-  defaultValue?: string
-  activation?: 'automatic' | 'manual'
-  onValueChange?: (value: string) => void
-  variant?: 'underline' | 'pill'
+  items: TabItem[];
+  value?: string;
+  defaultValue?: string;
+  activation?: "automatic" | "manual";
+  onValueChange?: (value: string) => void;
+  variant?: "underline" | "pill";
 }
 export function Tabs({
-  activation = 'automatic',
+  activation = "automatic",
   defaultValue,
   items,
   onValueChange,
   value,
-  variant = 'underline',
+  variant = "underline",
 }: TabsProps) {
   return (
     <BaseTabs.Root
@@ -29,15 +29,15 @@ export function Tabs({
       onValueChange={onValueChange}
     >
       <BaseTabs.List
-        activateOnFocus={activation === 'automatic'}
-        className={`flex gap-1 border-b border-border ${variant === 'pill' ? 'rounded-md bg-surface-container p-1' : ''}`}
+        activateOnFocus={activation === "automatic"}
+        className={`flex max-w-full gap-1 overflow-x-auto ${variant === "pill" ? "rounded-2xl border border-border bg-surface-container-low p-1" : "border-b border-border"}`}
       >
         {items.map((item) => (
           <BaseTabs.Tab
             key={item.value}
             value={item.value}
             disabled={item.disabled}
-            className={`px-3 py-2 text-body-sm text-muted-foreground data-[active]:text-primary ${variant === 'underline' ? 'border-b-2 border-transparent data-[active]:border-primary' : 'rounded data-[active]:bg-surface-card'}`}
+            className={`shrink-0 rounded-xl px-3 py-2 text-body-sm outline-none transition-[background-color,color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985] ${variant === "underline" ? "border-b-2 border-transparent text-muted-foreground data-[active]:border-primary data-[active]:text-primary" : "text-muted-foreground hover:bg-surface-container-high hover:text-foreground data-[active]:bg-surface-card data-[active]:text-primary data-[active]:shadow-sm"}`}
           >
             {item.label}
           </BaseTabs.Tab>
@@ -53,5 +53,5 @@ export function Tabs({
         </BaseTabs.Panel>
       ))}
     </BaseTabs.Root>
-  )
+  );
 }

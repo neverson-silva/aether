@@ -85,7 +85,7 @@ export function ServiceLogsTab({
         {(timeline ?? []).map((event, index) => (
           <div key={`${event.id || event.sequence || event.ts}-${index}`} className="flex items-stretch gap-sm font-code-md text-code-md">
             <div className="flex w-3 flex-col items-center">
-              <span className={`rt-node mt-1.5 ${index === 0 ? "bg-status-success" : "bg-outline-variant/40"}`} />
+              <span className={`mt-1.5 size-2 shrink-0 rounded-full ${index === 0 ? "bg-status-success" : "bg-outline-variant/40"}`} />
             </div>
             <div className="flex min-w-0 items-center gap-sm">
               <span className="shrink-0 text-on-surface-variant/50">{new Date(event.ts).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
@@ -93,7 +93,7 @@ export function ServiceLogsTab({
             </div>
           </div>
         ))}
-        {latest && deploymentActive ? <div className="flex items-center gap-sm pl-1.5"><span className="rt-live-dot" /><span className="font-code-md text-code-md text-on-surface-variant">live</span></div> : null}
+        {latest && deploymentActive ? <div className="flex items-center gap-sm pl-1.5"><span className="size-2 rounded-full bg-status-success" /><span className="font-code-md text-code-md text-on-surface-variant">live</span></div> : null}
       </div>
     </Card>
   );

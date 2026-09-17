@@ -1,17 +1,19 @@
-import type { HTMLAttributes, ReactNode } from 'react'
-export interface ItemProps
-  extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
-  media?: ReactNode
-  title: ReactNode
-  description?: ReactNode
-  metadata?: ReactNode
-  actions?: ReactNode
-  selected?: boolean
-  interactive?: boolean
+import type { HTMLAttributes, ReactNode } from "react";
+export interface ItemProps extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "title"
+> {
+  media?: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  metadata?: ReactNode;
+  actions?: ReactNode;
+  selected?: boolean;
+  interactive?: boolean;
 }
 export function Item({
   actions,
-  className = '',
+  className = "",
   description,
   interactive,
   media,
@@ -22,7 +24,7 @@ export function Item({
 }: ItemProps) {
   return (
     <div
-      className={`flex items-center gap-3 rounded-md p-3 ${interactive ? 'cursor-pointer transition-colors hover:bg-surface-container focus-within:ring-2 focus-within:ring-ring' : ''} ${selected ? 'bg-primary/10 text-primary' : ''} ${className}`}
+      className={`flex items-center gap-3 rounded-2xl p-3 ${interactive ? "cursor-pointer outline-none transition-[background-color,border-color,transform] duration-150 hover:bg-surface-container focus-within:ring-2 focus-within:ring-ring active:scale-[0.995]" : ""} ${selected ? "bg-primary/10 text-primary" : ""} ${className}`}
       data-selected={selected || undefined}
       {...props}
     >
@@ -42,19 +44,19 @@ export function Item({
       ) : null}
       {actions ? <div className="shrink-0">{actions}</div> : null}
     </div>
-  )
+  );
 }
 export interface ItemGroupProps extends HTMLAttributes<HTMLDivElement> {
-  children: ReactNode
+  children: ReactNode;
 }
 export function ItemGroup({
   children,
-  className = '',
+  className = "",
   ...props
 }: ItemGroupProps) {
   return (
     <div className={`space-y-1 ${className}`} {...props}>
       {children}
     </div>
-  )
+  );
 }

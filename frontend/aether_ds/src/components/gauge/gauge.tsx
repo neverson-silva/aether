@@ -1,34 +1,34 @@
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes } from "react";
 export interface GaugeProps extends HTMLAttributes<HTMLDivElement> {
-  value: number
-  min?: number
-  max?: number
-  size?: number
-  label?: string
-  status?: 'default' | 'success' | 'warning' | 'danger'
+  value: number;
+  min?: number;
+  max?: number;
+  size?: number;
+  label?: string;
+  status?: "default" | "success" | "warning" | "danger";
 }
 export function Gauge({
-  className = '',
+  className = "",
   label,
   max = 100,
   min = 0,
   size = 160,
-  status = 'default',
+  status = "default",
   value,
   ...props
 }: GaugeProps) {
-  const progress = Math.min(1, Math.max(0, (value - min) / (max - min)))
-  const radius = 52
-  const circumference = Math.PI * radius
+  const progress = Math.min(1, Math.max(0, (value - min) / (max - min)));
+  const radius = 52;
+  const circumference = Math.PI * radius;
   const colors = {
-    default: 'text-primary',
-    success: 'text-status-success',
-    warning: 'text-status-warning',
-    danger: 'text-status-danger',
-  }
+    default: "text-primary",
+    success: "text-status-success",
+    warning: "text-status-warning",
+    danger: "text-status-danger",
+  };
   return (
     <div
-      className={`relative inline-flex items-center justify-center ${colors[status]} ${className}`}
+      className={`relative inline-flex items-center justify-center drop-shadow-sm ${colors[status]} ${className}`}
       style={{ width: size, height: size / 2 + 16 }}
       {...props}
     >
@@ -60,5 +60,5 @@ export function Gauge({
         </div>
       </div>
     </div>
-  )
+  );
 }

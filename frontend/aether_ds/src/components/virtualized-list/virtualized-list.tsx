@@ -1,16 +1,16 @@
-import { type ReactNode, useRef, useState } from 'react'
+import { type ReactNode, useRef, useState } from "react";
 export interface VirtualizedListProps<T> {
-  items: T[]
-  rowHeight: number
-  height?: number
-  overscan?: number
-  renderItem: (item: T, index: number) => ReactNode
-  loading?: boolean
-  empty?: ReactNode
-  getKey?: (item: T, index: number) => string
+  items: T[];
+  rowHeight: number;
+  height?: number;
+  overscan?: number;
+  renderItem: (item: T, index: number) => ReactNode;
+  loading?: boolean;
+  empty?: ReactNode;
+  getKey?: (item: T, index: number) => string;
 }
 export function VirtualizedList<T>({
-  empty = 'No items.',
+  empty = "No items.",
   getKey,
   height = 400,
   items,
@@ -19,36 +19,36 @@ export function VirtualizedList<T>({
   renderItem,
   rowHeight,
 }: VirtualizedListProps<T>) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const end = Math.min(
     items.length,
     Math.ceil((scrollTop + height) / rowHeight) + overscan,
-  )
+  );
   return (
     <div
       ref={scrollRef}
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       style={{ height }}
-      className="overflow-auto rounded-lg border border-border"
+      className="overflow-auto rounded-2xl border border-border bg-surface-card shadow-sm"
     >
       {loading ? (
         <div className="p-6 text-center text-body-sm text-muted-foreground">
           Loading...
         </div>
       ) : items.length ? (
-        <div style={{ height: items.length * rowHeight, position: 'relative' }}>
+        <div style={{ height: items.length * rowHeight, position: "relative" }}>
           <div
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: start * rowHeight,
               left: 0,
               right: 0,
             }}
           >
             {items.slice(start, end).map((item, index) => {
-              const actualIndex = start + index
+              const actualIndex = start + index;
               return (
                 <div
                   key={getKey?.(item, actualIndex) ?? actualIndex}
@@ -56,7 +56,7 @@ export function VirtualizedList<T>({
                 >
                   {renderItem(item, actualIndex)}
                 </div>
-              )
+              );
             })}
           </div>
         </div>
@@ -66,5 +66,5 @@ export function VirtualizedList<T>({
         </div>
       )}
     </div>
-  )
+  );
 }

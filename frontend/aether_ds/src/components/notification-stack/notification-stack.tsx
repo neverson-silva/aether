@@ -35,7 +35,7 @@ export function NotificationStack({
         return (
           <article
             key={notification.id}
-            className={`flex gap-3 rounded-lg border border-border bg-surface-card p-4 shadow-sm transition-colors hover:bg-surface-container ${notification.unread ? 'border-primary/40' : ''}`}
+            className={`flex items-start gap-3 rounded-xl border border-border bg-surface-card p-4 shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:bg-surface-container hover:shadow-md ${notification.unread ? 'border-primary/40 ring-1 ring-primary/10' : ''}`}
           >
             <Icon
               size={20}
@@ -45,7 +45,7 @@ export function NotificationStack({
             <button
               type="button"
               onClick={() => onSelect?.(notification)}
-              className="min-w-0 flex-1 text-start"
+              className="min-w-0 flex-1 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="block font-semibold text-foreground">
                 {notification.title}
@@ -66,7 +66,7 @@ export function NotificationStack({
               type="button"
               onClick={() => onDismiss?.(notification.id)}
               aria-label="Dismiss notification"
-              className="shrink-0 text-muted-foreground hover:text-foreground"
+              className="shrink-0 rounded-lg p-1 text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container-high hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
             >
               <X size={16} />
             </button>

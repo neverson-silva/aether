@@ -287,6 +287,19 @@ func TestValidatePolicyRejectsMutableLatestImage(t *testing.T) {
 	}
 }
 
+func TestNormalizeUserComposeAllowsMutableImageTags(t *testing.T) {
+	content, err := NormalizeUserCompose(`services:
+  app:
+    image: example/app:latest
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("user compose with mutable image rejected: %v", err)
+	}
+}
+
 func TestValidatePolicyRejectsAlternateVolumeSyntax(t *testing.T) {
 	content := `services:
   web:

@@ -14,6 +14,8 @@ type PolicyError struct {
 	Violations []string
 }
 
+const allowMutableImagesMarker = "x-aether-allow-mutable-images"
+
 func (e *PolicyError) Error() string {
 	if len(e.Violations) == 0 {
 		return "compose security policy rejected the configuration"
@@ -44,6 +46,7 @@ func ValidatePolicy(content string) error {
 	validateNamedResources(root, "networks", &violations)
 	validateManagedConfigs(root, &violations)
 	allowHostPorts := hasDokployHostPortsMarker(&document, root)
+	allowMutableImages := explicitTrue(nodeMapValue(root, allowMutableImagesMarker))
 
 	services := nodeMapValue(root, "services")
 	if services == nil || services.Kind != yaml.MappingNode || len(services.Content) == 0 {
@@ -59,13 +62,38 @@ func ValidatePolicy(content string) error {
 				violations = append(violations, "service "+name+" must be a mapping")
 				continue
 			}
-			validateServicePolicy(name, service, allowHostPorts, &violations)
+			validateServicePolicy(name, service, allowHostPorts, allowMutableImages, &violations)
 		}
 	}
 	if len(violations) > 0 {
 		return &PolicyError{Violations: violations}
 	}
 	return nil
+}
+
+func NormalizeUserCompose(content string) (string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", fmt.Errorf("parse compose configuration: %w", err)
+	}
+	root := documentRoot(&document)
+	if root == nil || root.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("compose root must be a mapping")
+	}
+	if nodeMapValue(root, allowMutableImagesMarker) == nil {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: allowMutableImagesMarker},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"},
+		)
+	}
+	var buffer bytes.Buffer
+	encoder := yaml.NewEncoder(&buffer)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return "", fmt.Errorf("encode compose configuration: %w", err)
+	}
+	_ = encoder.Close()
+	return buffer.String(), nil
 }
 
 func NormalizeNamedResourceDefinitions(content string) (string, error) {
@@ -366,8 +394,8 @@ func validateNamedResources(root *yaml.Node, kind string, violations *[]string) 
 	}
 }
 
-func validateServicePolicy(name string, service *yaml.Node, allowHostPorts bool, violations *[]string) {
-	if image := nodeMapValue(service, "image"); image != nil && strings.HasSuffix(strings.ToLower(strings.TrimSpace(image.Value)), ":latest") {
+func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allowMutableImages bool, violations *[]string) {
+	if image := nodeMapValue(service, "image"); image != nil && !allowMutableImages && strings.HasSuffix(strings.ToLower(strings.TrimSpace(image.Value)), ":latest") {
 		*violations = append(*violations, "service "+name+" cannot use mutable image tag latest")
 	}
 	if restart := nodeMapValue(service, "restart"); restart != nil && strings.ToLower(strings.TrimSpace(restart.Value)) != "no" {

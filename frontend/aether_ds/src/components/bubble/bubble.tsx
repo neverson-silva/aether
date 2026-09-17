@@ -1,35 +1,35 @@
-import type { ReactNode } from 'react'
-import { tv } from 'tailwind-variants'
+import type { ReactNode } from "react";
+import { tv } from "tailwind-variants";
 export interface BubbleProps {
-  children: ReactNode
-  author?: ReactNode
-  timestamp?: ReactNode
-  side?: 'start' | 'end'
-  tone?: 'neutral' | 'primary' | 'success' | 'danger'
-  avatar?: ReactNode
-  className?: string
+  children: ReactNode;
+  author?: ReactNode;
+  timestamp?: ReactNode;
+  side?: "start" | "end";
+  tone?: "neutral" | "primary" | "success" | "danger";
+  avatar?: ReactNode;
+  className?: string;
 }
 const bubble = tv({
-  base: 'flex max-w-[min(36rem,90%)] gap-2',
+  base: "flex max-w-[min(36rem,90%)] gap-2",
   variants: {
-    side: { start: 'self-start', end: 'self-end flex-row-reverse' },
+    side: { start: "self-start", end: "self-end flex-row-reverse" },
     tone: {
-      neutral: 'bg-surface-container',
-      primary: 'bg-primary text-primary-foreground',
-      success: 'bg-status-success text-status-success-foreground',
-      danger: 'bg-status-danger text-status-danger-foreground',
+      neutral: "rounded-2xl bg-surface-container shadow-sm",
+      primary: "bg-primary text-primary-foreground",
+      success: "bg-status-success text-status-success-foreground",
+      danger: "bg-status-danger text-status-danger-foreground",
     },
   },
-  defaultVariants: { side: 'start', tone: 'neutral' },
-})
+  defaultVariants: { side: "start", tone: "neutral" },
+});
 export function Bubble({
   author,
   avatar,
   children,
   className,
-  side = 'start',
+  side = "start",
   timestamp,
-  tone = 'neutral',
+  tone = "neutral",
 }: BubbleProps) {
   return (
     <div className={bubble({ side, className })}>
@@ -44,5 +44,5 @@ export function Bubble({
         ) : null}
       </div>
     </div>
-  )
+  );
 }

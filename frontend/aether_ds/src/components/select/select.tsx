@@ -17,6 +17,7 @@ export interface SelectProps {
   value?: string
   defaultValue?: string
   disabled?: boolean
+  className?: string
   onValueChange?: (value: string | null) => void
 }
 export function Select({
@@ -29,6 +30,7 @@ export function Select({
   placeholder = 'Select an option',
   value,
   defaultValue,
+  className,
 }: SelectProps) {
   const control = (
     <BaseSelect.Root
@@ -38,7 +40,7 @@ export function Select({
     >
       <BaseSelect.Trigger
         disabled={disabled}
-        className="flex h-10 w-full items-center justify-between rounded-md border border-border bg-surface-control px-3 hover:bg-surface-container-highest/40 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className={`flex h-10 w-full items-center justify-between rounded-md border border-border bg-surface-control px-3 hover:bg-surface-container-highest/40 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${className ?? ''}`}
       >
         <BaseSelect.Value placeholder={placeholder} />
         <BaseSelect.Icon>
@@ -46,9 +48,36 @@ export function Select({
         </BaseSelect.Icon>
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
-        <BaseSelect.Positioner className="z-[100]">
-          <BaseSelect.Popup className="min-w-[var(--anchor-width)] rounded-md border border-border bg-surface-popover p-1 text-foreground shadow-lg">
-            <BaseSelect.List>
+        <BaseSelect.Positioner
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          alignItemWithTrigger={false}
+          positionMethod="fixed"
+          collisionAvoidance={{
+            side: 'flip',
+            align: 'shift',
+            fallbackAxisSide: 'none',
+          }}
+          style={{ zIndex: 2147483002 }}
+          className="z-[2147483002] max-w-[calc(100vw-2rem)] outline-none"
+        >
+          <BaseSelect.Popup
+            style={{
+              width: 'var(--anchor-width)',
+              maxWidth: 'calc(100vw - 2rem)',
+            }}
+            className="min-w-[var(--anchor-width)] rounded-md border border-border bg-surface-popover p-1 text-foreground shadow-lg"
+          >
+            <BaseSelect.List
+              className="aether-select-list"
+              style={{
+                maxHeight: 'min(var(--available-height), 20rem)',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                overscrollBehavior: 'contain',
+              }}
+            >
               {options.map((option) => (
                 <BaseSelect.Item
                   key={option.value}

@@ -1,13 +1,13 @@
-import { Field as BaseField } from '@base-ui/react/field'
-import type { ReactNode } from 'react'
+import { Field as BaseField } from "@base-ui/react/field";
+import type { ReactNode } from "react";
 export interface FieldProps {
-  name?: string
-  label?: string
-  description?: string
-  error?: string
-  required?: boolean
-  disabled?: boolean
-  children: ReactNode
+  name?: string;
+  label?: string;
+  description?: string;
+  error?: string;
+  required?: boolean;
+  disabled?: boolean;
+  children: ReactNode;
 }
 export function Field({
   children,
@@ -40,10 +40,13 @@ export function Field({
         </BaseField.Description>
       ) : null}
       {error ? (
-        <p role="alert" className="text-body-sm text-status-danger">
+        <p
+          role="alert"
+          className="rounded-lg border border-status-danger/20 bg-status-danger-container/10 px-2.5 py-1.5 text-body-sm text-status-danger"
+        >
           {error}
         </p>
       ) : null}
     </BaseField.Root>
-  )
+  );
 }

@@ -22,6 +22,7 @@ import type { Icon as DesignIcon } from "@aether/design-system";
 import { useServices } from "../../../hooks";
 import type { ServiceKind, ServiceStatus } from "../../../api/types";
 import { CreateServiceLauncher } from "../../../components/CreateServiceLauncher";
+import { PageHeader } from "../../../components/PageHeader";
 
 const designIcon = (icon: typeof RocketLaunch) => icon as unknown as DesignIcon;
 
@@ -92,14 +93,12 @@ function Services() {
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 p-6 lg:p-8">
-      <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
-          <Typography as="p" level="label" tone="primary">Runtime</Typography>
-          <Typography as="h1" level="display">Services</Typography>
-          <Typography as="p" level="body" tone="muted">Deploy, monitor and operate every application and database from one workspace.</Typography>
-        </div>
-        <Button icon={designIcon(Plus)} onClick={() => setLauncherOpen(true)}>New service</Button>
-      </header>
+      <PageHeader
+        eyebrow="Runtime"
+        title="Services"
+        description="Deploy, monitor and operate every application and database from one workspace."
+        actions={<Button icon={designIcon(Plus)} onClick={() => setLauncherOpen(true)}>New service</Button>}
+      />
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Loading services">

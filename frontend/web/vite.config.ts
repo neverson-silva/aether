@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       allowedHosts: true,
-      proxy: { "/api": { target: apiTarget || "http://127.0.0.1:8080", ws: true } },
+      proxy: { "/api/": { target: apiTarget || "http://127.0.0.1:8080", ws: true } },
       fs: { allow: [path.resolve(import.meta.dirname, "..")] },
     },
     resolve: {

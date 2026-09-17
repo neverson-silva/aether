@@ -103,6 +103,18 @@ export function Shell() {
       ? projects?.find((project) => project.id === projectId)?.name
       : undefined;
   }, [projectMatch, projects, serviceDetail]);
+  const currentProjectId = serviceDetail?.project_id ?? projectMatch?.[1];
+  const breadcrumb = currentProject
+    ? [
+        { label: "Projects", href: "/projects" },
+        ...(appMatch
+          ? [
+              { label: currentProject, href: currentProjectId ? `/projects/${currentProjectId}` : undefined },
+              ...(serviceDetail ? [{ label: serviceDetail.name, current: true }] : []),
+            ]
+          : [{ label: currentProject, current: true }]),
+      ]
+    : undefined;
   const brandName = branding?.name?.trim() || "Aether";
   const brandVars = branding?.primary_color
     ? ({ "--color-primary": branding.primary_color } as React.CSSProperties)
@@ -199,11 +211,7 @@ export function Shell() {
               onCreate={() => navigate({ to: "/organizations/new" })}
             />
           }
-          // breadcrumb={[
-          //   ...(currentProject
-          //     ? [{ label: currentProject, current: true }]
-          //     : []),
-          // ]}
+          breadcrumb={breadcrumb}
           onNavigate={(href) => navigate({ to: href } as never)}
           command={
             <IconButton

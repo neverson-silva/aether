@@ -1,20 +1,20 @@
-import { Pause, Play } from '@phosphor-icons/react'
-import { useEffect, useState } from 'react'
+import { Pause, Play } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
 export interface TimelineMarker {
-  id: string
-  position: number
-  label: string
-  tone?: 'info' | 'warning' | 'danger'
+  id: string;
+  position: number;
+  label: string;
+  tone?: "info" | "warning" | "danger";
 }
 export interface TimelineScrubberProps {
-  start: number
-  end: number
-  value?: number
-  markers?: TimelineMarker[]
-  timezone?: string
-  onChange?: (value: number) => void
-  onRangeChange?: (range: [number, number]) => void
-  playback?: boolean
+  start: number;
+  end: number;
+  value?: number;
+  markers?: TimelineMarker[];
+  timezone?: string;
+  onChange?: (value: number) => void;
+  onRangeChange?: (range: [number, number]) => void;
+  playback?: boolean;
 }
 export function TimelineScrubber({
   end,
@@ -25,25 +25,25 @@ export function TimelineScrubber({
   timezone,
   value = start,
 }: TimelineScrubberProps) {
-  const [playing, setPlaying] = useState(false)
-  const [current, setCurrent] = useState(value)
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(value);
   useEffect(() => {
-    if (!playing) return
+    if (!playing) return;
     const timer = window.setInterval(
       () =>
         setCurrent((previous) => {
-          const next = Math.min(end, previous + (end - start) / 100)
-          onChange?.(next)
-          if (next >= end) setPlaying(false)
-          return next
+          const next = Math.min(end, previous + (end - start) / 100);
+          onChange?.(next);
+          if (next >= end) setPlaying(false);
+          return next;
         }),
       100,
-    )
-    return () => window.clearInterval(timer)
-  }, [end, onChange, playing, start])
-  const percent = ((current - start) / (end - start)) * 100
+    );
+    return () => window.clearInterval(timer);
+  }, [end, onChange, playing, start]);
+  const percent = ((current - start) / (end - start)) * 100;
   return (
-    <section className="rounded-lg border border-border bg-surface-card p-4">
+    <section className="rounded-2xl border border-border bg-surface-card p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between text-body-sm">
         <span className="font-mono text-foreground">
           {new Date(current).toLocaleString()}
@@ -59,9 +59,9 @@ export function TimelineScrubber({
           max={end}
           value={current}
           onChange={(event) => {
-            const next = Number(event.target.value)
-            setCurrent(next)
-            onChange?.(next)
+            const next = Number(event.target.value);
+            setCurrent(next);
+            onChange?.(next);
           }}
           aria-label="Timeline position"
           className="absolute inset-0 z-10 h-8 w-full cursor-pointer opacity-0"
@@ -75,7 +75,7 @@ export function TimelineScrubber({
           <span
             key={marker.id}
             title={marker.label}
-            className={`absolute top-1 size-6 -translate-x-1/2 rounded-full border-2 border-surface-card ${marker.tone === 'danger' ? 'bg-status-danger' : marker.tone === 'warning' ? 'bg-status-warning' : 'bg-status-info'}`}
+            className={`absolute top-1 size-6 -translate-x-1/2 rounded-full border-2 border-surface-card ${marker.tone === "danger" ? "bg-status-danger" : marker.tone === "warning" ? "bg-status-warning" : "bg-status-info"}`}
             style={{ left: `${marker.position}%` }}
           />
         ))}
@@ -84,12 +84,12 @@ export function TimelineScrubber({
         <button
           type="button"
           onClick={() => setPlaying(!playing)}
-          className="mt-2 inline-flex items-center gap-1 text-body-sm text-muted-foreground hover:text-foreground"
+          className="mt-2 inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-body-sm text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
         >
           {playing ? <Pause size={16} /> : <Play size={16} />}
-          {playing ? 'Pause' : 'Play'}
+          {playing ? "Pause" : "Play"}
         </button>
       ) : null}
     </section>
-  )
+  );
 }

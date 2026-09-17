@@ -154,6 +154,10 @@ func (c *Compose) Create(ctx context.Context, orgID, projectID uuid.UUID, name, 
 	if !validYAML(content) {
 		return nil, domain.ErrValidation
 	}
+	content, err := composeengine.NormalizeUserCompose(content)
+	if err != nil {
+		return nil, fmt.Errorf("%w: normalize compose configuration: %v", domain.ErrValidation, err)
+	}
 	if err := composeengine.ValidatePolicy(content); err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrValidation, err)
 	}

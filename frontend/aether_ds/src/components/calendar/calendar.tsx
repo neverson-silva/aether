@@ -1,32 +1,32 @@
-import { CaretLeft, CaretRight } from '@phosphor-icons/react'
-import { type HTMLAttributes, useEffect, useState } from 'react'
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { type HTMLAttributes, useEffect, useState } from "react";
 
 export interface CalendarProps extends HTMLAttributes<HTMLDivElement> {
-  value?: string
-  onValueChange?: (value: string) => void
-  minDate?: string
-  maxDate?: string
-  disabledDates?: string[]
-  multipleMonths?: number
+  value?: string;
+  onValueChange?: (value: string) => void;
+  minDate?: string;
+  maxDate?: string;
+  disabledDates?: string[];
+  multipleMonths?: number;
 }
 
-const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function parseDate(value?: string) {
-  if (value) return new Date(`${value}T12:00:00`)
-  const today = new Date()
-  return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12)
+  if (value) return new Date(`${value}T12:00:00`);
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
 }
 
 function formatDate(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function Calendar({
-  className = '',
+  className = "",
   disabledDates,
   maxDate,
   minDate,
@@ -34,39 +34,39 @@ export function Calendar({
   value,
   ...props
 }: CalendarProps) {
-  const [viewDate, setViewDate] = useState(() => parseDate(value))
-  const year = viewDate.getFullYear()
-  const month = viewDate.getMonth()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const leadingDays = (new Date(year, month, 1).getDay() + 6) % 7
+  const [viewDate, setViewDate] = useState(() => parseDate(value));
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leadingDays = (new Date(year, month, 1).getDay() + 6) % 7;
   const days = Array.from({ length: leadingDays + daysInMonth }, (_, index) =>
     index < leadingDays ? null : index - leadingDays + 1,
-  )
+  );
   const monthLabel = new Intl.DateTimeFormat(undefined, {
-    month: 'long',
-    year: 'numeric',
-  }).format(viewDate)
+    month: "long",
+    year: "numeric",
+  }).format(viewDate);
 
   useEffect(() => {
-    if (value) setViewDate(parseDate(value))
-  }, [value])
+    if (value) setViewDate(parseDate(value));
+  }, [value]);
 
   const isUnavailable = (date: string) =>
     Boolean(
       (minDate && date < minDate) ||
-        (maxDate && date > maxDate) ||
-        disabledDates?.includes(date),
-    )
+      (maxDate && date > maxDate) ||
+      disabledDates?.includes(date),
+    );
 
   return (
     <div
-      className={`w-80 rounded-lg border border-border bg-surface-card p-4 shadow-md ${className}`}
+      className={`w-full max-w-80 rounded-2xl border border-border bg-surface-card p-4 shadow-md ${className}`}
       {...props}
     >
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary active:scale-[0.95]"
           aria-label="Previous month"
           onClick={() => setViewDate(new Date(year, month - 1, 1, 12))}
         >
@@ -91,10 +91,10 @@ export function Calendar({
       </div>
       <div className="grid grid-cols-7 gap-1">
         {days.map((day, index) => {
-          if (!day) return <span key={`empty-${index}`} aria-hidden="true" />
-          const date = formatDate(new Date(year, month, day, 12))
-          const selected = date === value
-          const unavailable = isUnavailable(date)
+          if (!day) return <span key={`empty-${index}`} aria-hidden="true" />;
+          const date = formatDate(new Date(year, month, day, 12));
+          const selected = date === value;
+          const unavailable = isUnavailable(date);
           return (
             <button
               key={date}
@@ -102,14 +102,14 @@ export function Calendar({
               aria-label={date}
               aria-pressed={selected}
               disabled={unavailable}
-              className={`inline-flex aspect-square items-center justify-center rounded-md text-body-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${selected ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-surface-container'} ${unavailable ? 'cursor-not-allowed opacity-40' : ''}`}
+              className={`inline-flex aspect-square items-center justify-center rounded-lg text-body-sm outline-none transition-[background-color,color,box-shadow,transform] duration-150 focus-visible:ring-2 focus-visible:ring-primary active:scale-[0.94] ${selected ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground hover:bg-surface-container"} ${unavailable ? "cursor-not-allowed opacity-40" : ""}`}
               onClick={() => onValueChange?.(date)}
             >
               {day}
             </button>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

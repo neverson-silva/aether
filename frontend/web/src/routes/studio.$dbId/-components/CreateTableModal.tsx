@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Code, Plus } from "@phosphor-icons/react";
-import { Button, Dialog, Field, Input, NativeSelect } from "@aether/design-system";
+import {
+  Button,
+  Dialog,
+  Field,
+  Input,
+  NativeSelect,
+} from "@aether/design-system";
 
-function cn(...classes: Array<string | false | undefined>) { return classes.filter(Boolean).join(" "); }
+function cn(...classes: Array<string | false | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 interface ColumnDef {
   name: string;
@@ -12,21 +20,54 @@ interface ColumnDef {
   default: string;
 }
 
-const DEFAULT_COLUMN: ColumnDef = { name: "", type: "TEXT", nullable: true, primary: false, default: "" };
+const DEFAULT_COLUMN: ColumnDef = {
+  name: "",
+  type: "TEXT",
+  nullable: true,
+  primary: false,
+  default: "",
+};
 
 const TYPE_OPTIONS = [
-  "TEXT", "VARCHAR", "INTEGER", "BIGINT", "SERIAL", "BIGSERIAL", "UUID", "BOOLEAN",
-  "TIMESTAMP", "TIMESTAMPTZ", "DATE", "TIME", "DECIMAL", "NUMERIC", "JSON", "JSONB",
-  "BYTEA", "ARRAY", "ENUM", "GEOMETRY", "INET", "CIDR", "MONEY", "INTERVAL",
+  "TEXT",
+  "VARCHAR",
+  "INTEGER",
+  "BIGINT",
+  "SERIAL",
+  "BIGSERIAL",
+  "UUID",
+  "BOOLEAN",
+  "TIMESTAMP",
+  "TIMESTAMPTZ",
+  "DATE",
+  "TIME",
+  "DECIMAL",
+  "NUMERIC",
+  "JSON",
+  "JSONB",
+  "BYTEA",
+  "ARRAY",
+  "ENUM",
+  "GEOMETRY",
+  "INET",
+  "CIDR",
+  "MONEY",
+  "INTERVAL",
 ];
 
 function quoteIdent(engine: string | undefined, name: string): string {
-  if (engine === "mysql" || engine === "mariadb") return `\`${name.replace(/`/g, "``")}\``;
+  if (engine === "mysql" || engine === "mariadb")
+    return `\`${name.replace(/`/g, "``")}\``;
   if (engine === "mssql") return `[${name}]`;
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-function buildCreateTableSQL(engine: string | undefined, schema: string, table: string, columns: ColumnDef[]): string {
+function buildCreateTableSQL(
+  engine: string | undefined,
+  schema: string,
+  table: string,
+  columns: ColumnDef[],
+): string {
   const lines: string[] = [];
   const primaryCols: string[] = [];
   const errors: string[] = [];
@@ -51,12 +92,17 @@ function buildCreateTableSQL(engine: string | undefined, schema: string, table: 
     lines.push(line);
   }
   if (lines.length === 0) {
-    errors.push("Add at least one column with a name to generate the statement.");
+    errors.push(
+      "Add at least one column with a name to generate the statement.",
+    );
     return "";
   }
   const schemaQ = quoteIdent(engine, schema);
   const tableQ = quoteIdent(engine, table);
-  const qualified = engine === "mysql" || engine === "mariadb" ? tableQ : `${schemaQ}.${tableQ}`;
+  const qualified =
+    engine === "mysql" || engine === "mariadb"
+      ? tableQ
+      : `${schemaQ}.${tableQ}`;
   let stmt = `CREATE TABLE ${qualified} (\n${lines.join(",\n")}`;
   if (primaryCols.length > 1) {
     stmt += `,\n  PRIMARY KEY (${primaryCols.join(", ")})`;
@@ -79,9 +125,18 @@ export function CreateTableModal({
   onClose: () => void;
   engine: string | undefined;
   schemas: string[];
-  onCreate: (payload: { sql: string; table: string; schema: string; columns: ColumnDef[] }) => void;
+  onCreate: (payload: {
+    sql: string;
+    table: string;
+    schema: string;
+    columns: ColumnDef[];
+  }) => void;
   edit?: { schema: string; table: string; columns: ColumnDef[] } | null;
-  onSave?: (payload: { table: string; schema: string; columns: ColumnDef[] }) => void;
+  onSave?: (payload: {
+    table: string;
+    schema: string;
+    columns: ColumnDef[];
+  }) => void;
   saving?: boolean;
 }) {
   const [table, setTable] = useState("");
@@ -102,19 +157,29 @@ export function CreateTableModal({
     }
   }, [open, edit, schemas]);
 
-  const sql = useMemo(() => buildCreateTableSQL(engine, schema, table, columns), [engine, schema, table, columns]);
+  const sql = useMemo(
+    () => buildCreateTableSQL(engine, schema, table, columns),
+    [engine, schema, table, columns],
+  );
 
   const updateColumn = (idx: number, patch: Partial<ColumnDef>) => {
-    setColumns((cols) => cols.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
+    setColumns((cols) =>
+      cols.map((c, i) => (i === idx ? { ...c, ...patch } : c)),
+    );
   };
 
   const togglePrimary = (idx: number) => {
-    setColumns((cols) => cols.map((c, i) => (i === idx ? { ...c, primary: !c.primary } : c)));
+    setColumns((cols) =>
+      cols.map((c, i) => (i === idx ? { ...c, primary: !c.primary } : c)),
+    );
   };
 
   const addColumn = () => {
     const n = columns.length + 1;
-    setColumns((cols) => [...cols, { ...DEFAULT_COLUMN, name: `column_${n}`, default: "" }]);
+    setColumns((cols) => [
+      ...cols,
+      { ...DEFAULT_COLUMN, name: `column_${n}`, default: "" },
+    ]);
     requestAnimationFrame(() => nameRefs.current[columns.length]?.focus());
   };
 
@@ -152,22 +217,38 @@ export function CreateTableModal({
   };
 
   const columnCount = columns.length;
-  const nameError = table.trim() === "" ? "Table name is required" : !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table.trim()) ? "Use letters, digits and underscores, starting with a letter" : "";
+  const nameError =
+    table.trim() === ""
+      ? "Table name is required"
+      : !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table.trim())
+        ? "Use letters, digits and underscores, starting with a letter"
+        : "";
 
   return (
-    <Dialog trigger={<span />} open={open} onOpenChange={(value) => { if (!value) onClose(); }} title={edit ? "Edit Table" : "Create Table"}>
+    <Dialog
+      trigger={<span />}
+      open={open}
+      onOpenChange={(value) => {
+        if (!value) onClose();
+      }}
+      title={edit ? "Edit Table" : "Create Table"}
+    >
       <div className="flex flex-col gap-lg">
         <div className="flex flex-wrap items-end gap-lg">
           {edit ? (
             <div className="flex flex-wrap items-end gap-lg">
               <div className="flex-1 min-w-56">
                 <Field label="Table Name">
-                  <div className="px-3 py-2 bg-surface-container border border-outline-variant rounded-lg font-code-md text-code-md text-on-surface">{edit.table}</div>
+                  <div className="rounded-xl border border-outline-variant bg-surface-container px-3 py-2 font-code-md text-code-md text-on-surface">
+                    {edit.table}
+                  </div>
                 </Field>
               </div>
               <div className="w-56">
                 <Field label="Schema">
-                  <div className="px-3 py-2 bg-surface-container border border-outline-variant rounded-lg font-code-md text-code-md text-on-surface">{edit.schema}</div>
+                  <div className="rounded-xl border border-outline-variant bg-surface-container px-3 py-2 font-code-md text-code-md text-on-surface">
+                    {edit.schema}
+                  </div>
                 </Field>
               </div>
             </div>
@@ -175,12 +256,21 @@ export function CreateTableModal({
             <div className="flex flex-wrap items-end gap-lg">
               <div className="flex-1 min-w-56">
                 <Field label="Table Name" error={nameError || undefined}>
-                  <Input placeholder="e.g. user_profiles" value={table} onChange={(e) => setTable(e.target.value)} aria-invalid={!!nameError} />
+                  <Input
+                    placeholder="e.g. user_profiles"
+                    value={table}
+                    onChange={(e) => setTable(e.target.value)}
+                    aria-invalid={!!nameError}
+                  />
                 </Field>
               </div>
               <div className="w-56">
                 <Field label="Schema">
-                  <NativeSelect value={schema} onChange={(e) => setSchema(e.target.value)} options={schemas.map((s) => ({ label: s, value: s }))} />
+                  <NativeSelect
+                    value={schema}
+                    onChange={(e) => setSchema(e.target.value)}
+                    options={schemas.map((s) => ({ label: s, value: s }))}
+                  />
                 </Field>
               </div>
             </div>
@@ -189,7 +279,9 @@ export function CreateTableModal({
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <div className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Columns</div>
+            <div className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
+              Columns
+            </div>
             <button
               onClick={addColumn}
               className="text-body-sm text-primary hover:text-primary-container flex items-center gap-1 transition-colors"
@@ -199,7 +291,7 @@ export function CreateTableModal({
             </button>
           </div>
 
-          <div className="overflow-y-auto max-h-[45vh] sidebar-scroll border border-outline-variant rounded-lg">
+          <div className="sidebar-scroll max-h-[45vh] overflow-y-auto rounded-2xl border border-outline-variant bg-surface-card shadow-sm">
             <div className="grid grid-cols-12 gap-x-3 gap-y-px px-3 py-2 bg-surface-container-lowest border-b border-outline-variant text-label-caps text-label-caps text-on-surface-variant sticky top-0 z-10">
               <div className="col-span-1 flex justify-center">PK</div>
               <div className="col-span-3">Name</div>
@@ -221,33 +313,55 @@ export function CreateTableModal({
                       onClick={() => togglePrimary(idx)}
                       className={cn(
                         "w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors",
-                        c.primary ? "border-primary bg-primary/20" : "border-outline-variant hover:border-on-surface-variant"
+                        c.primary
+                          ? "border-primary bg-primary/20"
+                          : "border-outline-variant hover:border-on-surface-variant",
                       )}
                       aria-label={c.primary ? "Primary key" : "Not primary key"}
                     >
-                      {c.primary && <span className="w-2 h-2 rounded-full bg-primary" />}
+                      {c.primary && (
+                        <span className="w-2 h-2 rounded-full bg-primary" />
+                      )}
                     </button>
                   </div>
                   <div className="col-span-3">
                     <input
-                      ref={(el) => { nameRefs.current[idx] = el; }}
+                      ref={(el) => {
+                        nameRefs.current[idx] = el;
+                      }}
                       className="bg-transparent border border-transparent rounded px-1 py-1 text-code-md text-code-md text-on-surface w-full focus:border-primary focus:bg-background outline-none transition-colors"
                       type="text"
                       value={c.name}
                       placeholder="column_name"
-                      onChange={(e) => updateColumn(idx, { name: e.target.value })}
+                      onChange={(e) =>
+                        updateColumn(idx, { name: e.target.value })
+                      }
                       aria-invalid={!!nameErr}
                     />
                   </div>
                   <div className="col-span-3">
-                    <NativeSelect value={c.type} onChange={(e) => updateColumn(idx, { type: e.target.value })} options={TYPE_OPTIONS.map((t) => ({ label: t, value: t }))} className="font-code-md text-secondary" />
+                    <NativeSelect
+                      value={c.type}
+                      onChange={(e) =>
+                        updateColumn(idx, { type: e.target.value })
+                      }
+                      options={TYPE_OPTIONS.map((t) => ({
+                        label: t,
+                        value: t,
+                      }))}
+                      className="font-code-md text-secondary"
+                    />
                   </div>
                   <div className="col-span-2 flex justify-center">
                     <button
-                      onClick={() => updateColumn(idx, { nullable: !c.nullable })}
+                      onClick={() =>
+                        updateColumn(idx, { nullable: !c.nullable })
+                      }
                       className={cn(
                         "flex items-center gap-1 px-1.5 py-0.5 rounded border font-label-caps text-label-caps transition-colors",
-                        c.nullable ? "border-outline-variant text-on-surface-variant" : "border-primary/40 text-primary"
+                        c.nullable
+                          ? "border-outline-variant text-on-surface-variant"
+                          : "border-primary/40 text-primary",
                       )}
                       aria-label={c.nullable ? "Nullable: on" : "Nullable: off"}
                     >
@@ -260,7 +374,9 @@ export function CreateTableModal({
                       type="text"
                       value={c.default}
                       placeholder="NULL"
-                      onChange={(e) => updateColumn(idx, { default: e.target.value })}
+                      onChange={(e) =>
+                        updateColumn(idx, { default: e.target.value })
+                      }
                     />
                   </div>
                 </div>
@@ -269,7 +385,8 @@ export function CreateTableModal({
 
             {columns.length === 0 && (
               <div className="py-6 text-center font-body-sm text-body-sm text-on-surface-variant/60">
-                No columns yet — add your first column to define the table schema.
+                No columns yet — add your first column to define the table
+                schema.
               </div>
             )}
           </div>
@@ -277,20 +394,30 @@ export function CreateTableModal({
 
         <div className="flex items-center justify-between gap-md">
           {!edit && (
-          <button
-            onClick={() => setShowSql((s) => !s)}
-            className={cn(
-              "text-body-sm font-body-sm flex items-center gap-2 px-3 py-1.5 rounded border transition-colors",
-              showSql ? "border-primary/40 text-primary bg-primary/10" : "border-outline-variant text-on-surface-variant hover:text-on-surface"
-            )}
-          >
-            <Code size={16} aria-hidden="true" />
-            Preview SQL
-            <CaretDown size={14} className={cn("transition-transform", showSql && "rotate-180")} aria-hidden="true" />
-          </button>
+            <button
+              onClick={() => setShowSql((s) => !s)}
+              className={cn(
+                "text-body-sm font-body-sm flex items-center gap-2 px-3 py-1.5 rounded border transition-colors",
+                showSql
+                  ? "border-primary/40 text-primary bg-primary/10"
+                  : "border-outline-variant text-on-surface-variant hover:text-on-surface",
+              )}
+            >
+              <Code size={16} aria-hidden="true" />
+              Preview SQL
+              <CaretDown
+                size={14}
+                className={cn("transition-transform", showSql && "rotate-180")}
+                aria-hidden="true"
+              />
+            </button>
           )}
           {edit && <div />}
-          {nameError && <span className="text-error text-body-sm font-body-sm">{nameError}</span>}
+          {nameError && (
+            <span className="text-error text-body-sm font-body-sm">
+              {nameError}
+            </span>
+          )}
           <div className="flex items-center gap-md ml-auto">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
@@ -310,12 +437,14 @@ export function CreateTableModal({
 
         {edit && (
           <p className="font-body-sm text-body-sm text-on-surface-variant/70">
-            Column changes are applied to the existing table with ALTER TABLE statements. Column renames are not inferred — use the dedicated Rename flow if needed.
+            Column changes are applied to the existing table with ALTER TABLE
+            statements. Column renames are not inferred — use the dedicated
+            Rename flow if needed.
           </p>
         )}
         {!edit && showSql && sql && (
-          <pre className="font-code-md text-code-md text-primary bg-surface-container-low border border-outline-variant rounded-lg p-3 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-{sql}
+          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-outline-variant bg-surface-container-low p-3 font-code-md text-code-md text-primary">
+            {sql}
           </pre>
         )}
       </div>

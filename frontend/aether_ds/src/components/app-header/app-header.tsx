@@ -1,15 +1,15 @@
-import type { ReactNode } from 'react'
-import { Breadcrumb, type BreadcrumbItem } from '../breadcrumb/breadcrumb'
+import type { ReactNode } from "react";
+import { Breadcrumb, type BreadcrumbItem } from "../breadcrumb/breadcrumb";
 export interface AppHeaderProps {
-  breadcrumb?: BreadcrumbItem[]
-  workspace?: ReactNode
-  environment?: ReactNode
-  search?: ReactNode
-  command?: ReactNode
-  notifications?: ReactNode
-  theme?: ReactNode
-  user?: ReactNode
-  onNavigate?: (href: string) => void
+  breadcrumb?: BreadcrumbItem[];
+  workspace?: ReactNode;
+  environment?: ReactNode;
+  search?: ReactNode;
+  command?: ReactNode;
+  notifications?: ReactNode;
+  theme?: ReactNode;
+  user?: ReactNode;
+  onNavigate?: (href: string) => void;
 }
 export function AppHeader({
   breadcrumb,
@@ -23,10 +23,14 @@ export function AppHeader({
   onNavigate,
 }: AppHeaderProps) {
   return (
-    <header className="flex min-h-16 items-center gap-4 border-b border-border bg-surface-background px-4 md:px-6">
+    <header className="sticky top-0 z-30 flex min-h-16 items-center gap-4 border-b border-border bg-surface-background/75 px-4 shadow-sm backdrop-blur-xl md:px-6">
       <div className="min-w-0 flex-1 space-y-1">
         {workspace ? <div className="font-semibold">{workspace}</div> : null}
-        {breadcrumb ? <Breadcrumb items={breadcrumb} onNavigate={onNavigate} /> : null}
+        {breadcrumb ? (
+          <div className="hidden min-w-0 md:block">
+            <Breadcrumb items={breadcrumb} onNavigate={onNavigate} />
+          </div>
+        ) : null}
       </div>
       {environment}
       {search}
@@ -35,5 +39,5 @@ export function AppHeader({
       {theme}
       {user}
     </header>
-  )
+  );
 }

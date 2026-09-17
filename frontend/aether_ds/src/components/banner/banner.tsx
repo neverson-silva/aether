@@ -33,7 +33,7 @@ export function Banner({
   return (
     <aside
       role="status"
-      className={`flex gap-3 rounded-lg border p-4 text-foreground ${styles[tone]}`}
+      className={`flex items-start gap-3 rounded-xl border p-4 text-foreground shadow-sm ${styles[tone]}`}
     >
       <Icon size={20} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1">
@@ -50,7 +50,7 @@ export function Banner({
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss banner"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
+          className="shrink-0 rounded-lg p-1 text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
         >
           <X size={16} />
         </button>

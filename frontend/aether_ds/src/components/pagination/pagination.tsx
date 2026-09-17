@@ -1,12 +1,12 @@
-import { Button } from '../button/button'
+import { Button } from "../button/button";
 export interface PaginationProps {
-  page: number
-  pageCount: number
-  pageSize?: number
-  loading?: boolean
-  onPageChange: (page: number) => void
-  onPageSizeChange?: (size: number) => void
-  pageSizes?: number[]
+  page: number;
+  pageCount: number;
+  pageSize?: number;
+  loading?: boolean;
+  onPageChange: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
+  pageSizes?: number[];
 }
 export function Pagination({
   loading,
@@ -49,7 +49,7 @@ export function Pagination({
           <select
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="rounded border border-border bg-surface-card px-2 py-1"
+            className="rounded-lg border border-border bg-surface-control px-2 py-1 outline-none transition-[border-color,box-shadow,background-color] duration-200 hover:bg-surface-container focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20"
           >
             {pageSizes.map((size) => (
               <option key={size} value={size}>
@@ -60,5 +60,5 @@ export function Pagination({
         </label>
       ) : null}
     </nav>
-  )
+  );
 }

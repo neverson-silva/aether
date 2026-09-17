@@ -1,12 +1,12 @@
-import { CaretDown, CaretUp, Check, Copy } from '@phosphor-icons/react'
-import { useState } from 'react'
+import { CaretDown, CaretUp, Check, Copy } from "@phosphor-icons/react";
+import { useState } from "react";
 export interface CodeBlockProps {
-  code: string
-  language?: string
-  title?: string
-  collapsible?: boolean
-  defaultExpanded?: boolean
-  onCopy?: () => void
+  code: string;
+  language?: string;
+  title?: string;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
+  onCopy?: () => void;
 }
 export function CodeBlock({
   code,
@@ -16,32 +16,31 @@ export function CodeBlock({
   onCopy,
   title,
 }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false)
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(code)
-      setCopied(true)
-      onCopy?.()
-      window.setTimeout(() => setCopied(false), 1400)
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      onCopy?.();
+      window.setTimeout(() => setCopied(false), 1400);
     } catch {
-      setCopied(false)
+      setCopied(false);
     }
-  }
+  };
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-surface-lowest">
-      <header className="flex items-center justify-between border-b border-border bg-surface-card px-3 py-2">
-        {' '}
+    <section className="overflow-hidden rounded-2xl border border-border bg-surface-lowest shadow-sm">
+      <header className="flex items-center justify-between border-b border-border bg-surface-container-low/80 px-3 py-2">
         <span className="text-body-sm text-muted-foreground">
-          {title ?? language ?? 'Code'}
+          {title ?? language ?? "Code"}
         </span>
         <div className="flex items-center gap-1">
           {collapsible ? (
             <button
               type="button"
               onClick={() => setExpanded(!expanded)}
-              aria-label={expanded ? 'Collapse code' : 'Expand code'}
-              className="rounded p-1 text-muted-foreground hover:bg-surface-container"
+              aria-label={expanded ? "Collapse code" : "Expand code"}
+              className="rounded-lg p-1.5 text-muted-foreground outline-none transition-[background-color,transform] duration-150 hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
             >
               {expanded ? <CaretUp size={16} /> : <CaretDown size={16} />}
             </button>
@@ -49,14 +48,14 @@ export function CodeBlock({
           <button
             type="button"
             onClick={copy}
-            className="inline-flex items-center gap-1 rounded p-1 text-body-sm text-muted-foreground hover:bg-surface-container"
+            className="inline-flex items-center gap-1 rounded-lg p-1.5 text-body-sm text-muted-foreground outline-none transition-[background-color,transform] duration-150 hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
           >
             {copied ? (
               <Check size={16} className="text-status-success" />
             ) : (
               <Copy size={16} />
-            )}{' '}
-            {copied ? 'Copied' : 'Copy'}
+            )}
+            {copied ? "Copied" : "Copy"}
           </button>
         </div>
       </header>
@@ -66,5 +65,5 @@ export function CodeBlock({
         </pre>
       ) : null}
     </section>
-  )
+  );
 }

@@ -54,7 +54,7 @@ export function OfflineIndicator({
   return (
     <div
       role="status"
-      className={`inline-flex items-center gap-2 text-body-sm ${tone}`}
+      className={`inline-flex items-center gap-2 rounded-full border border-border bg-surface-container/70 px-2.5 py-1 text-body-sm shadow-sm ${tone}`}
     >
       <Icon
         size={16}
@@ -69,7 +69,7 @@ export function OfflineIndicator({
         <button
           type="button"
           onClick={onRetry}
-          className="font-semibold underline underline-offset-2"
+          className="rounded-md px-1 font-semibold underline underline-offset-2 outline-none transition-[background-color,transform] duration-150 hover:bg-surface-container-high focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
         >
           Retry
         </button>

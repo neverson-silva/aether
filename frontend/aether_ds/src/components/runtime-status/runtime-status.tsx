@@ -5,12 +5,12 @@ const statusDot = tv({
   variants: {
     status: {
       healthy: 'bg-status-success',
-      deploying: 'bg-primary animate-pulse',
+      deploying: 'bg-primary',
       degraded: 'bg-status-warning',
       failed: 'bg-status-danger',
       paused: 'bg-muted-foreground',
       unknown: 'bg-muted-foreground',
-      validating: 'bg-primary animate-pulse',
+      validating: 'bg-primary',
       offline: 'bg-status-danger',
     },
   },
@@ -37,11 +37,7 @@ export function RuntimeStatus({
   const text = label ?? status[0].toUpperCase() + status.slice(1)
   return (
     <span className="inline-flex items-center gap-2 text-body-sm text-foreground">
-      <span className={statusDot({ status })}>
-        {live ? (
-          <span className="block size-full animate-ping rounded-full bg-current" />
-        ) : null}
-      </span>
+      <span className={`${statusDot({ status })} ${live ? 'ring-2 ring-current/20' : ''}`} />
       {text}
     </span>
   )

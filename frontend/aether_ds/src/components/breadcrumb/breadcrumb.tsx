@@ -1,25 +1,25 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react";
 export interface BreadcrumbItem {
-  label: ReactNode
-  href?: string
-  current?: boolean
+  label: ReactNode;
+  href?: string;
+  current?: boolean;
 }
 export interface BreadcrumbProps {
-  items: BreadcrumbItem[]
-  maxItems?: number
-  separator?: ReactNode
-  onNavigate?: (href: string) => void
+  items: BreadcrumbItem[];
+  maxItems?: number;
+  separator?: ReactNode;
+  onNavigate?: (href: string) => void;
 }
 export function Breadcrumb({
   items,
   maxItems = 4,
-  separator = '/',
+  separator = "/",
   onNavigate,
 }: BreadcrumbProps) {
   const visible =
     items.length > maxItems
-      ? [items[0], { label: '…' }, ...items.slice(-maxItems + 1)]
-      : items
+      ? [items[0], { label: "…" }, ...items.slice(-maxItems + 1)]
+      : items;
   return (
     <nav aria-label="Breadcrumb">
       <ol className="flex min-w-0 items-center gap-2 text-body-sm text-muted-foreground">
@@ -33,12 +33,19 @@ export function Breadcrumb({
               <a
                 href={item.href}
                 onClick={(event) => {
-                  if (onNavigate && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
-                    event.preventDefault()
-                    onNavigate(item.href as string)
+                  if (
+                    onNavigate &&
+                    event.button === 0 &&
+                    !event.metaKey &&
+                    !event.ctrlKey &&
+                    !event.shiftKey &&
+                    !event.altKey
+                  ) {
+                    event.preventDefault();
+                    onNavigate(item.href as string);
                   }
                 }}
-                className="truncate hover:text-foreground hover:underline"
+                className="truncate rounded-lg px-1 py-0.5 outline-none transition-colors hover:bg-surface-container hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {item.label}
               </a>
@@ -46,10 +53,10 @@ export function Breadcrumb({
               <span
                 className={
                   item.current
-                    ? 'truncate font-semibold text-foreground'
-                    : 'truncate'
+                    ? "truncate font-semibold text-foreground"
+                    : "truncate"
                 }
-                aria-current={item.current ? 'page' : undefined}
+                aria-current={item.current ? "page" : undefined}
               >
                 {item.label}
               </span>
@@ -58,5 +65,5 @@ export function Breadcrumb({
         ))}
       </ol>
     </nav>
-  )
+  );
 }

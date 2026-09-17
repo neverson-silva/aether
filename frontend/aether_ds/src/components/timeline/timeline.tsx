@@ -1,39 +1,39 @@
-import { Check, Circle, Warning } from '@phosphor-icons/react'
-import type { ReactNode } from 'react'
+import { Check, Circle, Warning } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
 export interface TimelineEvent {
-  id: string
-  title: ReactNode
-  description?: ReactNode
-  timestamp: ReactNode
-  status?: 'complete' | 'active' | 'warning' | 'error' | 'pending'
-  actor?: ReactNode
-  details?: ReactNode
+  id: string;
+  title: ReactNode;
+  description?: ReactNode;
+  timestamp: ReactNode;
+  status?: "complete" | "active" | "warning" | "error" | "pending";
+  actor?: ReactNode;
+  details?: ReactNode;
 }
 export interface TimelineProps {
-  events: TimelineEvent[]
-  empty?: ReactNode
-  realtime?: boolean
+  events: TimelineEvent[];
+  empty?: ReactNode;
+  realtime?: boolean;
 }
 export function Timeline({
-  empty = 'No events yet.',
+  empty = "No events yet.",
   events,
   realtime,
 }: TimelineProps) {
-  const icon = (status: TimelineEvent['status']) =>
-    status === 'complete' ? (
+  const icon = (status: TimelineEvent["status"]) =>
+    status === "complete" ? (
       <Check size={14} />
-    ) : status === 'warning' || status === 'error' ? (
+    ) : status === "warning" || status === "error" ? (
       <Warning size={14} />
     ) : (
       <Circle size={10} weight="fill" />
-    )
+    );
   return events.length ? (
     <ol className="space-y-0">
       {events.map((event, index) => (
         <li key={event.id} className="relative flex gap-3 pb-6 last:pb-0">
           <div className="relative flex w-5 shrink-0 justify-center">
             <span
-              className={`z-10 inline-flex size-5 items-center justify-center rounded-full border ${event.status === 'error' ? 'border-status-danger bg-status-danger text-status-danger-foreground' : event.status === 'warning' ? 'border-status-warning bg-status-warning text-status-warning-foreground' : event.status === 'complete' ? 'border-status-success bg-status-success text-status-success-foreground' : 'border-primary bg-primary/15 text-primary'} ${event.status === 'active' && realtime ? 'animate-pulse' : ''}`}
+              className={`z-10 inline-flex size-5 items-center justify-center rounded-full border ${event.status === "error" ? "border-status-danger bg-status-danger text-status-danger-foreground" : event.status === "warning" ? "border-status-warning bg-status-warning text-status-warning-foreground" : event.status === "complete" ? "border-status-success bg-status-success text-status-success-foreground" : "border-primary bg-primary/15 text-primary"} ${event.status === "active" && realtime ? "ring-2 ring-primary/20" : ""}`}
             >
               {icon(event.status)}
             </span>
@@ -61,7 +61,7 @@ export function Timeline({
               </div>
             ) : null}
             {event.details ? (
-              <div className="mt-3 rounded-md bg-surface-container p-3 text-body-sm">
+              <div className="mt-3 rounded-xl border border-border/70 bg-surface-container p-3 text-body-sm shadow-sm">
                 {event.details}
               </div>
             ) : null}
@@ -70,8 +70,8 @@ export function Timeline({
       ))}
     </ol>
   ) : (
-    <div className="rounded-lg border border-dashed border-border p-8 text-center text-body-sm text-muted-foreground">
+    <div className="rounded-2xl border border-dashed border-border bg-surface-card p-8 text-center text-body-sm text-muted-foreground shadow-sm">
       {empty}
     </div>
-  )
+  );
 }

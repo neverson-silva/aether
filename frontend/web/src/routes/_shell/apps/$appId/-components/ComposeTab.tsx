@@ -1,6 +1,15 @@
 import { useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Code, DownloadSimple, Export, FloppyDisk, Check, ArrowsOut, ArrowsIn, TerminalWindow } from "@phosphor-icons/react";
+import {
+  Code,
+  DownloadSimple,
+  Export,
+  FloppyDisk,
+  Check,
+  ArrowsOut,
+  ArrowsIn,
+  TerminalWindow,
+} from "@phosphor-icons/react";
 import { Card, Button, EmptyState, Skeleton } from "@aether/design-system";
 import type { Icon as DesignIcon } from "@aether/design-system";
 import { useAppCompose } from "@/hooks";
@@ -18,8 +27,23 @@ const THEME = {
   colors: { "editor.background": "#0d0d0d" },
 };
 
-export function ComposeTab({ appID, initialCompose, canonicalService = false, exportID, showRuntimeExports = true }: { appID: string; initialCompose?: string; canonicalService?: boolean; exportID?: string; showRuntimeExports?: boolean }) {
-  const { data, isLoading, error } = useAppCompose(appID, !initialCompose && !canonicalService);
+export function ComposeTab({
+  appID,
+  initialCompose,
+  canonicalService = false,
+  exportID,
+  showRuntimeExports = true,
+}: {
+  appID: string;
+  initialCompose?: string;
+  canonicalService?: boolean;
+  exportID?: string;
+  showRuntimeExports?: boolean;
+}) {
+  const { data, isLoading, error } = useAppCompose(
+    appID,
+    !initialCompose && !canonicalService,
+  );
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [wrap, setWrap] = useState(false);
@@ -56,41 +80,82 @@ export function ComposeTab({ appID, initialCompose, canonicalService = false, ex
   }
 
   return (
-    <Card className="p-0 overflow-hidden">
-      <div className="flex items-center justify-between px-md py-2 border-b border-outline-variant bg-surface-container-low/50">
+    <Card className="overflow-hidden p-0">
+      <div className="flex flex-wrap items-center justify-between gap-sm border-b border-outline-variant bg-surface-container-low/50 px-md py-sm">
         <div className="flex items-center gap-2">
           <Code size={16} className="text-primary" />
-          <span className="font-code-md text-[12px] text-on-surface">docker-compose.yml</span>
-          <span className="font-code-md text-[11px] text-on-surface-variant/60">{lines} lines</span>
-          <span className="px-1.5 py-0.5 rounded bg-status-success-container/20 border border-status-success/30 font-code-md text-[10px] text-status-success">
+          <span className="font-code-md text-[12px] text-on-surface">
+            docker-compose.yml
+          </span>
+          <span className="font-code-md text-[11px] text-on-surface-variant/60">
+            {lines} lines
+          </span>
+          <span className="rounded-full border border-status-success/30 bg-status-success-container/20 px-1.5 py-0.5 font-code-md text-[10px] text-status-success">
             generated from spec
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setWrap((v) => !v)} className={`px-2 py-1 rounded font-code-md text-[11px] transition-colors ${wrap ? "bg-primary/15 text-primary" : "text-on-surface-variant hover:text-on-surface"}`} title="Toggle word wrap">
+          <button
+            onClick={() => setWrap((v) => !v)}
+            className={`rounded-lg px-2 py-1 font-code-md text-[11px] outline-none transition-[background-color,color,transform] duration-150 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] ${wrap ? "bg-primary/15 text-primary" : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"}`}
+            title="Toggle word wrap"
+          >
             wrap
           </button>
-          <button onClick={copy} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Copy">
+          <button
+            onClick={copy}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 font-code-md text-[11px] text-on-surface-variant outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-on-surface focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+            title="Copy"
+          >
             {copied ? <Check size={14} /> : <FloppyDisk size={14} />}
             {copied ? "Copied" : "Copy"}
           </button>
-          <button onClick={download} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Download">
+          <button
+            onClick={download}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 font-code-md text-[11px] text-on-surface-variant outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-on-surface focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+            title="Download"
+          >
             <DownloadSimple size={14} />
             Download
           </button>
           {showRuntimeExports && exportID && (
             <>
-              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=kubernetes`, "_blank", "noopener,noreferrer")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Kubernetes manifest">
+              <button
+                onClick={() =>
+                  window.open(
+                    `/api/v1/apps/${exportID}/export?runtime=kubernetes`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+                className="flex items-center gap-1 rounded-lg px-2 py-1 font-code-md text-[11px] text-on-surface-variant outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-on-surface focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                title="Export Kubernetes manifest"
+              >
                 <Export size={14} />
                 Kubernetes
               </button>
-              <button onClick={() => window.open(`/api/v1/apps/${exportID}/export?runtime=nomad`, "_blank", "noopener,noreferrer")} className="flex items-center gap-1 px-2 py-1 rounded font-code-md text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" title="Export Nomad job">
+              <button
+                onClick={() =>
+                  window.open(
+                    `/api/v1/apps/${exportID}/export?runtime=nomad`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+                className="flex items-center gap-1 rounded-lg px-2 py-1 font-code-md text-[11px] text-on-surface-variant outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-on-surface focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                title="Export Nomad job"
+              >
                 <TerminalWindow size={14} />
                 Nomad
               </button>
             </>
           )}
-          <Button variant="ghost" size="sm" icon={(fullscreen ? ArrowsIn : ArrowsOut) as unknown as DesignIcon} onClick={() => setFullscreen((v) => !v)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={(fullscreen ? ArrowsIn : ArrowsOut) as unknown as DesignIcon}
+            onClick={() => setFullscreen((v) => !v)}
+          >
             {fullscreen ? "Exit" : "Fullscreen"}
           </Button>
         </div>

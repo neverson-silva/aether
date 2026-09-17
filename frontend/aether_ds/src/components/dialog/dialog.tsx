@@ -1,18 +1,24 @@
-import { Dialog as BaseDialog } from '@base-ui/react/dialog'
-import { X } from '@phosphor-icons/react'
-import { cloneElement, type MouseEvent, type ReactElement, type ReactNode, useState } from 'react'
+import { Dialog as BaseDialog } from "@base-ui/react/dialog";
+import { X } from "@phosphor-icons/react";
+import {
+  cloneElement,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+  useState,
+} from "react";
 
 export interface DialogProps {
-  trigger?: ReactElement
-  children: ReactNode
-  footer?: ReactNode
-  title?: string
-  description?: string
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  showHeader?: boolean
-  size?: 'sm' | 'md' | 'lg' | 'wizard'
-  overflow?: 'auto' | 'hidden'
+  trigger?: ReactElement;
+  children: ReactNode;
+  footer?: ReactNode;
+  title?: string;
+  description?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showHeader?: boolean;
+  size?: "sm" | "md" | "lg" | "wizard";
+  overflow?: "auto" | "hidden";
 }
 
 export function Dialog({
@@ -22,49 +28,91 @@ export function Dialog({
   onOpenChange,
   open,
   showHeader = true,
-  size = 'md',
+  size = "md",
   title,
   trigger,
-  overflow = 'auto',
+  overflow = "auto",
 }: DialogProps) {
-  const [internalOpen, setInternalOpen] = useState(false)
-  const isControlled = open !== undefined
-  const resolvedOpen = isControlled ? open : internalOpen
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined;
+  const resolvedOpen = isControlled ? open : internalOpen;
   const handleOpenChange = (nextOpen: boolean) => {
-    if (!isControlled) setInternalOpen(nextOpen)
-    onOpenChange?.(nextOpen)
-  }
+    if (!isControlled) setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
   const sizeClass = {
-    sm: 'max-w-xl',
-    md: 'max-w-2xl',
-    lg: 'max-w-5xl',
-    wizard: 'max-w-5xl',
-  }[size]
+    sm: "max-w-xl",
+    md: "max-w-2xl",
+    lg: "max-w-5xl",
+    wizard: "max-w-5xl",
+  }[size];
   const maxWidth = {
-    sm: '36rem',
-    md: '48rem',
-    lg: '64rem',
-    wizard: '64rem',
-  }[size]
+    sm: "36rem",
+    md: "48rem",
+    lg: "64rem",
+    wizard: "64rem",
+  }[size];
   const controlledTrigger = !trigger
     ? trigger
     : cloneElement(trigger, {
         onClick: (event: MouseEvent<HTMLElement>) => {
-          trigger.props.onClick?.(event)
-          handleOpenChange(true)
+          trigger.props.onClick?.(event);
+          handleOpenChange(true);
         },
-      })
+      });
   return (
     <BaseDialog.Root open={resolvedOpen} onOpenChange={handleOpenChange}>
       {controlledTrigger}
       <BaseDialog.Portal>
-        <BaseDialog.Backdrop style={{ position: 'fixed', inset: 0, zIndex: 2147483000, opacity: 1 }} className="fixed inset-0 z-[90] bg-overlay-backdrop transition-opacity duration-200 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
-        <BaseDialog.Viewport style={{ position: 'fixed', inset: 0, zIndex: 2147483001, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '1rem', pointerEvents: 'auto' }} className="fixed inset-0 z-[90] flex w-full items-center justify-center p-4">
-          <BaseDialog.Popup style={{ width: 'calc(100vw - 2rem)', maxWidth, height: size === 'wizard' || overflow === 'hidden' ? 'min(46rem, calc(100dvh - 2rem))' : undefined, maxHeight: 'calc(100dvh - 2rem)', overflowY: 'hidden', display: 'flex', flexDirection: 'column', opacity: 1, visibility: 'visible', pointerEvents: 'auto' }} className={`!box-border !w-[calc(100vw-2rem)] ${sizeClass} !min-w-0 max-h-[calc(100dvh-2rem)] overflow-hidden rounded-xl border border-border bg-surface-modal text-foreground shadow-lg outline-none data-[starting-style]:translate-y-2 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200`}>
+        <BaseDialog.Backdrop
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2147483000,
+            opacity: 1,
+          }}
+          className="fixed inset-0 z-[90] bg-overlay-backdrop/80 backdrop-blur-sm transition-opacity duration-200 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
+        />
+        <BaseDialog.Viewport
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2147483001,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            padding: "1rem",
+            pointerEvents: "auto",
+          }}
+          className="fixed inset-0 z-[90] flex w-full items-center justify-center p-4"
+        >
+          <BaseDialog.Popup
+            style={{
+              width: "calc(100vw - 2rem)",
+              maxWidth,
+              height:
+                size === "wizard" || overflow === "hidden"
+                  ? "min(46rem, calc(100dvh - 2rem))"
+                  : undefined,
+              maxHeight: "calc(100dvh - 2rem)",
+              overflowY: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              opacity: 1,
+              visibility: "visible",
+              pointerEvents: "auto",
+            }}
+            className={`!box-border !w-[calc(100vw-2rem)] ${sizeClass} !min-w-0 max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl border border-border bg-surface-modal text-foreground shadow-xl outline-none data-[starting-style]:translate-y-2 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200`}
+          >
             {showHeader && (title || description) ? (
               <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4">
                 <div className="min-w-0">
-                  {title ? <BaseDialog.Title className="text-body-md font-semibold text-foreground">{title}</BaseDialog.Title> : null}
+                  {title ? (
+                    <BaseDialog.Title className="text-body-md font-semibold text-foreground">
+                      {title}
+                    </BaseDialog.Title>
+                  ) : null}
                   {description ? (
                     <BaseDialog.Description className="mt-1 text-body-sm text-muted-foreground">
                       {description}
@@ -73,7 +121,7 @@ export function Dialog({
                 </div>
                 <BaseDialog.Close
                   aria-label="Close dialog"
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground active:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground active:scale-95 active:bg-surface-container-high focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X size={20} aria-hidden="true" />
                 </BaseDialog.Close>
@@ -81,11 +129,11 @@ export function Dialog({
             ) : null}
             <div
               style={
-                size === 'wizard' || overflow === 'hidden'
+                size === "wizard" || overflow === "hidden"
                   ? undefined
-                  : { padding: '1.25rem 1.5rem' }
+                  : { padding: "1.25rem 1.5rem" }
               }
-              className={`${size === 'wizard' ? 'flex h-full min-h-0 flex-col overflow-hidden' : overflow === 'hidden' ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-4' : 'min-h-0 flex-1 overflow-y-auto'}`}
+              className={`${size === "wizard" ? "flex h-full min-h-0 flex-col overflow-hidden" : overflow === "hidden" ? "flex min-h-0 flex-1 flex-col overflow-hidden p-4" : "min-h-0 flex-1 overflow-y-auto"}`}
             >
               {children}
             </div>
@@ -94,9 +142,13 @@ export function Dialog({
         </BaseDialog.Viewport>
       </BaseDialog.Portal>
     </BaseDialog.Root>
-  )
+  );
 }
 
 export function DialogFooter({ children }: { children: ReactNode }) {
-  return <div className="flex shrink-0 justify-end gap-md border-t border-border px-6 py-4">{children}</div>
+  return (
+    <div className="flex shrink-0 flex-col-reverse justify-end gap-md border-t border-border bg-surface-container-low/50 px-5 py-4 sm:flex-row sm:px-6">
+      {children}
+    </div>
+  );
 }

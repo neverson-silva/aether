@@ -1,29 +1,29 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react";
 import {
   AsyncSearchInput,
   type AsyncSearchOption,
-} from '../async-search-input/async-search-input'
+} from "../async-search-input/async-search-input";
 import {
   ResourceTree,
   type ResourceTreeNode,
-} from '../resource-tree/resource-tree'
+} from "../resource-tree/resource-tree";
 export interface ResourcePickerProps {
-  label?: string
-  description?: string
-  error?: string
-  nodes?: ResourceTreeNode[]
-  selectedId?: string
-  onSelect?: (id: string) => void
-  loadOptions?: (query: string) => Promise<AsyncSearchOption[]>
-  recent?: ResourceTreeNode[]
-  loading?: boolean
-  empty?: ReactNode
+  label?: string;
+  description?: string;
+  error?: string;
+  nodes?: ResourceTreeNode[];
+  selectedId?: string;
+  onSelect?: (id: string) => void;
+  loadOptions?: (query: string) => Promise<AsyncSearchOption[]>;
+  recent?: ResourceTreeNode[];
+  loading?: boolean;
+  empty?: ReactNode;
 }
 export function ResourcePicker({
   description,
   empty,
   error,
-  label = 'Resource',
+  label = "Resource",
   loadOptions,
   nodes = [],
   onSelect,
@@ -56,7 +56,7 @@ export function ResourcePicker({
                 type="button"
                 key={item.id}
                 onClick={() => onSelect?.(item.id)}
-                className="rounded-md border border-border px-2 py-1 text-body-sm hover:bg-surface-container"
+                className="rounded-xl border border-border px-3 py-1.5 text-body-sm outline-none transition-[background-color,border-color,transform] duration-150 hover:border-primary/50 hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
               >
                 {item.label}
               </button>
@@ -64,7 +64,7 @@ export function ResourcePicker({
           </div>
         </div>
       ) : null}
-      <div className="rounded-lg border border-border bg-surface-card p-3">
+      <div className="rounded-2xl border border-border bg-surface-card p-3 shadow-sm">
         <ResourceTree
           nodes={nodes}
           selectedId={selectedId}
@@ -73,5 +73,5 @@ export function ResourcePicker({
         />
       </div>
     </div>
-  )
+  );
 }

@@ -32,7 +32,8 @@ export function SearchSelect({
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -56,7 +57,9 @@ export function SearchSelect({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((o) => (o.label.toLowerCase() + " " + (o.hint ?? "")).includes(q));
+    return options.filter((o) =>
+      (o.label.toLowerCase() + " " + (o.hint ?? "")).includes(q),
+    );
   }, [options, query]);
 
   const selected = options.find((o) => o.value === value);
@@ -67,19 +70,39 @@ export function SearchSelect({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`w-full h-10 flex items-center gap-2 bg-surface border border-outline-variant rounded-DEFAULT pl-sm pr-2 font-body-md text-body-md focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all ${
-          disabled ? "opacity-50 cursor-not-allowed" : "hover:border-primary/50 cursor-pointer"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`flex h-10 w-full items-center gap-2 rounded-xl border border-outline-variant bg-surface pl-sm pr-2 font-body-md text-body-md outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20 ${
+          disabled
+            ? "opacity-50 cursor-not-allowed"
+            : "hover:border-primary/50 cursor-pointer"
         } ${selected ? "text-on-surface" : "text-on-surface-variant/60"}`}
       >
-        {selected?.icon && <TechIcon name={selected.icon} size={16} className="text-on-surface-variant" />}
-        <span className="flex-1 text-left truncate">{selected ? selected.label : placeholder}</span>
-        <CaretDown size={16} className={`text-on-surface-variant transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+        {selected?.icon && (
+          <TechIcon
+            name={selected.icon}
+            size={16}
+            className="text-on-surface-variant"
+          />
+        )}
+        <span className="flex-1 text-left truncate">
+          {selected ? selected.label : placeholder}
+        </span>
+        <CaretDown
+          size={16}
+          className={`text-on-surface-variant transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 w-full bg-surface-popover border border-outline-variant rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.45)] overflow-hidden animate-modal-pop">
+        <div className="aether-enter absolute z-20 mt-1 w-full overflow-hidden rounded-2xl border border-outline-variant bg-surface-popover shadow-xl">
           <div className="flex items-center gap-sm px-sm py-2 border-b border-outline-variant/60">
-            <MagnifyingGlass size={16} className="text-on-surface-variant" aria-hidden="true" />
+            <MagnifyingGlass
+              size={16}
+              className="text-on-surface-variant"
+              aria-hidden="true"
+            />
             <input
               ref={inputRef}
               value={query}
@@ -103,25 +126,53 @@ export function SearchSelect({
               className="flex-1 bg-transparent font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none"
             />
           </div>
-          <div className="max-h-56 overflow-y-auto py-1 sidebar-scroll">
-            {filtered.length === 0 && <p className="px-sm py-2 font-body-sm text-body-sm text-on-surface-variant">No options match.</p>}
+          <div
+            role="listbox"
+            aria-label="Search options"
+            className="max-h-56 overflow-y-auto py-1 sidebar-scroll"
+          >
+            {filtered.length === 0 && (
+              <p className="px-sm py-2 font-body-sm text-body-sm text-on-surface-variant">
+                No options match.
+              </p>
+            )}
             {filtered.map((o, i) => (
               <button
                 key={o.value}
                 type="button"
+                role="option"
+                aria-selected={o.value === value}
                 onMouseEnter={() => setIndex(i)}
                 onClick={() => {
                   onChange(o.value);
                   setOpen(false);
                 }}
-                className={`w-full flex items-center gap-2 px-sm py-1.5 text-left transition-colors ${
+                className={`flex w-full items-center gap-2 rounded-lg px-sm py-1.5 text-left outline-none transition-[background-color,color] duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
                   i === index ? "bg-surface-container-high" : ""
                 } ${o.value === value ? "bg-primary/10" : ""}`}
               >
-                {o.icon && <TechIcon name={o.icon} size={16} className="text-on-surface-variant shrink-0" />}
-                <span className="font-body-md text-body-md text-on-surface truncate">{o.label}</span>
-                {o.hint && <span className="ml-auto font-code-md text-code-md text-on-surface-variant/60 truncate">{o.hint}</span>}
-                {o.value === value && <Check size={16} className="text-primary shrink-0" aria-hidden="true" />}
+                {o.icon && (
+                  <TechIcon
+                    name={o.icon}
+                    size={16}
+                    className="text-on-surface-variant shrink-0"
+                  />
+                )}
+                <span className="font-body-md text-body-md text-on-surface truncate">
+                  {o.label}
+                </span>
+                {o.hint && (
+                  <span className="ml-auto font-code-md text-code-md text-on-surface-variant/60 truncate">
+                    {o.hint}
+                  </span>
+                )}
+                {o.value === value && (
+                  <Check
+                    size={16}
+                    className="text-primary shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             ))}
           </div>

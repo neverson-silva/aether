@@ -1,11 +1,11 @@
-import { CaretLeft, CaretRight, Pause, Play } from '@phosphor-icons/react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { CaretLeft, CaretRight, Pause, Play } from "@phosphor-icons/react";
+import { type ReactNode, useEffect, useState } from "react";
 export interface CarouselProps {
-  items: ReactNode[]
-  labels?: string[]
-  autoplay?: boolean
-  interval?: number
-  onChange?: (index: number) => void
+  items: ReactNode[];
+  labels?: string[];
+  autoplay?: boolean;
+  interval?: number;
+  onChange?: (index: number) => void;
 }
 export function Carousel({
   autoplay,
@@ -14,24 +14,24 @@ export function Carousel({
   labels,
   onChange,
 }: CarouselProps) {
-  const [index, setIndex] = useState(0)
-  const [paused, setPaused] = useState(!autoplay)
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(!autoplay);
   const update = (next: number) => {
-    const value = (next + items.length) % items.length
-    setIndex(value)
-    onChange?.(value)
-  }
+    const value = (next + items.length) % items.length;
+    setIndex(value);
+    onChange?.(value);
+  };
   useEffect(() => {
-    if (paused || items.length < 2) return
-    const timer = window.setInterval(() => update(index + 1), interval)
-    return () => window.clearInterval(timer)
-  }, [index, interval, items.length, paused])
-  if (!items.length) return null
+    if (paused || items.length < 2) return;
+    const timer = window.setInterval(() => update(index + 1), interval);
+    return () => window.clearInterval(timer);
+  }, [index, interval, items.length, paused]);
+  if (!items.length) return null;
   return (
     <section
       aria-roledescription="carousel"
       aria-label="Carousel"
-      className="relative overflow-hidden rounded-lg border border-border"
+      className="relative overflow-hidden rounded-2xl border border-border bg-surface-card shadow-sm"
     >
       <div className="min-h-48">{items[index]}</div>
       {items.length > 1 ? (
@@ -62,16 +62,16 @@ export function Carousel({
                 }
                 aria-current={index === itemIndex}
                 onClick={() => update(itemIndex)}
-                className={`size-2 rounded-full transition-colors ${index === itemIndex ? 'bg-primary' : 'bg-border'}`}
+                className={`size-2 rounded-full transition-colors ${index === itemIndex ? "bg-primary" : "bg-border"}`}
               />
             ))}
           </div>
           {autoplay ? (
             <button
               type="button"
-              aria-label={paused ? 'Play carousel' : 'Pause carousel'}
+              aria-label={paused ? "Play carousel" : "Pause carousel"}
               onClick={() => setPaused(!paused)}
-              className="absolute bottom-2 right-3 rounded p-1 text-muted-foreground hover:bg-surface-container"
+              className="absolute bottom-2 right-3 rounded-lg p-1.5 text-muted-foreground outline-none transition-[background-color,transform] duration-150 hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
             >
               {paused ? <Play size={14} /> : <Pause size={14} />}
             </button>
@@ -79,5 +79,5 @@ export function Carousel({
         </>
       ) : null}
     </section>
-  )
+  );
 }

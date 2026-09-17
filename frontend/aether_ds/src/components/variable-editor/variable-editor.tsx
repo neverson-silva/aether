@@ -1,26 +1,33 @@
-import { DownloadSimple, Eye, EyeSlash, Plus, Trash, UploadSimple } from '@phosphor-icons/react'
-import { Button } from '../button/button'
-import { IconButton } from '../icon-button/icon-button'
-import { Tooltip } from '../tooltip/tooltip'
-import { useState } from 'react'
+import {
+  DownloadSimple,
+  Eye,
+  EyeSlash,
+  Plus,
+  Trash,
+  UploadSimple,
+} from "@phosphor-icons/react";
+import { Button } from "../button/button";
+import { IconButton } from "../icon-button/icon-button";
+import { Tooltip } from "../tooltip/tooltip";
+import { useState } from "react";
 export interface VariableRow {
-  id: string
-  key: string
-  value: string
-  secret?: boolean
-  scope?: string
+  id: string;
+  key: string;
+  value: string;
+  secret?: boolean;
+  scope?: string;
 }
 export interface VariableEditorProps {
-  variables: VariableRow[]
-  onChange?: (variables: VariableRow[]) => void
-  onImport?: () => VariableRow[] | void
-  onExport?: () => void
-  onBulkEdit?: (variables: VariableRow[]) => void
-  className?: string
+  variables: VariableRow[];
+  onChange?: (variables: VariableRow[]) => void;
+  onImport?: () => VariableRow[] | void;
+  onExport?: () => void;
+  onBulkEdit?: (variables: VariableRow[]) => void;
+  className?: string;
 }
 
 function createVariableID() {
-  return `variable-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `variable-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function VariableEditor({
@@ -28,15 +35,15 @@ export function VariableEditor({
   onExport,
   onImport,
   onBulkEdit,
-  className = '',
+  className = "",
   variables: initial,
 }: VariableEditorProps) {
-  const [variables, setVariables] = useState(initial)
-  const [revealed, setRevealed] = useState<string[]>([])
+  const [variables, setVariables] = useState(initial);
+  const [revealed, setRevealed] = useState<string[]>([]);
   const update = (next: VariableRow[]) => {
-    setVariables(next)
-    onChange?.(next)
-  }
+    setVariables(next);
+    onChange?.(next);
+  };
   const duplicates = new Set(
     variables
       .filter(
@@ -46,10 +53,12 @@ export function VariableEditor({
             index,
       )
       .map((item) => item.id),
-  )
+  );
   return (
-    <section className={`flex min-h-0 flex-col overflow-hidden rounded-lg border border-border ${className}`}>
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
+    <section
+      className={`flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface-card shadow-sm ${className}`}
+    >
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-container-low/70 p-4">
         <span className="text-body-sm font-semibold">Variables</span>
         <div className="flex items-center gap-1">
           <Button
@@ -58,8 +67,8 @@ export function VariableEditor({
             size="sm"
             icon={UploadSimple}
             onClick={() => {
-              const imported = onImport?.()
-              if (imported) update(imported)
+              const imported = onImport?.();
+              if (imported) update(imported);
             }}
           >
             Import
@@ -68,7 +77,7 @@ export function VariableEditor({
             <button
               type="button"
               onClick={() => onBulkEdit(variables)}
-              className="text-body-sm text-muted-foreground hover:text-foreground"
+              className="rounded-lg px-2 py-1 text-body-sm text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
             >
               Bulk edit
             </button>
@@ -90,7 +99,9 @@ export function VariableEditor({
           <div
             key={variable.id}
             className="grid min-w-0 items-start gap-2 p-3"
-            style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr) auto' }}
+            style={{
+              gridTemplateColumns: "minmax(0, 1.5fr) minmax(0, 1fr) auto",
+            }}
           >
             <div className="min-w-0 space-y-1" style={{ gridColumn: 1 }}>
               <input
@@ -106,16 +117,18 @@ export function VariableEditor({
                   )
                 }
                 placeholder="KEY"
-                className="h-9 w-full rounded-md border border-border bg-surface-control px-2 hover:bg-surface-container-highest/40 font-mono text-code-md outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-10 w-full rounded-xl border border-border bg-surface-control px-3 font-mono text-code-md outline-none transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-muted-foreground hover:bg-surface-container-highest/40 focus:border-primary focus:bg-surface-card focus-visible:ring-2 focus-visible:ring-ring"
               />
               {duplicates.has(variable.id) ? (
-                <span className="text-label-caps text-status-danger">Duplicate key</span>
+                <span className="text-label-caps text-status-danger">
+                  Duplicate key
+                </span>
               ) : null}
             </div>
             <div className="relative min-w-0" style={{ gridColumn: 2 }}>
               <input
                 aria-label="Variable value"
-                type={revealed.includes(variable.id) ? 'text' : 'password'}
+                type={revealed.includes(variable.id) ? "text" : "password"}
                 value={variable.value}
                 onChange={(event) =>
                   update(
@@ -127,12 +140,16 @@ export function VariableEditor({
                   )
                 }
                 placeholder="Value"
-                className="h-9 w-full rounded-md border border-border bg-surface-control px-2 hover:bg-surface-container-highest/40 pr-10 font-mono text-code-md outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-10 w-full rounded-xl border border-border bg-surface-control px-3 pr-10 font-mono text-code-md outline-none transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-muted-foreground hover:bg-surface-container-highest/40 focus:border-primary focus:bg-surface-card focus-visible:ring-2 focus-visible:ring-ring"
               />
               <IconButton
                 type="button"
-                label={revealed.includes(variable.id) ? "Hide value" : "Show value"}
-                title={revealed.includes(variable.id) ? "Hide value" : "Show value"}
+                label={
+                  revealed.includes(variable.id) ? "Hide value" : "Show value"
+                }
+                title={
+                  revealed.includes(variable.id) ? "Hide value" : "Show value"
+                }
                 size="sm"
                 icon={revealed.includes(variable.id) ? EyeSlash : Eye}
                 onClick={() =>
@@ -155,27 +172,32 @@ export function VariableEditor({
                   update(variables.filter((item) => item.id !== variable.id))
                 }
                 className="self-center hover:bg-action-danger/10 hover:text-status-danger"
-                style={{ gridColumn: 3, width: '2.25rem', height: '2.25rem', alignSelf: 'center' }}
+                style={{
+                  gridColumn: 3,
+                  width: "2.25rem",
+                  height: "2.25rem",
+                  alignSelf: "center",
+                }}
               />
             </Tooltip>
           </div>
         ))}
       </div>
-      <div className="border-t border-border p-3">
+      <div className="border-t border-border bg-surface-container-low/40 p-4">
         <button
           type="button"
           onClick={() =>
             update([
               ...variables,
-              { id: createVariableID(), key: '', value: '' },
+              { id: createVariableID(), key: "", value: "" },
             ])
           }
-          className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md border border-border text-body-sm text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface-container-high"
+          className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-xl border border-border text-body-sm font-semibold text-muted-foreground outline-none transition-[background-color,color,box-shadow,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
         >
           <Plus size={16} />
           Add variable
         </button>
       </div>
     </section>
-  )
+  );
 }

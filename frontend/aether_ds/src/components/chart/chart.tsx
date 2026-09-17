@@ -1,30 +1,30 @@
-import type { HTMLAttributes } from 'react'
+import type { HTMLAttributes } from "react";
 export interface ChartSeries {
-  id: string
-  label: string
-  color?: string
-  values: number[]
+  id: string;
+  label: string;
+  color?: string;
+  values: number[];
 }
 export interface ChartProps extends HTMLAttributes<HTMLDivElement> {
-  series: ChartSeries[]
-  labels?: string[]
+  series: ChartSeries[];
+  labels?: string[];
   type?:
-    | 'line'
-    | 'area'
-    | 'bar'
-    | 'donut'
-    | 'scatter'
-    | 'gauge'
-    | 'stacked'
-    | 'composed'
-  height?: number
-  empty?: boolean
-  loading?: boolean
-  error?: string
-  legend?: boolean
+    | "line"
+    | "area"
+    | "bar"
+    | "donut"
+    | "scatter"
+    | "gauge"
+    | "stacked"
+    | "composed";
+  height?: number;
+  empty?: boolean;
+  loading?: boolean;
+  error?: string;
+  legend?: boolean;
 }
 export function Chart({
-  className = '',
+  className = "",
   empty,
   error,
   height = 220,
@@ -32,81 +32,81 @@ export function Chart({
   legend = true,
   loading,
   series,
-  type = 'line',
+  type = "line",
   ...props
 }: ChartProps) {
   if (loading)
     return (
       <div
-        className={`animate-pulse rounded-lg bg-surface-container ${className}`}
+        className={`animate-pulse rounded-2xl bg-surface-container ${className}`}
         style={{ height }}
       />
-    )
+    );
   if (error)
     return (
       <div
-        className={`flex items-center justify-center rounded-lg border border-status-danger/30 bg-status-danger-container/10 p-6 text-body-sm text-status-danger ${className}`}
+        className={`flex items-center justify-center rounded-2xl border border-status-danger/30 bg-status-danger-container/10 p-6 text-body-sm text-status-danger shadow-sm ${className}`}
         style={{ height }}
       >
         {error}
       </div>
-    )
+    );
   if (empty || !series.length)
     return (
       <div
-        className={`flex items-center justify-center rounded-lg border border-dashed border-border p-6 text-body-sm text-muted-foreground ${className}`}
+        className={`flex items-center justify-center rounded-2xl border border-dashed border-border bg-surface-card p-6 text-body-sm text-muted-foreground shadow-sm ${className}`}
         style={{ height }}
       >
         No data available
       </div>
-    )
-  const max = Math.max(...series.flatMap((item) => item.values), 1)
+    );
+  const max = Math.max(...series.flatMap((item) => item.values), 1);
   const points = (values: number[]) =>
     values
       .map(
         (value, index) =>
           `${(index / Math.max(values.length - 1, 1)) * 100},${100 - (value / max) * 90}`,
       )
-      .join(' ')
+      .join(" ");
   const stackedMax = Math.max(
     ...labels.map((_, index) =>
       series.reduce((sum, item) => sum + (item.values[index] ?? 0), 0),
     ),
     max,
-  )
-  const isBar = type === 'bar' || type === 'stacked'
+  );
+  const isBar = type === "bar" || type === "stacked";
   const renderBars = (item: ChartSeries, index: number) =>
     item.values.map((value, valueIndex) => {
       const previous =
-        type === 'stacked'
+        type === "stacked"
           ? series
               .slice(0, index)
               .reduce(
                 (sum, current) => sum + (current.values[valueIndex] ?? 0),
                 0,
               )
-          : 0
-      const chartMax = type === 'stacked' ? stackedMax : max
+          : 0;
+      const chartMax = type === "stacked" ? stackedMax : max;
       return (
         <rect
           key={`${item.id}-${valueIndex}`}
-          x={`${(valueIndex / item.values.length) * 100 + (type === 'stacked' ? 0 : index * 2)}`}
+          x={`${(valueIndex / item.values.length) * 100 + (type === "stacked" ? 0 : index * 2)}`}
           y={100 - ((value + previous) / chartMax) * 90}
           width={Math.max(
             2,
-            type === 'stacked'
+            type === "stacked"
               ? 60 / item.values.length
               : 60 / item.values.length / series.length,
           )}
           height={(value / chartMax) * 90}
-          fill={item.color ?? 'var(--semantic-action-primary)'}
+          fill={item.color ?? "var(--semantic-action-primary)"}
           rx="1"
         />
-      )
-    })
+      );
+    });
   return (
     <div
-      className={`rounded-lg border border-border bg-surface-card p-4 ${className}`}
+      className={`rounded-2xl border border-border bg-surface-card p-4 shadow-sm ${className}`}
       {...props}
     >
       <svg
@@ -120,7 +120,7 @@ export function Chart({
         {series.map((item, index) =>
           isBar ? (
             renderBars(item, index)
-          ) : type === 'gauge' ? (
+          ) : type === "gauge" ? (
             <g key={item.id}>
               <path
                 d="M 20 80 A 30 30 0 0 1 80 80"
@@ -132,20 +132,20 @@ export function Chart({
               <path
                 d="M 20 80 A 30 30 0 0 1 80 80"
                 fill="none"
-                stroke={item.color ?? 'var(--semantic-action-primary)'}
+                stroke={item.color ?? "var(--semantic-action-primary)"}
                 strokeWidth="8"
                 pathLength="100"
                 strokeDasharray={`${Math.min(100, ((item.values[0] ?? 0) / max) * 100)} 100`}
               />
             </g>
-          ) : type === 'scatter' ? (
+          ) : type === "scatter" ? (
             item.values.map((value, valueIndex) => (
               <circle
                 key={`${item.id}-${valueIndex}`}
                 cx={`${(valueIndex / Math.max(item.values.length - 1, 1)) * 100}`}
                 cy={100 - (value / max) * 90}
                 r="1.7"
-                fill={item.color ?? 'var(--semantic-action-primary)'}
+                fill={item.color ?? "var(--semantic-action-primary)"}
               />
             ))
           ) : (
@@ -153,12 +153,12 @@ export function Chart({
               key={item.id}
               points={points(item.values)}
               fill={
-                type === 'area' || type === 'composed'
-                  ? (item.color ?? 'var(--semantic-action-primary)')
-                  : 'none'
+                type === "area" || type === "composed"
+                  ? (item.color ?? "var(--semantic-action-primary)")
+                  : "none"
               }
-              fillOpacity={type === 'area' || type === 'composed' ? 0.15 : 0}
-              stroke={item.color ?? 'var(--semantic-action-primary)'}
+              fillOpacity={type === "area" || type === "composed" ? 0.15 : 0}
+              stroke={item.color ?? "var(--semantic-action-primary)"}
               strokeWidth="1.5"
               vectorEffect="non-scaling-stroke"
             />
@@ -176,7 +176,7 @@ export function Chart({
                 className="size-2 rounded-full"
                 style={{
                   backgroundColor:
-                    item.color ?? 'var(--semantic-action-primary)',
+                    item.color ?? "var(--semantic-action-primary)",
                 }}
               />
               {item.label}
@@ -192,5 +192,5 @@ export function Chart({
         </div>
       ) : null}
     </div>
-  )
+  );
 }

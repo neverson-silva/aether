@@ -1,45 +1,45 @@
-import { Copy, FileCode } from '@phosphor-icons/react'
-import { useMemo, useState } from 'react'
-import { Button } from '../button/button'
+import { Copy, FileCode } from "@phosphor-icons/react";
+import { useMemo, useState } from "react";
+import { Button } from "../button/button";
 
 export interface CodeEditorLiteProps {
-  value?: string
-  defaultValue?: string
-  language?: string
-  filename?: string
-  readOnly?: boolean
-  lineNumbers?: boolean
-  onValueChange?: (value: string) => void
-  className?: string
+  value?: string;
+  defaultValue?: string;
+  language?: string;
+  filename?: string;
+  readOnly?: boolean;
+  lineNumbers?: boolean;
+  onValueChange?: (value: string) => void;
+  className?: string;
 }
 export function CodeEditorLite({
-  className = '',
-  defaultValue = '',
+  className = "",
+  defaultValue = "",
   filename,
-  language = 'text',
+  language = "text",
   lineNumbers = true,
   onValueChange,
   readOnly = false,
   value,
 }: CodeEditorLiteProps) {
-  const [internalValue, setInternalValue] = useState(defaultValue)
-  const [copied, setCopied] = useState(false)
-  const currentValue = value === undefined ? internalValue : value
-  const lines = useMemo(() => currentValue.split('\n'), [currentValue])
+  const [internalValue, setInternalValue] = useState(defaultValue);
+  const [copied, setCopied] = useState(false);
+  const currentValue = value === undefined ? internalValue : value;
+  const lines = useMemo(() => currentValue.split("\n"), [currentValue]);
   const update = (next: string) => {
-    setInternalValue(next)
-    onValueChange?.(next)
-  }
+    setInternalValue(next);
+    onValueChange?.(next);
+  };
   const copy = async () => {
-    await navigator.clipboard?.writeText(currentValue)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1200)
-  }
+    await navigator.clipboard?.writeText(currentValue);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
   return (
     <div
-      className={`overflow-hidden rounded-lg border border-border bg-surface-lowest ${className}`}
+      className={`overflow-hidden rounded-2xl border border-border bg-surface-lowest shadow-sm ${className}`}
     >
-      <div className="flex items-center gap-2 border-b border-border bg-surface-container px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-border bg-surface-container-low/80 px-3 py-2">
         <FileCode size={16} className="text-primary" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate text-body-sm text-foreground">
           {filename ?? language}
@@ -51,7 +51,7 @@ export function CodeEditorLite({
           aria-label="Copy code"
           onClick={copy}
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? "Copied" : "Copy"}
         </Button>
       </div>
       <div className="flex max-h-[32rem] min-h-40 overflow-auto font-code-md text-code-md">
@@ -73,5 +73,5 @@ export function CodeEditorLite({
         />
       </div>
     </div>
-  )
+  );
 }

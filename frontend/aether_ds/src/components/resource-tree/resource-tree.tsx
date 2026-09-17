@@ -1,19 +1,19 @@
-import { CaretDown, CaretRight, Cube, Folder } from '@phosphor-icons/react'
-import { type ReactNode, useState } from 'react'
+import { CaretDown, CaretRight, Cube, Folder } from "@phosphor-icons/react";
+import { type ReactNode, useState } from "react";
 export interface ResourceTreeNode {
-  id: string
-  label: string
-  type?: 'folder' | 'resource'
-  children?: ResourceTreeNode[]
-  badge?: ReactNode
-  disabled?: boolean
+  id: string;
+  label: string;
+  type?: "folder" | "resource";
+  children?: ResourceTreeNode[];
+  badge?: ReactNode;
+  disabled?: boolean;
 }
 export interface ResourceTreeProps {
-  nodes: ResourceTreeNode[]
-  selectedId?: string
-  onSelect?: (node: ResourceTreeNode) => void
-  loadingIds?: string[]
-  empty?: ReactNode
+  nodes: ResourceTreeNode[];
+  selectedId?: string;
+  onSelect?: (node: ResourceTreeNode) => void;
+  loadingIds?: string[];
+  empty?: ReactNode;
 }
 function TreeNode({
   loadingIds,
@@ -21,25 +21,25 @@ function TreeNode({
   onSelect,
   selectedId,
 }: {
-  node: ResourceTreeNode
-  selectedId?: string
-  onSelect?: (node: ResourceTreeNode) => void
-  loadingIds: string[]
+  node: ResourceTreeNode;
+  selectedId?: string;
+  onSelect?: (node: ResourceTreeNode) => void;
+  loadingIds: string[];
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const hasChildren = Boolean(node.children?.length)
+  const [expanded, setExpanded] = useState(false);
+  const hasChildren = Boolean(node.children?.length);
   return (
     <li>
       <div
-        className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm transition-colors ${selectedId === node.id ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-surface-container'} ${node.disabled ? 'pointer-events-none opacity-50' : ''}`}
-        style={{ paddingLeft: `${8 + (node.type === 'resource' ? 16 : 0)}px` }}
+        className={`flex items-center gap-1 rounded-xl px-2 py-1.5 text-body-sm transition-[background-color,color] duration-150 ${selectedId === node.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface-container"} ${node.disabled ? "pointer-events-none opacity-50" : ""}`}
+        style={{ paddingLeft: `${8 + (node.type === "resource" ? 16 : 0)}px` }}
       >
         {hasChildren ? (
           <button
             type="button"
-            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.label}`}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${node.label}`}
             onClick={() => setExpanded(!expanded)}
-            className="shrink-0 text-muted-foreground"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-surface-container-high focus-visible:ring-2 focus-visible:ring-ring"
           >
             {expanded ? <CaretDown size={14} /> : <CaretRight size={14} />}
           </button>
@@ -49,10 +49,10 @@ function TreeNode({
         <button
           type="button"
           onClick={() => onSelect?.(node)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-start"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="text-muted-foreground">
-            {node.type === 'resource' ? (
+            {node.type === "resource" ? (
               <Cube size={16} />
             ) : (
               <Folder size={16} />
@@ -81,10 +81,10 @@ function TreeNode({
         </ul>
       ) : null}
     </li>
-  )
+  );
 }
 export function ResourceTree({
-  empty = 'No resources found.',
+  empty = "No resources found.",
   loadingIds = [],
   nodes,
   onSelect,
@@ -105,8 +105,8 @@ export function ResourceTree({
       </ul>
     </nav>
   ) : (
-    <div className="rounded-lg border border-dashed border-border p-8 text-center text-body-sm text-muted-foreground">
+    <div className="rounded-2xl border border-dashed border-border bg-surface-card p-8 text-center text-body-sm text-muted-foreground shadow-sm">
       {empty}
     </div>
-  )
+  );
 }

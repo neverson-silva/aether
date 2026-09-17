@@ -1,13 +1,13 @@
-import { PreviewCard } from '@base-ui/react/preview-card'
-import type { ReactElement, ReactNode } from 'react'
+import { PreviewCard } from "@base-ui/react/preview-card";
+import type { ReactElement, ReactNode } from "react";
 
 export interface HoverCardProps {
-  trigger: ReactElement
-  children: ReactNode
-  openDelay?: number
-  title?: ReactNode
-  description?: ReactNode
-  footer?: ReactNode
+  trigger: ReactElement;
+  children: ReactNode;
+  openDelay?: number;
+  title?: ReactNode;
+  description?: ReactNode;
+  footer?: ReactNode;
 }
 
 export function HoverCard({
@@ -23,7 +23,7 @@ export function HoverCard({
       <PreviewCard.Trigger render={trigger} delay={openDelay} />
       <PreviewCard.Portal>
         <PreviewCard.Positioner side="top" sideOffset={8} className="z-50">
-          <PreviewCard.Popup className="w-72 rounded-lg border border-border bg-surface-popover p-4 text-foreground shadow-lg outline-none data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
+          <PreviewCard.Popup className="w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-surface-popover p-4 text-foreground shadow-xl outline-none data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
             {title ? <div className="font-semibold">{title}</div> : null}
             {description ? (
               <div className="mt-1 text-body-sm text-muted-foreground">
@@ -38,5 +38,5 @@ export function HoverCard({
         </PreviewCard.Positioner>
       </PreviewCard.Portal>
     </PreviewCard.Root>
-  )
+  );
 }

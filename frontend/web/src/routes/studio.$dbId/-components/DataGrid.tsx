@@ -9,10 +9,11 @@ function fmtCell(v: unknown): string {
 function cellClass(type: string | undefined, v: unknown): string {
   if (v === null || v === undefined) return "text-on-surface-variant/50 italic";
   const t = (type ?? "").toLowerCase();
-  if (/(int|numeric|decimal|float|real|double|money|serial)/.test(t)) return "text-[#f78c6c] text-right";
-  if (/(bool)/.test(t)) return "text-[#c792ea]";
-  if (/(date|time|timestamp)/.test(t)) return "text-[#ecc48d]";
-  if (typeof v === "number") return "text-[#f78c6c] text-right";
+  if (/(int|numeric|decimal|float|real|double|money|serial)/.test(t))
+    return "text-tertiary text-right";
+  if (/(bool)/.test(t)) return "text-secondary";
+  if (/(date|time|timestamp)/.test(t)) return "text-status-warning";
+  if (typeof v === "number") return "text-tertiary text-right";
   return "text-on-surface";
 }
 
@@ -43,28 +44,53 @@ export function DataGrid({
   const rows = result.rows ?? [];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col bg-surface-card">
       <div className="flex-1 overflow-auto sidebar-scroll">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-surface-container-low border-b border-outline-variant shadow-sm z-10">
+        <table
+          className="w-full border-collapse text-left"
+          aria-label="Query results"
+        >
+          <caption className="sr-only">Query results</caption>
+          <thead className="sticky top-0 z-10 border-b border-border bg-surface-container-low/95 shadow-sm backdrop-blur-xl">
             <tr>
-              <th className="py-1 px-sm font-normal text-on-surface-variant border-r border-outline-variant w-12 text-center">#</th>
+              <th
+                scope="col"
+                className="w-12 border-r border-border px-sm py-1 text-center font-normal text-on-surface-variant"
+              >
+                #
+              </th>
               {cols.map((c, i) => (
-                <th key={i} className="py-1 px-sm font-normal text-[#82aaff] border-r border-outline-variant whitespace-nowrap">
+                <th
+                  key={`${c}-${i}`}
+                  scope="col"
+                  className="whitespace-nowrap border-r border-border px-sm py-1 font-normal text-primary"
+                >
                   <span className="flex items-center gap-1">
                     {c}
-                    {types?.[i] && <span className="text-[10px] text-outline-variant font-normal">{shortType(types[i])}</span>}
+                    {types?.[i] && (
+                      <span className="text-[10px] text-outline-variant font-normal">
+                        {shortType(types[i])}
+                      </span>
+                    )}
                   </span>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant">
+          <tbody className="divide-y divide-border">
             {rows.map((row, ri) => (
-              <tr key={ri} className="hover:bg-[#161616] group">
-                <td className="py-1 px-sm text-outline-variant text-center border-r border-outline-variant group-hover:text-on-surface-variant">{ri + 1}</td>
+              <tr
+                key={`row-${ri}`}
+                className="group transition-colors hover:bg-surface-container-high"
+              >
+                <td className="border-r border-border px-sm py-1 text-center text-outline-variant group-hover:text-on-surface-variant">
+                  {ri + 1}
+                </td>
                 {row.map((cell, ci) => (
-                  <td key={ci} className={`py-1 px-sm border-r border-outline-variant whitespace-nowrap ${cellClass(types?.[ci], cell)}`}>
+                  <td
+                    key={ci}
+                    className={`whitespace-nowrap border-r border-border px-sm py-1 ${cellClass(types?.[ci], cell)}`}
+                  >
                     {fmtCell(cell)}
                   </td>
                 ))}

@@ -2,7 +2,7 @@ import type { HTMLAttributes } from 'react'
 import { tv, type VariantProps } from 'tailwind-variants'
 
 const progress = tv({
-  base: 'w-full overflow-hidden rounded-full bg-surface-container',
+  base: 'w-full overflow-hidden rounded-full bg-surface-container shadow-inner',
   variants: { size: { sm: 'h-1', md: 'h-2', lg: 'h-3' } },
   defaultVariants: { size: 'md' },
 })
@@ -36,7 +36,7 @@ export function Progress({
     <div className={className} {...props}>
       <div className={progress({ size })}>
         <div
-          className={`h-full rounded-full ${colors[status]} ${indeterminate ? 'w-2/5 animate-[progress_1.4s_ease-in-out_infinite]' : 'transition-[width] duration-300'}`}
+          className={`h-full rounded-full shadow-sm ${colors[status]} ${indeterminate ? 'w-2/5 animate-[progress_1.4s_ease-in-out_infinite]' : 'transition-[width] duration-300 ease-out'}`}
           style={{ width: indeterminate ? undefined : `${normalized}%` }}
           role="progressbar"
           aria-label={label}

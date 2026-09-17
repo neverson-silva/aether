@@ -19,14 +19,14 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div
-      className={`flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-10 text-center ${className}`}
+      className={`flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-surface-container-lowest/40 p-12 text-center ${className}`}
       {...props}
     >
       {IconComponent ? (
         <IconComponent
           size={32}
           weight="duotone"
-          className="text-muted-foreground"
+          className="rounded-2xl bg-primary/10 p-3 text-primary"
           aria-hidden="true"
         />
       ) : null}

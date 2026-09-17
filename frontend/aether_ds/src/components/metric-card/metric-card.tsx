@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { tv, type VariantProps } from 'tailwind-variants'
 
 const metricCard = tv({
-  base: 'rounded-lg border p-5',
+  base: 'relative overflow-hidden rounded-xl border p-5 shadow-sm transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md',
   variants: {
     status: {
       default: 'border-border bg-surface-card',
@@ -46,13 +46,13 @@ export function MetricCard({
           <div className="h-8 w-32 animate-pulse rounded bg-surface-container" />
         </div>
       ) : empty ? (
-        <div className="text-body-sm text-muted-foreground">No metric data</div>
+        <div className="rounded-lg bg-surface-container/60 px-3 py-2 text-body-sm text-muted-foreground">No metric data</div>
       ) : (
         <>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-body-sm text-muted-foreground">{label}</div>
-              <div className="mt-2 text-headline-sm font-semibold text-foreground">
+              <div className="font-label-caps text-label-caps uppercase text-muted-foreground">{label}</div>
+              <div className="mt-2 font-display-md text-headline-sm tracking-[-0.025em] font-semibold text-foreground">
                 {value}
                 {unit ? (
                   <span className="ml-1 text-body-sm font-normal text-muted-foreground">

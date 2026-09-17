@@ -1,11 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BackupConfig, BackupSchedule, S3Destination } from "@/api/types";
 import { useUpsertDatabaseBackupConfig } from "@/hooks";
-import { Button, Dialog, Field, Input, NativeSelect, TimePicker } from "@aether/design-system";
+import {
+  Button,
+  Dialog,
+  Field,
+  Input,
+  NativeSelect,
+  TimePicker,
+} from "@aether/design-system";
 
 const TIMEZONES: string[] = (() => {
   try {
-    return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? ["UTC", "America/Sao_Paulo", "America/New_York", "Europe/London"];
+    return (
+      (
+        Intl as unknown as { supportedValuesOf?: (k: string) => string[] }
+      ).supportedValuesOf?.("timeZone") ?? [
+        "UTC",
+        "America/Sao_Paulo",
+        "America/New_York",
+        "Europe/London",
+      ]
+    );
   } catch {
     return ["UTC", "America/Sao_Paulo", "America/New_York", "Europe/London"];
   }
@@ -19,7 +35,15 @@ const SCHEDULE_TYPES: { id: BackupSchedule["type"]; label: string }[] = [
   { id: "custom", label: "Custom" },
 ];
 
-const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const WEEKDAYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
 
 function cronValid(cron: string): boolean {
   return /^(\*|[0-5]?\d)(\s+(\*|[0-5]?\d)){4}$/.test(cron.trim());
@@ -58,21 +82,36 @@ export function BackupConfigDialog({
   onClose: () => void;
 }) {
   const save = useUpsertDatabaseBackupConfig(dbId);
-  const [destinationId, setDestinationId] = useState(existing?.destination_id ?? destinations[0]?.id ?? "");
-  const [pathPrefix, setPathPrefix] = useState(existing?.path_prefix ?? "databases");
-  const [scheduleType, setScheduleType] = useState<BackupSchedule["type"]>(existing?.schedule.type ?? "daily");
+  const [destinationId, setDestinationId] = useState(
+    existing?.destination_id ?? destinations[0]?.id ?? "",
+  );
+  const [pathPrefix, setPathPrefix] = useState(
+    existing?.path_prefix ?? "databases",
+  );
+  const [scheduleType, setScheduleType] = useState<BackupSchedule["type"]>(
+    existing?.schedule.type ?? "daily",
+  );
   const [minute, setMinute] = useState(existing?.schedule.minute ?? 0);
   const [at, setAt] = useState(existing?.schedule.at ?? "03:00");
   const [day, setDay] = useState(existing?.schedule.day_of_week ?? "sunday");
-  const [startDate, setStartDate] = useState(existing?.schedule.start_date ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(
+    existing?.schedule.start_date ?? new Date().toISOString().slice(0, 10),
+  );
   const [cron, setCron] = useState(existing?.schedule.cron ?? "0 3 * * *");
-  const [timezone, setTimezone] = useState(existing?.schedule.timezone ?? "UTC");
-  const [retention, setRetention] = useState<"all" | "latest">(existing?.retention.type ?? "all");
+  const [timezone, setTimezone] = useState(
+    existing?.schedule.timezone ?? "UTC",
+  );
+  const [retention, setRetention] = useState<"all" | "latest">(
+    existing?.retention.type ?? "all",
+  );
   const [saving, setSaving] = useState(false);
 
   const cronOk = scheduleType !== "custom" || cronValid(cron);
 
-  const selectedDest = useMemo(() => destinations.find((d) => d.id === destinationId), [destinationId, destinations]);
+  const selectedDest = useMemo(
+    () => destinations.find((d) => d.id === destinationId),
+    [destinationId, destinations],
+  );
 
   const submit = async () => {
     setSaving(true);
@@ -82,7 +121,15 @@ export function BackupConfigDialog({
         enabled: true,
         destination_id: destinationId,
         path_prefix: pathPrefix,
-        schedule: { type: scheduleType, minute, at, day_of_week: day, start_date: startDate, cron, timezone },
+        schedule: {
+          type: scheduleType,
+          minute,
+          at,
+          day_of_week: day,
+          start_date: startDate,
+          cron,
+          timezone,
+        },
         retention: { type: retention },
       } as Partial<BackupConfig>);
       onClose();
@@ -92,30 +139,61 @@ export function BackupConfigDialog({
   };
 
   return (
-    <Dialog open trigger={<span />} onOpenChange={(open) => { if (!open) onClose(); }} title={existing ? "Edit backup configuration" : "Configure backup"}>
+    <Dialog
+      open
+      trigger={<span />}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={existing ? "Edit backup configuration" : "Configure backup"}
+    >
       <div className="space-y-lg">
         <div className="space-y-md">
           <Field label="Backup destination">
-            <NativeSelect value={destinationId} onChange={(e) => setDestinationId(e.target.value)} options={destinations.length === 0 ? [{ value: "", label: "No S3 destinations available" }] : destinations.map((d) => ({ value: d.id, label: d.name }))} />
+            <NativeSelect
+              value={destinationId}
+              onChange={(e) => setDestinationId(e.target.value)}
+              options={
+                destinations.length === 0
+                  ? [{ value: "", label: "No S3 destinations available" }]
+                  : destinations.map((d) => ({ value: d.id, label: d.name }))
+              }
+            />
           </Field>
           {selectedDest && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-md px-md py-sm rounded border border-outline-variant/60">
+            <div className="grid grid-cols-1 gap-md rounded-xl border border-outline-variant/60 px-md py-sm sm:grid-cols-3">
               <div>
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Bucket</span>
-                <span className="font-code-md text-code-md text-on-surface">{selectedDest.bucket}</span>
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">
+                  Bucket
+                </span>
+                <span className="font-code-md text-code-md text-on-surface">
+                  {selectedDest.bucket}
+                </span>
               </div>
               <div>
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Region</span>
-                <span className="font-code-md text-code-md text-on-surface">{selectedDest.region || "—"}</span>
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">
+                  Region
+                </span>
+                <span className="font-code-md text-code-md text-on-surface">
+                  {selectedDest.region || "—"}
+                </span>
               </div>
               <div className="truncate">
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">Endpoint</span>
-                <span className="font-code-md text-code-md text-on-surface truncate">{selectedDest.endpoint}</span>
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-0.5">
+                  Endpoint
+                </span>
+                <span className="font-code-md text-code-md text-on-surface truncate">
+                  {selectedDest.endpoint}
+                </span>
               </div>
             </div>
           )}
           <Field label="Path prefix">
-            <Input value={pathPrefix} onChange={(e) => setPathPrefix(e.target.value)} placeholder="databases/production" />
+            <Input
+              value={pathPrefix}
+              onChange={(e) => setPathPrefix(e.target.value)}
+              placeholder="databases/production"
+            />
           </Field>
         </div>
 
@@ -127,8 +205,10 @@ export function BackupConfigDialog({
                   key={t.id}
                   type="button"
                   onClick={() => setScheduleType(t.id)}
-                  className={`px-md py-1.5 rounded font-label-caps text-label-caps uppercase border transition-colors ${
-                    scheduleType === t.id ? "border-primary text-primary bg-primary/10" : "border-outline-variant text-on-surface-variant hover:text-on-surface"
+                  className={`rounded-xl border px-md py-1.5 font-label-caps text-label-caps uppercase transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.98] ${
+                    scheduleType === t.id
+                      ? "border-primary text-primary bg-primary/10"
+                      : "border-outline-variant text-on-surface-variant hover:text-on-surface"
                   }`}
                 >
                   {t.label}
@@ -140,50 +220,103 @@ export function BackupConfigDialog({
           {scheduleType === "hourly" && (
             <Field label="Run at">
               <div className="flex items-center gap-sm">
-                <Input type="number" min={0} max={59} value={minute} onChange={(e) => setMinute(Number(e.target.value))} className="w-24" />
-                <span className="font-body-sm text-body-sm text-on-surface-variant">minutes past every hour</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={minute}
+                  onChange={(e) => setMinute(Number(e.target.value))}
+                  className="w-24"
+                />
+                <span className="font-body-sm text-body-sm text-on-surface-variant">
+                  minutes past every hour
+                </span>
               </div>
             </Field>
           )}
 
-          {(scheduleType === "daily" || scheduleType === "weekly" || scheduleType === "biweekly") && (
+          {(scheduleType === "daily" ||
+            scheduleType === "weekly" ||
+            scheduleType === "biweekly") && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
               {scheduleType === "weekly" && (
                 <Field label="Day">
-                  <NativeSelect value={day} onChange={(e) => setDay(e.target.value)} options={WEEKDAYS.map((d) => ({ value: d, label: d[0].toUpperCase() + d.slice(1) }))} />
+                  <NativeSelect
+                    value={day}
+                    onChange={(e) => setDay(e.target.value)}
+                    options={WEEKDAYS.map((d) => ({
+                      value: d,
+                      label: d[0].toUpperCase() + d.slice(1),
+                    }))}
+                  />
                 </Field>
               )}
               {scheduleType === "biweekly" && (
                 <Field label="Starting from">
-                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
                 </Field>
               )}
               <Field label="Time">
-                <TimePicker value={at} onChange={(event) => setAt(event.target.value)} />
+                <TimePicker
+                  value={at}
+                  onChange={(event) => setAt(event.target.value)}
+                />
               </Field>
             </div>
           )}
 
           {scheduleType === "custom" && (
-            <Field label="Cron expression" description={cronOk ? "Valid 5-field crontab expression." : "Invalid cron expression. Expected a valid 5-field crontab expression."}>
-              <Input value={cron} onChange={(e) => setCron(e.target.value)} placeholder="0 3 * * *" className={cronOk ? "" : "border-error"} />
+            <Field
+              label="Cron expression"
+              description={
+                cronOk
+                  ? "Valid 5-field crontab expression."
+                  : "Invalid cron expression. Expected a valid 5-field crontab expression."
+              }
+            >
+              <Input
+                value={cron}
+                onChange={(e) => setCron(e.target.value)}
+                placeholder="0 3 * * *"
+                className={cronOk ? "" : "border-error"}
+              />
             </Field>
           )}
 
           <Field label="Timezone">
-            <NativeSelect value={timezone} onChange={(e) => setTimezone(e.target.value)} options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))} />
+            <NativeSelect
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+            />
           </Field>
         </div>
 
         <Field label="Retention">
           <div className="flex flex-col gap-sm">
-            <label className="flex items-center gap-sm p-sm rounded border border-outline-variant/60 cursor-pointer">
-              <input type="radio" checked={retention === "all"} onChange={() => setRetention("all")} />
-              <span className="font-body-md text-body-md text-on-surface">Keep all backups</span>
+            <label className="flex cursor-pointer items-center gap-sm rounded-xl border border-outline-variant/60 p-sm">
+              <input
+                type="radio"
+                checked={retention === "all"}
+                onChange={() => setRetention("all")}
+              />
+              <span className="font-body-md text-body-md text-on-surface">
+                Keep all backups
+              </span>
             </label>
-            <label className="flex items-center gap-sm p-sm rounded border border-outline-variant/60 cursor-pointer">
-              <input type="radio" checked={retention === "latest"} onChange={() => setRetention("latest")} />
-              <span className="font-body-md text-body-md text-on-surface">Keep only the latest backup</span>
+            <label className="flex cursor-pointer items-center gap-sm rounded-xl border border-outline-variant/60 p-sm">
+              <input
+                type="radio"
+                checked={retention === "latest"}
+                onChange={() => setRetention("latest")}
+              />
+              <span className="font-body-md text-body-md text-on-surface">
+                Keep only the latest backup
+              </span>
             </label>
           </div>
         </Field>
@@ -192,7 +325,11 @@ export function BackupConfigDialog({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} loading={saving} disabled={!destinationId || !cronOk}>
+          <Button
+            onClick={() => void submit()}
+            loading={saving}
+            disabled={!destinationId || !cronOk}
+          >
             Save configuration
           </Button>
         </div>

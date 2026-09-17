@@ -21,7 +21,7 @@ export function InlineError({
   return (
     <div
       role="alert"
-      className={`flex gap-3 rounded-md border border-status-danger/30 bg-status-danger-container/15 text-status-danger ${size === 'sm' ? 'p-2 text-body-sm' : 'p-4 text-body-md'}`}
+      className={`flex items-start gap-3 rounded-xl border border-status-danger/30 bg-status-danger-container/15 text-status-danger shadow-sm ${size === 'sm' ? 'p-2 text-body-sm' : 'p-4 text-body-md'}`}
     >
       <WarningCircle
         size={size === 'sm' ? 16 : 20}
@@ -41,7 +41,7 @@ export function InlineError({
             <button
               type="button"
               onClick={onRetry}
-              className="font-semibold text-primary underline underline-offset-2"
+              className="rounded-lg px-2 py-1 font-semibold text-primary underline underline-offset-2 outline-none transition-[background-color,transform] duration-150 hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
             >
               {retryLabel}
             </button>

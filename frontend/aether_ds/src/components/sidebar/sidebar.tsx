@@ -3,7 +3,7 @@ import { List } from "@phosphor-icons/react";
 import { tv } from "tailwind-variants";
 
 const sidebar = tv({
-  base: "flex h-full flex-col border-r border-border bg-surface-card transition-[width] duration-200",
+  base: "flex h-full flex-col border-r border-border bg-surface-card/95 shadow-sm transition-[width] duration-200",
   variants: { collapsed: { true: "w-16", false: "w-64" } },
   defaultVariants: { collapsed: false },
 });
@@ -59,7 +59,7 @@ export function Sidebar({
         aria-current={item.active ? "page" : undefined}
         aria-disabled={item.disabled || undefined}
         title={collapsed ? String(item.label) : undefined}
-        className={`flex items-center gap-3 rounded-md py-2 text-body-sm transition-colors ${collapsed ? "justify-center px-2" : "px-3"} ${item.active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-surface-container hover:text-foreground"} ${item.disabled ? "pointer-events-none opacity-50" : ""}`}
+        className={`flex items-center gap-3 rounded-lg py-2 text-body-sm outline-none transition-[background-color,color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] ${collapsed ? "justify-center px-2" : "px-3"} ${item.active ? "bg-primary/10 text-primary shadow-sm" : "text-muted-foreground hover:bg-surface-container hover:text-foreground"} ${item.disabled ? "pointer-events-none opacity-50" : ""}`}
       >
         <span className="shrink-0">{item.icon}</span>
         {collapsed ? null : (
@@ -87,22 +87,22 @@ export function Sidebar({
       aria-label="Application navigation"
       className={`${sidebar({ collapsed })} shrink-0 ${mobile ? "fixed inset-y-0 left-0 z-50 shadow-xl" : ""} ${mobile && !mobileOpen ? "hidden" : ""}`}
     >
-      <div className="flex items-center justify-between p-3">
+      <div className="flex items-center justify-between p-4">
         {collapsed ? null : header}
         <button
           type="button"
-          className="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-container"
+          className="flex size-10 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,transform] duration-200 hover:bg-surface-container hover:text-foreground active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
           onClick={() => onCollapsedChange?.(!collapsed)}
         >
           <List size={22} weight="bold" aria-hidden="true" />
         </button>
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3">
         <ul className="space-y-1">{renderItems(items)}</ul>
       </nav>
       {footer ? (
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border p-4">
           {collapsed ? null : footer}
         </div>
       ) : null}

@@ -16,6 +16,7 @@ import {
 import { useServiceAction, useServiceConnection, useServices, useStartServiceDatabaseBackup } from "../../../hooks";
 import type { ServiceSummary } from "../../../api/types";
 import { DatabaseWizard } from "../../../components/DatabaseWizard";
+import { PageHeader } from "../../../components/PageHeader";
 
 const designIcon = (icon: typeof Plus) => icon as unknown as DesignIcon;
 
@@ -69,14 +70,12 @@ function DatabasesPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 p-6 lg:p-8">
-      <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
-          <Typography as="p" level="label" tone="primary">Infrastructure</Typography>
-          <Typography as="h1" level="display">Databases</Typography>
-          <Typography as="p" level="body" tone="muted">Managed database workloads with credentials, backups and private networking.</Typography>
-        </div>
-        <Button icon={designIcon(Plus)} onClick={() => setWizardOpen(true)}>New database</Button>
-      </header>
+      <PageHeader
+        eyebrow="Infrastructure"
+        title="Databases"
+        description="Managed database workloads with credentials, backups and private networking."
+        actions={<Button icon={designIcon(Plus)} onClick={() => setWizardOpen(true)}>New database</Button>}
+      />
 
       {isLoading ? <Skeleton variant="table" className="h-56" aria-label="Loading databases" /> : null}
       {!isLoading && !databases?.length ? <EmptyState icon={designIcon(DatabaseIcon)} title="No databases" description="Provision PostgreSQL, MySQL, MariaDB, Redis or MongoDB with managed credentials." action={<Button icon={designIcon(Plus)} onClick={() => setWizardOpen(true)}>Create your first database</Button>} /> : null}

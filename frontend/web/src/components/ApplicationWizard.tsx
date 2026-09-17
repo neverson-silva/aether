@@ -1,11 +1,53 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, CaretDown, Check, CheckCircle, Code, Database, FileArrowUp, FileText, FolderOpen, Gear, Globe, Info, LinkSimple, MagnifyingGlass, Package, Pulse, SpinnerGap, Warning, Wrench } from "@phosphor-icons/react";
+import {
+  ArrowRight,
+  CaretDown,
+  Check,
+  CheckCircle,
+  Code,
+  Database,
+  FileArrowUp,
+  FileText,
+  FolderOpen,
+  Gear,
+  Globe,
+  Info,
+  LinkSimple,
+  MagnifyingGlass,
+  Package,
+  Pulse,
+  SpinnerGap,
+  Warning,
+  Wrench,
+} from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { selectGitHubConnection, useCreateApp, useDisconnectGitHub, useProjects, useSourceControlBranches, useSourceControlConnections, useSourceControlRepositories, useStartGitHubManifest } from "../hooks";
+import {
+  selectGitHubConnection,
+  useCreateApp,
+  useDisconnectGitHub,
+  useProjects,
+  useSourceControlBranches,
+  useSourceControlConnections,
+  useSourceControlRepositories,
+  useStartGitHubManifest,
+} from "../hooks";
 import { ApiError, apiGet, apiPut, getServer } from "../api/client";
 import { TechIcon } from "./TechIcon";
 import { AdvancedSettings } from "./AdvancedSettings";
-import { Accordion, Attachment, Button, Input, Modal, NativeSelect, Select, SelectSearch, VariableEditor, type VariableRow, Wizard, useToast } from "@aether/design-system";
+import {
+  Accordion,
+  Attachment,
+  Button,
+  Input,
+  Modal,
+  NativeSelect,
+  Select,
+  SelectSearch,
+  VariableEditor,
+  type VariableRow,
+  Wizard,
+  useToast,
+} from "@aether/design-system";
 
 const wizardIcons: Record<string, typeof Code> = {
   arrow_forward: ArrowRight,
@@ -28,8 +70,18 @@ const wizardIcons: Record<string, typeof Code> = {
   webhook: LinkSimple,
 };
 
-function WizardIcon({ name, className = "", size = 18 }: { name: string; className?: string; size?: number }) {
-  const Icon = name.includes("progress_activity") ? SpinnerGap : wizardIcons[name] ?? Package;
+function WizardIcon({
+  name,
+  className = "",
+  size = 18,
+}: {
+  name: string;
+  className?: string;
+  size?: number;
+}) {
+  const Icon = name.includes("progress_activity")
+    ? SpinnerGap
+    : (wizardIcons[name] ?? Package);
   return <Icon size={size} className={className} aria-hidden="true" />;
 }
 
@@ -42,12 +94,14 @@ function parseEnvVariables(): VariableRow[] | undefined {
     const normalized = line.startsWith("export ") ? line.slice(7).trim() : line;
     const match = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) return [];
-    return [{
-      id: `imported-${index}-${match[1]}`,
-      key: match[1],
-      value: match[2].replace(/^"|"$/g, "").replace(/^'|'$/g, ""),
-      secret: /password|secret|key|token/i.test(match[1]),
-    }];
+    return [
+      {
+        id: `imported-${index}-${match[1]}`,
+        key: match[1],
+        value: match[2].replace(/^"|"$/g, "").replace(/^'|'$/g, ""),
+        secret: /password|secret|key|token/i.test(match[1]),
+      },
+    ];
   });
 }
 
@@ -90,8 +144,16 @@ export function ApplicationWizard({
   const startGitHubManifest = useStartGitHubManifest();
   const disconnectGitHub = useDisconnectGitHub();
   const githubConnection = selectGitHubConnection(connections);
-  const { data: repositories, isLoading: repositoriesLoading, isError: repositoriesError, error: repositoriesQueryError, refetch: refetchRepositories } = useSourceControlRepositories(githubConnection?.installation_id);
-  const githubInstallationUnavailable = repositoriesQueryError instanceof ApiError && repositoriesQueryError.status === 404;
+  const {
+    data: repositories,
+    isLoading: repositoriesLoading,
+    isError: repositoriesError,
+    error: repositoriesQueryError,
+    refetch: refetchRepositories,
+  } = useSourceControlRepositories(githubConnection?.installation_id);
+  const githubInstallationUnavailable =
+    repositoriesQueryError instanceof ApiError &&
+    repositoriesQueryError.status === 404;
   const createApp = useCreateApp();
   const { add } = useToast();
 
@@ -99,15 +161,26 @@ export function ApplicationWizard({
   const [sourceMode, setSourceMode] = useState<"git" | "upload">("git");
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [branch, setBranch] = useState("main");
-  const { data: branches } = useSourceControlBranches(selectedRepo ?? undefined, githubConnection?.installation_id);
+  const { data: branches } = useSourceControlBranches(
+    selectedRepo ?? undefined,
+    githubConnection?.installation_id,
+  );
   const [customUrl, setCustomUrl] = useState("");
-  const [zipUpload, setZipUpload] = useState<{ upload_id: string; name: string; size: number } | null>(null);
-  const [zipFile, setZipFile] = useState<{ name: string; size: number } | null>(null);
+  const [zipUpload, setZipUpload] = useState<{
+    upload_id: string;
+    name: string;
+    size: number;
+  } | null>(null);
+  const [zipFile, setZipFile] = useState<{ name: string; size: number } | null>(
+    null,
+  );
   const [zipUploading, setZipUploading] = useState(false);
 
   const [projectId, setProjectId] = useState(fixedProjectId ?? "");
   const [name, setName] = useState("");
-  const [buildType, setBuildType] = useState<"dockerfile" | "buildpacks" | "custom" | "compose">("buildpacks");
+  const [buildType, setBuildType] = useState<
+    "dockerfile" | "buildpacks" | "custom" | "compose"
+  >("buildpacks");
   const [port, setPort] = useState(kind === "api" ? 8080 : 3000);
   const [installCmd, setInstallCmd] = useState("");
   const [buildCmd, setBuildCmd] = useState("");
@@ -115,7 +188,8 @@ export function ApplicationWizard({
   const [dockerfilePath, setDockerfilePath] = useState("Dockerfile");
   const [composeFile, setComposeFile] = useState("compose.yaml");
   const [rootFolder, setRootFolder] = useState("");
-  const [environmentTemplatePath, setEnvironmentTemplatePath] = useState(".env.example");
+  const [environmentTemplatePath, setEnvironmentTemplatePath] =
+    useState(".env.example");
   const [distFolder, setDistFolder] = useState("");
   const [watchPaths, setWatchPaths] = useState("");
   const [envRows, setEnvRows] = useState<VariableRow[]>([]);
@@ -144,11 +218,17 @@ export function ApplicationWizard({
         });
         const data = await resp.json();
         if (resp.ok) {
-          setPlan((prev) => (prev ? { ...prev, dockerfile: data.dockerfile, nginx_conf: data.nginx_conf } : prev));
+          setPlan((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  dockerfile: data.dockerfile,
+                  nginx_conf: data.nginx_conf,
+                }
+              : prev,
+          );
         }
-      } catch {
-        /* preview é best-effort */
-      }
+      } catch {}
     }, 400);
     return () => clearTimeout(t);
   }, [port, buildType]);
@@ -167,9 +247,12 @@ export function ApplicationWizard({
     }
   }, [open]);
 
-  const selectedRepository = repositories?.find((repository) => repository.id === selectedRepo);
+  const selectedRepository = repositories?.find(
+    (repository) => repository.id === selectedRepo,
+  );
 
-  const sourceReady = sourceMode === "git" ? !!selectedRepo || !!customUrl.trim() : !!zipUpload;
+  const sourceReady =
+    sourceMode === "git" ? !!selectedRepo || !!customUrl.trim() : !!zipUpload;
 
   const uploadZip = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".zip")) {
@@ -194,29 +277,45 @@ export function ApplicationWizard({
       setCustomUrl("");
       runDetect({ upload_id: data.upload_id });
     } catch (err) {
-      add({ title: err instanceof Error ? err.message : "Upload failed", tone: "error" });
+      add({
+        title: err instanceof Error ? err.message : "Upload failed",
+        tone: "error",
+      });
     } finally {
       setZipUploading(false);
     }
   };
 
-  const runDetect = async (source: { upload_id?: string; git_url?: string }) => {
+  const runDetect = async (source: {
+    upload_id?: string;
+    git_url?: string;
+  }) => {
     setDetecting(true);
     setPlan(null);
     try {
       const resp = await fetch(`${getServer()}/api/v1/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(source.upload_id ? { upload_id: source.upload_id } : { git_url: source.git_url, git_branch: "main" }),
+        body: JSON.stringify(
+          source.upload_id
+            ? { upload_id: source.upload_id }
+            : { git_url: source.git_url, git_branch: "main" },
+        ),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "analysis failed");
       setPlan(data);
       if (data.container_port) setPort(data.container_port);
-      add({ title: `Detected: ${data.framework} (${data.app_type})`, tone: "success" });
+      add({
+        title: `Detected: ${data.framework} (${data.app_type})`,
+        tone: "success",
+      });
       return true;
     } catch (err) {
-      add({ title: err instanceof Error ? err.message : "Analysis failed", tone: "error" });
+      add({
+        title: err instanceof Error ? err.message : "Analysis failed",
+        tone: "error",
+      });
       return false;
     } finally {
       setDetecting(false);
@@ -224,22 +323,58 @@ export function ApplicationWizard({
   };
 
   const detectFramework = async () => {
-    const hasSource = sourceMode === "git" ? !!(customUrl.trim() || selectedRepo) : !!zipUpload;
+    const hasSource =
+      sourceMode === "git" ? !!(customUrl.trim() || selectedRepo) : !!zipUpload;
     if (!hasSource) {
-      add({ title: "Select a repository, paste a URL or upload a ZIP first", tone: "info" });
+      add({
+        title: "Select a repository, paste a URL or upload a ZIP first",
+        tone: "info",
+      });
       return;
     }
-    const url = customUrl.trim() || (selectedRepository ? `https://github.com/${selectedRepository.full_name}.git` : "");
-    await runDetect(sourceMode === "upload" ? { upload_id: zipUpload?.upload_id } : { git_url: url });
+    const url =
+      customUrl.trim() ||
+      (selectedRepository
+        ? `https://github.com/${selectedRepository.full_name}.git`
+        : "");
+    await runDetect(
+      sourceMode === "upload"
+        ? { upload_id: zipUpload?.upload_id }
+        : { git_url: url },
+    );
   };
 
   const loadEnvironmentTemplate = async () => {
-    if (sourceMode !== "git" || !selectedRepo || !githubConnection?.installation_id) return;
-    const environmentFilePath = [rootFolder.trim().replace(/^\.\//, "").replace(/\/$/, ""), environmentTemplatePath.trim() || ".env.example"].filter(Boolean).join("/");
-    const requestKey = [selectedRepo, githubConnection.installation_id, environmentFilePath, branch].join("|");
+    if (
+      sourceMode !== "git" ||
+      !selectedRepo ||
+      !githubConnection?.installation_id
+    )
+      return;
+    const environmentFilePath = [
+      rootFolder.trim().replace(/^\.\//, "").replace(/\/$/, ""),
+      environmentTemplatePath.trim() || ".env.example",
+    ]
+      .filter(Boolean)
+      .join("/");
+    const requestKey = [
+      selectedRepo,
+      githubConnection.installation_id,
+      environmentFilePath,
+      branch,
+    ].join("|");
     if (environmentTemplateKeyRef.current === requestKey) return;
-    const file = await apiGet<{ variables?: Array<{ key: string; value: string; secret: boolean }> }>(`/api/v1/source-control/github/repositories/${encodeURIComponent(selectedRepo)}/file?installation_id=${encodeURIComponent(githubConnection.installation_id)}&path=${encodeURIComponent(environmentFilePath)}&ref=${encodeURIComponent(branch)}`);
-    setEnvRows((file.variables ?? []).map((variable, index) => ({ ...variable, id: `template-${index}-${variable.key}` })));
+    const file = await apiGet<{
+      variables?: Array<{ key: string; value: string; secret: boolean }>;
+    }>(
+      `/api/v1/source-control/github/repositories/${encodeURIComponent(selectedRepo)}/file?installation_id=${encodeURIComponent(githubConnection.installation_id)}&path=${encodeURIComponent(environmentFilePath)}&ref=${encodeURIComponent(branch)}`,
+    );
+    setEnvRows(
+      (file.variables ?? []).map((variable, index) => ({
+        ...variable,
+        id: `template-${index}-${variable.key}`,
+      })),
+    );
     environmentTemplateKeyRef.current = requestKey;
   };
 
@@ -254,7 +389,11 @@ export function ApplicationWizard({
     }
     setCreating(true);
     try {
-      const gitUrl = customUrl.trim() || (selectedRepository ? `https://github.com/${selectedRepository.full_name}.git` : "");
+      const gitUrl =
+        customUrl.trim() ||
+        (selectedRepository
+          ? `https://github.com/${selectedRepository.full_name}.git`
+          : "");
       const app = await createApp.mutateAsync({
         projectID: projectId,
         payload: {
@@ -275,7 +414,13 @@ export function ApplicationWizard({
           watch_paths: watchPaths,
           ...(buildType !== "compose" ? { port } : {}),
           resources: { cpus: cpu, mem_mb: memMB, storage_mb: storageMB },
-          health_check: { enabled: healthEnabled, path: healthPath, interval_ms: 5000, timeout_ms: 2000, retries: 3 },
+          health_check: {
+            enabled: healthEnabled,
+            path: healthPath,
+            interval_ms: 5000,
+            timeout_ms: 2000,
+            retries: 3,
+          },
           plan: plan
             ? {
                 id: "",
@@ -283,8 +428,12 @@ export function ApplicationWizard({
                 framework: plan.framework,
                 library: plan.library,
                 package_manager: plan.package_manager,
-                build_command: buildType === "custom" ? (buildCmd || plan.build_command) : "",
-                install_command: buildType === "custom" ? (installCmd || plan.install_command) : "",
+                build_command:
+                  buildType === "custom" ? buildCmd || plan.build_command : "",
+                install_command:
+                  buildType === "custom"
+                    ? installCmd || plan.install_command
+                    : "",
                 output_dir: plan.output_dir,
                 app_type: plan.app_type,
                 web_server: plan.web_server,
@@ -298,7 +447,11 @@ export function ApplicationWizard({
             : undefined,
           env: envRows
             .filter((r) => r.key.trim())
-            .map((r) => ({ name: r.key.trim(), value: r.value, secret: r.secret })),
+            .map((r) => ({
+              name: r.key.trim(),
+              value: r.value,
+              secret: r.secret,
+            })),
         } as never,
       });
       if (selectedRepository && githubConnection) {
@@ -312,8 +465,12 @@ export function ApplicationWizard({
           branch,
           auto_deploy: false,
           root_directory: rootFolder,
-          environment_template_path: environmentTemplatePath.trim() || ".env.example",
-          watch_paths: watchPaths.split(",").map((path) => path.trim()).filter(Boolean),
+          environment_template_path:
+            environmentTemplatePath.trim() || ".env.example",
+          watch_paths: watchPaths
+            .split(",")
+            .map((path) => path.trim())
+            .filter(Boolean),
           ignore_paths: [],
           compose_file: buildType === "compose" ? composeFile.trim() : "",
           watch_root_files: true,
@@ -321,16 +478,29 @@ export function ApplicationWizard({
       }
       add({ title: "Deploy it manually from the service page", tone: "info" });
       onClose();
-      navigate({ to: "/apps/$appId", params: { appId: app.service_id ?? app.id } } as never);
+      navigate({
+        to: "/apps/$appId",
+        params: { appId: app.service_id ?? app.id },
+      } as never);
     } catch (err) {
-      add({ title: err instanceof Error ? err.message : "Failed to create service", tone: "error" });
+      add({
+        title: err instanceof Error ? err.message : "Failed to create service",
+        tone: "error",
+      });
     } finally {
       setCreating(false);
     }
   };
 
   return (
-    <Modal open={open} onOpenChange={(value) => { if (!value) onClose(); }} size="wizard" showHeader={false}>
+    <Modal
+      open={open}
+      onOpenChange={(value) => {
+        if (!value) onClose();
+      }}
+      size="wizard"
+      showHeader={false}
+    >
       <Wizard
         currentStep={step - 1}
         onStepChange={(value) => setStep(value + 1)}
@@ -340,16 +510,38 @@ export function ApplicationWizard({
             await loadEnvironmentTemplate();
           } catch {
             setEnvRows([]);
-            add({ title: "Could not load the environment template", tone: "warning" });
+            add({
+              title: "Could not load the environment template",
+              tone: "warning",
+            });
           }
         }}
         onCancel={onClose}
         onComplete={create}
         loading={creating}
         steps={[
-          { id: "source", title: "Source", description: "Select a repository or upload source code to deploy your new service.", content: null, validate: () => sourceReady },
-          { id: "configure", title: "Configure", description: "Define how the service is built and where it runs.", content: null, validate: () => Boolean(projectId && name.trim()) },
-          { id: "environment", title: "Environment", description: "Set the environment variables injected at deploy time.", content: null },
+          {
+            id: "source",
+            title: "Source",
+            description:
+              "Select a repository or upload source code to deploy your new service.",
+            content: null,
+            validate: () => sourceReady,
+          },
+          {
+            id: "configure",
+            title: "Configure",
+            description: "Define how the service is built and where it runs.",
+            content: null,
+            validate: () => Boolean(projectId && name.trim()),
+          },
+          {
+            id: "environment",
+            title: "Environment",
+            description:
+              "Set the environment variables injected at deploy time.",
+            content: null,
+          },
         ]}
       >
         <div className="p-lg overflow-y-auto sidebar-scroll">
@@ -357,8 +549,19 @@ export function ApplicationWizard({
             <div className="flex flex-col gap-lg">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
                 {[
-                  { id: "git" as const, icon: "code", label: "Git Provider", description: "Connect a provider and deploy from a repository." },
-                  { id: "upload" as const, icon: "folder_zip", label: "Upload", description: "Upload a ZIP archive for this service." },
+                  {
+                    id: "git" as const,
+                    icon: "code",
+                    label: "Git Provider",
+                    description:
+                      "Connect a provider and deploy from a repository.",
+                  },
+                  {
+                    id: "upload" as const,
+                    icon: "folder_zip",
+                    label: "Upload",
+                    description: "Upload a ZIP archive for this service.",
+                  },
                 ].map((option) => {
                   const active = sourceMode === option.id;
                   return (
@@ -373,202 +576,382 @@ export function ApplicationWizard({
                           setCustomUrl("");
                         }
                       }}
-                      className={`flex items-start gap-sm p-md rounded-xl border text-left transition-colors ${active ? "border-primary bg-primary/10" : "border-outline-variant bg-surface-container-low hover:border-primary/50"}`}
+                      className={`flex items-start gap-sm rounded-2xl border p-lg text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] ${active ? "border-primary bg-primary/10 shadow-sm" : "border-outline-variant bg-surface-container-low hover:border-primary/50 hover:shadow-sm"}`}
                     >
-                      <WizardIcon name={option.icon} className={active ? "text-primary" : "text-on-surface-variant"} />
+                      <WizardIcon
+                        name={option.icon}
+                        className={
+                          active ? "text-primary" : "text-on-surface-variant"
+                        }
+                      />
                       <span className="flex-1">
                         <span className="flex items-center gap-xs font-body-md text-body-md font-semibold text-on-surface">
                           {option.label}
-                          {active ? <Check size={16} className="ml-auto text-primary" /> : null}
+                          {active ? (
+                            <Check size={16} className="ml-auto text-primary" />
+                          ) : null}
                         </span>
-                        <span className="block mt-xs font-body-sm text-body-sm text-on-surface-variant">{option.description}</span>
+                        <span className="block mt-xs font-body-sm text-body-sm text-on-surface-variant">
+                          {option.description}
+                        </span>
                       </span>
                     </button>
                   );
                 })}
               </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-              <div className="lg:col-span-2 flex flex-col gap-md">
-                {sourceMode === "git" && <div className="bg-surface-container rounded-xl p-md border border-outline-variant hover:border-primary glow-hover transition-all duration-200">
-                  <div className="flex items-start gap-md">
-                    <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center border border-outline-variant text-on-surface">
-                      <Code size={18} />
-                    </div>
-                    <div className="flex-1 w-full">
-                      <h3 className="font-body-md text-body-md font-semibold text-on-surface mb-xs">GitHub Repository</h3>
-                      <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
-                        Deploy directly from a connected GitHub account. Pushes will automatically trigger new builds.
-                      </p>
-                      {!githubConnection || githubInstallationUnavailable ? (
-                        <div className="space-y-sm rounded-md border border-border bg-surface-dim p-md">
-                          <p className="text-body-sm text-muted-foreground">{githubInstallationUnavailable ? "The GitHub installation is no longer available." : "Connect a GitHub App installation to search repositories."}</p>
-                          <button type="button" disabled={startGitHubManifest.isPending} onClick={async () => {
-                            try {
-                              const manifest = await startGitHubManifest.mutateAsync({
-                                return_url: `${window.location.pathname}${window.location.search}`,
-                              });
-                              const form = document.createElement("form");
-                              form.method = "POST";
-                              form.action = `${manifest.url}?state=${encodeURIComponent(manifest.state)}`;
-                              const input = document.createElement("input");
-                              input.type = "hidden";
-                              input.name = "manifest";
-                              input.value = manifest.manifest;
-                              form.appendChild(input);
-                              document.body.appendChild(form);
-                              form.submit();
-                            } catch (error) {
-                              add({ title: error instanceof Error ? error.message : "GitHub connection failed", tone: "error" });
-                            }
-                          }} className="text-body-sm font-semibold text-primary disabled:opacity-50">{startGitHubManifest.isPending ? "Connecting..." : "Connect GitHub"}</button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+                <div className="lg:col-span-2 flex flex-col gap-md">
+                  {sourceMode === "git" && (
+                    <div className="rounded-2xl border border-outline-variant bg-surface-card p-lg shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md">
+                      <div className="flex items-start gap-md">
+                        <div className="flex size-10 items-center justify-center rounded-xl border border-outline-variant bg-surface text-on-surface">
+                          <Code size={18} />
                         </div>
-                      ) : (
-                        <div className="space-y-sm">
-                          <SelectSearch
-                            label="Repository"
-                            placeholder="Search repositories"
-                            value={selectedRepo}
-                            options={(repositories ?? []).map((repository) => ({
-                              value: repository.id,
-                              label: repository.full_name,
-                            }))}
-                            disabled={repositoriesLoading || repositoriesError}
-                            error={repositoriesError && !githubInstallationUnavailable ? (repositoriesQueryError instanceof Error ? repositoriesQueryError.message : "Could not load repositories.") : undefined}
-                            onValueChange={(value) => {
-                              const repository = repositories?.find((item) => item.id === value);
-                              if (!repository) return;
-                              setSelectedRepo(repository.id);
-                              setBranch(repository.default_branch || "main");
-                              setCustomUrl("");
-                              setZipUpload(null);
-                              if (kind === "web") runDetect({ git_url: `https://github.com/${repository.full_name}.git` });
-                            }}
-                          />
-                          <button type="button" disabled={disconnectGitHub.isPending} onClick={() => disconnectGitHub.mutate(githubConnection.id)} className="text-body-sm font-semibold text-primary disabled:opacity-50">
-                            {disconnectGitHub.isPending ? "Disconnecting..." : "Disconnect GitHub"}
-                          </button>
+                        <div className="flex-1 w-full">
+                          <h3 className="font-body-md text-body-md font-semibold text-on-surface mb-xs">
+                            GitHub Repository
+                          </h3>
+                          <p className="font-body-sm text-body-sm text-on-surface-variant mb-md">
+                            Deploy directly from a connected GitHub account.
+                            Pushes will automatically trigger new builds.
+                          </p>
+                          {!githubConnection ||
+                          githubInstallationUnavailable ? (
+                            <div className="space-y-sm rounded-xl border border-outline-variant bg-surface-container-low p-md">
+                              <p className="text-body-sm text-muted-foreground">
+                                {githubInstallationUnavailable
+                                  ? "The GitHub installation is no longer available."
+                                  : "Connect a GitHub App installation to search repositories."}
+                              </p>
+                              <button
+                                type="button"
+                                disabled={startGitHubManifest.isPending}
+                                onClick={async () => {
+                                  try {
+                                    const manifest =
+                                      await startGitHubManifest.mutateAsync({
+                                        return_url: `${window.location.pathname}${window.location.search}`,
+                                      });
+                                    const form = document.createElement("form");
+                                    form.method = "POST";
+                                    form.action = `${manifest.url}?state=${encodeURIComponent(manifest.state)}`;
+                                    const input =
+                                      document.createElement("input");
+                                    input.type = "hidden";
+                                    input.name = "manifest";
+                                    input.value = manifest.manifest;
+                                    form.appendChild(input);
+                                    document.body.appendChild(form);
+                                    form.submit();
+                                  } catch (error) {
+                                    add({
+                                      title:
+                                        error instanceof Error
+                                          ? error.message
+                                          : "GitHub connection failed",
+                                      tone: "error",
+                                    });
+                                  }
+                                }}
+                                className="text-body-sm font-semibold text-primary disabled:opacity-50"
+                              >
+                                {startGitHubManifest.isPending
+                                  ? "Connecting..."
+                                  : "Connect GitHub"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-sm">
+                              <SelectSearch
+                                label="Repository"
+                                placeholder="Search repositories"
+                                value={selectedRepo}
+                                options={(repositories ?? []).map(
+                                  (repository) => ({
+                                    value: repository.id,
+                                    label: repository.full_name,
+                                  }),
+                                )}
+                                disabled={
+                                  repositoriesLoading || repositoriesError
+                                }
+                                error={
+                                  repositoriesError &&
+                                  !githubInstallationUnavailable
+                                    ? repositoriesQueryError instanceof Error
+                                      ? repositoriesQueryError.message
+                                      : "Could not load repositories."
+                                    : undefined
+                                }
+                                onValueChange={(value) => {
+                                  const repository = repositories?.find(
+                                    (item) => item.id === value,
+                                  );
+                                  if (!repository) return;
+                                  setSelectedRepo(repository.id);
+                                  setBranch(
+                                    repository.default_branch || "main",
+                                  );
+                                  setCustomUrl("");
+                                  setZipUpload(null);
+                                  if (kind === "web")
+                                    runDetect({
+                                      git_url: `https://github.com/${repository.full_name}.git`,
+                                    });
+                                }}
+                              />
+                              <button
+                                type="button"
+                                disabled={disconnectGitHub.isPending}
+                                onClick={() =>
+                                  disconnectGitHub.mutate(githubConnection.id)
+                                }
+                                className="text-body-sm font-semibold text-primary disabled:opacity-50"
+                              >
+                                {disconnectGitHub.isPending
+                                  ? "Disconnecting..."
+                                  : "Disconnect GitHub"}
+                              </button>
+                            </div>
+                          )}
+                          {githubConnection &&
+                          repositoriesError &&
+                          !githubInstallationUnavailable ? (
+                            <button
+                              type="button"
+                              onClick={() => refetchRepositories()}
+                              className="text-body-sm font-semibold text-primary"
+                            >
+                              Retry repository search
+                            </button>
+                          ) : null}
+                          {selectedRepository && (
+                            <p className="mt-sm font-body-sm text-body-sm text-primary">
+                              Selected: {selectedRepository.full_name}
+                            </p>
+                          )}
+                          <div className="mt-sm">
+                            <p className="font-body-sm text-body-sm text-on-surface-variant mb-xs">
+                              or paste a repository URL
+                            </p>
+                            <Input
+                              placeholder="git@github.com:org/repo.git"
+                              value={customUrl}
+                              onChange={(e) => {
+                                setCustomUrl(e.target.value);
+                                setSelectedRepo(null);
+                              }}
+                            />
+                          </div>
+                          <div className="mt-sm flex items-center gap-sm">
+                            {kind === "web" && (
+                              <button
+                                onClick={detectFramework}
+                                disabled={
+                                  detecting ||
+                                  (!customUrl.trim() &&
+                                    !selectedRepo &&
+                                    !zipUpload)
+                                }
+                                className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 font-label-caps text-label-caps text-primary outline-none transition-[background-color,box-shadow,transform] duration-150 hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <WizardIcon
+                                  name={
+                                    detecting ? "progress_activity" : "radar"
+                                  }
+                                  className={detecting ? "animate-spin" : ""}
+                                  size={16}
+                                />
+                                {detecting
+                                  ? "Analyzing..."
+                                  : "Detect Framework"}
+                              </button>
+                            )}
+                            {plan && (
+                              <span className="font-code-md text-[11px] text-status-success flex items-center gap-1">
+                                <CheckCircle size={14} />
+                                {plan.framework} · {plan.app_type.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          {selectedRepository && (
+                            <div className="mt-md space-y-md">
+                              <SelectSearch
+                                label="Branch"
+                                value={branch}
+                                placeholder="Search branches"
+                                onValueChange={(value) =>
+                                  value && setBranch(value)
+                                }
+                                options={
+                                  branches?.length
+                                    ? branches.map((item) => ({
+                                        label: item.name,
+                                        value: item.name,
+                                      }))
+                                    : [{ label: branch, value: branch }]
+                                }
+                              />
+                              <Accordion
+                                items={[
+                                  {
+                                    value: "advanced-source-settings",
+                                    title: "Advanced settings",
+                                    content: (
+                                      <div className="grid grid-cols-1 gap-md md:grid-cols-2">
+                                        <div className="space-y-xs">
+                                          <Input
+                                            label="Root directory"
+                                            value={rootFolder}
+                                            onChange={(event) =>
+                                              setRootFolder(event.target.value)
+                                            }
+                                            placeholder="Repository root"
+                                          />
+                                          <p className="text-body-sm text-muted-foreground">
+                                            Build only from this directory in a
+                                            monorepo.
+                                          </p>
+                                        </div>
+                                        <div className="space-y-xs">
+                                          <Input
+                                            label="Watch paths"
+                                            value={watchPaths}
+                                            onChange={(event) =>
+                                              setWatchPaths(event.target.value)
+                                            }
+                                            placeholder="apps/api/**, packages/shared/**"
+                                          />
+                                          <p className="text-body-sm text-muted-foreground">
+                                            Only matching paths will trigger
+                                            automatic builds.
+                                          </p>
+                                        </div>
+                                        <div className="space-y-xs md:col-span-2">
+                                          <Input
+                                            label="Environment template file"
+                                            value={environmentTemplatePath}
+                                            onChange={(event) =>
+                                              setEnvironmentTemplatePath(
+                                                event.target.value,
+                                              )
+                                            }
+                                            placeholder=".env.example"
+                                          />
+                                          <p className="text-body-sm text-muted-foreground">
+                                            Variables found in this file will be
+                                            added automatically with empty
+                                            values.
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ),
+                                  },
+                                ]}
+                              />
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {githubConnection && repositoriesError && !githubInstallationUnavailable ? (
-                        <button type="button" onClick={() => refetchRepositories()} className="text-body-sm font-semibold text-primary">Retry repository search</button>
-                      ) : null}
-                      {selectedRepository && <p className="mt-sm font-body-sm text-body-sm text-primary">Selected: {selectedRepository.full_name}</p>}
-                      <div className="mt-sm">
-                        <p className="font-body-sm text-body-sm text-on-surface-variant mb-xs">or paste a repository URL</p>
-                        <Input placeholder="git@github.com:org/repo.git" value={customUrl} onChange={(e) => { setCustomUrl(e.target.value); setSelectedRepo(null); }} />
                       </div>
-                      <div className="mt-sm flex items-center gap-sm">
-                      {kind === "web" && (
-                        <button
-                          onClick={detectFramework}
-                          disabled={detecting || (!customUrl.trim() && !selectedRepo && !zipUpload)}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary font-label-caps text-label-caps hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <WizardIcon name={detecting ? "progress_activity" : "radar"} className={detecting ? "animate-spin" : ""} size={16} />
-                          {detecting ? "Analyzing..." : "Detect Framework"}
-                        </button>
-                      )}
-                        {plan && (
-                          <span className="font-code-md text-[11px] text-[#4ade80] flex items-center gap-1">
-                            <CheckCircle size={14} />
-                            {plan.framework} · {plan.app_type.toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      {selectedRepository && (
-                        <div className="mt-md space-y-md">
-                          <SelectSearch
-                            label="Branch"
-                            value={branch}
-                            placeholder="Search branches"
-                            onValueChange={(value) => value && setBranch(value)}
-                            options={branches?.length ? branches.map((item) => ({ label: item.name, value: item.name })) : [{ label: branch, value: branch }]}
-                          />
-                          <Accordion
-                            items={[{
-                              value: "advanced-source-settings",
-                              title: "Advanced settings",
-                              content: (
-                                <div className="grid grid-cols-1 gap-md md:grid-cols-2">
-                                  <div className="space-y-xs">
-                                    <Input label="Root directory" value={rootFolder} onChange={(event) => setRootFolder(event.target.value)} placeholder="Repository root" />
-                                    <p className="text-body-sm text-muted-foreground">Build only from this directory in a monorepo.</p>
-                                  </div>
-                                  <div className="space-y-xs">
-                                    <Input label="Watch paths" value={watchPaths} onChange={(event) => setWatchPaths(event.target.value)} placeholder="apps/api/**, packages/shared/**" />
-                                    <p className="text-body-sm text-muted-foreground">Only matching paths will trigger automatic builds.</p>
-                                  </div>
-                                  <div className="space-y-xs md:col-span-2">
-                                    <Input label="Environment template file" value={environmentTemplatePath} onChange={(event) => setEnvironmentTemplatePath(event.target.value)} placeholder=".env.example" />
-                                    <p className="text-body-sm text-muted-foreground">Variables found in this file will be added automatically with empty values.</p>
-                                  </div>
-                                </div>
-                              ),
-                            }]}
-                          />
-                        </div>
-                      )}
                     </div>
-                  </div>
-                </div>}
+                  )}
 
-                {sourceMode === "upload" && (
-                  <Attachment
-                    label="Build artifacts"
-                    description="Upload a ZIP archive for this service."
-                    accept=".zip"
-                    multiple={false}
-                    items={zipFile ? [{ id: "zip-upload", name: zipFile.name, size: zipFile.size, status: zipUploading ? "uploading" : zipUpload ? "complete" : "error", error: !zipUploading && !zipUpload ? "Upload failed." : undefined }] : []}
-                    onFilesChange={(files) => {
-                      const file = files[0];
-                      if (file) uploadZip(file);
-                    }}
-                    onRemove={() => {
-                      setZipFile(null);
-                      setZipUpload(null);
-                    }}
-                  />
-                )}
+                  {sourceMode === "upload" && (
+                    <Attachment
+                      label="Build artifacts"
+                      description="Upload a ZIP archive for this service."
+                      accept=".zip"
+                      multiple={false}
+                      items={
+                        zipFile
+                          ? [
+                              {
+                                id: "zip-upload",
+                                name: zipFile.name,
+                                size: zipFile.size,
+                                status: zipUploading
+                                  ? "uploading"
+                                  : zipUpload
+                                    ? "complete"
+                                    : "error",
+                                error:
+                                  !zipUploading && !zipUpload
+                                    ? "Upload failed."
+                                    : undefined,
+                              },
+                            ]
+                          : []
+                      }
+                      onFilesChange={(files) => {
+                        const file = files[0];
+                        if (file) uploadZip(file);
+                      }}
+                      onRemove={() => {
+                        setZipFile(null);
+                        setZipUpload(null);
+                      }}
+                    />
+                  )}
+                </div>
               </div>
-
-            </div>
             </div>
           )}
 
           {step === 2 && (
             <div className="grid grid-cols-1 gap-md">
-              <section className="bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative">
+              <section className="relative flex flex-col gap-md rounded-2xl border border-outline-variant bg-surface-card p-lg shadow-sm">
                 <div className="flex items-center gap-sm mb-xs">
                   <Info size={20} className="text-primary" />
-                  <h2 className="font-label-caps text-label-caps text-on-surface">Application Details</h2>
+                  <h2 className="font-label-caps text-label-caps text-on-surface">
+                    Application Details
+                  </h2>
                 </div>
-                <div className="grid grid-cols-2 gap-md">
+                <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
                   <div className="flex flex-col gap-xs">
-                    <label className="font-label-caps text-label-caps text-on-surface-variant">Application Name</label>
+                    <label className="font-label-caps text-label-caps text-on-surface-variant">
+                      Application Name
+                    </label>
                     <input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="my-awesome-service"
-                      className="bg-surface-dim border border-outline-variant text-on-surface font-code-md text-code-md px-sm py-xs rounded w-full transition-all duration-200"
+                      className="w-full rounded-xl border border-outline-variant bg-surface-dim px-sm py-xs font-code-md text-code-md text-on-surface outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20"
                       type="text"
                     />
                   </div>
                   <div className="flex flex-col gap-xs">
-                    <label className="font-label-caps text-label-caps text-on-surface-variant">Project / Environment</label>
-                    <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={!!fixedProjectId} options={[{ label: "Select project...", value: "" }, ...(projects ?? []).map((p) => ({ label: p.name, value: p.id }))]} />
+                    <label className="font-label-caps text-label-caps text-on-surface-variant">
+                      Project / Environment
+                    </label>
+                    <NativeSelect
+                      value={projectId}
+                      onChange={(e) => setProjectId(e.target.value)}
+                      disabled={!!fixedProjectId}
+                      options={[
+                        { label: "Select project...", value: "" },
+                        ...(projects ?? []).map((p) => ({
+                          label: p.name,
+                          value: p.id,
+                        })),
+                      ]}
+                    />
                   </div>
                 </div>
               </section>
 
-              <section className="bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative">
+              <section className="relative flex flex-col gap-md rounded-2xl border border-outline-variant bg-surface-card p-lg shadow-sm">
                 <div className="flex items-center gap-sm">
                   <FileText size={20} className="text-primary" />
-                  <h2 className="font-label-caps text-label-caps text-on-surface">Build Method</h2>
+                  <h2 className="font-label-caps text-label-caps text-on-surface">
+                    Build Method
+                  </h2>
                 </div>
                 <NativeSelect
                   value={buildType}
-                  onChange={(event) => setBuildType(event.target.value as typeof buildType)}
+                  onChange={(event) =>
+                    setBuildType(event.target.value as typeof buildType)
+                  }
                   options={[
                     { label: "Dockerfile", value: "dockerfile" },
                     { label: "SmartBuild (CNB)", value: "buildpacks" },
@@ -577,19 +960,29 @@ export function ApplicationWizard({
                   ]}
                 />
                 <p className="font-body-sm text-body-sm text-on-surface-variant">
-                  {buildType === "dockerfile" && "Build the application using a Dockerfile from the repository."}
-                  {buildType === "buildpacks" && "Automatically detect and build the application using Cloud Native Buildpacks."}
-                  {buildType === "custom" && "Use custom install, build and start commands."}
-                  {buildType === "compose" && "Deploy using a Compose file from the repository."}
+                  {buildType === "dockerfile" &&
+                    "Build the application using a Dockerfile from the repository."}
+                  {buildType === "buildpacks" &&
+                    "Automatically detect and build the application using Cloud Native Buildpacks."}
+                  {buildType === "custom" &&
+                    "Use custom install, build and start commands."}
+                  {buildType === "compose" &&
+                    "Deploy using a Compose file from the repository."}
                 </p>
                 {buildType === "dockerfile" && (
                   <div className="flex flex-col gap-xs">
                     <label className="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-1">
                       <FolderOpen size={14} />
                       Dockerfile path
-                      <span className="font-code-md text-[10px] text-on-surface-variant/50">default: Dockerfile at repo root</span>
+                      <span className="font-code-md text-[10px] text-on-surface-variant/50">
+                        default: Dockerfile at repo root
+                      </span>
                     </label>
-                    <Input placeholder="Dockerfile" value={dockerfilePath} onChange={(e) => setDockerfilePath(e.target.value)} />
+                    <Input
+                      placeholder="Dockerfile"
+                      value={dockerfilePath}
+                      onChange={(e) => setDockerfilePath(e.target.value)}
+                    />
                   </div>
                 )}
                 {buildType === "compose" && (
@@ -598,42 +991,66 @@ export function ApplicationWizard({
                       <FolderOpen size={14} />
                       Compose file
                     </label>
-                    <Input placeholder="compose.yaml" value={composeFile} onChange={(e) => setComposeFile(e.target.value)} />
-                    <span className="font-code-md text-[10px] text-on-surface-variant/50">Path relative to the configured Root Directory.</span>
-                    {!composeFile.trim() && <span className="font-body-sm text-body-sm text-status-danger">Compose file is required.</span>}
+                    <Input
+                      placeholder="compose.yaml"
+                      value={composeFile}
+                      onChange={(e) => setComposeFile(e.target.value)}
+                    />
+                    <span className="font-code-md text-[10px] text-on-surface-variant/50">
+                      Path relative to the configured Root Directory.
+                    </span>
+                    {!composeFile.trim() && (
+                      <span className="font-body-sm text-body-sm text-status-danger">
+                        Compose file is required.
+                      </span>
+                    )}
                   </div>
                 )}
                 {buildType === "buildpacks" && (
                   <p className="font-body-sm text-body-sm text-on-surface-variant">
-                    Auto-detects Node.js, Go, Python, Java, .NET, Ruby and more. The builder is auto-selected for the host architecture.
+                    Auto-detects Node.js, Go, Python, Java, .NET, Ruby and more.
+                    The builder is auto-selected for the host architecture.
                   </p>
                 )}
               </section>
 
-              {buildType !== "compose" && <section className="bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative">
-                <div className="flex items-center gap-sm mb-xs">
-                  <Globe size={20} className="text-primary" />
-                  <h2 className="font-label-caps text-label-caps text-on-surface">Public Port</h2>
-                  <span className="font-code-md text-[10px] text-on-surface-variant/50">The port the service is exposed on. Auto-assigned if unavailable.</span>
-                </div>
-                <div className="flex items-center gap-sm">
-                  <input
-                    value={port}
-                    onChange={(e) => setPort(parseInt(e.target.value) || 0)}
-                    type="number"
-                    min={1}
-                    max={65535}
-                    className="bg-surface-dim border border-outline-variant text-on-surface font-code-md text-code-md px-sm py-xs rounded w-32 transition-all duration-200 focus:border-primary focus:outline-none"
-                  />
-                  <span className="font-body-sm text-body-sm text-on-surface-variant">0 = random free port</span>
-                </div>
-              </section>}
+              {buildType !== "compose" && (
+                <section className="relative flex flex-col gap-md rounded-2xl border border-outline-variant bg-surface-card p-lg shadow-sm">
+                  <div className="flex items-center gap-sm mb-xs">
+                    <Globe size={20} className="text-primary" />
+                    <h2 className="font-label-caps text-label-caps text-on-surface">
+                      Public Port
+                    </h2>
+                    <span className="font-code-md text-[10px] text-on-surface-variant/50">
+                      The port the service is exposed on. Auto-assigned if
+                      unavailable.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-sm">
+                    <input
+                      value={port}
+                      onChange={(e) => setPort(parseInt(e.target.value) || 0)}
+                      type="number"
+                      min={1}
+                      max={65535}
+                      className="w-32 rounded-xl border border-outline-variant bg-surface-dim px-sm py-xs font-code-md text-code-md text-on-surface outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="font-body-sm text-body-sm text-on-surface-variant">
+                      0 = random free port
+                    </span>
+                  </div>
+                </section>
+              )}
 
-              <section className={`bg-surface-container-low border border-outline-variant rounded-lg p-md flex flex-col gap-md relative ${buildType === "custom" ? "" : "opacity-50 pointer-events-none"}`}>
+              <section
+                className={`relative flex flex-col gap-md rounded-2xl border border-outline-variant bg-surface-card p-lg shadow-sm ${buildType === "custom" ? "" : "pointer-events-none opacity-50"}`}
+              >
                 <div className="flex items-center justify-between mb-xs">
                   <div className="flex items-center gap-sm">
                     <Wrench size={20} className="text-secondary" />
-                    <h2 className="font-label-caps text-label-caps text-on-surface">Build Configuration</h2>
+                    <h2 className="font-label-caps text-label-caps text-on-surface">
+                      Build Configuration
+                    </h2>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-md">
@@ -642,78 +1059,142 @@ export function ApplicationWizard({
                       Install Command
                       <Info size={14} className="text-outline cursor-help" />
                     </label>
-                    <input value={installCmd} onChange={(e) => setInstallCmd(e.target.value)} placeholder="npm ci" className="bg-surface-dim border border-outline-variant text-on-surface font-code-md text-code-md px-sm py-xs rounded w-full transition-all duration-200" type="text" />
+                    <input
+                      value={installCmd}
+                      onChange={(e) => setInstallCmd(e.target.value)}
+                      placeholder="npm ci"
+                      className="w-full rounded-xl border border-outline-variant bg-surface-dim px-sm py-xs font-code-md text-code-md text-on-surface outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20"
+                      type="text"
+                    />
                   </div>
                   <div className="flex flex-col gap-xs">
                     <label className="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-1">
                       Build Command
                       <Info size={14} className="text-outline cursor-help" />
                     </label>
-                    <input value={buildCmd} onChange={(e) => setBuildCmd(e.target.value)} placeholder="npm run build" className="bg-surface-dim border border-outline-variant text-on-surface font-code-md text-code-md px-sm py-xs rounded w-full transition-all duration-200" type="text" />
+                    <input
+                      value={buildCmd}
+                      onChange={(e) => setBuildCmd(e.target.value)}
+                      placeholder="npm run build"
+                      className="w-full rounded-xl border border-outline-variant bg-surface-dim px-sm py-xs font-code-md text-code-md text-on-surface outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20"
+                      type="text"
+                    />
                   </div>
                   <div className="flex flex-col gap-xs">
                     <label className="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-1">
                       Start Command
                       <Info size={14} className="text-outline cursor-help" />
                     </label>
-                    <input value={startCmd} onChange={(e) => setStartCmd(e.target.value)} placeholder="npm start" className="bg-surface-dim border border-outline-variant text-on-surface font-code-md text-code-md px-sm py-xs rounded w-full transition-all duration-200" type="text" />
+                    <input
+                      value={startCmd}
+                      onChange={(e) => setStartCmd(e.target.value)}
+                      placeholder="npm start"
+                      className="w-full rounded-xl border border-outline-variant bg-surface-dim px-sm py-xs font-code-md text-code-md text-on-surface outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-primary/20"
+                      type="text"
+                    />
                   </div>
                 </div>
                 <div className="mt-sm border-t border-outline-variant/50 pt-sm">
                   <Accordion
-                    items={[{
-                      value: "advanced-build-settings",
-                      title: "Advanced build settings",
-                      content: <Input label="Dist folder" value={distFolder} onChange={(event) => setDistFolder(event.target.value)} placeholder="dist" />,
-                    }]}
+                    items={[
+                      {
+                        value: "advanced-build-settings",
+                        title: "Advanced build settings",
+                        content: (
+                          <Input
+                            label="Dist folder"
+                            value={distFolder}
+                            onChange={(event) =>
+                              setDistFolder(event.target.value)
+                            }
+                            placeholder="dist"
+                          />
+                        ),
+                      },
+                    ]}
                   />
                 </div>
               </section>
 
               {plan && (
-                <section className="bg-surface-container-low border border-primary/30 rounded-lg p-md flex flex-col gap-md relative">
+                <section className="relative flex flex-col gap-md rounded-2xl border border-primary/30 bg-surface-card p-lg shadow-sm">
                   <div className="flex items-center gap-sm mb-xs">
-                  <Pulse size={20} className="text-primary" />
-                    <h2 className="font-label-caps text-label-caps text-on-surface">Detected Stack</h2>
-                    <span className="ml-auto font-code-md text-[10px] text-on-surface-variant/70">auto-detected · editable</span>
+                    <Pulse size={20} className="text-primary" />
+                    <h2 className="font-label-caps text-label-caps text-on-surface">
+                      Detected Stack
+                    </h2>
+                    <span className="ml-auto font-code-md text-[10px] text-on-surface-variant/70">
+                      auto-detected · editable
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-body-sm text-body-sm">
                     {[
-                      ["Framework", plan.framework], ["Library", plan.library],
+                      ["Framework", plan.framework],
+                      ["Library", plan.library],
                       ["Package Manager", plan.package_manager],
-                      ["Build Command", plan.build_command], ["Output", plan.output_dir],
-                      ["Application Type", plan.app_type], ["Web Server", plan.web_server],
-                      ["Container Port", buildType === "compose" ? "From Compose file" : String(port)], ["SPA Fallback", plan.spa_fallback ? "Enabled" : "Disabled"],
+                      ["Build Command", plan.build_command],
+                      ["Output", plan.output_dir],
+                      ["Application Type", plan.app_type],
+                      ["Web Server", plan.web_server],
+                      [
+                        "Container Port",
+                        buildType === "compose"
+                          ? "From Compose file"
+                          : String(port),
+                      ],
+                      [
+                        "SPA Fallback",
+                        plan.spa_fallback ? "Enabled" : "Disabled",
+                      ],
                     ].map(([k, v]) => (
                       <div key={k} className="flex flex-col">
-                        <span className="font-label-caps text-[9px] text-on-surface-variant/60 uppercase tracking-wider">{k}</span>
-                        <span className="font-code-md text-[11px] text-on-surface truncate" title={v}>{v || "—"}</span>
+                        <span className="font-label-caps text-[9px] text-on-surface-variant/60 uppercase tracking-wider">
+                          {k}
+                        </span>
+                        <span
+                          className="font-code-md text-[11px] text-on-surface truncate"
+                          title={v}
+                        >
+                          {v || "—"}
+                        </span>
                       </div>
                     ))}
                   </div>
                   {buildType === "custom" && (
-                  <div className="flex flex-col gap-3 mt-sm pt-sm border-t border-outline-variant/40">
-                    <details className="group">
-                      <summary className="flex items-center gap-1 font-code-md text-[11px] text-primary cursor-pointer select-none">
-                        <CaretDown size={14} className="transition-transform group-open:rotate-180" />
-                        Preview generated nginx.conf
-                      </summary>
-                      <pre className="mt-sm bg-[#050505] border border-white/10 rounded-lg p-3 font-code-md text-[11px] text-on-surface overflow-auto max-h-56 whitespace-pre-wrap">{plan.nginx_conf}</pre>
-                    </details>
-                    <details className="group">
-                      <summary className="flex items-center gap-1 font-code-md text-[11px] text-primary cursor-pointer select-none">
-                        <CaretDown size={14} className="transition-transform group-open:rotate-180" />
-                        Preview generated Dockerfile
-                      </summary>
-                      <pre className="mt-sm bg-[#050505] border border-white/10 rounded-lg p-3 font-code-md text-[11px] text-on-surface overflow-auto max-h-56 whitespace-pre-wrap">{plan.dockerfile}</pre>
-                    </details>
-                    {plan.warnings?.length > 0 && (
-                      <div className="flex items-start gap-1 text-[#fbbf24]">
-                  <Warning size={14} />
-                        <span className="font-code-md text-[11px]">{plan.warnings[0]}</span>
-                      </div>
-                    )}
-                  </div>
+                    <div className="flex flex-col gap-3 mt-sm pt-sm border-t border-outline-variant/40">
+                      <details className="group">
+                        <summary className="flex items-center gap-1 font-code-md text-[11px] text-primary cursor-pointer select-none">
+                          <CaretDown
+                            size={14}
+                            className="transition-transform group-open:rotate-180"
+                          />
+                          Preview generated nginx.conf
+                        </summary>
+                        <pre className="mt-sm max-h-56 overflow-auto whitespace-pre-wrap rounded-xl border border-outline-variant bg-surface-container-lowest p-md font-code-md text-[11px] text-on-surface">
+                          {plan.nginx_conf}
+                        </pre>
+                      </details>
+                      <details className="group">
+                        <summary className="flex items-center gap-1 font-code-md text-[11px] text-primary cursor-pointer select-none">
+                          <CaretDown
+                            size={14}
+                            className="transition-transform group-open:rotate-180"
+                          />
+                          Preview generated Dockerfile
+                        </summary>
+                        <pre className="mt-sm max-h-56 overflow-auto whitespace-pre-wrap rounded-xl border border-outline-variant bg-surface-container-lowest p-md font-code-md text-[11px] text-on-surface">
+                          {plan.dockerfile}
+                        </pre>
+                      </details>
+                      {plan.warnings?.length > 0 && (
+                        <div className="flex items-start gap-1 text-status-warning">
+                          <Warning size={14} />
+                          <span className="font-code-md text-[11px]">
+                            {plan.warnings[0]}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </section>
               )}
@@ -747,7 +1228,6 @@ export function ApplicationWizard({
             </div>
           )}
         </div>
-
       </Wizard>
     </Modal>
   );

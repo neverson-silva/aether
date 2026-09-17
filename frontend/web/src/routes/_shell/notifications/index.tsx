@@ -34,6 +34,7 @@ import {
   Skeleton,
   useToast,
 } from "@aether/design-system";
+import { PageHeader } from "../../../components/PageHeader";
 import {
   useAlertEvents,
   useAlertRules,
@@ -187,96 +188,92 @@ function Notifications() {
   };
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      <header className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-headline-sm font-semibold text-foreground">
-            Notifications &amp; Alerts
-          </h1>
-          <p className="mt-1 text-body-md text-muted-foreground">
-            Notification history, alert rules, routing and communication
-            channels.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            icon={designIcon(Clock)}
-            onClick={() => navigate({ to: "/monitoring" } as never)}
-          >
-            View audit log
-          </Button>
-          <Dialog
-            open={ruleOpen}
-            onOpenChange={setRuleOpen}
-            title="Create alert rule"
-            description="Define when Aether should notify your team."
-            trigger={<Button icon={designIcon(Plus)}>New rule</Button>}
-          >
-            <div className="space-y-5">
-              <Field label="Rule name" required>
-                <Input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="High CPU utilization"
-                  leadingIcon={designIcon(Tag)}
-                />
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <NativeSelect
-                  aria-label="Metric"
-                  value={metric}
-                  onChange={(event) => setMetric(event.target.value)}
-                  options={[
-                    { label: "CPU (%)", value: "cpu" },
-                    { label: "Memory (MiB)", value: "memory" },
-                    { label: "Memory (%)", value: "memory_pct" },
-                  ]}
-                />
-                <Field label="Threshold" required>
+      <PageHeader
+        eyebrow="Operations"
+        title="Notifications & Alerts"
+        description="Notification history, alert rules, routing and communication channels."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              icon={designIcon(Clock)}
+              onClick={() => navigate({ to: "/monitoring" } as never)}
+            >
+              View audit log
+            </Button>
+            <Dialog
+              open={ruleOpen}
+              onOpenChange={setRuleOpen}
+              title="Create alert rule"
+              description="Define when Aether should notify your team."
+              trigger={<Button icon={designIcon(Plus)}>New rule</Button>}
+            >
+              <div className="space-y-5">
+                <Field label="Rule name" required>
                   <Input
-                    type="number"
-                    value={threshold}
-                    onChange={(event) => setThreshold(event.target.value)}
-                    leadingIcon={designIcon(Funnel)}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="High CPU utilization"
+                    leadingIcon={designIcon(Tag)}
                   />
                 </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <NativeSelect
+                    aria-label="Metric"
+                    value={metric}
+                    onChange={(event) => setMetric(event.target.value)}
+                    options={[
+                      { label: "CPU (%)", value: "cpu" },
+                      { label: "Memory (MiB)", value: "memory" },
+                      { label: "Memory (%)", value: "memory_pct" },
+                    ]}
+                  />
+                  <Field label="Threshold" required>
+                    <Input
+                      type="number"
+                      value={threshold}
+                      onChange={(event) => setThreshold(event.target.value)}
+                      leadingIcon={designIcon(Funnel)}
+                    />
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <NativeSelect
+                    aria-label="Severity"
+                    value={severity}
+                    onChange={(event) => setSeverity(event.target.value)}
+                    options={[
+                      { label: "Warning", value: "warning" },
+                      { label: "Critical", value: "critical" },
+                      { label: "Info", value: "info" },
+                    ]}
+                  />
+                  <NativeSelect
+                    aria-label="Target service"
+                    value={targetApp}
+                    onChange={(event) => setTargetApp(event.target.value)}
+                    options={[
+                      { label: "All services", value: "" },
+                      ...(appsQuery.data ?? []).map((app) => ({
+                        label: app.name,
+                        value: app.id,
+                      })),
+                    ]}
+                  />
+                </div>
+                <div className="flex justify-end gap-2 border-t border-border pt-4">
+                  <Button variant="ghost" onClick={() => setRuleOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button loading={createRule.isPending} onClick={addRule}>
+                    Create rule
+                  </Button>
+                </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <NativeSelect
-                  aria-label="Severity"
-                  value={severity}
-                  onChange={(event) => setSeverity(event.target.value)}
-                  options={[
-                    { label: "Warning", value: "warning" },
-                    { label: "Critical", value: "critical" },
-                    { label: "Info", value: "info" },
-                  ]}
-                />
-                <NativeSelect
-                  aria-label="Target service"
-                  value={targetApp}
-                  onChange={(event) => setTargetApp(event.target.value)}
-                  options={[
-                    { label: "All services", value: "" },
-                    ...(appsQuery.data ?? []).map((app) => ({
-                      label: app.name,
-                      value: app.id,
-                    })),
-                  ]}
-                />
-              </div>
-              <div className="flex justify-end gap-2 border-t border-border pt-4">
-                <Button variant="ghost" onClick={() => setRuleOpen(false)}>
-                  Cancel
-                </Button>
-                <Button loading={createRule.isPending} onClick={addRule}>
-                  Create rule
-                </Button>
-              </div>
-            </div>
-          </Dialog>
-        </div>
-      </header>
+            </Dialog>
+          </div>
+        }
+      />
       {queryError ? (
         <InlineError
           title="Could not load notification data"
@@ -285,7 +282,7 @@ function Notifications() {
         />
       ) : null}
       <div
-        className="flex gap-1 border-b border-border"
+        className="flex gap-1 rounded-xl border border-border bg-surface-container-low p-1"
         role="tablist"
         aria-label="Notification views"
       >
@@ -294,7 +291,7 @@ function Notifications() {
           role="tab"
           aria-selected={tab === "notifications"}
           onClick={() => setTab("notifications")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-body-sm font-semibold ${tab === "notifications" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          className={`flex items-center gap-2 rounded-md px-md py-sm text-body-sm font-semibold outline-none transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-ring ${tab === "notifications" ? "bg-surface-card text-primary shadow-sm" : "text-muted-foreground hover:bg-surface-container-high hover:text-foreground"}`}
         >
           <Bell size={17} />
           Notifications{unread ? <Badge tone="danger">{unread}</Badge> : null}
@@ -304,7 +301,7 @@ function Notifications() {
           role="tab"
           aria-selected={tab === "alerts"}
           onClick={() => setTab("alerts")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-body-sm font-semibold ${tab === "alerts" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          className={`flex items-center gap-2 rounded-md px-md py-sm text-body-sm font-semibold outline-none transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-ring ${tab === "alerts" ? "bg-surface-card text-primary shadow-sm" : "text-muted-foreground hover:bg-surface-container-high hover:text-foreground"}`}
         >
           <ListChecks size={17} />
           Alert rules
@@ -441,7 +438,7 @@ function Notifications() {
                   return (
                     <div
                       key={rule.id}
-                      className={`flex flex-col justify-between gap-4 rounded-lg border border-border bg-surface-card p-4 sm:flex-row sm:items-center ${rule.enabled ? "" : "opacity-60"}`}
+                      className={`flex flex-col justify-between gap-4 rounded-2xl border border-border bg-surface-card p-4 sm:flex-row sm:items-center ${rule.enabled ? "" : "opacity-60"}`}
                     >
                       <div className="flex min-w-0 items-start gap-3">
                         <Icon
@@ -560,7 +557,7 @@ function Notifications() {
                       return (
                         <div
                           key={type}
-                          className="rounded-lg border border-border bg-surface-card p-3"
+                          className="rounded-2xl border border-border bg-surface-card p-3"
                         >
                           <Icon size={20} className="text-primary" />
                           <div className="mt-2 font-semibold capitalize text-foreground">

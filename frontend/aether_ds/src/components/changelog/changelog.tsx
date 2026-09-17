@@ -1,44 +1,44 @@
-import { CaretDown, CaretRight, Sparkle } from '@phosphor-icons/react'
-import { type ReactNode, useState } from 'react'
+import { CaretDown, CaretRight, Sparkle } from "@phosphor-icons/react";
+import { type ReactNode, useState } from "react";
 export interface ReleaseNote {
-  id: string
-  version: string
-  date: ReactNode
-  title: string
-  summary?: ReactNode
-  category?: 'feature' | 'improvement' | 'fix' | 'breaking'
-  impact?: 'low' | 'medium' | 'high'
-  migration?: ReactNode
-  details?: ReactNode
-  unread?: boolean
+  id: string;
+  version: string;
+  date: ReactNode;
+  title: string;
+  summary?: ReactNode;
+  category?: "feature" | "improvement" | "fix" | "breaking";
+  impact?: "low" | "medium" | "high";
+  migration?: ReactNode;
+  details?: ReactNode;
+  unread?: boolean;
 }
 export interface ChangelogProps {
-  releases: ReleaseNote[]
-  onRead?: (id: string) => void
-  empty?: ReactNode
+  releases: ReleaseNote[];
+  onRead?: (id: string) => void;
+  empty?: ReactNode;
 }
 export function Changelog({
-  empty = 'No releases yet.',
+  empty = "No releases yet.",
   onRead,
   releases,
 }: ChangelogProps) {
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null);
   return releases.length ? (
     <section className="space-y-4" aria-label="Changelog">
       {releases.map((release) => {
-        const open = expanded === release.id
+        const open = expanded === release.id;
         return (
           <article
             key={release.id}
-            className={`rounded-lg border border-border bg-surface-card p-5 ${release.unread ? 'border-primary/40' : ''}`}
+            className={`rounded-2xl border border-border bg-surface-card p-5 shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md ${release.unread ? "border-primary/40" : ""}`}
           >
             <button
               type="button"
               onClick={() => {
-                setExpanded(open ? null : release.id)
-                if (!open) onRead?.(release.id)
+                setExpanded(open ? null : release.id);
+                if (!open) onRead?.(release.id);
               }}
-              className="flex w-full items-start gap-3 text-start"
+              className="flex w-full items-start gap-3 text-start outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="mt-0.5 text-primary">
                 {open ? <CaretDown size={18} /> : <CaretRight size={18} />}
@@ -55,7 +55,7 @@ export function Changelog({
                     </span>
                   ) : null}
                   <span className="text-label-caps text-muted-foreground">
-                    {release.category ?? 'release'}
+                    {release.category ?? "release"}
                   </span>
                 </span>
                 <span className="mt-2 block text-body-md font-semibold text-foreground">
@@ -75,7 +75,7 @@ export function Changelog({
               <div className="ml-8 mt-4 space-y-3 border-t border-border pt-4 text-body-sm text-foreground">
                 {release.details ? <div>{release.details}</div> : null}
                 {release.migration ? (
-                  <div className="rounded-md bg-surface-container p-3">
+                  <div className="rounded-xl border border-border/70 bg-surface-container p-3">
                     <strong className="block text-body-sm">
                       Migration note
                     </strong>
@@ -85,12 +85,12 @@ export function Changelog({
               </div>
             ) : null}
           </article>
-        )
+        );
       })}
     </section>
   ) : (
-    <div className="rounded-lg border border-dashed border-border p-8 text-center text-body-sm text-muted-foreground">
+    <div className="rounded-2xl border border-dashed border-border bg-surface-card p-8 text-center text-body-sm text-muted-foreground shadow-sm">
       {empty}
     </div>
-  )
+  );
 }

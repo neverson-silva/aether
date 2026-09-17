@@ -17,9 +17,9 @@ export function LoadingBoundary({
   const sizes = {
     page: 'min-h-64',
     section: 'min-h-32',
-    card: 'min-h-24 rounded-lg border border-border',
-    table: 'min-h-48 rounded-lg border border-border',
-    overlay: 'min-h-32 rounded-lg bg-surface-modal/80',
+    card: 'min-h-24 rounded-xl border border-border bg-surface-card/60 shadow-sm',
+    table: 'min-h-48 rounded-xl border border-border bg-surface-card/60 shadow-sm',
+    overlay: 'min-h-32 rounded-xl border border-border bg-surface-modal/80 shadow-xl backdrop-blur-xl',
     action: 'min-h-6',
   }
   return (

@@ -1,18 +1,18 @@
-import { X } from '@phosphor-icons/react'
-import type { ReactNode } from 'react'
+import { X } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
 export interface FilterOption {
-  id: string
-  label: string
-  value: string
-  displayValue?: ReactNode
+  id: string;
+  label: string;
+  value: string;
+  displayValue?: ReactNode;
 }
 export interface FilterBarProps {
-  filters: FilterOption[]
-  onRemove?: (id: string) => void
-  onClear?: () => void
-  activeCount?: number
-  children?: ReactNode
-  loading?: boolean
+  filters: FilterOption[];
+  onRemove?: (id: string) => void;
+  onClear?: () => void;
+  activeCount?: number;
+  children?: ReactNode;
+  loading?: boolean;
 }
 export function FilterBar({
   activeCount = 0,
@@ -23,7 +23,7 @@ export function FilterBar({
   onRemove,
 }: FilterBarProps) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-card p-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface-card p-2.5 shadow-sm">
       {loading ? (
         <span className="text-body-sm text-muted-foreground">
           Loading filters...
@@ -41,7 +41,7 @@ export function FilterBar({
             type="button"
             aria-label={`Remove ${filter.label} filter`}
             onClick={() => onRemove?.(filter.id)}
-            className="rounded-full p-0.5 hover:bg-primary/15"
+            className="rounded-full p-1 outline-none transition-[background-color,transform] duration-150 hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
           >
             <X size={14} aria-hidden="true" />
           </button>
@@ -52,10 +52,10 @@ export function FilterBar({
         type="button"
         disabled={!activeCount}
         onClick={onClear}
-        className="ml-auto rounded-md px-2 py-1 text-body-sm text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground disabled:opacity-50"
+        className="ml-auto rounded-xl px-2.5 py-1.5 text-body-sm text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985] disabled:opacity-50"
       >
-        Clear all{activeCount ? ` (${activeCount})` : ''}
+        Clear all{activeCount ? ` (${activeCount})` : ""}
       </button>
     </div>
-  )
+  );
 }

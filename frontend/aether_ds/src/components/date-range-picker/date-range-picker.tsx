@@ -1,16 +1,16 @@
-import { DatePicker } from '../date-picker/date-picker'
-import { Field } from '../field/field'
+import { DatePicker } from "../date-picker/date-picker";
+import { Field } from "../field/field";
 export interface DateRangePickerProps {
-  label?: string
-  description?: string
-  error?: string
-  start?: string
-  end?: string
-  minDate?: string
-  maxDate?: string
-  onStartChange?: (value: string) => void
-  onEndChange?: (value: string) => void
-  presets?: { label: string; start: string; end: string }[]
+  label?: string;
+  description?: string;
+  error?: string;
+  start?: string;
+  end?: string;
+  minDate?: string;
+  maxDate?: string;
+  onStartChange?: (value: string) => void;
+  onEndChange?: (value: string) => void;
+  presets?: { label: string; start: string; end: string }[];
 }
 export function DateRangePicker({
   description,
@@ -26,16 +26,16 @@ export function DateRangePicker({
 }: DateRangePickerProps) {
   const control = (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <DatePicker
-          value={start ?? ''}
+          value={start ?? ""}
           minDate={minDate}
           maxDate={maxDate}
           onValueChange={onStartChange}
           aria-label="Start date"
         />
         <DatePicker
-          value={end ?? ''}
+          value={end ?? ""}
           minDate={start || minDate}
           maxDate={maxDate}
           onValueChange={onEndChange}
@@ -48,10 +48,10 @@ export function DateRangePicker({
             <button
               type="button"
               key={preset.label}
-              className="rounded-md border border-border px-2 py-1 text-body-sm text-muted-foreground hover:bg-surface-container"
+              className="rounded-xl border border-border px-3 py-1.5 text-body-sm text-muted-foreground outline-none transition-[background-color,border-color,transform] duration-150 hover:border-primary/50 hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
               onClick={() => {
-                onStartChange?.(preset.start)
-                onEndChange?.(preset.end)
+                onStartChange?.(preset.start);
+                onEndChange?.(preset.end);
               }}
             >
               {preset.label}
@@ -60,12 +60,12 @@ export function DateRangePicker({
         </div>
       ) : null}
     </div>
-  )
+  );
   return label ? (
     <Field label={label} description={description} error={error}>
       {control}
     </Field>
   ) : (
     control
-  )
+  );
 }

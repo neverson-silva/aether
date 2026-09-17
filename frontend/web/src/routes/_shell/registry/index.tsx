@@ -12,6 +12,7 @@ import {
   useDeleteMirror,
 } from "../../../hooks";
 import { Badge, Button, Card, EmptyState, Input, useToast } from "@aether/design-system";
+import { PageHeader } from "../../../components/PageHeader";
 
 const schema = z.object({
   repo: z.string().min(1),
@@ -58,8 +59,8 @@ function Registry() {
   const onRefresh = () => images.refetch();
 
   return (
-    <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 p-6 lg:p-8">
-      <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-label-caps text-primary">Infrastructure</p><h1 className="text-headline-sm font-semibold text-foreground">Image registry</h1><p className="mt-1 text-body-md text-muted-foreground">Internal OCI registry with push and pull via Skopeo.</p></div><div className="flex items-center gap-3"><Badge tone={enabled ? "success" : "neutral"}>{enabled ? "Enabled" : "Disabled"}</Badge><Button variant={enabled ? "ghost" : "primary"} onClick={onToggle}>{enabled ? "Disable" : "Enable"}</Button></div></header>
+    <main className="mx-auto flex w-full max-w-screen-2xl flex-col gap-lg p-6 lg:p-8">
+      <PageHeader eyebrow="Infrastructure" title="Image registry" description="Internal OCI registry with push and pull via Skopeo." meta={<Badge tone={enabled ? "success" : "neutral"} dot>{enabled ? "Enabled" : "Disabled"}</Badge>} actions={<Button variant={enabled ? "ghost" : "primary"} onClick={onToggle}>{enabled ? "Disable" : "Enable"}</Button>} />
 
       {enabled && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-lg">

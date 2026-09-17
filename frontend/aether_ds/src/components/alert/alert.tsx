@@ -1,9 +1,10 @@
+import { X } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import type { HTMLAttributes } from 'react'
 import { tv, type VariantProps } from 'tailwind-variants'
 
 const alert = tv({
-  base: 'flex items-start gap-3 rounded-lg border p-4',
+  base: 'flex items-start gap-3 rounded-xl border p-4 shadow-sm',
   variants: {
     tone: {
       info: 'border-status-info/30 bg-status-info-container text-foreground',
@@ -49,11 +50,11 @@ export function Alert({
       {dismissible ? (
         <button
           type="button"
-          className="text-muted-foreground hover:text-foreground"
+          className="shrink-0 rounded-lg p-1 text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
           aria-label="Dismiss"
           onClick={onDismiss}
         >
-          ×
+          <X size={16} aria-hidden="true" />
         </button>
       ) : null}
     </div>

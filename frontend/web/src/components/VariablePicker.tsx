@@ -16,11 +16,11 @@ export interface VarGroup {
 }
 
 const SCOPE_META: Record<VarScope, { icon: typeof Package; label: string; color: string }> = {
-  service: { icon: Package, label: "Service", color: "text-[#60a5fa]" },
-  project: { icon: FolderOpen, label: "Project", color: "text-[#34d399]" },
-  organization: { icon: Globe, label: "Organization", color: "text-[#a78bfa]" },
-  environment: { icon: Database, label: "Environment", color: "text-[#fbbf24]" },
-  secrets: { icon: LockKey, label: "Secrets", color: "text-[#f472b6]" },
+  service: { icon: Package, label: "Service", color: "text-primary" },
+  project: { icon: FolderOpen, label: "Project", color: "text-status-success" },
+  organization: { icon: Globe, label: "Organization", color: "text-secondary" },
+  environment: { icon: Database, label: "Environment", color: "text-status-warning" },
+  secrets: { icon: LockKey, label: "Secrets", color: "text-status-danger" },
   system: { icon: ChartLine, label: "System", color: "text-on-surface-variant" },
 };
 
@@ -68,14 +68,14 @@ export function VariablePicker({
   if (!open) return null;
 
   return (
-    <div className="fixed z-[120] w-[340px] max-w-[calc(100vw-16px)] max-h-[360px] bg-surface-popover border border-outline-variant rounded-xl shadow-2xl overflow-hidden flex flex-col animate-modal-pop">
+    <div className="fixed z-[120] w-[340px] max-w-[calc(100vw-16px)] max-h-[360px] bg-surface-popover border border-outline-variant rounded-xl shadow-2xl overflow-hidden flex flex-col aether-enter">
       <div className="px-3 py-2 border-b border-outline-variant bg-surface-container-low flex items-center gap-2">
         <MagnifyingGlass size={15} className="text-primary" aria-hidden="true" />
         <span className="font-code-md text-code-md text-on-surface-variant">${query}</span>
         <div className="flex-1" />
         <span className="font-code-md text-[10px] text-on-surface-variant/60">{flat.length}</span>
       </div>
-      <div ref={listRef} className="overflow-y-auto sidebar-scroll flex-1">
+      <div ref={listRef} role="listbox" aria-label="Environment variables" className="overflow-y-auto sidebar-scroll flex-1">
         {filtered.length === 0 && (
           <p className="px-3 py-4 text-center font-body-sm text-body-sm text-on-surface-variant">No variables match "{query}".</p>
         )}
@@ -93,6 +93,9 @@ export function VariablePicker({
                 return (
                   <button
                     key={v.scope + v.name}
+                    type="button"
+                    role="option"
+                    aria-selected={active === idx}
                     data-idx={idx}
                     onClick={() => onSelect(v)}
                     onMouseEnter={() => setActive(idx)}
@@ -112,7 +115,7 @@ export function VariablePicker({
       </div>
       {(previewText ?? "") !== "" && (
         <div className="px-3 py-2 border-t border-outline-variant bg-surface-container-low font-code-md text-[11px] text-on-surface-variant">
-          Preview: <span className="text-[#4ade80]">{previewText}</span>
+          Preview: <span className="text-status-success">{previewText}</span>
         </div>
       )}
       <input

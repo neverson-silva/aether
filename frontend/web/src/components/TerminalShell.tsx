@@ -16,9 +16,9 @@ const SHELLS = [
 ];
 
 const STATUS_META: Record<string, { dot: string; label: string }> = {
-  connected: { dot: "bg-[#4ade80]", label: "Connected" },
-  connecting: { dot: "bg-[#fbbf24] animate-pulse", label: "Connecting" },
-  reconnecting: { dot: "bg-[#fbbf24] animate-pulse", label: "Reconnecting" },
+  connected: { dot: "bg-status-success", label: "Connected" },
+  connecting: { dot: "bg-status-warning", label: "Connecting" },
+  reconnecting: { dot: "bg-status-warning", label: "Reconnecting" },
   disconnected: { dot: "bg-error", label: "Disconnected" },
 };
 
@@ -30,7 +30,9 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
   const wsRef = useRef<WebSocket | null>(null);
   const genRef = useRef(0);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [connState, setConnState] = useState<"connecting" | "connected" | "reconnecting" | "disconnected">("connecting");
+  const [connState, setConnState] = useState<
+    "connecting" | "connected" | "reconnecting" | "disconnected"
+  >("connecting");
   const [shell, setShell] = useState("sh");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -55,7 +57,8 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
         cursorBlink: true,
         cursorStyle: "block",
         fontSize: 13,
-        fontFamily: '"JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace',
+        fontFamily:
+          '"JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace',
         scrollback: 10000,
         allowProposedApi: true,
         theme: {
@@ -146,9 +149,11 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
         if (alive()) sendResize();
       });
       observer.observe(host);
-      (host as HTMLElement & { __aetherResize?: ResizeObserver }).__aetherResize = observer;
+      (
+        host as HTMLElement & { __aetherResize?: ResizeObserver }
+      ).__aetherResize = observer;
     },
-    [wsUrl, sendResize]
+    [wsUrl, sendResize],
   );
 
   useEffect(() => {
@@ -182,7 +187,7 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
               <button
                 key={s.id}
                 onClick={() => setShell(s.id)}
-                className={`px-2.5 py-1 rounded-md font-code-md text-[12px] transition-colors ${shell === s.id ? "bg-primary text-on-primary" : "text-on-surface-variant hover:text-on-surface"}`}
+                className={`rounded-lg px-2.5 py-1 font-code-md text-[12px] outline-none transition-[background-color,color,transform] duration-150 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985] ${shell === s.id ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"}`}
               >
                 {s.label}
               </button>
@@ -190,7 +195,7 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
           </div>
           <button
             onClick={() => setSearchOpen((v) => !v)}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md font-code-md text-[12px] transition-colors ${searchOpen ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:text-on-surface"}`}
+            className={`flex items-center gap-1 rounded-lg px-2 py-1 font-code-md text-[12px] outline-none transition-[background-color,color,transform] duration-150 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985] ${searchOpen ? "bg-primary/10 text-primary" : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"}`}
             title="Search terminal"
           >
             <MagnifyingGlass size={14} />
@@ -208,7 +213,7 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
             inputRef={searchInputRef}
             autoFocus
             placeholder="Find in terminal (Enter next, Shift+Enter prev)"
-            className="w-72 bg-surface-container-lowest border border-outline-variant rounded-md px-2 py-1 font-code-md text-[12px] text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:outline-none"
+            className="w-72 rounded-xl border border-outline-variant bg-surface-container-lowest px-2 py-1 font-code-md text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-2 focus:ring-ring/20"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -218,11 +223,16 @@ export function TerminalShell({ wsUrl }: { wsUrl: string }) {
               }
             }}
           />
-          <span className="font-code-md text-[11px] text-on-surface-variant/60">Esc to close</span>
+          <span className="font-code-md text-[11px] text-on-surface-variant/60">
+            Esc to close
+          </span>
         </div>
       )}
 
-      <div ref={hostRef} className="h-[60vh] min-h-[320px] bg-[#0a0a0a] p-1.5" />
+      <div
+        ref={hostRef}
+        className="h-[60vh] min-h-[320px] bg-surface-lowest p-1.5"
+      />
     </Card>
   );
 }

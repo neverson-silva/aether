@@ -81,7 +81,7 @@ function ToastViewport({
               toast={toast}
               swipeDirection={['right', 'down']}
               style={{ backgroundColor: toneColors[tone], borderLeftColor: toneBorders[tone], width: '30rem', maxWidth: 'calc(100vw - 2rem)', minWidth: 0, boxSizing: 'border-box' }}
-              className={`relative w-full min-w-0 max-w-full overflow-hidden rounded-lg border p-4 text-foreground shadow-lg outline-none transition-[transform,opacity] duration-200 ease-[var(--motion-ease-standard)] data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 data-[ending-style]:duration-150 ${toneStyles[tone]}`}
+              className={`relative w-full min-w-0 max-w-full overflow-hidden rounded-xl border p-4 text-foreground shadow-xl outline-none backdrop-blur-xl transition-[transform,opacity] duration-200 ease-[var(--motion-ease-standard)] data-[starting-style]:translate-y-2 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:opacity-0 data-[ending-style]:duration-150 ${toneStyles[tone]}`}
             >
               <div className="flex min-w-0 gap-3">
                 <Icon
@@ -101,12 +101,12 @@ function ToastViewport({
                   {toast.actionProps ? (
                     <BaseToast.Action
                       {...toast.actionProps}
-                      className="mt-3 max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-border px-2 py-1 text-body-sm hover:bg-surface-container"
+                      className="mt-3 max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-lg border border-border px-2 py-1 text-body-sm outline-none transition-[background-color,transform] duration-150 hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985]"
                     />
                   ) : null}
                 </BaseToast.Content>
                 <BaseToast.Close
-                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  className="shrink-0 rounded-lg p-1 text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
                   aria-label="Dismiss notification"
                 >
                   <X size={16} />

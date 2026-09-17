@@ -1,33 +1,33 @@
-import { Combobox as BaseCombobox } from '@base-ui/react/combobox'
-import { MagnifyingGlass, SpinnerGap } from '@phosphor-icons/react'
-import { useEffect, useRef, useState } from 'react'
-import { Field } from '../field/field'
+import { Combobox as BaseCombobox } from "@base-ui/react/combobox";
+import { MagnifyingGlass, SpinnerGap } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { Field } from "../field/field";
 
 export interface AsyncSearchOption {
-  value: string
-  label: string
-  description?: string
-  disabled?: boolean
+  value: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
 }
 
 export interface AsyncSearchInputProps {
-  label?: string
-  description?: string
-  error?: string
-  placeholder?: string
-  value?: string | null
-  defaultValue?: string | null
-  initialOptions?: AsyncSearchOption[]
-  loadOptions: (query: string) => Promise<AsyncSearchOption[]>
-  onValueChange?: (value: string | null, option?: AsyncSearchOption) => void
-  minQueryLength?: number
-  debounceMs?: number
-  noResults?: string
-  loadingLabel?: string
-  disabled?: boolean
+  label?: string;
+  description?: string;
+  error?: string;
+  placeholder?: string;
+  value?: string | null;
+  defaultValue?: string | null;
+  initialOptions?: AsyncSearchOption[];
+  loadOptions: (query: string) => Promise<AsyncSearchOption[]>;
+  onValueChange?: (value: string | null, option?: AsyncSearchOption) => void;
+  minQueryLength?: number;
+  debounceMs?: number;
+  noResults?: string;
+  loadingLabel?: string;
+  disabled?: boolean;
 }
 
-const emptyOptions: AsyncSearchOption[] = []
+const emptyOptions: AsyncSearchOption[] = [];
 
 export function AsyncSearchInput({
   debounceMs = 250,
@@ -38,45 +38,45 @@ export function AsyncSearchInput({
   initialOptions = emptyOptions,
   label,
   loadOptions,
-  loadingLabel = 'Searching...',
+  loadingLabel = "Searching...",
   minQueryLength = 2,
-  noResults = 'No results found.',
+  noResults = "No results found.",
   onValueChange,
-  placeholder = 'Search resources',
+  placeholder = "Search resources",
   value,
 }: AsyncSearchInputProps) {
-  const [options, setOptions] = useState(initialOptions)
-  const [query, setQuery] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [requestError, setRequestError] = useState<string>()
-  const requestId = useRef(0)
+  const [options, setOptions] = useState(initialOptions);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [requestError, setRequestError] = useState<string>();
+  const requestId = useRef(0);
 
   useEffect(() => {
-    const normalizedQuery = query.trim()
+    const normalizedQuery = query.trim();
     if (normalizedQuery.length < minQueryLength) {
-      setOptions(initialOptions)
-      setLoading(false)
-      setRequestError(undefined)
-      return
+      setOptions(initialOptions);
+      setLoading(false);
+      setRequestError(undefined);
+      return;
     }
-    const currentRequest = ++requestId.current
+    const currentRequest = ++requestId.current;
     const timer = window.setTimeout(async () => {
-      setLoading(true)
-      setRequestError(undefined)
+      setLoading(true);
+      setRequestError(undefined);
       try {
-        const nextOptions = await loadOptions(normalizedQuery)
-        if (currentRequest === requestId.current) setOptions(nextOptions)
+        const nextOptions = await loadOptions(normalizedQuery);
+        if (currentRequest === requestId.current) setOptions(nextOptions);
       } catch {
         if (currentRequest === requestId.current) {
-          setOptions([])
-          setRequestError('Unable to load results.')
+          setOptions([]);
+          setRequestError("Unable to load results.");
         }
       } finally {
-        if (currentRequest === requestId.current) setLoading(false)
+        if (currentRequest === requestId.current) setLoading(false);
       }
-    }, debounceMs)
-    return () => window.clearTimeout(timer)
-  }, [debounceMs, initialOptions, loadOptions, minQueryLength, query])
+    }, debounceMs);
+    return () => window.clearTimeout(timer);
+  }, [debounceMs, initialOptions, loadOptions, minQueryLength, query]);
 
   const control = (
     <BaseCombobox.Root
@@ -84,8 +84,8 @@ export function AsyncSearchInput({
       defaultValue={defaultValue}
       onInputValueChange={(nextQuery) => setQuery(nextQuery)}
       onValueChange={(nextValue) => {
-        const selected = options.find((option) => option.value === nextValue)
-        onValueChange?.(nextValue, selected)
+        const selected = options.find((option) => option.value === nextValue);
+        onValueChange?.(nextValue, selected);
       }}
     >
       <div className="relative">
@@ -97,7 +97,7 @@ export function AsyncSearchInput({
         <BaseCombobox.Input
           disabled={disabled}
           placeholder={placeholder}
-          className={`h-10 w-full rounded-md border bg-surface-control pl-9 pr-10 text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus:border-primary focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 ${error || requestError ? 'border-status-danger' : 'border-border'}`}
+          className={`h-10 w-full rounded-xl border bg-surface-control pl-9 pr-10 text-body-md text-foreground outline-none transition-[background-color,border-color,box-shadow] duration-200 hover:bg-surface-container-highest/40 focus:border-primary focus:bg-surface-card focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 ${error || requestError ? "border-status-danger" : "border-border"}`}
           aria-invalid={Boolean(error || requestError) || undefined}
         />
         {loading ? (
@@ -114,9 +114,9 @@ export function AsyncSearchInput({
           side="bottom"
           align="start"
           sideOffset={6}
-          collisionAvoidance={{ side: 'shift', align: 'shift' }}
+          collisionAvoidance={{ side: "shift", align: "shift" }}
         >
-          <BaseCombobox.Popup className="w-[var(--anchor-width)] max-w-[calc(100vw-2rem)] max-h-[min(var(--available-height),20rem)] overflow-y-auto rounded-lg border border-border bg-surface-popover p-1 shadow-lg outline-none data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
+          <BaseCombobox.Popup className="w-[var(--anchor-width)] max-w-[calc(100vw-2rem)] max-h-[min(var(--available-height),20rem)] overflow-y-auto rounded-2xl border border-border bg-surface-popover p-1.5 shadow-xl outline-none data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
             {requestError ? (
               <div className="px-3 py-3 text-body-sm text-status-danger">
                 {requestError}
@@ -136,7 +136,7 @@ export function AsyncSearchInput({
                     key={option.value}
                     value={option.value}
                     disabled={option.disabled}
-                    className="flex cursor-pointer items-start gap-2 rounded-md px-3 py-2 text-body-sm outline-none transition-colors data-[highlighted]:bg-surface-container data-[selected]:text-primary data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
+                    className="flex cursor-pointer items-start gap-2 rounded-xl px-3 py-2 text-body-sm outline-none transition-colors data-[highlighted]:bg-surface-container data-[selected]:text-primary data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{option.label}</span>
@@ -158,7 +158,7 @@ export function AsyncSearchInput({
         </BaseCombobox.Positioner>
       </BaseCombobox.Portal>
     </BaseCombobox.Root>
-  )
+  );
 
   return label ? (
     <Field
@@ -171,5 +171,5 @@ export function AsyncSearchInput({
     </Field>
   ) : (
     control
-  )
+  );
 }

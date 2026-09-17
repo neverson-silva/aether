@@ -1,18 +1,18 @@
-import { Popover as BasePopover } from '@base-ui/react/popover'
-import type { ReactElement, ReactNode } from 'react'
+import { Popover as BasePopover } from "@base-ui/react/popover";
+import type { ReactElement, ReactNode } from "react";
 
 export interface PopoverProps {
-  trigger: ReactElement
-  children: ReactNode
-  title?: string
-  description?: string
-  side?: 'top' | 'right' | 'bottom' | 'left'
+  trigger: ReactElement;
+  children: ReactNode;
+  title?: string;
+  description?: string;
+  side?: "top" | "right" | "bottom" | "left";
 }
 
 export function Popover({
   children,
   description,
-  side = 'bottom',
+  side = "bottom",
   title,
   trigger,
 }: PopoverProps) {
@@ -26,7 +26,7 @@ export function Popover({
           sideOffset={8}
           className="z-50"
         >
-          <BasePopover.Popup className="min-w-64 rounded-lg border border-border bg-surface-popover p-4 text-foreground shadow-lg outline-none data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
+          <BasePopover.Popup className="min-w-64 max-w-[calc(100vw-2rem)] origin-[var(--transform-origin)] rounded-2xl border border-border bg-surface-popover p-4 text-foreground shadow-xl outline-none data-[starting-style]:translate-y-1 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
             {title ? (
               <BasePopover.Title className="font-semibold">
                 {title}
@@ -37,10 +37,10 @@ export function Popover({
                 {description}
               </BasePopover.Description>
             ) : null}
-            <div className={title || description ? 'mt-4' : ''}>{children}</div>
+            <div className={title || description ? "mt-4" : ""}>{children}</div>
           </BasePopover.Popup>
         </BasePopover.Positioner>
       </BasePopover.Portal>
     </BasePopover.Root>
-  )
+  );
 }

@@ -72,9 +72,16 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
 
   return (
     <>
-      <Card>
-        <div className="flex items-center justify-between mb-md">
-          <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Deployments</h2>
+      <Card variant="elevated" padding="none">
+        <div className="flex flex-wrap items-start justify-between gap-md border-b border-outline-variant px-lg py-lg">
+          <div>
+            <p className="font-label-caps text-label-caps uppercase text-primary">Delivery history</p>
+            <div className="mt-xs flex flex-wrap items-baseline gap-sm">
+              <h2 className="font-headline-sm text-headline-sm text-on-surface">Deployments</h2>
+              <span className="rounded-full bg-surface-container-high px-sm py-0.5 font-code-md text-code-md text-on-surface-variant">{ordered.length}</span>
+            </div>
+            <p className="mt-xs text-body-sm text-on-surface-variant">Review releases, compare changes, and inspect runtime output.</p>
+          </div>
           <div className="flex items-center gap-sm">
             {!serviceId && sel.size === 2 && (
               <Button variant="secondary" icon={ArrowsClockwise as unknown as DesignIcon} onClick={() => { const [a, b] = [...sel]; setComparePair({ a, b }); }}>Compare</Button>
@@ -82,19 +89,19 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
             {!serviceId && <Button variant="ghost" icon={ArrowUUpLeft as unknown as DesignIcon} onClick={onRollback}>Rollback</Button>}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto bg-surface-container-lowest/30">
+          <table className="w-full min-w-[960px] border-collapse text-left">
             <thead>
-              <tr className="border-b border-outline-variant font-label-caps text-label-caps text-on-surface-variant/60 uppercase">
-                <th className="px-sm py-2 w-8" />
-                <th className="px-sm py-2">#</th>
-                <th className="px-sm py-2">Status</th>
-                <th className="px-sm py-2">Image</th>
-                <th className="px-sm py-2">Commit</th>
-                <th className="px-sm py-2">Duration</th>
-                <th className="px-sm py-2">Started</th>
-                <th className="px-sm py-2">Error</th>
-                <th className="px-sm py-2" />
+              <tr className="border-b border-outline-variant bg-surface-container-low/60 font-label-caps text-label-caps uppercase text-on-surface-variant/60">
+                <th scope="col" className="w-8 px-md py-sm" />
+                <th scope="col" className="px-md py-sm">#</th>
+                <th scope="col" className="px-md py-sm">Status</th>
+                <th scope="col" className="px-md py-sm">Image</th>
+                <th scope="col" className="px-md py-sm">Commit</th>
+                <th scope="col" className="px-md py-sm">Duration</th>
+                <th scope="col" className="px-md py-sm">Started</th>
+                <th scope="col" className="px-md py-sm">Error</th>
+                <th scope="col" className="px-md py-sm" />
               </tr>
             </thead>
             <tbody>
@@ -104,13 +111,12 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                 return (
                   <tr
                     key={d.id}
-                    onClick={() => setLogDep(d.id)}
                     className={cn(
-                      "hover:bg-surface-container-high transition-colors border-b border-outline-variant/40 cursor-pointer",
-                      isDeploymentActive(d.status) && "rt-card-active bg-status-success-container/10"
+                      "border-b border-outline-variant/40 transition-[background-color,box-shadow] duration-200 hover:bg-surface-container-high",
+                      isDeploymentActive(d.status) && "bg-status-success-container/10 shadow-[inset_3px_0_0_theme(colors.status.success)]"
                     )}
                   >
-                    <td className="px-sm py-2">
+                    <td className="px-md py-md">
                       <input
                         type="checkbox"
                         checked={sel.has(d.id)}
@@ -121,17 +127,26 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                         className="size-4 rounded-sm bg-surface border-outline-variant text-primary"
                       />
                     </td>
-                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant">#{d.number}</td>
-                    <td className="px-sm py-2">
+                    <td className="px-md py-md font-code-md text-code-md text-on-surface-variant">
+                      <button
+                        type="button"
+                        className="rounded px-1 text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setLogDep(d.id)}
+                        aria-label={`View logs for deployment #${d.number}`}
+                      >
+                        #{d.number}
+                      </button>
+                    </td>
+                    <td className="px-md py-md">
                       <Badge tone={deploymentTone(d.status)}>{deploymentLabel(d.status)}</Badge>
                     </td>
-                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant max-w-[220px] truncate">{d.image_ref || "—"}</td>
-                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant/60">{(d.commit || "—").slice(0, 8)}</td>
-                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant/60">{dur !== null ? `${dur}s` : "—"}</td>
-                    <td className="px-sm py-2 font-code-md text-code-md text-on-surface-variant/60">{rowTime(d)}</td>
-                    <td className="px-sm py-2">
+                    <td className="max-w-[220px] truncate px-md py-md font-code-md text-code-md text-on-surface-variant">{d.image_ref || "—"}</td>
+                    <td className="px-md py-md font-code-md text-code-md text-on-surface-variant/60">{(d.commit || "—").slice(0, 8)}</td>
+                    <td className="px-md py-md font-code-md text-code-md text-on-surface-variant/60">{dur !== null ? `${dur}s` : "—"}</td>
+                    <td className="px-md py-md font-code-md text-code-md text-on-surface-variant/60">{rowTime(d)}</td>
+                    <td className="px-md py-md">
                       {d.error ? (
-                        <span className="font-code-md text-code-md text-error/80 max-w-[180px] truncate inline-block align-middle" title={d.error}>
+                        <span className="inline-block max-w-[180px] truncate rounded-md bg-error/10 px-sm py-0.5 align-middle font-code-md text-code-md text-error/80" title={d.error}>
                           {d.error}
                         </span>
                       ) : (
@@ -143,7 +158,7 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                         </span>
                       )}
                     </td>
-                    <td className="px-sm py-2 text-right">
+                    <td className="px-md py-md text-right">
                       {isDeploymentActive(d.status) && (
                         <Button
                           variant="quiet"

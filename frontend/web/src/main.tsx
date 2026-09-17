@@ -8,7 +8,6 @@ import { NotificationProvider } from "./components/NotificationProvider";
 import { RealtimeProvider } from "./components/RealtimeProvider";
 import { OrgProvider } from "./components/OrgProvider";
 import "@aether/design-system/styles.css";
-import "./runtime.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {

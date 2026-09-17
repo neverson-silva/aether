@@ -11,7 +11,7 @@ export function NotFound() {
 
       <div className="relative z-10 flex flex-col items-center text-center px-md max-w-xl">
         <div className="relative mb-lg flex items-center justify-center">
-          <CloudSlash size={120} weight="duotone" className="text-primary/15 absolute animate-pulse select-none" aria-hidden="true" />
+          <CloudSlash size={120} weight="duotone" className="text-primary/15 absolute select-none" aria-hidden="true" />
           <span className="relative text-[clamp(4.5rem,16vw,9rem)] font-display-lg font-bold leading-none tracking-tighter bg-gradient-to-r from-primary via-on-surface to-primary bg-clip-text text-transparent">
             404
           </span>

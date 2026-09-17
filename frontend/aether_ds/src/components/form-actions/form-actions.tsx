@@ -1,32 +1,32 @@
-import type { HTMLAttributes, ReactNode } from 'react'
-import { Button } from '../button/button'
+import type { HTMLAttributes, ReactNode } from "react";
+import { Button } from "../button/button";
 export interface FormActionsProps extends HTMLAttributes<HTMLDivElement> {
-  dirty?: boolean
-  loading?: boolean
-  error?: string
-  success?: string
-  onSave?: () => void
-  onDiscard?: () => void
-  saveLabel?: string
-  discardLabel?: string
-  children?: ReactNode
+  dirty?: boolean;
+  loading?: boolean;
+  error?: string;
+  success?: string;
+  onSave?: () => void;
+  onDiscard?: () => void;
+  saveLabel?: string;
+  discardLabel?: string;
+  children?: ReactNode;
 }
 export function FormActions({
   children,
-  className = '',
-  discardLabel = 'Discard',
+  className = "",
+  discardLabel = "Discard",
   dirty,
   error,
   loading,
   onDiscard,
   onSave,
-  saveLabel = 'Save changes',
+  saveLabel = "Save changes",
   success,
   ...props
 }: FormActionsProps) {
   return (
     <div
-      className={`flex items-center justify-between gap-4 border-t border-border pt-4 ${className}`}
+      className={`flex flex-col gap-4 border-t border-border bg-surface-container-low/40 pt-4 sm:flex-row sm:items-center sm:justify-between ${className}`}
       {...props}
     >
       <div className="text-body-sm text-muted-foreground">
@@ -35,7 +35,7 @@ export function FormActions({
         ) : success ? (
           <span className="text-status-success">{success}</span>
         ) : dirty ? (
-          'Unsaved changes'
+          "Unsaved changes"
         ) : null}
         {children}
       </div>
@@ -52,5 +52,5 @@ export function FormActions({
         </Button>
       </div>
     </div>
-  )
+  );
 }

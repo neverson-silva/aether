@@ -28,7 +28,7 @@ export function CopyButton({
       type="button"
       onClick={copy}
       aria-label={`${label}${sensitive ? ' sensitive value' : ''}`}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-body-sm text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-body-sm text-muted-foreground outline-none transition-[background-color,border-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary active:scale-[0.985]"
     >
       {copied ? (
         <Check size={16} className="text-status-success" />

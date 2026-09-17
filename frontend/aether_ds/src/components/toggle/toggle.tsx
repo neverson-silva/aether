@@ -12,7 +12,7 @@ export function Toggle({ className = '', size = 'md', ...props }: ToggleProps) {
   const sizes = { sm: 'h-8 px-2', md: 'h-10 px-3', lg: 'h-12 px-4' }
   return (
     <BaseToggle
-      className={`inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-container data-[pressed]:bg-primary/10 data-[pressed]:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${sizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-surface-container data-[pressed]:bg-primary/10 data-[pressed]:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] disabled:opacity-50 ${sizes[size]} ${className}`}
       {...props}
     />
   )

@@ -1,17 +1,17 @@
-import type { ReactElement } from 'react'
+import type { ReactElement } from "react";
 import {
   CommandPalette,
   type CommandPaletteItem,
-} from '../command-palette/command-palette'
+} from "../command-palette/command-palette";
 export interface SpotlightProps {
-  trigger: ReactElement
-  items: CommandPaletteItem[]
-  placeholder?: string
-  scopes?: { id: string; label: string }[]
-  activeScope?: string
-  allowedItemIds?: string[]
-  recentItemIds?: string[]
-  onScopeChange?: (scope: string) => void
+  trigger: ReactElement;
+  items: CommandPaletteItem[];
+  placeholder?: string;
+  scopes?: { id: string; label: string }[];
+  activeScope?: string;
+  allowedItemIds?: string[];
+  recentItemIds?: string[];
+  onScopeChange?: (scope: string) => void;
 }
 export function Spotlight({
   activeScope,
@@ -22,8 +22,8 @@ export function Spotlight({
   scopes = [],
   ...props
 }: SpotlightProps) {
-  const allowed = allowedItemIds ? new Set(allowedItemIds) : null
-  const recent = new Map(recentItemIds.map((id, index) => [id, index]))
+  const allowed = allowedItemIds ? new Set(allowedItemIds) : null;
+  const recent = new Map(recentItemIds.map((id, index) => [id, index]));
   const filtered = items
     .filter((item) => !allowed || allowed.has(item.id))
     .filter((item) => !activeScope || item.group === activeScope)
@@ -32,7 +32,7 @@ export function Spotlight({
       (a, b) =>
         (recent.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
         (recent.get(b.id) ?? Number.MAX_SAFE_INTEGER),
-    )
+    );
   const trigger = scopes.length ? (
     <div className="space-y-2">
       <div className="flex gap-1" role="tablist" aria-label="Search scope">
@@ -43,7 +43,7 @@ export function Spotlight({
             role="tab"
             aria-selected={activeScope === scope.id}
             onClick={() => onScopeChange?.(scope.id)}
-            className="rounded-md px-2 py-1 text-label-caps text-muted-foreground hover:bg-surface-container aria-selected:bg-primary/15 aria-selected:text-primary"
+            className="rounded-lg px-2 py-1 text-label-caps text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container aria-selected:bg-primary/15 aria-selected:text-primary focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
           >
             {scope.label}
           </button>
@@ -53,6 +53,6 @@ export function Spotlight({
     </div>
   ) : (
     props.trigger
-  )
-  return <CommandPalette {...props} trigger={trigger} items={filtered} />
+  );
+  return <CommandPalette {...props} trigger={trigger} items={filtered} />;
 }

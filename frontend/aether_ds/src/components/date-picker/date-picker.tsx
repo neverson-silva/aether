@@ -1,33 +1,35 @@
-import { Popover } from '@base-ui/react/popover'
-import { CalendarBlank, X } from '@phosphor-icons/react'
-import { type InputHTMLAttributes, useState } from 'react'
-import { Calendar } from '../calendar/calendar'
-import { Field } from '../field/field'
+import { Popover } from "@base-ui/react/popover";
+import { CalendarBlank, X } from "@phosphor-icons/react";
+import { type InputHTMLAttributes, useState } from "react";
+import { Calendar } from "../calendar/calendar";
+import { Field } from "../field/field";
 
-export interface DatePickerProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'size'> {
-  label?: string
-  description?: string
-  error?: string
-  clearable?: boolean
-  onClear?: () => void
-  onValueChange?: (value: string) => void
-  minDate?: string
-  maxDate?: string
-  disabledDates?: string[]
+export interface DatePickerProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "type" | "size"
+> {
+  label?: string;
+  description?: string;
+  error?: string;
+  clearable?: boolean;
+  onClear?: () => void;
+  onValueChange?: (value: string) => void;
+  minDate?: string;
+  maxDate?: string;
+  disabledDates?: string[];
 }
 
 function displayDate(value?: string) {
-  if (!value) return ''
+  if (!value) return "";
   return new Intl.DateTimeFormat(undefined, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(`${value}T12:00:00`))
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
 }
 
 export function DatePicker({
-  className = '',
+  className = "",
   defaultValue,
   description,
   disabled,
@@ -43,23 +45,23 @@ export function DatePicker({
   onValueChange,
   required,
   title,
-  'aria-label': ariaLabel,
+  "aria-label": ariaLabel,
   value,
   clearable,
 }: DatePickerProps) {
-  const initialValue = String(value ?? defaultValue ?? '')
-  const [selectedDate, setSelectedDate] = useState(initialValue)
-  const [open, setOpen] = useState(false)
-  const currentValue = value === undefined ? selectedDate : String(value)
+  const initialValue = String(value ?? defaultValue ?? "");
+  const [selectedDate, setSelectedDate] = useState(initialValue);
+  const [open, setOpen] = useState(false);
+  const currentValue = value === undefined ? selectedDate : String(value);
   const handleValueChange = (nextValue: string) => {
-    setSelectedDate(nextValue)
-    onValueChange?.(nextValue)
-    setOpen(false)
+    setSelectedDate(nextValue);
+    onValueChange?.(nextValue);
+    setOpen(false);
     onChange?.({
       target: { value: nextValue, name },
       currentTarget: { value: nextValue, name },
-    } as unknown as React.ChangeEvent<HTMLInputElement>)
-  }
+    } as unknown as React.ChangeEvent<HTMLInputElement>);
+  };
   const control = (
     <div className="relative">
       <Popover.Root open={open} onOpenChange={setOpen}>
@@ -76,14 +78,14 @@ export function DatePicker({
           aria-invalid={Boolean(error) || undefined}
           aria-required={required || undefined}
           title={title}
-          className={`flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-surface-control px-3 text-start text-body-md text-foreground outline-none transition-[border-color,box-shadow] focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 ${error ? 'border-status-danger' : 'border-border'} ${className}`}
+          className={`flex h-10 w-full items-center justify-between gap-2 rounded-xl border bg-surface-control px-3 text-start text-body-md text-foreground outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 hover:bg-surface-container-highest/40 focus-visible:border-primary focus-visible:bg-surface-card focus-visible:ring-2 focus-visible:ring-ring/20 active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-50 ${error ? "border-status-danger" : "border-border"} ${className}`}
         >
           <span
             className={
-              currentValue ? 'text-foreground' : 'text-muted-foreground'
+              currentValue ? "text-foreground" : "text-muted-foreground"
             }
           >
-            {currentValue ? displayDate(currentValue) : 'Select a date'}
+            {currentValue ? displayDate(currentValue) : "Select a date"}
           </span>
           <CalendarBlank
             size={18}
@@ -98,12 +100,12 @@ export function DatePicker({
             align="start"
             sideOffset={8}
             collisionAvoidance={{
-              side: 'none',
-              align: 'shift',
-              fallbackAxisSide: 'none',
+              side: "none",
+              align: "shift",
+              fallbackAxisSide: "none",
             }}
           >
-            <Popover.Popup className="rounded-lg border border-border bg-surface-popover p-1 shadow-lg outline-none data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
+            <Popover.Popup className="max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-surface-popover p-1.5 shadow-xl outline-none data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 transition-[transform,opacity] duration-200">
               <Calendar
                 value={currentValue}
                 minDate={minDate}
@@ -117,11 +119,11 @@ export function DatePicker({
         {clearable && currentValue ? (
           <button
             type="button"
-            className="absolute right-9 top-2.5 text-muted-foreground"
+            className="absolute right-9 top-2 inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
             aria-label="Clear date"
             onClick={() => {
-              onClear?.()
-              handleValueChange('')
+              onClear?.();
+              handleValueChange("");
             }}
           >
             <X size={16} aria-hidden="true" />
@@ -129,7 +131,7 @@ export function DatePicker({
         ) : null}
       </Popover.Root>
     </div>
-  )
+  );
   return label ? (
     <Field
       label={label}
@@ -141,5 +143,5 @@ export function DatePicker({
     </Field>
   ) : (
     control
-  )
+  );
 }
