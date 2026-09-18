@@ -142,7 +142,7 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		AdditionalNetworks: []string{d.PublishedNetwork},
 		MemMB:              db.MemMB,
 		Labels: map[string]string{
-			"aether.owner":        "user",
+			"aether.owner":        "aether",
 			"aether.service-type": "database",
 			"aether.service-id":   serviceID.String(),
 			"aether.service-name": db.Name,
@@ -301,6 +301,11 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 		containerPort = db.Port
 	}
 	if err := d.waitHealthy(ctx, db, containerPort, databaseHealthTimeout); err != nil {
+		if lines, logErr := d.Runtime.LogTail(ctx, containerID, 40); logErr == nil {
+			for _, line := range lines {
+				d.appendDeployLog(ctx, deploymentID, "Container: "+line)
+			}
+		}
 		_ = d.Runtime.Remove(ctx, containerID)
 		d.appendDeployLog(ctx, deploymentID, "Health check failed: "+err.Error())
 		if dep != nil {
