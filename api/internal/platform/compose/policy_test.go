@@ -322,6 +322,19 @@ func TestNormalizeUserComposeUsesAutomaticPortBindings(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyAllowsPublishedPortsForUserCompose(t *testing.T) {
+	content := `x-aether-allow-mutable-images: true
+services:
+  app:
+    image: example/app:latest
+    ports:
+      - "80:8080"
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("user compose published port rejected: %v", err)
+	}
+}
+
 func TestNormalizeUserComposeAllowsDokployCompatibleOptions(t *testing.T) {
 	content, err := NormalizeUserCompose(`services:
   waf:

@@ -473,7 +473,7 @@ func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allo
 	validateServiceVolumes(name, nodeMapValue(service, "volumes"), allowUserCompose, violations)
 	validateServiceConfigs(name, nodeMapValue(service, "configs"), violations)
 	validateServiceNetworks(name, nodeMapValue(service, "networks"), violations)
-	validateServicePorts(name, nodeMapValue(service, "ports"), allowHostPorts, violations)
+	validateServicePorts(name, nodeMapValue(service, "ports"), allowHostPorts || allowUserCompose, violations)
 	validateServicePathList(name, nodeMapValue(service, "env_file"), "env_file", violations)
 	validateBuild(name, nodeMapValue(service, "build"), violations)
 	if hasItems(nodeMapValue(service, "extends")) {
