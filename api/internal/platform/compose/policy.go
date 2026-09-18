@@ -62,7 +62,8 @@ func ValidatePolicy(content string) error {
 				violations = append(violations, "service "+name+" must be a mapping")
 				continue
 			}
-			validateServicePolicy(name, service, allowHostPorts, allowUserCompose, &violations)
+			serviceIsApplication := hasApplicationServiceLabel(service)
+			validateServicePolicy(name, service, allowHostPorts, allowUserCompose || serviceIsApplication, serviceIsApplication, &violations)
 		}
 	}
 	if len(violations) > 0 {
@@ -445,7 +446,7 @@ func validateNamedResources(root *yaml.Node, kind string, allowUserCompose bool,
 	}
 }
 
-func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allowUserCompose bool, violations *[]string) {
+func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allowUserCompose, allowUserPorts bool, violations *[]string) {
 	if image := nodeMapValue(service, "image"); image != nil && !allowUserCompose && strings.HasSuffix(strings.ToLower(strings.TrimSpace(image.Value)), ":latest") {
 		*violations = append(*violations, "service "+name+" cannot use mutable image tag latest")
 	}
@@ -473,7 +474,7 @@ func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allo
 	validateServiceVolumes(name, nodeMapValue(service, "volumes"), allowUserCompose, violations)
 	validateServiceConfigs(name, nodeMapValue(service, "configs"), violations)
 	validateServiceNetworks(name, nodeMapValue(service, "networks"), violations)
-	validateServicePorts(name, nodeMapValue(service, "ports"), allowHostPorts || allowUserCompose, violations)
+	validateServicePorts(name, nodeMapValue(service, "ports"), allowHostPorts || allowUserCompose, allowUserPorts, violations)
 	validateServicePathList(name, nodeMapValue(service, "env_file"), "env_file", violations)
 	validateBuild(name, nodeMapValue(service, "build"), violations)
 	if hasItems(nodeMapValue(service, "extends")) {
@@ -542,7 +543,7 @@ func validateServiceConfigs(name string, configs *yaml.Node, violations *[]strin
 	}
 }
 
-func validateServicePorts(name string, ports *yaml.Node, allowHostPorts bool, violations *[]string) {
+func validateServicePorts(name string, ports *yaml.Node, allowHostPorts, allowUserPorts bool, violations *[]string) {
 	if ports == nil {
 		return
 	}
@@ -556,7 +557,11 @@ func validateServicePorts(name string, ports *yaml.Node, allowHostPorts bool, vi
 	for _, port := range ports.Content {
 		if port.Kind == yaml.ScalarNode {
 			parts := strings.Split(port.Value, ":")
-			if len(parts) > 3 || !validPublishedPort(parts, len(parts)-2, allowHostPorts) {
+			valid := validPublishedPort(parts, len(parts)-2, allowHostPorts)
+			if allowUserPorts && len(parts) > 0 {
+				valid = validPortValue(parts[len(parts)-1], false, allowHostPorts)
+			}
+			if len(parts) > 3 || !valid {
 				*violations = append(*violations, "service "+name+" has an invalid published port")
 			}
 			continue
@@ -566,7 +571,7 @@ func validateServicePorts(name string, ports *yaml.Node, allowHostPorts bool, vi
 			continue
 		}
 		published := nodeMapValue(port, "published")
-		if published != nil && !validPortValue(published.Value, true, allowHostPorts) {
+		if published != nil && !allowUserPorts && !validPortValue(published.Value, true, allowHostPorts) {
 			*violations = append(*violations, "service "+name+" has an invalid published port")
 		}
 		target := nodeMapValue(port, "target")
@@ -574,6 +579,26 @@ func validateServicePorts(name string, ports *yaml.Node, allowHostPorts bool, vi
 			*violations = append(*violations, "service "+name+" has an invalid target port")
 		}
 	}
+}
+
+func hasApplicationServiceLabel(service *yaml.Node) bool {
+	labels := nodeMapValue(service, "labels")
+	if labels == nil {
+		return false
+	}
+	if labels.Kind == yaml.MappingNode {
+		value := nodeMapValue(labels, "aether.service-type")
+		return value != nil && strings.EqualFold(strings.TrimSpace(value.Value), "app")
+	}
+	if labels.Kind == yaml.SequenceNode {
+		for _, label := range labels.Content {
+			parts := strings.SplitN(label.Value, "=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "aether.service-type" && strings.EqualFold(strings.TrimSpace(parts[1]), "app") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validPublishedPort(parts []string, index int, allowHostPorts bool) bool {

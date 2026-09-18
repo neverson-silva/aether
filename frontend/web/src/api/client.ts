@@ -75,7 +75,7 @@ http.interceptors.response.use(
   (res) => res,
   async (err: AxiosError<{ error?: string }>) => {
     const config = err.config as (typeof err.config & { _retry?: boolean }) | undefined;
-    if (err.response?.status === 401 && config && !config._retry && !config.url?.endsWith("/auth/refresh")) {
+    if (err.response?.status === 401 && config && !config._retry && !config.url?.endsWith("/auth/refresh") && !isPublicRoute()) {
       config._retry = true;
       try {
         await refreshAccessToken();

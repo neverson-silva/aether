@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { EventEnvelope, NotificationItem } from "../hooks";
 import { useRealtimeEvent } from "./RealtimeProvider";
 import { useNotificationsStore } from "../stores/notifications";
+import { isPublicRoute } from "../api/client";
 
 interface NotificationContextValue {
   unread: number;
@@ -101,11 +102,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   });
 
   useEffect(() => {
-    void useNotificationsStore.getState().refresh();
-    const onOrgChange = () => void useNotificationsStore.getState().refresh();
+    const refresh = () => {
+      if (!isPublicRoute()) void useNotificationsStore.getState().refresh();
+    };
+    refresh();
+    const onOrgChange = refresh;
+    const onAuth = refresh;
     window.addEventListener("aether:org", onOrgChange);
+    window.addEventListener("aether:auth", onAuth);
     return () => {
       window.removeEventListener("aether:org", onOrgChange);
+      window.removeEventListener("aether:auth", onAuth);
     };
   }, []);
 

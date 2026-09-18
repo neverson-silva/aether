@@ -335,6 +335,21 @@ services:
 	}
 }
 
+func TestValidatePolicyAllowsPublishedPortsForApplicationService(t *testing.T) {
+	content := `services:
+  app:
+    image: example/app:1
+    labels:
+      aether.service-type: app
+    ports:
+      - "80:8080"
+      - "443:8443"
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("application compose published port rejected: %v", err)
+	}
+}
+
 func TestNormalizeUserComposeSupportsPortRanges(t *testing.T) {
 	content, err := NormalizeUserCompose(`services:
   app:

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { apiGet, apiPost } from "../api/client";
+import { apiGet, apiPost, isPublicRoute } from "../api/client";
 import type { NotificationItem } from "../hooks";
 
 interface NotificationsState {
@@ -40,6 +40,7 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
       ),
     })),
   refresh: async () => {
+    if (isPublicRoute()) return;
     try {
       const [notifs, count] = await Promise.all([
         apiGet<NotificationItem[]>("/api/v1/notifications"),
