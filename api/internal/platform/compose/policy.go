@@ -62,7 +62,7 @@ func ValidatePolicy(content string) error {
 				violations = append(violations, "service "+name+" must be a mapping")
 				continue
 			}
-			serviceIsApplication := hasApplicationServiceLabel(service)
+			serviceIsApplication := name == "app" || hasApplicationServiceLabel(service)
 			validateServicePolicy(name, service, allowHostPorts, allowUserCompose || serviceIsApplication, serviceIsApplication, &violations)
 		}
 	}

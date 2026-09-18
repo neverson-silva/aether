@@ -279,7 +279,7 @@ networks:
 
 func TestValidatePolicyRejectsMutableLatestImage(t *testing.T) {
 	content := `services:
-  app:
+  web:
     image: example/app:latest
 `
 	if err := ValidatePolicy(content); err == nil {
@@ -347,6 +347,19 @@ func TestValidatePolicyAllowsPublishedPortsForApplicationService(t *testing.T) {
 `
 	if err := ValidatePolicy(content); err != nil {
 		t.Fatalf("application compose published port rejected: %v", err)
+	}
+}
+
+func TestValidatePolicyAllowsPublishedPortsForAppServiceWithoutLabels(t *testing.T) {
+	content := `services:
+  app:
+    image: example/app:1
+    ports:
+      - "80:8080"
+      - "443:8443"
+`
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("app service published port rejected: %v", err)
 	}
 }
 
