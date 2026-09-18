@@ -927,6 +927,13 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		}
 		content = materialized
 	}
+	if serviceType == "app" {
+		applicationCompose, normalizeErr := composeengine.NormalizeUserCompose(content)
+		if normalizeErr != nil {
+			return "", fmt.Errorf("normalize application compose ports: %w", normalizeErr)
+		}
+		content = applicationCompose
+	}
 	if err := composeengine.ValidatePolicy(content); err != nil {
 		return "", err
 	}

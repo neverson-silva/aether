@@ -569,6 +569,10 @@ func validateServicePorts(name string, ports *yaml.Node, allowHostPorts bool, vi
 		if published != nil && !validPortValue(published.Value, true, allowHostPorts) {
 			*violations = append(*violations, "service "+name+" has an invalid published port")
 		}
+		target := nodeMapValue(port, "target")
+		if target != nil && !validPortValue(target.Value, false, allowHostPorts) {
+			*violations = append(*violations, "service "+name+" has an invalid target port")
+		}
 	}
 }
 
@@ -591,11 +595,22 @@ func validPortValue(value string, published, allowHostPorts bool) bool {
 		}
 		value = strings.TrimSpace(value[:slash])
 	}
-	port, err := strconv.Atoi(value)
-	if err != nil || port < 1 || port > 65535 {
+	parts := strings.Split(value, "-")
+	if len(parts) > 2 || len(parts) == 0 {
 		return false
 	}
-	return !published || allowHostPorts || port >= 1024
+	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || start < 1 || start > 65535 {
+		return false
+	}
+	end := start
+	if len(parts) == 2 {
+		end, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || end < start || end > 65535 {
+			return false
+		}
+	}
+	return !published || allowHostPorts || start >= 1024
 }
 
 func validateResourceLimit(name string, service *yaml.Node, violations *[]string) {

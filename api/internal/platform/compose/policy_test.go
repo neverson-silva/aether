@@ -335,6 +335,23 @@ services:
 	}
 }
 
+func TestNormalizeUserComposeSupportsPortRanges(t *testing.T) {
+	content, err := NormalizeUserCompose(`services:
+  app:
+    image: example/app:latest
+    ports:
+      - "80-81:8080-8081"
+      - target: 9000-9001
+        published: 90-91
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("normalized port ranges rejected: %v\n%s", err, content)
+	}
+}
+
 func TestNormalizeUserComposeAllowsDokployCompatibleOptions(t *testing.T) {
 	content, err := NormalizeUserCompose(`services:
   waf:
