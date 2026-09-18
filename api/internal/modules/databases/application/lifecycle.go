@@ -205,8 +205,30 @@ func hostPortFree(port int) bool {
 
 const databaseHealthTimeout = 120 * time.Second
 
-func (d *Databases) waitHealthy(ctx context.Context, db *domain.Database, containerPort int, timeout time.Duration) error {
+func (d *Databases) waitHealthy(ctx context.Context, db *domain.Database, containerID string, containerPort int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	var lastErr error
+	if db.Engine == domain.EnginePostgres {
+		for {
+			_, stderr, err := d.Runtime.Exec(ctx, containerID, nil, "pg_isready", "-q", "-h", "127.0.0.1", "-p", strconv.Itoa(containerPort))
+			if err == nil {
+				return nil
+			}
+			if stderr != "" {
+				lastErr = fmt.Errorf("pg_isready: %s", strings.TrimSpace(stderr))
+			} else {
+				lastErr = err
+			}
+			if time.Now().After(deadline) {
+				return lastErr
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+		}
+	}
 	targets := []struct {
 		host string
 		port int
@@ -217,7 +239,7 @@ func (d *Databases) waitHealthy(ctx context.Context, db *domain.Database, contai
 		{host: "127.0.0.1", port: db.Port},
 	}
 	for {
-		var lastErr error
+		lastErr = nil
 		for _, target := range targets {
 			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", target.host, target.port), 2*time.Second)
 			if err == nil {
@@ -300,7 +322,7 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 	if containerPort == 0 {
 		containerPort = db.Port
 	}
-	if err := d.waitHealthy(ctx, db, containerPort, databaseHealthTimeout); err != nil {
+	if err := d.waitHealthy(ctx, db, containerID, containerPort, databaseHealthTimeout); err != nil {
 		if lines, logErr := d.Runtime.LogTail(ctx, containerID, 40); logErr == nil {
 			for _, line := range lines {
 				d.appendDeployLog(ctx, deploymentID, "Container: "+line)
