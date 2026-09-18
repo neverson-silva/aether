@@ -1,5 +1,6 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
+import "../../../monaco";
 import { registerSqlCompletions } from "../../../studio-intelligence/completion";
 import type { SqlEngine } from "../../../studio-intelligence/engine";
 
