@@ -34,6 +34,7 @@ import { StudioSidebar } from "./-components/StudioSidebar";
 import { SqlEditor, type SqlEditorApi } from "./-components/SqlEditor";
 import { createEngine, type SqlEngine } from "../../studio-intelligence/engine";
 import { getSnapshot, refreshSnapshot } from "../../studio-intelligence/schema";
+import { useRealtimeEvent } from "../../components/RealtimeProvider";
 import { DataGrid } from "./-components/DataGrid";
 import { CreateTableModal } from "./-components/CreateTableModal";
 
@@ -201,16 +202,30 @@ function StudioPage() {
     let active = true;
     (async () => {
       try {
-        const snap = await getSnapshot(dbId);
+        const snap = await refreshSnapshot(dbId);
         if (active) engineRef.current?.setSnapshot(snap);
       } catch {
-        /* offline */
+        try {
+          const snap = await getSnapshot(dbId);
+          if (active) engineRef.current?.setSnapshot(snap);
+        } catch {
+        }
       }
     })();
     return () => {
       active = false;
     };
   }, [dbId]);
+
+  useRealtimeEvent((event, replay) => {
+    if (replay || event.type !== "restore.completed") return;
+    const restoredDatabaseID =
+      (event.payload?.database_id as string | undefined) || event.resource_id;
+    if (restoredDatabaseID !== dbId) return;
+    void refreshSnapshot(dbId)
+      .then((snap) => engineRef.current?.setSnapshot(snap))
+      .catch(() => undefined);
+  });
 
   const invalidateSchema = async () => {
     try {

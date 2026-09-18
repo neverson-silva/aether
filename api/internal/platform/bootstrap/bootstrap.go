@@ -381,8 +381,6 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	servicesHandler.WithNotifier(realtimeSvc)
 	databasesSvc.Notifier = realtimeSvc
-	databasesStudio.Cache = rtRuntime.Cache
-	databasesStudio.CatalogTTL = time.Duration(cfg.StudioCacheTTLSeconds) * time.Second
 	deploySvc.Queue = rtRuntime.Queue
 	deploySvc.Outbox = outbox.NewStore(pool)
 	deploySvc.Notifier = realtimeSvc

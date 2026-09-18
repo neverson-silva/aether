@@ -91,6 +91,7 @@ function resourceKeys(ev: EventEnvelope): unknown[][] {
       ...serviceKeys,
       ...legacyKeys,
       ...(restoreID && serviceID ? [["database-restore", "service", serviceID, restoreID]] : []),
+      ...(databaseID ? [["studio", databaseID]] : []),
       ["databases"],
     ];
   }

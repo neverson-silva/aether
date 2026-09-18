@@ -300,6 +300,28 @@ func TestNormalizeUserComposeAllowsMutableImageTags(t *testing.T) {
 	}
 }
 
+func TestNormalizeUserComposeUsesAutomaticPortBindings(t *testing.T) {
+	content, err := NormalizeUserCompose(`services:
+  app:
+    image: example/app:latest
+    ports:
+      - "80:8080"
+      - "127.0.0.1:81:8081/udp"
+      - target: 8082
+        published: 82
+        protocol: tcp
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "published:") || strings.Contains(content, "80:8080") || strings.Contains(content, "81:8081") {
+		t.Fatalf("published bindings were not normalized: %s", content)
+	}
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("normalized user compose rejected: %v\n%s", err, content)
+	}
+}
+
 func TestNormalizeUserComposeAllowsDokployCompatibleOptions(t *testing.T) {
 	content, err := NormalizeUserCompose(`services:
   waf:

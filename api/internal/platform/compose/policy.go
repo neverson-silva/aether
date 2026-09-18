@@ -86,6 +86,7 @@ func NormalizeUserCompose(content string) (string, error) {
 			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"},
 		)
 	}
+	normalizeUserPublishedPorts(root)
 	var buffer bytes.Buffer
 	encoder := yaml.NewEncoder(&buffer)
 	encoder.SetIndent(2)
@@ -94,6 +95,48 @@ func NormalizeUserCompose(content string) (string, error) {
 	}
 	_ = encoder.Close()
 	return buffer.String(), nil
+}
+
+func normalizeUserPublishedPorts(root *yaml.Node) {
+	services := nodeMapValue(root, "services")
+	if services == nil || services.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		service := services.Content[i+1]
+		if service.Kind != yaml.MappingNode {
+			continue
+		}
+		ports := nodeMapValue(service, "ports")
+		if ports == nil || ports.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, port := range ports.Content {
+			if port.Kind == yaml.ScalarNode {
+				port.Value = automaticPortBinding(port.Value)
+				port.Tag = "!!str"
+				continue
+			}
+			if port.Kind != yaml.MappingNode || nodeMapValue(port, "published") == nil {
+				continue
+			}
+			removeMapValue(port, "published")
+			removeMapValue(port, "host_ip")
+		}
+	}
+}
+
+func automaticPortBinding(value string) string {
+	value = strings.TrimSpace(value)
+	separator := strings.LastIndexByte(value, ':')
+	if separator < 0 {
+		return value
+	}
+	target := strings.TrimSpace(value[separator+1:])
+	if target == "" {
+		return value
+	}
+	return target
 }
 
 func NormalizeNamedResourceDefinitions(content string) (string, error) {
@@ -540,6 +583,13 @@ func validPortValue(value string, published, allowHostPorts bool) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return !published
+	}
+	if slash := strings.IndexByte(value, '/'); slash >= 0 {
+		protocol := strings.ToLower(strings.TrimSpace(value[slash+1:]))
+		if protocol != "tcp" && protocol != "udp" && protocol != "sctp" {
+			return false
+		}
+		value = strings.TrimSpace(value[:slash])
 	}
 	port, err := strconv.Atoi(value)
 	if err != nil || port < 1 || port > 65535 {
