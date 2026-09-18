@@ -300,6 +300,33 @@ func TestNormalizeUserComposeAllowsMutableImageTags(t *testing.T) {
 	}
 }
 
+func TestNormalizeUserComposeAllowsDokployCompatibleOptions(t *testing.T) {
+	content, err := NormalizeUserCompose(`services:
+  waf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: findash/waf:latest
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - waf_net
+volumes:
+  geoip_data:
+networks:
+  waf_net:
+    name: waf_net
+    driver: bridge
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("Dokploy-compatible user compose rejected: %v", err)
+	}
+}
+
 func TestValidatePolicyRejectsAlternateVolumeSyntax(t *testing.T) {
 	content := `services:
   web:

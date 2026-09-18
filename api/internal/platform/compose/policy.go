@@ -42,11 +42,11 @@ func ValidatePolicy(content string) error {
 			violations = append(violations, "top-level "+key+" are not supported")
 		}
 	}
-	validateNamedResources(root, "volumes", &violations)
-	validateNamedResources(root, "networks", &violations)
+	allowUserCompose := explicitTrue(nodeMapValue(root, allowMutableImagesMarker))
+	validateNamedResources(root, "volumes", allowUserCompose, &violations)
+	validateNamedResources(root, "networks", allowUserCompose, &violations)
 	validateManagedConfigs(root, &violations)
 	allowHostPorts := hasDokployHostPortsMarker(&document, root)
-	allowMutableImages := explicitTrue(nodeMapValue(root, allowMutableImagesMarker))
 
 	services := nodeMapValue(root, "services")
 	if services == nil || services.Kind != yaml.MappingNode || len(services.Content) == 0 {
@@ -62,7 +62,7 @@ func ValidatePolicy(content string) error {
 				violations = append(violations, "service "+name+" must be a mapping")
 				continue
 			}
-			validateServicePolicy(name, service, allowHostPorts, allowMutableImages, &violations)
+			validateServicePolicy(name, service, allowHostPorts, allowUserCompose, &violations)
 		}
 	}
 	if len(violations) > 0 {
@@ -350,7 +350,7 @@ func removeMapValue(mapping *yaml.Node, key string) {
 	}
 }
 
-func validateNamedResources(root *yaml.Node, kind string, violations *[]string) {
+func validateNamedResources(root *yaml.Node, kind string, allowUserCompose bool, violations *[]string) {
 	resources := nodeMapValue(root, kind)
 	if resources == nil {
 		return
@@ -380,9 +380,17 @@ func validateNamedResources(root *yaml.Node, kind string, violations *[]string) 
 					*violations = append(*violations, "top-level "+kind+" "+name+" cannot be external")
 				}
 			case "name":
+				if allowUserCompose && kind == "networks" {
+					continue
+				}
 				if kind != "networks" || !strings.HasPrefix(name, "aether-") || strings.TrimSpace(value.Content[j+1].Value) != name {
 					*violations = append(*violations, "top-level "+kind+" "+name+" has an unsupported option")
 				}
+			case "driver":
+				if allowUserCompose && kind == "networks" && strings.EqualFold(strings.TrimSpace(value.Content[j+1].Value), "bridge") {
+					continue
+				}
+				*violations = append(*violations, "top-level "+kind+" "+name+" has an unsupported option")
 			case "internal":
 				if kind != "networks" || !explicitBoolean(value.Content[j+1]) {
 					*violations = append(*violations, "top-level "+kind+" "+name+" has an unsupported option")
@@ -394,11 +402,11 @@ func validateNamedResources(root *yaml.Node, kind string, violations *[]string) 
 	}
 }
 
-func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allowMutableImages bool, violations *[]string) {
-	if image := nodeMapValue(service, "image"); image != nil && !allowMutableImages && strings.HasSuffix(strings.ToLower(strings.TrimSpace(image.Value)), ":latest") {
+func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allowUserCompose bool, violations *[]string) {
+	if image := nodeMapValue(service, "image"); image != nil && !allowUserCompose && strings.HasSuffix(strings.ToLower(strings.TrimSpace(image.Value)), ":latest") {
 		*violations = append(*violations, "service "+name+" cannot use mutable image tag latest")
 	}
-	if restart := nodeMapValue(service, "restart"); restart != nil && strings.ToLower(strings.TrimSpace(restart.Value)) != "no" {
+	if restart := nodeMapValue(service, "restart"); restart != nil && !allowUserCompose && strings.ToLower(strings.TrimSpace(restart.Value)) != "no" {
 		*violations = append(*violations, "service "+name+" can only use restart no")
 	}
 	validateResourceLimit(name, service, violations)
@@ -419,7 +427,7 @@ func validateServicePolicy(name string, service *yaml.Node, allowHostPorts, allo
 	if user := nodeMapValue(service, "user"); user != nil && isRootUser(user.Value) {
 		*violations = append(*violations, "service "+name+" cannot run as root")
 	}
-	validateServiceVolumes(name, nodeMapValue(service, "volumes"), violations)
+	validateServiceVolumes(name, nodeMapValue(service, "volumes"), allowUserCompose, violations)
 	validateServiceConfigs(name, nodeMapValue(service, "configs"), violations)
 	validateServiceNetworks(name, nodeMapValue(service, "networks"), violations)
 	validateServicePorts(name, nodeMapValue(service, "ports"), allowHostPorts, violations)
@@ -592,14 +600,14 @@ func parseMemoryLimit(raw string) (int64, bool) {
 	return int64(n), true
 }
 
-func validateServiceVolumes(name string, volumes *yaml.Node, violations *[]string) {
+func validateServiceVolumes(name string, volumes *yaml.Node, allowUserCompose bool, violations *[]string) {
 	if volumes == nil || volumes.Kind != yaml.SequenceNode {
 		return
 	}
 	for _, volume := range volumes.Content {
 		if volume.Kind == yaml.ScalarNode {
 			parts := strings.Split(volume.Value, ":")
-			if len(parts) > 1 && unsafeHostPath(parts[0]) {
+			if len(parts) > 1 && unsafeHostPath(parts[0]) && !allowUserCompose {
 				*violations = append(*violations, "service "+name+" cannot bind host path volumes")
 			}
 			continue
@@ -609,11 +617,11 @@ func validateServiceVolumes(name string, volumes *yaml.Node, violations *[]strin
 			continue
 		}
 		typeValue := nodeMapValue(volume, "type")
-		if typeValue != nil && strings.ToLower(strings.TrimSpace(typeValue.Value)) != "volume" {
+		if typeValue != nil && strings.ToLower(strings.TrimSpace(typeValue.Value)) != "volume" && !allowUserCompose {
 			*violations = append(*violations, "service "+name+" can only use named volumes")
 			continue
 		}
-		if source := nodeMapValue(volume, "source"); source != nil && unsafeHostPath(source.Value) {
+		if source := nodeMapValue(volume, "source"); source != nil && unsafeHostPath(source.Value) && !allowUserCompose {
 			*violations = append(*violations, "service "+name+" cannot bind host path volumes")
 		}
 	}
