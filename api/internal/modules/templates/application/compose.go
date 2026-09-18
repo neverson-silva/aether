@@ -907,6 +907,11 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		return "", normalizeErr
 	}
 	content = normalized
+	userCompose, userComposeErr := composeengine.NormalizeUserCompose(content)
+	if userComposeErr != nil {
+		return "", userComposeErr
+	}
+	content = userCompose
 	if isUpCommand {
 		content, inlineErr := inlineTemplateConfigFiles(content, dir)
 		if inlineErr != nil {
