@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -18,23 +17,20 @@ func CloneWithCredential(ctx context.Context, url, branch, dest, username, secre
 	if username == "" || secret == "" {
 		return Clone(ctx, url, branch, dest)
 	}
-	taskDir, err := os.MkdirTemp("", "aether-git-askpass-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(taskDir)
-	askPass := filepath.Join(taskDir, "askpass")
-	script := "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s\\n' \"$AETHER_GIT_USERNAME\";;\n*) printf '%s\\n' \"$AETHER_GIT_PASSWORD\";;\nesac\n"
-	if err := os.WriteFile(askPass, []byte(script), 0o700); err != nil {
-		return err
-	}
 	args := []string{"clone", "--depth", "1"}
 	if branch != "" {
 		args = append(args, "--branch", branch)
 	}
 	args = append(args, url, dest)
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(os.Environ(), "GIT_ASKPASS="+askPass, "GIT_TERMINAL_PROMPT=0", "AETHER_GIT_USERNAME="+username, "AETHER_GIT_PASSWORD="+secret)
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"AETHER_GIT_USERNAME="+username,
+		"AETHER_GIT_PASSWORD="+secret,
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=credential.helper",
+		"GIT_CONFIG_VALUE_0=!f() { printf 'username=%s\\npassword=%s\\n\\n' \"$AETHER_GIT_USERNAME\" \"$AETHER_GIT_PASSWORD\"; }; f",
+	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone: %s", strings.TrimSpace(string(out)))
 	}
