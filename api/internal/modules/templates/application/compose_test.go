@@ -207,6 +207,60 @@ func TestComposePortSelectionKeepsInternalEnvironmentPort(t *testing.T) {
 	}
 }
 
+func TestComposeRuntimePortResolvesEnvironmentPortAndDefaults(t *testing.T) {
+	port, err := composeRuntimePort(`services:
+  app:
+    ports:
+      - "${PORT}:${PORT}"
+`, 0, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != defaultComposePort {
+		t.Fatalf("runtime port = %d, want %d", port, defaultComposePort)
+	}
+	content, err := materializeComposePortBindings(`services:
+  app:
+    ports:
+      - "${PORT}:${PORT}"
+      - ":3000"
+      - ":"
+`, port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "${PORT}") || !strings.Contains(content, "8080:3000") || !strings.Contains(content, "\"8080\"") {
+		t.Fatalf("compose ports were not materialized: %s", content)
+	}
+}
+
+func TestComposeRuntimePortUsesComposeDefault(t *testing.T) {
+	port, err := composeRuntimePort(`services:
+  app:
+    environment:
+      PORT: "${PORT:-3000}"
+`, 0, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 3000 {
+		t.Fatalf("runtime port = %d, want 3000", port)
+	}
+}
+
+func TestEnsureComposeRuntimePortEnvironment(t *testing.T) {
+	content, err := ensureComposeRuntimePortEnvironment(`services:
+  app:
+    image: example/app
+`, 8080, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "PORT: \"8080\"") {
+		t.Fatalf("PORT was not injected: %s", content)
+	}
+}
+
 func TestEnsureRustFSPublishedPorts(t *testing.T) {
 	content, err := ensureRustFSPublishedPorts(`services:
   rustfs:
