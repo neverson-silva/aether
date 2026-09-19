@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -67,6 +68,7 @@ type appReq struct {
 	RootFolder     string       `json:"root_folder"`
 	DistFolder     string       `json:"dist_folder"`
 	WatchPaths     string       `json:"watch_paths"`
+	Env            []envVarReq  `json:"env"`
 }
 
 type resourcesReq struct {
@@ -251,15 +253,28 @@ func (h *Handler) CreateApp(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	app, err := appFromReq(&appReq{}, c, projectID)
+	var req appReq
+	app, err := appFromReq(&req, c, projectID)
 	if err != nil {
 		abort(c, err)
 		return
+	}
+	for _, variable := range req.Env {
+		if strings.TrimSpace(variable.Name) == "" || strings.Contains(variable.Name, "=") {
+			abort(c, domain.ErrValidation)
+			return
+		}
 	}
 	created, err := h.apps.CreateApp(c.Request.Context(), orgID(c), projectID, app)
 	if err != nil {
 		abort(c, err)
 		return
+	}
+	for _, variable := range req.Env {
+		if err := h.apps.SetEnv(c.Request.Context(), created.ID, orgID(c), strings.TrimSpace(variable.Name), variable.Value, variable.Secret); err != nil {
+			abort(c, err)
+			return
+		}
 	}
 	c.JSON(http.StatusCreated, h.appDTO(c, created))
 }

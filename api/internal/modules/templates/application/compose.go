@@ -87,8 +87,6 @@ type composePortDefinition struct {
 	} `yaml:"services"`
 }
 
-const defaultComposePort = 8080
-
 func (c *Compose) Environment(ctx context.Context, id, orgID uuid.UUID) ([]variablesDomain.Variable, error) {
 	app, err := c.Get(ctx, id, orgID)
 	if err != nil {
@@ -219,14 +217,12 @@ func composePortSelection(content string) (int, bool, error) {
 }
 
 func composeRuntimePort(content string, configured int, variables map[string]string) (int, error) {
-	if configured > 0 {
-		return configured, nil
+	if variables != nil {
+		if port := parseComposePort(variables["PORT"]); port > 0 {
+			return port, nil
+		}
 	}
 	resolved, err := interpolateComposeVariables(content, variables)
-	if err != nil {
-		return 0, err
-	}
-	resolved, err = materializeComposePortBindings(resolved, defaultComposePort)
 	if err != nil {
 		return 0, err
 	}
@@ -237,7 +233,10 @@ func composeRuntimePort(content string, configured int, variables map[string]str
 	if port > 0 {
 		return port, nil
 	}
-	return defaultComposePort, nil
+	if configured > 0 {
+		return configured, nil
+	}
+	return 0, nil
 }
 
 func materializeComposePortBindings(content string, fallback int) (string, error) {
@@ -252,6 +251,9 @@ func materializeComposePortBindings(content string, fallback int) (string, error
 	services := nodeValue(root, "services")
 	if services == nil || services.Kind != yaml.MappingNode {
 		return content, nil
+	}
+	if fallback <= 0 && composeHasPortBindings(services) {
+		return "", errors.New("compose port cannot be resolved; set PORT or declare a concrete port")
 	}
 	for i := 0; i+1 < len(services.Content); i += 2 {
 		service := services.Content[i+1]
@@ -307,7 +309,7 @@ func materializeComposePortValue(value string, fallback int) string {
 }
 
 func ensureComposeRuntimePortEnvironment(content string, port int, serviceType string) (string, error) {
-	if serviceType != "app" {
+	if serviceType != "app" || port <= 0 {
 		return content, nil
 	}
 	var document yaml.Node
@@ -334,18 +336,26 @@ func ensureComposeRuntimePortEnvironment(content string, port int, serviceType s
 	value := strconv.Itoa(port)
 	switch environment.Kind {
 	case yaml.MappingNode:
-		setScalarValue(environment, "PORT", value)
+		existing := nodeValue(environment, "PORT")
+		if existing == nil {
+			setScalarValue(environment, "PORT", value)
+		} else if existing.Kind == yaml.ScalarNode && strings.TrimSpace(existing.Value) == "" {
+			existing.Tag = "!!str"
+			existing.Value = value
+		}
 	case yaml.SequenceNode:
 		found := false
 		for _, item := range environment.Content {
 			if item.Kind != yaml.ScalarNode {
 				continue
 			}
-			key, _, _ := strings.Cut(item.Value, "=")
+			key, itemValue, hasValue := strings.Cut(item.Value, "=")
 			if strings.TrimSpace(key) != "PORT" {
 				continue
 			}
-			item.Value = "PORT=" + value
+			if !hasValue || strings.TrimSpace(itemValue) == "" {
+				item.Value = "PORT=" + value
+			}
 			found = true
 		}
 		if !found {
@@ -360,6 +370,16 @@ func ensureComposeRuntimePortEnvironment(content string, port int, serviceType s
 	}
 	_ = encoder.Close()
 	return buffer.String(), nil
+}
+
+func composeHasPortBindings(services *yaml.Node) bool {
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		service := services.Content[i+1]
+		if nodeValue(service, "ports") != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func replaceComposePortVariables(value string, fallback int) string {
@@ -1142,14 +1162,32 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if variables == nil {
 			variables = map[string]string{}
 		}
-		runtimePort, err := composeRuntimePort(content, app.Port, variables)
+		if strings.TrimSpace(variables["PORT"]) == "" && filepath.Clean(workDir) != filepath.Clean(dir) {
+			if data, readErr := os.ReadFile(filepath.Join(workDir, ".env")); readErr == nil {
+				if port := strings.TrimSpace(parseEnvFile(string(data))["PORT"]); port != "" {
+					variables["PORT"] = port
+				}
+			}
+		}
+		configuredPort := app.Port
+		if serviceType == "app" {
+			configuredPort = 0
+		}
+		runtimePort, err := composeRuntimePort(content, configuredPort, variables)
 		if err != nil {
 			return "", fmt.Errorf("resolve compose port: %w", err)
 		}
-		if strings.TrimSpace(variables["PORT"]) == "" {
+		if runtimePort > 0 && strings.TrimSpace(variables["PORT"]) == "" {
 			variables["PORT"] = strconv.Itoa(runtimePort)
 		}
-		if app.Port == 0 {
+		if serviceType == "app" {
+			if updater, ok := c.Apps.(AppPortUpdater); ok && app.Port != runtimePort {
+				if err := updater.UpdateAppPort(ctx, app.ID, runtimePort); err != nil {
+					return "", fmt.Errorf("persist compose port: %w", err)
+				}
+			}
+			app.Port = runtimePort
+		} else if app.Port == 0 && runtimePort > 0 {
 			if updater, ok := c.Apps.(AppPortUpdater); ok {
 				if err := updater.UpdateAppPort(ctx, app.ID, runtimePort); err != nil {
 					return "", fmt.Errorf("persist compose port: %w", err)
@@ -1883,6 +1921,11 @@ func replaceComposeVariableReferences(value string, variables map[string]string)
 }
 
 func injectServiceEnvironment(svc *yaml.Node, variables map[string]string) *yaml.Node {
+	keys := make([]string, 0, len(variables))
+	for key := range variables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
 	for i := 0; i+1 < len(svc.Content); i += 2 {
 		if svc.Content[i].Value != "environment" {
 			continue
@@ -1890,25 +1933,44 @@ func injectServiceEnvironment(svc *yaml.Node, variables map[string]string) *yaml
 		environment := svc.Content[i+1]
 		switch environment.Kind {
 		case yaml.MappingNode:
+			existing := make(map[string]struct{}, len(environment.Content)/2)
 			for j := 0; j+1 < len(environment.Content); j += 2 {
 				key := environment.Content[j].Value
+				existing[key] = struct{}{}
 				if value, ok := variables[key]; ok && strings.TrimSpace(environment.Content[j+1].Value) == "" {
 					environment.Content[j+1] = valueNode(value)
 				}
 			}
+			for _, key := range keys {
+				if _, ok := existing[key]; !ok {
+					environment.Content = append(environment.Content, keyNode(key), valueNode(variables[key]))
+				}
+			}
 		case yaml.SequenceNode:
+			existing := make(map[string]struct{}, len(environment.Content))
 			for _, item := range environment.Content {
 				key, explicitValue, found := strings.Cut(item.Value, "=")
 				if !found {
 					key = item.Value
 				}
+				existing[key] = struct{}{}
 				if value, ok := variables[key]; ok && (!found || strings.TrimSpace(explicitValue) == "") {
 					item.Value = key + "=" + value
+				}
+			}
+			for _, key := range keys {
+				if _, ok := existing[key]; !ok {
+					environment.Content = append(environment.Content, valueNode(key+"="+variables[key]))
 				}
 			}
 		}
 		return svc
 	}
+	environment := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	for _, key := range keys {
+		environment.Content = append(environment.Content, keyNode(key), valueNode(variables[key]))
+	}
+	svc.Content = append(svc.Content, keyNode("environment"), environment)
 	return svc
 }
 

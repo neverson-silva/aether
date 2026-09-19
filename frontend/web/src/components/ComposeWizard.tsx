@@ -60,12 +60,12 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
         return;
       }
       const created = await createCompose.mutateAsync({ project_id: projectId, environment_id: fixedEnvironmentId, name, compose });
-      let service: { id: string; spec_id?: string; name: string; kind: string } | undefined;
-      try {
+      let service: { id: string; spec_id?: string; name: string; kind: string } | undefined = created.service_id
+        ? { id: created.service_id, spec_id: created.id, name: name.trim(), kind: "compose" }
+        : undefined;
+      if (!service) {
         const services = await apiGet<Array<{ id: string; spec_id?: string; name: string; kind: string }>>(`/api/v1/services?project_id=${encodeURIComponent(projectId)}`);
         service = services.find((item) => item.spec_id === created.id || (item.name === name.trim() && item.kind === "compose"));
-      } catch {
-        service = undefined;
       }
       if (sourceMode === "git" && repositoryID && githubConnection && service) {
         const repository = repositories?.find((item) => item.id === repositoryID);

@@ -207,17 +207,17 @@ func TestComposePortSelectionKeepsInternalEnvironmentPort(t *testing.T) {
 	}
 }
 
-func TestComposeRuntimePortResolvesEnvironmentPortAndDefaults(t *testing.T) {
+func TestComposeRuntimePortResolvesEnvironmentPort(t *testing.T) {
 	port, err := composeRuntimePort(`services:
   app:
     ports:
       - "${PORT}:${PORT}"
-`, 0, map[string]string{})
+`, 0, map[string]string{"PORT": "8080"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if port != defaultComposePort {
-		t.Fatalf("runtime port = %d, want %d", port, defaultComposePort)
+	if port != 8080 {
+		t.Fatalf("runtime port = %d, want 8080", port)
 	}
 	content, err := materializeComposePortBindings(`services:
   app:
@@ -248,6 +248,47 @@ func TestComposeRuntimePortUsesComposeDefault(t *testing.T) {
 	}
 }
 
+func TestComposeRuntimePortDoesNotUseFixedFallback(t *testing.T) {
+	port, err := composeRuntimePort(`services:
+  app:
+    image: example/app
+`, 0, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 0 {
+		t.Fatalf("runtime port = %d, want 0", port)
+	}
+}
+
+func TestComposeRuntimePortPrefersExplicitPortVariable(t *testing.T) {
+	port, err := composeRuntimePort(`services:
+  app:
+    ports:
+      - "8080:8080"
+`, 8080, map[string]string{"PORT": "3000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 3000 {
+		t.Fatalf("runtime port = %d, want 3000", port)
+	}
+}
+
+func TestComposeRuntimePortPrefersComposeEnvironmentPort(t *testing.T) {
+	port, err := composeRuntimePort(`services:
+  app:
+    environment:
+      PORT: "3000"
+`, 8080, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 3000 {
+		t.Fatalf("runtime port = %d, want 3000", port)
+	}
+}
+
 func TestEnsureComposeRuntimePortEnvironment(t *testing.T) {
 	content, err := ensureComposeRuntimePortEnvironment(`services:
   app:
@@ -258,6 +299,17 @@ func TestEnsureComposeRuntimePortEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(content, "PORT: \"8080\"") {
 		t.Fatalf("PORT was not injected: %s", content)
+	}
+	content, err = ensureComposeRuntimePortEnvironment(`services:
+  app:
+    environment:
+      PORT: "3000"
+`, 8080, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "PORT: \"3000\"") || strings.Contains(content, "PORT: \"8080\"") {
+		t.Fatalf("explicit PORT was overwritten: %s", content)
 	}
 }
 
@@ -345,6 +397,30 @@ func TestInterpolateComposeVariableReferences(t *testing.T) {
 	}
 	if strings.Contains(content, "${APP_PASSWORD}") || strings.Contains(content, "${APP_HOST") || !strings.Contains(content, "PASSWORD: secret") || !strings.Contains(content, "URL: https://example.com") {
 		t.Fatalf("compose variables were not interpolated: %s", content)
+	}
+}
+
+func TestInjectComposeEnvironmentAddsResolvedVariables(t *testing.T) {
+	content, err := injectComposeEnvironment(`services:
+  api:
+    image: example/api
+  worker:
+    image: example/worker
+    environment:
+      EXISTING:
+`, map[string]string{"API_KEY": "secret", "EXISTING": "value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		t.Fatal(err)
+	}
+	services := document["services"].(map[string]any)
+	apiEnvironment := services["api"].(map[string]any)["environment"].(map[string]any)
+	workerEnvironment := services["worker"].(map[string]any)["environment"].(map[string]any)
+	if apiEnvironment["API_KEY"] != "secret" || workerEnvironment["API_KEY"] != "secret" || workerEnvironment["EXISTING"] != "value" {
+		t.Fatalf("resolved variables were not injected: %s", content)
 	}
 }
 
