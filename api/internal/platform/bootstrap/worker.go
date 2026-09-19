@@ -176,7 +176,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		return err
 	}
 	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployRuntime, Network: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore, Variables: cronResolver}
-	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: deployRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
+	composeSvc := &templatesApp.Compose{Store: templatesInfra.NewStore(pool), Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: deployRuntime, ProjectVars: variablesStore, ComposeRuntime: composeengine.NewDockerWithPublishedNetwork(cfg.BuildDockerHost, cfg.PublishedNetwork)}
 	composeSvc.Variables = cronResolver
 	sourceStore := sourcecontrolInfra.NewStore(pool)
 	composeSvc.Source = sourceStore

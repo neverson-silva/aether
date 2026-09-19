@@ -628,7 +628,7 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 		endpoints := make(map[string]*network.EndpointSettings, len(networks))
 		for _, name := range networks {
 			endpoint := &network.EndpointSettings{}
-			if name == spec.Network && spec.NetworkAlias != "" {
+			if spec.NetworkAlias != "" {
 				endpoint.Aliases = []string{spec.NetworkAlias}
 			}
 			endpoints[name] = endpoint

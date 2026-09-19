@@ -286,4 +286,97 @@ networks:
 	if _, ok := private["external"]; ok {
 		t.Fatalf("private network unexpectedly external: %#v", private)
 	}
+	if _, ok := private["internal"]; ok {
+		t.Fatalf("private network unexpectedly internal: %#v", private)
+	}
+}
+
+func TestMarkExistingNetworksPreservesExplicitInternalNetworks(t *testing.T) {
+	content := `networks:
+  private:
+    internal: true
+`
+	updated, changed, err := markExistingNetworks(content, func(string) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatalf("explicit internal network should not change: %s", updated)
+	}
+}
+
+func TestInjectPublishedNetworkPreservesComposeNetworks(t *testing.T) {
+	content := `services:
+  api:
+    image: example/api
+  worker:
+    image: example/worker
+    networks:
+      - private
+networks:
+  private:
+    internal: true
+`
+	updated, changed, err := injectPublishedNetwork(content, "aether-workload-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected published network to be injected")
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(updated), &document); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePolicy(updated); err != nil {
+		t.Fatalf("injected network violates compose policy: %v", err)
+	}
+	networks := document["networks"].(map[string]any)
+	published := networks["aether-workload-host"].(map[string]any)
+	if published["name"] != "aether-workload-host" || published["external"] != true {
+		t.Fatalf("published network = %#v", published)
+	}
+	private := networks["private"].(map[string]any)
+	if private["internal"] != true {
+		t.Fatalf("private network lost internal setting: %#v", private)
+	}
+	services := document["services"].(map[string]any)
+	api := services["api"].(map[string]any)
+	apiNetworks := api["networks"].(map[string]any)
+	if _, ok := apiNetworks["default"]; !ok {
+		t.Fatalf("api lost the default network: %#v", apiNetworks)
+	}
+	if _, ok := apiNetworks["aether-workload-host"]; !ok {
+		t.Fatalf("api was not attached to published network: %#v", apiNetworks)
+	}
+	worker := services["worker"].(map[string]any)
+	workerNetworks := worker["networks"].([]any)
+	if len(workerNetworks) != 2 || workerNetworks[0] != "private" || workerNetworks[1] != "aether-workload-host" {
+		t.Fatalf("worker networks = %#v", workerNetworks)
+	}
+}
+
+func TestInjectPublishedNetworkPreservesNetworkLists(t *testing.T) {
+	content := `services:
+  api:
+    image: example/api
+    networks:
+      - default
+`
+	updated, changed, err := injectPublishedNetwork(content, "aether-workload-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected published network to be injected")
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(updated), &document); err != nil {
+		t.Fatal(err)
+	}
+	service := document["services"].(map[string]any)["api"].(map[string]any)
+	networks := service["networks"].([]any)
+	if len(networks) != 2 || networks[0] != "default" || networks[1] != "aether-workload-host" {
+		t.Fatalf("service networks = %#v", networks)
+	}
 }

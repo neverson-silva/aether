@@ -198,7 +198,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	templatesStore := templatesInfra.NewStore(pool)
 	templatesSvc := &templatesApp.Templates{Store: templatesStore, Apps: appsStore, Catalog: templatesInfra.NewDokployCatalog(cfg.StateDir), IngressNetwork: cfg.IngressNetwork, DataDir: cfg.DataDir}
-	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: deployWorkerRuntime, ComposeRuntime: composeengine.NewDocker(cfg.BuildDockerHost)}
+	composeSvc := &templatesApp.Compose{Store: templatesStore, Apps: appsStore, Deployments: deployStore, DataDir: cfg.DataDir, Runtime: deployWorkerRuntime, ComposeRuntime: composeengine.NewDockerWithPublishedNetwork(cfg.BuildDockerHost, cfg.PublishedNetwork)}
 	composeSvc.ServiceIdentity = func(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {

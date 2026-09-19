@@ -33,8 +33,9 @@ type StreamingExecutor interface {
 }
 
 type Docker struct {
-	Binary string
-	Host   string
+	Binary           string
+	Host             string
+	PublishedNetwork string
 }
 
 type externalNetworkAttachment struct {
@@ -45,6 +46,10 @@ type externalNetworkAttachment struct {
 
 func NewDocker(host string) *Docker {
 	return &Docker{Binary: "docker", Host: host}
+}
+
+func NewDockerWithPublishedNetwork(host, publishedNetwork string) *Docker {
+	return &Docker{Binary: "docker", Host: host, PublishedNetwork: publishedNetwork}
 }
 
 func (d *Docker) Execute(ctx context.Context, project Project, args ...string) (string, error) {
@@ -74,6 +79,16 @@ func (d *Docker) execute(ctx context.Context, project Project, sink func(string)
 	if normalized != prepared {
 		prepared = normalized
 		changed = true
+	}
+	if d.PublishedNetwork != "" {
+		withPublishedNetwork, networkChanged, networkErr := injectPublishedNetwork(prepared, d.PublishedNetwork)
+		if networkErr != nil {
+			return "", fmt.Errorf("inject published network: %w", networkErr)
+		}
+		if networkChanged {
+			prepared = withPublishedNetwork
+			changed = true
+		}
 	}
 	if changed {
 		overlay, err := os.CreateTemp(project.Directory, ".compose-template-*.yml")
@@ -549,6 +564,73 @@ func normalizeUnsupportedExposeRanges(content string) (string, error) {
 	return string(encoded), nil
 }
 
+func injectPublishedNetwork(content, networkName string) (string, bool, error) {
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", false, err
+	}
+	services, ok := document["services"].(map[string]any)
+	if !ok {
+		return content, false, nil
+	}
+	networks, ok := document["networks"].(map[string]any)
+	changed := false
+	if !ok {
+		networks = map[string]any{}
+		document["networks"] = networks
+		changed = true
+	}
+	if _, exists := networks[networkName]; !exists {
+		networks[networkName] = map[string]any{"name": networkName, "external": true}
+		changed = true
+	}
+	for _, rawService := range services {
+		service, ok := rawService.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, hasNetworkMode := service["network_mode"]; hasNetworkMode {
+			continue
+		}
+		rawNetworks, exists := service["networks"]
+		if !exists {
+			service["networks"] = map[string]any{
+				"default":   map[string]any{},
+				networkName: map[string]any{},
+			}
+			changed = true
+			continue
+		}
+		switch serviceNetworks := rawNetworks.(type) {
+		case map[string]any:
+			if _, exists := serviceNetworks[networkName]; !exists {
+				serviceNetworks[networkName] = map[string]any{}
+				changed = true
+			}
+		case []any:
+			found := false
+			for _, value := range serviceNetworks {
+				if fmt.Sprint(value) == networkName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				service["networks"] = append(serviceNetworks, networkName)
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return content, false, nil
+	}
+	updated, err := yaml.Marshal(document)
+	if err != nil {
+		return "", false, err
+	}
+	return string(updated), true, nil
+}
+
 func isExposePortRange(value string) bool {
 	value = strings.TrimSpace(value)
 	if slash := strings.LastIndexByte(value, '/'); slash >= 0 {
@@ -631,9 +713,6 @@ func markExistingNetworks(content string, exists func(string) bool) (string, boo
 		if internal, ok := config["internal"].(bool); ok && internal {
 			continue
 		}
-		config["internal"] = true
-		rawNetworks[key] = config
-		changed = true
 		name, ok := config["name"].(string)
 		if !ok || strings.TrimSpace(name) == "" || !exists(name) {
 			continue
