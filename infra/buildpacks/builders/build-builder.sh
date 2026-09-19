@@ -18,16 +18,10 @@ esac
 REGISTRY="${AETHER_REGISTRY_ADDR:-127.0.0.1:1500}"
 BUILDER_TAG="$REGISTRY/builder:node-spa"
 LIFECYCLE_VER="${LIFECYCLE_VER:-0.21.17}"
-RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517}"
+RUN_IMAGE="${RUN_IMAGE:-docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3}"
 STACK_ID="io.buildpacks.stacks.aether"
 HOST_DISTRO="$(if [[ -r /etc/os-release ]]; then . /etc/os-release; printf '%s' "${ID:-linux}"; else printf 'linux'; fi)"
-case "${AETHER_BUILDER_DISTRO:-$HOST_DISTRO}" in
-  fedora|rhel|centos|rocky|almalinux|ol|amzn) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-quay.io/fedora/fedora:latest@sha256:b013b98e4f4c43b46fb59b71b9d3d1f4f33df503ff84b1ea3415cafc32ead87c}" ;;
-  alpine) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d}" ;;
-  arch|manjaro) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/archlinux:base@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a}" ;;
-  opensuse*|sles) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-registry.opensuse.org/opensuse/leap:15.6@sha256:e4d84bbc5e0fa0df64381e95ad7ea8e3867cc34f3b1d174e9948d0f559d223e2}" ;;
-  *) BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517}" ;;
-esac
+BUILDER_BASE_IMAGE="${AETHER_BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3}"
 
 # Ordem de detecção (marcadores fortes primeiro; node-server rejeita SPA; spa pega o resto)
 ORDER_BPS=(php-server ruby-server dotnet-server go-server rust-server jvm-server node-server spa-static)
