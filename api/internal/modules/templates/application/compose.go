@@ -134,6 +134,10 @@ type AppPortUpdater interface {
 	UpdateAppPort(ctx context.Context, id uuid.UUID, port int) error
 }
 
+type ComposePortUpdater interface {
+	UpdateComposePort(ctx context.Context, id uuid.UUID, port int) error
+}
+
 type DeploymentStore interface {
 	GetDeploymentCompose(ctx context.Context, depID uuid.UUID) (string, error)
 }
@@ -584,7 +588,7 @@ func (c *Compose) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	if err := c.Store.SetComposeStatus(ctx, id, "deploying"); err != nil {
 		return err
 	}
-	if _, err := c.runCompose(ctx, app, true, "up", "-d", "--build"); err != nil {
+	if _, err := c.runCompose(ctx, app, true, "up", "-d", "--build", "--force-recreate"); err != nil {
 		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
@@ -618,7 +622,7 @@ func (c *Compose) UpApp(ctx context.Context, id, orgID uuid.UUID) (string, error
 		ID: id, OrgID: app.OrgID, ProjectID: app.ProjectID, EnvironmentID: app.EnvironmentID,
 		ServiceID: id, Name: app.Name, Compose: "", Port: app.Port,
 	}
-	if _, err := c.runComposeForService(ctx, composeApp, true, "app", "up", "-d", "--build"); err != nil {
+	if _, err := c.runComposeForService(ctx, composeApp, true, "app", "up", "-d", "--build", "--force-recreate"); err != nil {
 		return "", err
 	}
 	serviceID, err := c.GetServiceID(ctx, id)
@@ -1170,7 +1174,7 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 			}
 		}
 		configuredPort := app.Port
-		if serviceType == "app" {
+		if serviceType == "app" || serviceType == "compose" {
 			configuredPort = 0
 		}
 		runtimePort, err := composeRuntimePort(content, configuredPort, variables)
@@ -1183,6 +1187,13 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if serviceType == "app" {
 			if updater, ok := c.Apps.(AppPortUpdater); ok && app.Port != runtimePort {
 				if err := updater.UpdateAppPort(ctx, app.ID, runtimePort); err != nil {
+					return "", fmt.Errorf("persist compose port: %w", err)
+				}
+			}
+			app.Port = runtimePort
+		} else if serviceType == "compose" {
+			if updater, ok := c.Store.(ComposePortUpdater); ok && app.Port != runtimePort {
+				if err := updater.UpdateComposePort(ctx, app.ID, runtimePort); err != nil {
 					return "", fmt.Errorf("persist compose port: %w", err)
 				}
 			}

@@ -370,3 +370,19 @@ func (q *Queries) UpdateComposeApp(ctx context.Context, arg UpdateComposeAppPara
 	_, err := q.db.ExecContext(ctx, updateComposeApp, arg.ID, arg.Compose, arg.Port)
 	return err
 }
+
+const updateComposePort = `-- name: UpdateComposePort :exec
+UPDATE compose_apps
+SET port = $2
+WHERE id = $1
+`
+
+type UpdateComposePortParams struct {
+	ID   uuid.UUID `json:"id"`
+	Port int32     `json:"port"`
+}
+
+func (q *Queries) UpdateComposePort(ctx context.Context, arg UpdateComposePortParams) error {
+	_, err := q.db.ExecContext(ctx, updateComposePort, arg.ID, arg.Port)
+	return err
+}

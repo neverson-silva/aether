@@ -53,6 +53,10 @@ func (s *Store) UpdateComposeApp(ctx context.Context, id uuid.UUID, compose stri
 	return mapErr(s.q.UpdateComposeApp(ctx, gen.UpdateComposeAppParams{ID: id, Compose: compose, Port: int32(port)}))
 }
 
+func (s *Store) UpdateComposePort(ctx context.Context, id uuid.UUID, port int) error {
+	return mapErr(s.q.UpdateComposePort(ctx, gen.UpdateComposePortParams{ID: id, Port: int32(port)}))
+}
+
 func (s *Store) GetServiceID(ctx context.Context, composeID uuid.UUID) (uuid.UUID, error) {
 	var serviceID uuid.UUID
 	if err := s.db.QueryRowContext(ctx, `SELECT service_id FROM compose_apps WHERE id = $1`, composeID).Scan(&serviceID); err != nil {

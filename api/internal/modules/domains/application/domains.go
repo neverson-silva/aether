@@ -79,7 +79,7 @@ func (d *Domains) resolveService(ctx context.Context, serviceID uuid.UUID, servi
 				canonicalID = resolved
 			}
 		}
-		return &serviceRef{alias: d.Provisioner.Alias(canonicalID, serviceType), name: compose.Name, serviceID: canonicalID}, nil
+		return &serviceRef{alias: d.Provisioner.Alias(canonicalID, serviceType), name: compose.Name, port: compose.Port, serviceID: canonicalID}, nil
 	}
 	if serviceType == ServiceTypeDB {
 		db, err := d.DBs.GetDatabase(ctx, serviceID)

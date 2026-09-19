@@ -35,6 +35,11 @@ UPDATE compose_apps
 SET compose = $2, port = $3
 WHERE id = $1;
 
+-- name: UpdateComposePort :exec
+UPDATE compose_apps
+SET port = $2
+WHERE id = $1;
+
 -- name: ListComposeAppsByOrg :many
 SELECT id, org_id, project_id, name, compose, port, status, created_at, environment_id, service_id
 FROM compose_apps

@@ -380,3 +380,39 @@ func TestInjectPublishedNetworkPreservesNetworkLists(t *testing.T) {
 		t.Fatalf("service networks = %#v", networks)
 	}
 }
+
+func TestInjectPublishedNetworkAddsStableServiceAliases(t *testing.T) {
+	content := `services:
+  app:
+    image: example/app
+    labels:
+      aether.service-id: 12345678-1234-1234-1234-123456789012
+`
+	updated, changed, err := injectPublishedNetwork(content, "aether-workload-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected published network to be injected")
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(updated), &document); err != nil {
+		t.Fatal(err)
+	}
+	service := document["services"].(map[string]any)["app"].(map[string]any)
+	networks := service["networks"].(map[string]any)
+	published := networks["aether-workload-host"].(map[string]any)
+	aliases := published["aliases"].([]any)
+	if !containsString(aliases, "app-12345678") || !containsString(aliases, "app-12345678-app") {
+		t.Fatalf("published network aliases = %#v", aliases)
+	}
+}
+
+func containsString(values []any, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}

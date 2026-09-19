@@ -300,7 +300,7 @@ func TestNormalizeUserComposeAllowsMutableImageTags(t *testing.T) {
 	}
 }
 
-func TestNormalizeUserComposeUsesAutomaticPortBindings(t *testing.T) {
+func TestNormalizeUserComposePreservesPublishedPortBindings(t *testing.T) {
 	content, err := NormalizeUserCompose(`services:
   app:
     image: example/app:latest
@@ -314,8 +314,8 @@ func TestNormalizeUserComposeUsesAutomaticPortBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(content, "published:") || strings.Contains(content, "80:8080") || strings.Contains(content, "81:8081") {
-		t.Fatalf("published bindings were not normalized: %s", content)
+	if !strings.Contains(content, "80:8080") || !strings.Contains(content, "127.0.0.1:81:8081/udp") || !strings.Contains(content, "published: 82") {
+		t.Fatalf("published bindings were not preserved: %s", content)
 	}
 	if err := ValidatePolicy(content); err != nil {
 		t.Fatalf("normalized user compose rejected: %v\n%s", err, content)

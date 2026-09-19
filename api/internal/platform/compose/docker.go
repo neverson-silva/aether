@@ -584,7 +584,13 @@ func injectPublishedNetwork(content, networkName string) (string, bool, error) {
 		networks[networkName] = map[string]any{"name": networkName, "external": true}
 		changed = true
 	}
-	for _, rawService := range services {
+	serviceNames := make([]string, 0, len(services))
+	for serviceName := range services {
+		serviceNames = append(serviceNames, serviceName)
+	}
+	sort.Strings(serviceNames)
+	for _, serviceName := range serviceNames {
+		rawService := services[serviceName]
 		service, ok := rawService.(map[string]any)
 		if !ok {
 			continue
@@ -598,6 +604,10 @@ func injectPublishedNetwork(content, networkName string) (string, bool, error) {
 				"default":   map[string]any{},
 				networkName: map[string]any{},
 			}
+			if serviceID := composeServiceLabel(service, "aether.service-id"); serviceID != "" {
+				networks := service["networks"].(map[string]any)
+				ensureComposeNetworkAliases(networks, networkName, composeNetworkAliases(serviceName, serviceID, len(services)))
+			}
 			changed = true
 			continue
 		}
@@ -606,6 +616,12 @@ func injectPublishedNetwork(content, networkName string) (string, bool, error) {
 			if _, exists := serviceNetworks[networkName]; !exists {
 				serviceNetworks[networkName] = map[string]any{}
 				changed = true
+			}
+			if serviceID := composeServiceLabel(service, "aether.service-id"); serviceID != "" {
+				aliases := composeNetworkAliases(serviceName, serviceID, len(services))
+				if ensureComposeNetworkAliases(serviceNetworks, networkName, aliases) {
+					changed = true
+				}
 			}
 		case []any:
 			found := false
@@ -619,6 +635,22 @@ func injectPublishedNetwork(content, networkName string) (string, bool, error) {
 				service["networks"] = append(serviceNetworks, networkName)
 				changed = true
 			}
+			if serviceID := composeServiceLabel(service, "aether.service-id"); serviceID != "" {
+				converted := make(map[string]any, len(serviceNetworks)+1)
+				for _, value := range serviceNetworks {
+					name := strings.TrimSpace(fmt.Sprint(value))
+					if name != "" {
+						converted[name] = map[string]any{}
+					}
+				}
+				if _, exists := converted[networkName]; !exists {
+					converted[networkName] = map[string]any{}
+				}
+				service["networks"] = converted
+				if ensureComposeNetworkAliases(converted, networkName, composeNetworkAliases(serviceName, serviceID, len(services))) {
+					changed = true
+				}
+			}
 		}
 	}
 	if !changed {
@@ -629,6 +661,86 @@ func injectPublishedNetwork(content, networkName string) (string, bool, error) {
 		return "", false, err
 	}
 	return string(updated), true, nil
+}
+
+func composeServiceLabel(service map[string]any, key string) string {
+	raw, ok := service["labels"]
+	if !ok {
+		return ""
+	}
+	switch labels := raw.(type) {
+	case map[string]any:
+		return strings.TrimSpace(fmt.Sprint(labels[key]))
+	case []any:
+		for _, value := range labels {
+			name, labelValue, found := strings.Cut(fmt.Sprint(value), "=")
+			if found && strings.TrimSpace(name) == key {
+				return strings.TrimSpace(labelValue)
+			}
+		}
+	}
+	return ""
+}
+
+func composeNetworkAliases(serviceName, serviceID string, serviceCount int) []string {
+	serviceID = strings.TrimSpace(serviceID)
+	if len(serviceID) > 8 {
+		serviceID = serviceID[:8]
+	}
+	name := sanitizeComposeServiceName(serviceName)
+	serviceAlias := "app-" + serviceID + "-" + name
+	if serviceCount == 1 || strings.EqualFold(serviceName, "app") {
+		return []string{"app-" + serviceID, serviceAlias}
+	}
+	return []string{serviceAlias}
+}
+
+func sanitizeComposeServiceName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var builder strings.Builder
+	for _, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' {
+			builder.WriteRune(char)
+		} else {
+			builder.WriteByte('-')
+		}
+	}
+	name := strings.Trim(builder.String(), "-")
+	if name == "" {
+		return "service"
+	}
+	return name
+}
+
+func ensureComposeNetworkAliases(networks map[string]any, networkName string, aliases []string) bool {
+	raw, ok := networks[networkName]
+	if !ok {
+		raw = map[string]any{}
+		networks[networkName] = raw
+	}
+	config, ok := raw.(map[string]any)
+	if !ok {
+		config = map[string]any{}
+		networks[networkName] = config
+	}
+	rawAliases, _ := config["aliases"].([]any)
+	known := make(map[string]struct{}, len(rawAliases))
+	for _, rawAlias := range rawAliases {
+		known[fmt.Sprint(rawAlias)] = struct{}{}
+	}
+	changed := false
+	for _, alias := range aliases {
+		if _, exists := known[alias]; exists {
+			continue
+		}
+		rawAliases = append(rawAliases, alias)
+		known[alias] = struct{}{}
+		changed = true
+	}
+	if changed {
+		config["aliases"] = rawAliases
+	}
+	return changed
 }
 
 func isExposePortRange(value string) bool {

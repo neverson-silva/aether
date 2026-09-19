@@ -138,10 +138,22 @@ is_true() {
 public_bind_address() {
   if [[ -n "${AETHER_BIND_ADDRESS:-}" ]]; then
     printf '%s' "$AETHER_BIND_ADDRESS"
+  elif [[ -n "${AETHER_PUBLIC_HOST:-}" && "${AETHER_PUBLIC_HOST}" != "127.0.0.1" && "${AETHER_PUBLIC_HOST}" != "localhost" && "${AETHER_PUBLIC_HOST}" != "::1" ]]; then
+    printf '0.0.0.0'
   elif is_true "$DEV_MODE"; then
     printf '127.0.0.1'
   else
     printf '0.0.0.0'
+  fi
+}
+
+api_bind_address() {
+  if [[ -n "${AETHER_BIND_ADDRESS:-}" ]]; then
+    printf '%s' "$AETHER_BIND_ADDRESS"
+  elif is_true "$DEV_MODE"; then
+    printf '127.0.0.1'
+  else
+    public_bind_address
   fi
 }
 
@@ -852,7 +864,7 @@ start_api() {
 
   info "Starting API container ($API_CONTAINER) on $AETHER_API_PUBLIC_URL..."
   local bind_address
-  bind_address="$(public_bind_address)"
+  bind_address="$(api_bind_address)"
   local args=(run -d)
   if [[ -f "$ENV_FILE" ]]; then
     args+=(--env-file "$ENV_FILE")
@@ -1011,6 +1023,36 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     location = /api/v1/ws/realtime {
+        proxy_pass http://$API_CONTAINER:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_buffering off;
+    }
+
+    location /api/v1/ws/terminal/ {
+        proxy_pass http://$API_CONTAINER:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_buffering off;
+    }
+
+    location /api/v1/ws/db-terminal/ {
         proxy_pass http://$API_CONTAINER:8080;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
