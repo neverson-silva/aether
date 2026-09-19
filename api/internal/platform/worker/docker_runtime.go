@@ -572,10 +572,30 @@ func validateRuntimeMount(source string) error {
 	return nil
 }
 
+func runtimeMountMode(readOnly bool) string {
+	mode := "rw"
+	if readOnly {
+		mode = "ro"
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("AETHER_SELINUX_LABEL")), "shared") {
+		mode += ",z"
+	}
+	return mode
+}
+
+func appArmorProfile() string {
+	profile, configured := os.LookupEnv("AETHER_APPARMOR_PROFILE")
+	if !configured {
+		return "apparmor=docker-default"
+	}
+	return strings.TrimSpace(profile)
+}
+
 func commandHostConfig() *container.HostConfig {
 	config := defaultWorkloadHostConfig()
 	config.ReadonlyRootfs = true
-	config.SecurityOpt = append(config.SecurityOpt, "apparmor=docker-default")
+	config.SecurityOpt = append(config.SecurityOpt, appArmorProfile())
+	config.SecurityOpt = slices.DeleteFunc(config.SecurityOpt, func(value string) bool { return value == "" })
 	config.StorageOpt = map[string]string{"size": fmt.Sprintf("%dm", defaultWorkloadStorageMB)}
 	config.Tmpfs = map[string]string{"/tmp": "rw,noexec,nosuid,nodev"}
 	return config
@@ -593,7 +613,8 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	hostConfig := defaultWorkloadHostConfig()
 	if spec.Labels["aether.owner"] == "user" {
 		hostConfig.ReadonlyRootfs = true
-		hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, "apparmor=docker-default")
+		hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, appArmorProfile())
+		hostConfig.SecurityOpt = slices.DeleteFunc(hostConfig.SecurityOpt, func(value string) bool { return value == "" })
 		hostConfig.Tmpfs = map[string]string{
 			"/tmp":             "rw,noexec,nosuid,nodev",
 			"/run":             "rw,noexec,nosuid,nodev,uid=101,gid=101,mode=755",
@@ -607,10 +628,7 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 		if err := validateRuntimeMount(mount.Source); err != nil {
 			return "", err
 		}
-		mode := "rw"
-		if mount.ReadOnly {
-			mode = "ro"
-		}
+		mode := runtimeMountMode(mount.ReadOnly)
 		hostConfig.Binds = append(hostConfig.Binds, mount.Source+":"+mount.Target+":"+mode)
 	}
 	var networking *network.NetworkingConfig

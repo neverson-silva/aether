@@ -231,6 +231,26 @@ func TestValidateRuntimeMountRejectsHostSensitiveSources(t *testing.T) {
 	}
 }
 
+func TestRuntimeMountModeAddsSELinuxSharedLabel(t *testing.T) {
+	t.Setenv("AETHER_SELINUX_LABEL", "shared")
+	if got := runtimeMountMode(false); got != "rw,z" {
+		t.Fatalf("read-write mount mode = %q, want rw,z", got)
+	}
+	if got := runtimeMountMode(true); got != "ro,z" {
+		t.Fatalf("read-only mount mode = %q, want ro,z", got)
+	}
+}
+
+func TestAppArmorProfileCanBeDisabled(t *testing.T) {
+	if got := appArmorProfile(); got != "apparmor=docker-default" {
+		t.Fatalf("default AppArmor profile = %q, want apparmor=docker-default", got)
+	}
+	t.Setenv("AETHER_APPARMOR_PROFILE", "")
+	if got := appArmorProfile(); got != "" {
+		t.Fatalf("disabled AppArmor profile = %q, want empty", got)
+	}
+}
+
 func TestDockerRuntimeNormalizesOperationalErrors(t *testing.T) {
 	tests := []struct {
 		name string

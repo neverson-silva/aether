@@ -112,6 +112,10 @@ HOST_LOG="$STATE_DIR/logs/host-setup.log"
 INSTALL_LOG="${AETHER_INSTALL_LOG:-/dev/stderr}"
 FORCE_API_RECREATE=0
 FORCE_IMAGE_REBUILD=0
+SELINUX_BIND_SUFFIX=""
+SELINUX_READONLY_SUFFIX=""
+SELINUX_LABEL=""
+APPARMOR_PROFILE=""
 
 content_fingerprint() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -200,6 +204,36 @@ resolve_public_host() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+configure_security_context() {
+  local configured="${AETHER_SELINUX_LABEL:-}"
+  APPARMOR_PROFILE="${AETHER_APPARMOR_PROFILE:-apparmor=docker-default}"
+  if command_exists getenforce; then
+    APPARMOR_PROFILE="${AETHER_APPARMOR_PROFILE:-}"
+    if [[ -z "$configured" ]]; then
+      case "$(getenforce 2>/dev/null || true)" in
+        Enforcing|Permissive)
+          configured="shared"
+          ;;
+      esac
+    fi
+  fi
+  case "$configured" in
+    ""|disabled|disable|off)
+      SELINUX_BIND_SUFFIX=""
+      SELINUX_READONLY_SUFFIX=""
+      SELINUX_LABEL=""
+      ;;
+    shared|z)
+      SELINUX_BIND_SUFFIX=":z"
+      SELINUX_READONLY_SUFFIX=",z"
+      SELINUX_LABEL="shared"
+      ;;
+    *)
+      fail "Unsupported AETHER_SELINUX_LABEL '$configured'. Use shared or disabled."
+      ;;
+  esac
+}
+
 container_port_binding() {
   local runtime="$1"
   local container="$2"
@@ -258,7 +292,14 @@ ensure_runtime() {
       fail "Docker CLI is required but could not be installed. Install Docker Engine or Docker Desktop and run again."
     fi
   fi
-  docker info >/dev/null 2>&1 || fail "Docker Engine is unavailable. Start Docker Desktop or the Docker daemon and run again."
+  if ! docker info >/dev/null 2>&1; then
+    start_docker_service >/dev/null 2>&1 || true
+  fi
+  local engine_info
+  engine_info="$(docker info 2>&1)" || fail "Docker Engine is unavailable. Start Docker Desktop or the Docker daemon and run again."
+  if printf '%s' "$engine_info" | grep -qiE 'podman|libpod'; then
+    fail "A Podman-compatible Docker command was detected. Install Docker Engine and remove the podman-docker compatibility package."
+  fi
   docker compose version >/dev/null 2>&1 || fail "Docker Compose is unavailable. Install the Docker Compose plugin and run again."
   ensure_linux_host
   RUNTIME="$runtime"
@@ -356,7 +397,10 @@ install_docker_fedora() {
 install_docker_rpm() {
   local distro="$1"
   local repo_base="centos"
-  [[ "$distro" == "amzn" ]] && repo_base="amazon"
+  case "$distro" in
+    almalinux|rhel|rocky) repo_base="rhel" ;;
+    amzn) repo_base="amazon" ;;
+  esac
   local package_manager="dnf"
   local plugins_package="dnf-plugins-core"
   [[ "$distro" == "amzn" ]] && package_manager="yum"
@@ -378,11 +422,18 @@ install_docker_debian() {
 
 start_docker_service() {
   if command_exists systemctl; then
-    run_sudo systemctl enable --now docker >/dev/null 2>&1 || true
+    run_sudo systemctl enable --now docker >/dev/null 2>&1 || return 1
     run_sudo systemctl enable --now containerd >/dev/null 2>&1 || true
+    return 0
+  elif command_exists rc-service; then
+    run_sudo rc-update add docker default >/dev/null 2>&1 || true
+    run_sudo rc-service docker start >/dev/null 2>&1 || return 1
+    return 0
   elif command_exists service; then
-    run_sudo service docker start >/dev/null 2>&1 || true
+    run_sudo service docker start >/dev/null 2>&1 || return 1
+    return 0
   fi
+  return 1
 }
 
 # ensure_linux_host validates Docker host prerequisites.
@@ -690,7 +741,7 @@ ensure_nats() {
       -p "127.0.0.1:$NATS_PORT:4222" \
       -p "127.0.0.1:$NATS_MONITOR_PORT:8222" \
       -v aether-nats-data:/data \
-      -v "$NATS_CONFIG_FILE:/etc/nats/nats.conf:ro" \
+      -v "$NATS_CONFIG_FILE:/etc/nats/nats.conf:ro$SELINUX_READONLY_SUFFIX" \
       --read-only \
       --tmpfs /tmp:noexec,nosuid,nodev,size=16m \
       --cap-drop ALL \
@@ -881,7 +932,7 @@ start_api() {
     --read-only
     --tmpfs /tmp:rw,noexec,nosuid,size=128m
     -p "$bind_address:$API_PORT:8080"
-    -v "$STATE_DIR:/var/lib/aether"
+    -v "$STATE_DIR:/var/lib/aether$SELINUX_BIND_SUFFIX"
     -v "aether-pack-cache:/home/aether/.cache/pack"
     --restart unless-stopped
     -e "AETHER_STATE=/var/lib/aether"
@@ -908,6 +959,8 @@ start_api() {
     -e "AETHER_PUBLISHED_NETWORK=$PUBLISHED_NET_NAME"
     -e "AETHER_COOKIE_SECURE=${AETHER_COOKIE_SECURE:-$COOKIE_SECURE_DEFAULT}"
     -e "AETHER_MODE=$MODE"
+    -e "AETHER_SELINUX_LABEL=$SELINUX_LABEL"
+    -e "AETHER_APPARMOR_PROFILE=$APPARMOR_PROFILE"
   )
   local docker_socket="${AETHER_DOCKER_SOCKET:-/var/run/docker.sock}"
   if [[ -S "$docker_socket" ]]; then
@@ -954,7 +1007,7 @@ start_auxiliary() {
   $RUNTIME rm -f "$container" >/dev/null 2>&1 || true
   local args=(run -d --name "$container" --user "$(id -u):$(id -g)" --entrypoint "/usr/local/bin/$binary" --network "$NET_NAME" --security-opt label=disable --security-opt no-new-privileges:true --cap-drop ALL --read-only --tmpfs /tmp:rw,noexec,nosuid,size=128m)
   args+=(
-    -v "$STATE_DIR:/var/lib/aether"
+    -v "$STATE_DIR:/var/lib/aether$SELINUX_BIND_SUFFIX"
     -e "AETHER_STATE=/var/lib/aether"
     -e "AETHER_SNAPSHOT_HOST_DIR=$STATE_DIR/snapshots"
     -e "DATABASE_HOST=$PG_CONTAINER"
@@ -973,6 +1026,8 @@ start_auxiliary() {
     -e "DEV_MODE=$DEV_MODE"
     -e "AETHER_FREE_DOMAIN_PROVIDER=${AETHER_FREE_DOMAIN_PROVIDER:-nip.io}"
     -e "AETHER_MODE=$MODE"
+    -e "AETHER_SELINUX_LABEL=$SELINUX_LABEL"
+    -e "AETHER_APPARMOR_PROFILE=$APPARMOR_PROFILE"
     --restart unless-stopped
   )
   if [[ "$binary" == "aether-worker" ]]; then
@@ -1116,7 +1171,7 @@ start_web() {
     --tmpfs /var/run:rw,nosuid,nodev,size=1m \
     --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
     -p "$bind_address:$WEB_PORT:4000" \
-    -v "$conf:/etc/nginx/conf.d/default.conf:ro" \
+    -v "$conf:/etc/nginx/conf.d/default.conf:ro$SELINUX_READONLY_SUFFIX" \
     --restart unless-stopped \
     "$WEB_IMAGE" >/dev/null || fail "Failed to start the web container."
 
@@ -1373,6 +1428,7 @@ main() {
       ;;
     start)
       ensure_runtime
+      configure_security_context
       start_agent
       ensure_network
       ensure_ingress_image
@@ -1397,6 +1453,7 @@ main() {
 
   progress_step 1 "Checking your system"
   ensure_runtime
+  configure_security_context
 
   progress_step 2 "Securing application data"
   ensure_master_key

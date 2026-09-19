@@ -41,9 +41,13 @@ distribution() {
 }
 
 install_bootstrap_dependencies() {
-  local distro
+  local distro curl_package
   distro="$(distribution)"
-  if command_exists git && command_exists curl && command_exists htpasswd; then
+  curl_package="curl"
+  if command_exists rpm && rpm -q curl-minimal >/dev/null 2>&1; then
+    curl_package="curl-minimal"
+  fi
+  if command_exists git && command_exists curl && command_exists htpasswd && command_exists openssl; then
     return 0
   fi
 
@@ -55,11 +59,11 @@ install_bootstrap_dependencies() {
       ;;
     fedora|rhel|centos|rocky|almalinux|ol|amzn)
       if command_exists dnf; then
-        run_root dnf install -y git curl ca-certificates httpd-tools
+        run_root dnf install -y bash git "$curl_package" ca-certificates httpd-tools openssl
       elif command_exists yum; then
-        run_root yum install -y git curl ca-certificates httpd-tools
+        run_root yum install -y bash git "$curl_package" ca-certificates httpd-tools openssl
       elif command_exists microdnf; then
-        run_root microdnf install -y git curl ca-certificates httpd-tools
+        run_root microdnf install -y bash git "$curl_package" ca-certificates httpd-tools openssl
       else
         fail "No supported RPM package manager was found on ${distro}."
       fi
@@ -103,6 +107,19 @@ validate_host() {
       fail "Unsupported architecture '$(uname -m)'. Supported architectures: amd64 and arm64."
       ;;
   esac
+  local distro version_major
+  distro="$(distribution)"
+  if [[ "$distro" == "almalinux" ]]; then
+    version_major="$(. /etc/os-release && printf '%s' "${VERSION_ID%%.*}")"
+    case "$version_major" in
+      8|9|10)
+        ;;
+      *)
+        fail "Unsupported AlmaLinux version '${VERSION_ID:-unknown}'. Supported versions: 8, 9, and 10."
+        ;;
+    esac
+    command_exists systemctl || fail "AlmaLinux requires systemd and systemctl for the production installer."
+  fi
 }
 
 prepare_install_dir() {

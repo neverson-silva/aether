@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { AppDetail } from "@/api/types";
 import type { Deployment } from "@/api/types";
 import { useCancelDeployment, useDeployCompare, useServiceCancelDeployment } from "@/hooks";
-import { ArrowsClockwise, ArrowUUpLeft, X } from "@phosphor-icons/react";
+import { ArrowsClockwise, ArrowUUpLeft, FileText, X } from "@phosphor-icons/react";
 import type { Icon as DesignIcon } from "@aether/design-system";
 import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Skeleton, useToast } from "@aether/design-system";
 import { DeploymentLogModal } from "./DeploymentLogModal";
@@ -111,8 +111,9 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                 return (
                   <tr
                     key={d.id}
+                    onClick={() => setLogDep(d.id)}
                     className={cn(
-                      "border-b border-outline-variant/40 transition-[background-color,box-shadow] duration-200 hover:bg-surface-container-high",
+                      "cursor-pointer border-b border-outline-variant/40 transition-[background-color,box-shadow] duration-200 hover:bg-surface-container-high",
                       isDeploymentActive(d.status) && "bg-status-success-container/10 shadow-[inset_3px_0_0_theme(colors.status.success)]"
                     )}
                   >
@@ -124,6 +125,7 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                           e.stopPropagation();
                           toggle(d.id);
                         }}
+                        onClick={(e) => e.stopPropagation()}
                         className="size-4 rounded-sm bg-surface border-outline-variant text-primary"
                       />
                     </td>
@@ -178,6 +180,18 @@ export function DeploymentsTab({ appId, serviceId, deployments, onRollback }: { 
                           Cancel
                         </Button>
                       )}
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        icon={FileText as unknown as DesignIcon}
+                        aria-label={`View logs for deployment #${d.number}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setLogDep(d.id);
+                        }}
+                      >
+                        Logs
+                      </Button>
                     </td>
                   </tr>
                 );
