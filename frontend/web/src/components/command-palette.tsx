@@ -238,7 +238,7 @@ function CommandPaletteContent({ open, setOpen }: { open: boolean; setOpen: (ope
       if (item.action === "service") {
         setServiceCreate(true);
       } else if (item.action === "project") {
-        navigate({ to: "/projects/new" } as never);
+        navigate({ to: "/projects", search: { create: true } } as never);
       } else if (item.action === "database") {
         navigate({ to: "/databases" } as never);
       } else if (item.action === "environment") {

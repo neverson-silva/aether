@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -20,7 +20,7 @@ import {
   Typography,
   useToast,
 } from "@aether/design-system";
-import { useProjects, useServices } from "../../../hooks";
+import { useCreateProject, useProjects, useServices } from "../../../hooks";
 import { api } from "../../../api/client";
 import { PageHeader } from "../../../components/PageHeader";
 
@@ -37,12 +37,41 @@ function formatDate(iso: string) {
 function Projects() {
   const { data: projects, isLoading } = useProjects();
   const { data: services } = useServices();
+  const createProject = useCreateProject();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const search = Route.useSearch();
   const { add } = useToast();
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(search.create === true);
   const servicesByProject = (services ?? []).reduce<Record<string, number>>((counts, service) => ({ ...counts, [service.project_id]: (counts[service.project_id] ?? 0) + 1 }), {});
+  const createForm = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { name: "" } });
   const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { name: "" } });
+
+  useEffect(() => {
+    if (search.create) setNewOpen(true);
+  }, [search.create]);
+
+  const openCreateProject = () => {
+    createForm.reset({ name: "" });
+    setNewOpen(true);
+  };
+
+  const closeCreateProject = () => {
+    setNewOpen(false);
+    createForm.reset({ name: "" });
+    if (search.create) void navigate({ to: "/projects", search: {} });
+  };
+
+  const create = async (values: z.infer<typeof schema>) => {
+    try {
+      await createProject.mutateAsync(values.name);
+      add({ title: "Project created", tone: "success" });
+      closeCreateProject();
+    } catch (error) {
+      add({ title: "Unable to create project", description: error instanceof Error ? error.message : "Try again.", tone: "error" });
+    }
+  };
 
   const rename = async (values: z.infer<typeof schema>) => {
     if (!editing) return;
@@ -75,21 +104,7 @@ function Projects() {
         eyebrow="Workspace"
         title="Projects"
         description="Organize services, environments and delivery workflows by project."
-        actions={<Dialog
-          open={newOpen}
-          onOpenChange={setNewOpen}
-          title="Create project"
-          description="Create a workspace boundary for services and environments."
-          trigger={<Button icon={designIcon(Plus)}>New project</Button>}
-        >
-          <Link to="/projects/new" className="flex items-center gap-3 rounded-lg border border-border p-4 transition-colors hover:bg-surface-container">
-            <FolderOpen size={24} weight="duotone" className="text-primary" aria-hidden="true" />
-            <span>
-              <Typography as="span" level="body" weight="semibold">Project workspace</Typography>
-              <Typography as="span" level="small" tone="muted">Group applications and environments.</Typography>
-            </span>
-          </Link>
-        </Dialog>}
+        actions={<Button icon={designIcon(Plus)} onClick={openCreateProject}>New project</Button>}
       />
 
       <section className="space-y-4" aria-labelledby="projects-heading">
@@ -104,7 +119,7 @@ function Projects() {
             icon={designIcon(FolderOpen)}
             title="No projects yet"
             description="Create a project to group applications, databases and environments."
-            action={<Button icon={designIcon(Plus)} onClick={() => setNewOpen(true)}>Create project</Button>}
+            action={<Button icon={designIcon(Plus)} onClick={openCreateProject}>Create project</Button>}
           />
         ) : null}
 
@@ -147,6 +162,23 @@ function Projects() {
         ) : null}
       </section>
 
+      <Dialog
+        open={newOpen}
+        onOpenChange={(open) => { if (open) openCreateProject(); else closeCreateProject(); }}
+        title="Create project"
+        description="Create a workspace boundary for services and environments."
+      >
+        <form onSubmit={createForm.handleSubmit(create)} className="space-y-6" noValidate>
+          <Field label="Project name" error={createForm.formState.errors.name?.message}>
+            <Input placeholder="e.g. api-gateway" autoFocus {...createForm.register("name")} />
+          </Field>
+          <div className="flex justify-end gap-3 border-t border-border pt-5">
+            <Button type="button" variant="ghost" onClick={closeCreateProject}>Cancel</Button>
+            <Button type="submit" icon={designIcon(Plus)} loading={createForm.formState.isSubmitting || createProject.isPending}>Create project</Button>
+          </div>
+        </form>
+      </Dialog>
+
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }} title="Rename project" trigger={<span aria-hidden="true" />}>
         <form onSubmit={form.handleSubmit(rename)} className="space-y-6" noValidate>
           <Field label="Project name" error={form.formState.errors.name?.message}>
@@ -162,4 +194,7 @@ function Projects() {
   );
 }
 
-export const Route = createFileRoute("/_shell/projects/")({ component: Projects });
+export const Route = createFileRoute("/_shell/projects/")({
+  validateSearch: z.object({ create: z.boolean().optional() }),
+  component: Projects,
+});

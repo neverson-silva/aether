@@ -117,7 +117,8 @@ function AppDetail() {
   const runtimeId = service?.spec_id ?? appId;
   const app = service ? canonicalApp(service) : undefined;
   const { data: serviceEnvironment, dataUpdatedAt: serviceEnvironmentUpdatedAt } = useServiceEnvironment(serviceId, Boolean(service), true);
-  const { data: serviceConnection, isError: serviceConnectionError } = useServiceConnection(serviceId, Boolean(service && service.kind === "database"));
+  const [connectionVisible, setConnectionVisible] = useState(false);
+  const { data: serviceConnection, isError: serviceConnectionError } = useServiceConnection(serviceId, Boolean(service && service.kind === "database" && connectionVisible));
   const canManageSource = service?.capabilities.can_manage_source === true;
   const { data: source, isLoading: sourceLoading, isError: sourceError } = useServiceSource(serviceId, canManageSource, canManageSource);
   const { data: sourceConnections } = useSourceControlConnections(canManageSource);
@@ -139,7 +140,6 @@ function AppDetail() {
   const serviceRestart = useServiceAction("restart");
   const serviceDelete = useServiceAction("delete");
   const [variables, setVariables] = useState<VariableRow[]>([]);
-  const [connectionVisible, setConnectionVisible] = useState(false);
   const [providerEditing, setProviderEditing] = useState(false);
   const [providerRepositoryId, setProviderRepositoryId] = useState("");
   const [providerBranch, setProviderBranch] = useState("");

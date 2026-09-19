@@ -552,6 +552,10 @@ func (h *Handler) enrichSpec(c *gin.Context, service gin.H, kind servicedomain.K
 }
 
 func (h *Handler) Connection(c *gin.Context) {
+	c.JSON(http.StatusNotFound, gin.H{"error": "service connection is unavailable"})
+}
+
+func (h *Handler) RevealConnection(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("serviceID"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
@@ -571,6 +575,8 @@ func (h *Handler) Connection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "service connection is unavailable"})
 		return
 	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	c.JSON(http.StatusOK, gin.H{"dsn": dsn})
 }
 

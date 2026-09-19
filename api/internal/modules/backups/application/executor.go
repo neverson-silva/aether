@@ -300,10 +300,21 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 		}
 		defer func() { _ = s.Locks.Release(ctx, lock) }()
 	}
-	now := time.Now()
-	rj.StartedAt = &now
-	_ = rj.Transition(domain.RestorePreparing)
-	_, _ = s.Store.UpdateRestoreJob(ctx, rj)
+	if rj.Status != domain.RestorePreparing {
+		if err := rj.Transition(domain.RestorePreparing); err != nil {
+			_ = s.failRestore(ctx, rj, "RESTORE_STATE_INVALID", err.Error())
+			return
+		}
+	}
+	if rj.StartedAt == nil {
+		now := time.Now()
+		rj.StartedAt = &now
+	}
+	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
+		_ = s.failRestore(ctx, rj, "RESTORE_STATE_UPDATE_FAILED", err.Error())
+		return
+	}
+	s.notifyRestore(ctx, orgID, rj.TargetDatabaseID, rj.ID, string(rj.Status))
 
 	artifact, sourceErr := s.openRestoreSource(ctx, rj, orgID)
 	if sourceErr != nil {
@@ -339,6 +350,7 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 		_ = s.failRestore(ctx, rj, "RESTORE_STATE_UPDATE_FAILED", err.Error())
 		return
 	}
+	s.notifyRestore(ctx, orgID, rj.TargetDatabaseID, rj.ID, string(rj.Status))
 
 	if err := adapter.Restore(ctx, desc, artifact.reader); err != nil {
 		_ = s.failRestore(ctx, rj, "RESTORE_FAILED", err.Error())
@@ -348,6 +360,11 @@ func (s *DatabaseBackups) runRestore(ctx context.Context, orgID uuid.UUID, jobID
 		_ = s.failRestore(ctx, rj, "RESTORE_STATE_INVALID", err.Error())
 		return
 	}
+	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
+		_ = s.failRestore(ctx, rj, "RESTORE_STATE_UPDATE_FAILED", err.Error())
+		return
+	}
+	s.notifyRestore(ctx, orgID, rj.TargetDatabaseID, rj.ID, string(rj.Status))
 	completed := time.Now()
 	rj.CompletedAt = &completed
 	if err := rj.Transition(domain.RestoreCompleted); err != nil {
@@ -405,7 +422,7 @@ type restoreSourceError struct {
 func (s *DatabaseBackups) openRestoreSource(ctx context.Context, rj *domain.RestoreJob, orgID uuid.UUID) (*restoreArtifact, *restoreSourceError) {
 	switch rj.SourceType {
 	case domain.RestoreSourceUpload:
-		return s.openUploadedSource(ctx, rj)
+		return s.openUploadedSource(ctx, rj, orgID)
 	case domain.RestoreSourceBackup:
 		return s.openBackupSource(ctx, rj, orgID)
 	default:
@@ -413,7 +430,7 @@ func (s *DatabaseBackups) openRestoreSource(ctx context.Context, rj *domain.Rest
 	}
 }
 
-func (s *DatabaseBackups) openUploadedSource(ctx context.Context, rj *domain.RestoreJob) (*restoreArtifact, *restoreSourceError) {
+func (s *DatabaseBackups) openUploadedSource(ctx context.Context, rj *domain.RestoreJob, orgID uuid.UUID) (*restoreArtifact, *restoreSourceError) {
 	path := s.uploadArtifactPath(rj.ID)
 	st, err := os.Stat(path)
 	if err != nil {
@@ -431,6 +448,7 @@ func (s *DatabaseBackups) openUploadedSource(ctx context.Context, rj *domain.Res
 	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
 		return nil, &restoreSourceError{"RESTORE_STATE_UPDATE_FAILED", err.Error()}
 	}
+	s.notifyRestore(ctx, orgID, rj.TargetDatabaseID, rj.ID, string(rj.Status))
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, &restoreSourceError{"RESTORE_DISK_UNREADABLE", err.Error()}
@@ -466,6 +484,7 @@ func (s *DatabaseBackups) openBackupSource(ctx context.Context, rj *domain.Resto
 	if _, err := s.Store.UpdateRestoreJob(ctx, rj); err != nil {
 		return nil, &restoreSourceError{"RESTORE_STATE_UPDATE_FAILED", err.Error()}
 	}
+	s.notifyRestore(ctx, orgID, rj.TargetDatabaseID, rj.ID, string(rj.Status))
 	obj, err := provider.GetObject(ctx, storage.GetObjectInput{Key: backup.StorageKey})
 	if err != nil {
 		return nil, &restoreSourceError{"RESTORE_BACKUP_NOT_FOUND", err.Error()}

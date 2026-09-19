@@ -455,7 +455,7 @@ function OrganizationPage() {
               <EmptyState
                 title="No projects in this organization yet"
                 action={
-                  <Button onClick={() => navigate({ to: "/projects/new" })}>
+                  <Button onClick={() => navigate({ to: "/projects", search: { create: true } })}>
                     Create your first project
                   </Button>
                 }

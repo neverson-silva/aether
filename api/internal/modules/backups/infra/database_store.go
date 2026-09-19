@@ -351,6 +351,30 @@ func (s *DatabaseStore) ListQueuedRestoreJobs(ctx context.Context, limit int) ([
 	return out, nil
 }
 
+func (s *DatabaseStore) ListRestoreQueueItems(ctx context.Context, limit int) ([]domain.RestoreQueueItem, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT rj.id, d.org_id
+		FROM restore_jobs rj
+		JOIN databases d ON d.id = rj.target_database_id
+		WHERE (rj.status = 'queued' AND rj.backup_id IS NOT NULL)
+		   OR (rj.status = 'preparing' AND rj.started_at IS NOT NULL AND rj.started_at < now() - interval '2 minutes')
+		ORDER BY rj.created_at
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	items := make([]domain.RestoreQueueItem, 0, limit)
+	for rows.Next() {
+		var item domain.RestoreQueueItem
+		if err := rows.Scan(&item.ID, &item.OrgID); err != nil {
+			return nil, mapErr(err)
+		}
+		items = append(items, item)
+	}
+	return items, mapErr(rows.Err())
+}
+
 func (s *DatabaseStore) serviceID(ctx context.Context, table string, id uuid.UUID) uuid.UUID {
 	query := "SELECT service_id FROM " + table + " WHERE id = $1"
 	var serviceID uuid.UUID

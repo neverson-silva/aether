@@ -39,10 +39,8 @@ function DatabasesPage() {
   const [dsnOpen, setDsnOpen] = useState(false);
   const connection = useServiceConnection(databases[0]?.id ?? "", dsnOpen);
 
-  const loadDsn = async () => {
-    const database = databases[0];
-    if (!database) return;
-    setDsnOpen(true);
+  const loadDsn = () => {
+    if (databases[0]) setDsnOpen(true);
   };
 
   useEffect(() => {
@@ -83,7 +81,7 @@ function DatabasesPage() {
 
       <Card as="section" variant="glass" padding="lg" header={<div className="flex items-center gap-3"><Eye size={20} className="text-primary" /><Typography as="h2" level="heading">Connection strings</Typography></div>}>
         <div className="space-y-4">
-          <Typography as="p" level="body" tone="muted">Databases join the project network by hostname. Credentials are encrypted at rest and available only through authenticated requests.</Typography>
+          <Typography as="p" level="body" tone="muted">Databases join the project network by hostname. Credentials are requested only when you explicitly reveal a connection string.</Typography>
           {dsn ? <pre className="overflow-auto rounded-lg border border-border bg-surface-container p-4 font-mono text-body-sm text-foreground">{dsn}</pre> : <Button variant="outline" size="sm" onClick={loadDsn} disabled={!databases?.length}>Show DSN for first database</Button>}
         </div>
       </Card>

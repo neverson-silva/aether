@@ -231,6 +231,7 @@ func (r *Router) routes() {
 		authed.GET("/services/:serviceID/environment", r.services.Environment)
 		authed.GET("/services/:serviceID/volumes", r.services.Volumes)
 		authed.GET("/services/:serviceID/connection", r.services.Connection)
+		authed.POST("/services/:serviceID/connection/reveal", r.services.RevealConnection)
 		authed.GET("/services/:serviceID/cron-jobs", r.services.CronJobs)
 		authed.POST("/services/:serviceID/cron-jobs", r.services.CreateCronJob)
 		authed.DELETE("/services/:serviceID/cron-jobs/:jobID", r.services.DeleteCronJob)

@@ -30,6 +30,11 @@ type DatabaseBackupStore interface {
 	ListQueuedRestoreJobs(ctx context.Context, limit int) ([]RestoreJob, error)
 }
 
+type RestoreQueueItem struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
 type OrganizationJobCounter interface {
 	CountActiveByOrg(ctx context.Context, orgID uuid.UUID) (int, error)
 	CountActiveUploadBytesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)

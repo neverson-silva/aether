@@ -629,10 +629,13 @@ func TestPhase8CanonicalDatabaseLifecycle(t *testing.T) {
 	if _, ok := details.Spec["dsn"]; ok {
 		t.Fatal("database connection string leaked through canonical service details")
 	}
+	if err := client.request(ctx, http.MethodGet, baseURL+"/api/v1/services/"+serviceID+"/connection", me.Org.ID, nil, nil); err == nil {
+		t.Fatal("database connection GET endpoint returned a response")
+	}
 	var connection struct {
 		DSN string `json:"dsn"`
 	}
-	if err := client.request(ctx, http.MethodGet, baseURL+"/api/v1/services/"+serviceID+"/connection", me.Org.ID, nil, &connection); err != nil {
+	if err := client.request(ctx, http.MethodPost, baseURL+"/api/v1/services/"+serviceID+"/connection/reveal", me.Org.ID, nil, &connection); err != nil {
 		t.Fatal(err)
 	}
 	if connection.DSN == "" {

@@ -22,6 +22,9 @@ type BackupScheduler struct {
 }
 
 func (s *DatabaseBackups) Reconcile(ctx context.Context) error {
+	if err := s.reconcileRestoreQueue(ctx); err != nil {
+		return fmt.Errorf("restore queue reconciliation: %w", err)
+	}
 	configs, err := s.Store.ListEnabledConfigurations(ctx)
 	if err != nil {
 		return err
@@ -39,6 +42,33 @@ func (s *DatabaseBackups) Reconcile(ctx context.Context) error {
 	}
 	if recurring, ok := s.Scheduler.(platformscheduler.RecurringScheduler); ok {
 		return recurring.ReconcileRecurring(ctx, "backups", activeKeys)
+	}
+	return nil
+}
+
+func (s *DatabaseBackups) reconcileRestoreQueue(ctx context.Context) error {
+	if s.Queue == nil {
+		return nil
+	}
+	store, ok := s.Store.(interface {
+		ListRestoreQueueItems(context.Context, int) ([]domain.RestoreQueueItem, error)
+	})
+	if !ok {
+		return nil
+	}
+	items, err := store.ListRestoreQueueItems(ctx, s.batch())
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if err := s.Queue.Enqueue(ctx, "backups", queue.Job{
+			ID:      item.ID.String(),
+			Type:    "restore",
+			OrgID:   item.OrgID.String(),
+			Payload: []byte(item.ID.String()),
+		}); err != nil {
+			return fmt.Errorf("enqueue restore %s: %w", item.ID, err)
+		}
 	}
 	return nil
 }

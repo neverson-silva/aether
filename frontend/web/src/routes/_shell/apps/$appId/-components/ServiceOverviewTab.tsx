@@ -358,9 +358,7 @@ function ServiceDetailsCard({
                 />
               ) : (
                 <span className="font-body-sm text-body-sm text-on-surface-variant">
-                  {connectionError
-                    ? "Connection string unavailable"
-                    : "Loading connection..."}
+                  {connectionError ? "Connection string unavailable" : "Loading connection..."}
                 </span>
               )}
             </>
