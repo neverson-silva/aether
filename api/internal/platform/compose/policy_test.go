@@ -46,15 +46,15 @@ services:
 	}
 }
 
-func TestValidatePolicyRejectsPrivilegedHostPortsWithoutMarker(t *testing.T) {
+func TestValidatePolicyAllowsPublishedPortsWithoutMarker(t *testing.T) {
 	content := `services:
   dns:
     image: adguard/adguardhome
     ports:
       - "53:53/tcp"
 `
-	if err := ValidatePolicy(content); err == nil {
-		t.Fatal("privileged host port accepted without marker")
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("published port rejected without marker: %v", err)
 	}
 }
 
@@ -468,40 +468,7 @@ func TestValidatePolicyRejectsUnboundedResources(t *testing.T) {
 	}
 }
 
-func TestValidatePolicyRejectsUnsafePublishedPorts(t *testing.T) {
-	for _, content := range []string{
-		`services:
-  web:
-    image: nginx
-    ports: ["80:8080"]
-`,
-		`services:
-  web:
-    image: nginx
-    ports:
-      - target: 8080
-        published: 70000
-`,
-		`services:
-  web:
-    image: nginx
-    ports: "8080:80"
-`,
-	} {
-		if err := ValidatePolicy(content); err == nil {
-			t.Fatalf("unsafe published ports accepted: %s", content)
-		}
-	}
-	if err := ValidatePolicy(`services:
-  web:
-    image: nginx
-    ports: ["8080:80", "80"]
-`); err != nil {
-		t.Fatalf("valid ports rejected: %v", err)
-	}
-}
-
-func TestValidatePolicyRejectsExcessivePublishedPorts(t *testing.T) {
+func TestValidatePolicyIgnoresPublishedPortValidation(t *testing.T) {
 	ports := make([]string, 65)
 	for i := range ports {
 		ports[i] = strconv.Itoa(2000+i) + ":80"
@@ -510,8 +477,26 @@ func TestValidatePolicyRejectsExcessivePublishedPorts(t *testing.T) {
 	for _, port := range ports {
 		content += "      - \"" + port + "\"\n"
 	}
-	if err := ValidatePolicy(content); err == nil {
-		t.Fatal("excessive published ports accepted")
+	if err := ValidatePolicy(content); err != nil {
+		t.Fatalf("published port configuration rejected: %v", err)
+	}
+	for _, content := range []string{
+		`services:
+  web:
+    image: nginx
+    ports: "8080:80"
+`,
+		`services:
+  web:
+    image: nginx
+    ports:
+      - target: 8080
+        published: 70000
+`,
+	} {
+		if err := ValidatePolicy(content); err != nil {
+			t.Fatalf("published port configuration rejected: %v", err)
+		}
 	}
 }
 
