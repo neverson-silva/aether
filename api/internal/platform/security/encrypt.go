@@ -172,6 +172,12 @@ func DecodeCiphertext(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(s)
 }
 
+// IsEnvelopeCiphertext reports whether a value uses the versioned envelope format.
+func IsEnvelopeCiphertext(s string) bool {
+	data, err := DecodeCiphertext(s)
+	return err == nil && len(data) >= encHeaderLen && data[0] == encVersionV1 && data[1] == encAlgAESGCM
+}
+
 func (e *EnvelopeCrypto) EncryptString(v string) (string, error) {
 	enc, err := e.Encrypt([]byte(v))
 	if err != nil {

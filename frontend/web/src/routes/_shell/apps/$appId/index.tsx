@@ -116,7 +116,7 @@ function AppDetail() {
   const serviceId = service?.id ?? appId;
   const runtimeId = service?.spec_id ?? appId;
   const app = service ? canonicalApp(service) : undefined;
-  const { data: serviceEnvironment } = useServiceEnvironment(serviceId, Boolean(service), search.tab === "variables");
+  const { data: serviceEnvironment, dataUpdatedAt: serviceEnvironmentUpdatedAt } = useServiceEnvironment(serviceId, Boolean(service), true);
   const { data: serviceConnection, isError: serviceConnectionError } = useServiceConnection(serviceId, Boolean(service && service.kind === "database"));
   const canManageSource = service?.capabilities.can_manage_source === true;
   const { data: source, isLoading: sourceLoading, isError: sourceError } = useServiceSource(serviceId, canManageSource, canManageSource);
@@ -161,7 +161,7 @@ function AppDetail() {
   const visibleTabs = service ? SERVICE_TABS.filter((item) => (item !== "compose" || service.kind === "compose") && (item !== "domains" || service.capabilities.can_manage_domains) && (item !== "logs" || service.capabilities.can_view_logs) && (item !== "metrics" || service.capabilities.can_view_metrics) && (item !== "cron" || service.capabilities.can_manage_schedules) && (item !== "terminal" || service.capabilities.can_open_terminal) && (item !== "settings" || service.capabilities.can_build || service.kind === "compose") && (item !== "backup" || service.capabilities.can_manage_backups)) : SERVICE_TABS;
   const tab = visibleTabs.includes(requestedTab) ? requestedTab : "overview";
   const envEditorVars = useMemo(() => (serviceEnvironment?.env ?? []).map((entry) => ({ key: entry.name, value: entry.secret && entry.value === "" ? maskedSecretValue : entry.value, is_secret: entry.secret })), [serviceEnvironment]);
-  const variableKey = useMemo(() => envEditorVars.map((entry) => `${entry.key}:${entry.value.length}:${entry.is_secret}`).join("|"), [envEditorVars]);
+  const variableKey = useMemo(() => `${serviceEnvironmentUpdatedAt}:${envEditorVars.map((entry) => `${entry.key}:${entry.is_secret}`).join("|")}`, [envEditorVars, serviceEnvironmentUpdatedAt]);
   const latest = deployments?.slice().sort((a, b) => b.number - a.number)[0];
   const containerState = stats?.state && stats.state !== "unknown" ? stats.state : containers?.[0]?.status ?? service?.status ?? "unknown";
   const activeDeployment = latest && isDeploymentActive(latest.status) ? latest.status : undefined;

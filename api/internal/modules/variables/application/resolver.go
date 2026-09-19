@@ -75,7 +75,10 @@ func (r *Resolver) Resolved(ctx context.Context, appID, orgID uuid.UUID) ([]doma
 		return nil, err
 	}
 	for _, v := range project {
-		val := r.decrypt(v)
+		val, decryptErr := r.decrypt(v)
+		if decryptErr != nil {
+			return nil, fmt.Errorf("decrypt project variable %q: %w", v.Key, decryptErr)
+		}
 		scopes.project[v.Key] = val
 		merged[v.Key] = scopeEntry{Key: v.Key, Value: val, Source: "project", Secret: v.IsSecret}
 	}
@@ -86,14 +89,20 @@ func (r *Resolver) Resolved(ctx context.Context, appID, orgID uuid.UUID) ([]doma
 			return nil, err
 		}
 		for _, v := range env {
-			val := r.decrypt(v)
+			val, decryptErr := r.decrypt(v)
+			if decryptErr != nil {
+				return nil, fmt.Errorf("decrypt environment variable %q: %w", v.Key, decryptErr)
+			}
 			scopes.environment[v.Key] = val
 			merged[v.Key] = scopeEntry{Key: v.Key, Value: val, Source: "environment", Secret: v.IsSecret}
 		}
 	}
 
 	for _, v := range serviceVars {
-		val := r.decryptEnvVar(v)
+		val, decryptErr := r.decryptEnvVar(v)
+		if decryptErr != nil {
+			return nil, fmt.Errorf("decrypt service variable %q: %w", v.Name, decryptErr)
+		}
 		scopes.service[v.Name] = val
 		merged[v.Name] = scopeEntry{Key: v.Name, Value: val, Source: "service", Secret: v.Secret}
 	}
@@ -121,26 +130,18 @@ func (r *Resolver) Resolved(ctx context.Context, appID, orgID uuid.UUID) ([]doma
 	return out, nil
 }
 
-func (r *Resolver) decrypt(v domain.Variable) string {
+func (r *Resolver) decrypt(v domain.Variable) (string, error) {
 	if !v.IsSecret || v.Value == "" || r.Cipher == nil {
-		return v.Value
+		return v.Value, nil
 	}
-	plain, err := r.Cipher.Decrypt(v.Value)
-	if err != nil {
-		return v.Value
-	}
-	return plain
+	return r.Cipher.Decrypt(v.Value)
 }
 
-func (r *Resolver) decryptEnvVar(v appsdomain.EnvVar) string {
+func (r *Resolver) decryptEnvVar(v appsdomain.EnvVar) (string, error) {
 	if !v.Secret || v.Value == "" || r.Cipher == nil {
-		return v.Value
+		return v.Value, nil
 	}
-	plain, err := r.Cipher.Decrypt(v.Value)
-	if err != nil {
-		return v.Value
-	}
-	return plain
+	return r.Cipher.Decrypt(v.Value)
 }
 
 var placeholderRe = regexp.MustCompile(`\$\{\{?([A-Za-z_][A-Za-z0-9_.]*)\}?\}`)

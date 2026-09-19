@@ -490,15 +490,16 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		return w.setStatus(ctx, dep, deploydomain.StatusReady, "", containerID)
 	}
 	built := false
+	buildSource := dep.Trigger != "rollback"
 	switch {
-	case spec.UploadID != "" && dep.ImageRef == "":
+	case buildSource && spec.UploadID != "":
 		image, err := w.buildUploadSource(ctx, dep, spec)
 		if err != nil {
 			return w.fail(ctx, dep, "", err)
 		}
 		spec.Image = image
 		built = true
-	case spec.GitURL != "" && dep.ImageRef == "":
+	case buildSource && spec.GitURL != "":
 		image, err := w.buildGitSource(ctx, dep, spec)
 		if err != nil {
 			return w.fail(ctx, dep, "", err)

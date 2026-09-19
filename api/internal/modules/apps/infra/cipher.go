@@ -22,5 +22,12 @@ func (c secretCipher) Encrypt(plain string) (string, error) {
 }
 
 func (c secretCipher) Decrypt(ciphertext string) (string, error) {
-	return c.crypto.DecryptString(ciphertext)
+	plain, err := c.crypto.DecryptString(ciphertext)
+	if err == nil {
+		return plain, nil
+	}
+	if !security.IsEnvelopeCiphertext(ciphertext) {
+		return ciphertext, nil
+	}
+	return "", err
 }

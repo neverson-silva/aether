@@ -584,7 +584,7 @@ func (c *Compose) Up(ctx context.Context, id, orgID uuid.UUID) error {
 	if err := c.Store.SetComposeStatus(ctx, id, "deploying"); err != nil {
 		return err
 	}
-	if _, err := c.runCompose(ctx, app, true, "up", "-d"); err != nil {
+	if _, err := c.runCompose(ctx, app, true, "up", "-d", "--build"); err != nil {
 		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
@@ -618,7 +618,7 @@ func (c *Compose) UpApp(ctx context.Context, id, orgID uuid.UUID) (string, error
 		ID: id, OrgID: app.OrgID, ProjectID: app.ProjectID, EnvironmentID: app.EnvironmentID,
 		ServiceID: id, Name: app.Name, Compose: "", Port: app.Port,
 	}
-	if _, err := c.runComposeForService(ctx, composeApp, true, "app", "up", "-d"); err != nil {
+	if _, err := c.runComposeForService(ctx, composeApp, true, "app", "up", "-d", "--build"); err != nil {
 		return "", err
 	}
 	serviceID, err := c.GetServiceID(ctx, id)

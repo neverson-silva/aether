@@ -624,7 +624,7 @@ func TestWorkerDeployGitRollbackUsesImage(t *testing.T) {
 	})
 	dep := &deploydomain.Deployment{
 		ID: uuid.New(), AppID: uuid.New(), Number: 2, Status: deploydomain.StatusQueued,
-		ImageRef: "aether/abc12345:1", DeploySpec: spec, EnvSnapshot: []byte(`{}`),
+		Trigger: "rollback", ImageRef: "aether/abc12345:1", DeploySpec: spec, EnvSnapshot: []byte(`{}`),
 	}
 	w := &Worker{Store: store, Runtime: rt, BuildsDir: t.TempDir()}
 	w.deploy(context.Background(), dep)
@@ -637,5 +637,28 @@ func TestWorkerDeployGitRollbackUsesImage(t *testing.T) {
 	last := store.updates[len(store.updates)-1]
 	if last.Status != deploydomain.StatusReady {
 		t.Fatalf("status: %+v", last)
+	}
+}
+
+func TestWorkerDeployGitRebuildsNormalDeployment(t *testing.T) {
+	rt := &fakeRuntime{healthOK: true, portVal: "8083"}
+	store := &fakeStore{}
+	repo := makeLocalGitRepo(t)
+	spec, _ := json.Marshal(map[string]any{
+		"name": "api", "git_url": repo, "git_branch": "main",
+		"dockerfile": "Dockerfile", "port": 8080,
+		"health_check": map[string]any{"enabled": true, "path": "/", "timeout_ms": 5000, "retries": 3},
+	})
+	dep := &deploydomain.Deployment{
+		ID: uuid.New(), AppID: uuid.New(), Number: 2, Status: deploydomain.StatusQueued,
+		Trigger: "api", ImageRef: "aether/abc12345:1", DeploySpec: spec, EnvSnapshot: []byte(`{}`),
+	}
+	w := &Worker{Store: store, Runtime: rt, BuildsDir: t.TempDir()}
+	w.deploy(context.Background(), dep)
+	if len(rt.built) != 1 {
+		t.Fatalf("normal deploy should rebuild source: %v", rt.built)
+	}
+	if len(rt.pulled) != 0 {
+		t.Fatalf("normal source deploy should not pull old image: %v", rt.pulled)
 	}
 }

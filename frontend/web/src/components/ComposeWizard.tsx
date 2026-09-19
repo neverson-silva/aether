@@ -93,11 +93,11 @@ export function ComposeWizard({ open, onClose, fixedProjectId, fixedEnvironmentI
         }
       }
       if (service && envRows.length > 0) {
-        for (const variable of envRows) {
-          if (variable.key.trim()) {
-            await apiPut(`/api/v1/services/${service.id}/environment`, { name: variable.key.trim(), value: variable.value, secret: Boolean(variable.secret) });
-          }
-        }
+        const environmentEntries = Array.from(new Map(envRows
+          .filter((variable) => variable.key.trim())
+          .map((variable) => [variable.key.trim(), { name: variable.key.trim(), value: variable.value, secret: Boolean(variable.secret) }]))
+          .values());
+        await Promise.all(environmentEntries.map((entry) => apiPut(`/api/v1/services/${service.id}/environment`, entry)));
       }
       add({ title: "Stack created", tone: "success" });
       if (service && onCreated) onCreated(service.id);

@@ -1268,7 +1268,7 @@ func (h *Handler) Environment(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
-		if secret {
+		if secret && value != "" {
 			if !includeSecrets {
 				value = ""
 			} else if h.secretCipher == nil {
@@ -1400,7 +1400,7 @@ func (h *Handler) SetEnvironment(c *gin.Context) {
 		return
 	}
 	storedValue := input.Value
-	if input.Secret {
+	if input.Secret && input.Value != "" {
 		if h.secretCipher == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "secret values are unavailable"})
 			return
