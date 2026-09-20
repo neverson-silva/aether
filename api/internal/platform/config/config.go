@@ -88,6 +88,8 @@ type Config struct {
 	CookieSecure bool
 }
 
+const defaultCertEmail = "test@localhost.com"
+
 func DefaultStateDir() string {
 	if v := os.Getenv("AETHER_STATE"); v != "" {
 		return v
@@ -170,7 +172,7 @@ func Load() (*Config, error) {
 		DatabaseRetryAttempts:    envInt("DATABASE_RETRY_ATTEMPTS", 10),
 		DatabaseRetryDelay:       envInt("DATABASE_RETRY_DELAY", 2),
 		ImageRetention:           envInt("AETHER_IMAGE_RETENTION", 5),
-		CertEmail:                envOr("AETHER_CERT_EMAIL", ""),
+		CertEmail:                envOr("AETHER_CERT_EMAIL", defaultCertEmail),
 		ACMEDirectory:            envOr("AETHER_ACME_DIR", ""),
 		FreeDomainProvider:       envOr("AETHER_FREE_DOMAIN_PROVIDER", "nip.io"),
 		FreeDomainBase:           freeDomainBase,

@@ -99,6 +99,9 @@ func (p *Provisioner) WriteDomainConfig(d *domain.Domain, alias string, httpsRea
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	if err := p.RemoveDomainConfig(d); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	content := p.generateDynamicConfig(d, alias, httpsReady)
 	return os.WriteFile(filepath.Join(dir, "domain-"+d.ID.String()+".yml"), []byte(content), 0o644)
 }
@@ -112,7 +115,28 @@ func (p *Provisioner) Alias(serviceID uuid.UUID, serviceType string) string {
 }
 
 func (p *Provisioner) RemoveDomainConfig(d *domain.Domain) error {
-	return os.Remove(filepath.Join(p.dynamicDir(d.ServerID.String()), "domain-"+d.ID.String()+".yml"))
+	filename := "domain-" + d.ID.String() + ".yml"
+	removed := false
+	err := filepath.WalkDir(p.TraefikDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || entry.Name() != filename {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		removed = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return os.ErrNotExist
+	}
+	return nil
 }
 
 func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, httpsReady bool) string {
@@ -171,11 +195,9 @@ func (p *Provisioner) VerifyCertificate(host string) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out, _, err := p.Runtime.Exec(ctx, "aether-traefik", []string{
-		"wget", "-q", "-O", "/dev/null", "--no-check-certificate",
-		"https://localhost/", "--header=Host: " + host,
-	})
-	return err == nil && strings.Contains(out, "200")
+	_, _, err := p.Runtime.Exec(ctx, "aether-traefik", nil,
+		"sh", "-c", "wget -q -O /dev/null --no-check-certificate https://localhost/ --header=\"Host: $1\"; status=$?; test \"$status\" -eq 0 || test \"$status\" -eq 8", "sh", host)
+	return err == nil
 }
 
 func itoa(n int) string {

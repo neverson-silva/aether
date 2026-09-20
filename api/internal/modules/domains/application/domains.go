@@ -160,28 +160,27 @@ func (d *Domains) GenerateFreeDomain(ctx context.Context, serviceID, orgID uuid.
 }
 
 func (d *Domains) List(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string) ([]domain.Domain, error) {
-	ref, err := d.resolveService(ctx, serviceID, serviceType, orgID)
-	if err != nil {
+	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
 		return nil, err
 	}
-	return d.Store.ListDomains(ctx, ref.serviceID)
+	return d.Store.ListDomains(ctx, serviceID)
 }
 
 func (d *Domains) Remove(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, host string) error {
-	ref, err := d.resolveService(ctx, serviceID, serviceType, orgID)
+	if _, err := d.resolveService(ctx, serviceID, serviceType, orgID); err != nil {
+		return err
+	}
+	dom, err := d.Store.GetDomainByHost(ctx, serviceID, strings.ToLower(host))
 	if err != nil {
 		return err
 	}
-	dom, err := d.Store.GetDomainByHost(ctx, ref.serviceID, strings.ToLower(host))
-	if err != nil {
-		return err
-	}
-	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, ref.serviceID, string(domain.DomainRemoving), dom.CertStatus)
+	ownerID := domainOwnerID(dom, serviceID)
+	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, ownerID, string(domain.DomainRemoving), dom.CertStatus)
 	if err := d.Provisioner.RemoveDomainConfig(dom); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, ref.serviceID, string(domain.DomainRemoved), dom.CertStatus)
-	return d.Store.DeleteDomain(ctx, dom.ID, ref.serviceID)
+	_ = d.Store.UpdateDomainStatus(ctx, dom.ID, ownerID, string(domain.DomainRemoved), dom.CertStatus)
+	return d.Store.DeleteDomain(ctx, dom.ID, ownerID)
 }
 
 func (d *Domains) Reprovision(ctx context.Context, serviceID, orgID uuid.UUID, serviceType string, domainID uuid.UUID) error {

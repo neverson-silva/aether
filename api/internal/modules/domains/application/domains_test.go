@@ -167,6 +167,33 @@ func TestProvisionWorkerRetry(t *testing.T) {
 	}
 }
 
+func TestRemoveDomainConfigCleansAllServerDirectories(t *testing.T) {
+	root := t.TempDir()
+	p := &Provisioner{TraefikDir: root}
+	d := &domain.Domain{ID: uuid.New(), ServerID: uuid.New()}
+	paths := []string{
+		filepath.Join(root, "dynamic", "domain-"+d.ID.String()+".yml"),
+		filepath.Join(root, "server-old", "dynamic", "domain-"+d.ID.String()+".yml"),
+	}
+	for _, path := range paths {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("http:"), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	if err := p.RemoveDomainConfig(d); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("stale domain config remains at %s: %v", path, err)
+		}
+	}
+}
+
 func TestDomainProvisionIdempotent(t *testing.T) {
 	e := newEnv(t)
 	w := &ProvisionWorker{Store: e.svc.Store, Provisioner: e.svc.Provisioner}
