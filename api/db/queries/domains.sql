@@ -55,10 +55,8 @@ WHERE id = $1 AND (service_id = $2 OR app_id = $2);
 -- name: ListProvisioningDomains :many
 SELECT id, app_id, host, https, cert_status, created_at, server_id, container_port, path, internal_path, strip_path, status, updated_at, retry_count, last_error, next_retry_at, service_type, service_id, compose_service_name
 FROM domains
-WHERE (status IN ('PENDING', 'PROVISIONING', 'ERROR')
-    OR (status = 'ACTIVE' AND https = TRUE AND cert_status = 'pending'))
-  AND ((status = 'ACTIVE' AND https = TRUE AND cert_status = 'pending')
-    OR (retry_count < $1 AND (next_retry_at IS NULL OR next_retry_at <= $2)))
+WHERE status IN ('PENDING', 'PROVISIONING', 'ERROR', 'ACTIVE')
+  AND (status = 'ACTIVE' OR (retry_count < $1 AND (next_retry_at IS NULL OR next_retry_at <= $2)))
 ORDER BY created_at;
 
 -- name: DeleteDomain :exec

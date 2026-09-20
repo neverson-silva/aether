@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -99,11 +100,15 @@ func (p *Provisioner) WriteDomainConfig(d *domain.Domain, alias string, httpsRea
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	path := filepath.Join(dir, "domain-"+d.ID.String()+".yml")
+	content := p.generateDynamicConfig(d, alias, httpsReady)
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, []byte(content)) {
+		return nil
+	}
 	if err := p.RemoveDomainConfig(d); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	content := p.generateDynamicConfig(d, alias, httpsReady)
-	return os.WriteFile(filepath.Join(dir, "domain-"+d.ID.String()+".yml"), []byte(content), 0o644)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func (p *Provisioner) Alias(serviceID uuid.UUID, serviceType string) string {
