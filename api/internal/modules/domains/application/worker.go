@@ -47,9 +47,9 @@ func (w *ProvisionWorker) process(ctx context.Context) {
 
 func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 	d.ContainerPort = w.Provisioner.EffectiveContainerPort(ctx, d)
-	targetID := d.ServiceID
-	if targetID == uuid.Nil {
-		targetID = d.AppID
+	targetID := d.AppID
+	if d.ServiceType == ServiceTypeCompose && d.ServiceID != uuid.Nil {
+		targetID = d.ServiceID
 	}
 	alias := w.Provisioner.Alias(targetID, d.ServiceType)
 	composeServiceName := w.Provisioner.EffectiveComposeServiceName(ctx, d)
