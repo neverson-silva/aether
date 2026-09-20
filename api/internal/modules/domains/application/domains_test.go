@@ -161,6 +161,13 @@ func TestProvisionWorkerRetry(t *testing.T) {
 	if got.Status != string(domain.DomainActive) || got.CertStatus != "pending" || got.RetryCount == 0 {
 		t.Fatalf("https sem cert deveria ficar ACTIVE/pending com retry: %+v", got)
 	}
+	content, err := os.ReadFile(filepath.Join(e.svc.Provisioner.TraefikDir, "dynamic", "domain-"+d.ID.String()+".yml"))
+	if err != nil {
+		t.Fatalf("HTTPS config was not written: %v", err)
+	}
+	if !strings.Contains(string(content), "entryPoints:\n      - websecure") || !strings.Contains(string(content), "certResolver: letsencrypt") {
+		t.Fatalf("HTTPS config is missing the TLS router or certResolver: %s", content)
+	}
 	next := retryIn(got.RetryCount)
 	if next == nil || !next.After(time.Now()) {
 		t.Fatalf("backoff inválido")
