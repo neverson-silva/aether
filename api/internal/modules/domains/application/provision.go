@@ -182,16 +182,9 @@ func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, http
 	if internal == "" {
 		internal = "/"
 	}
-	errorMiddleware := "service-unavailable-" + d.ID.String()
-	errorService := "aether-error-page-" + d.ID.String()
 	sb.WriteString("http:\n")
-	sb.WriteString("  middlewares:\n")
-	sb.WriteString("    " + errorMiddleware + ":\n")
-	sb.WriteString("      errors:\n")
-	sb.WriteString("        status:\n        - \"502-504\"\n")
-	sb.WriteString("        service: " + errorService + "\n")
-	sb.WriteString("        query: /_aether/errors/{status}\n")
 	if d.HTTPS && httpsReady {
+		sb.WriteString("  middlewares:\n")
 		sb.WriteString("    https-redirect-" + d.ID.String() + ":\n")
 		sb.WriteString("      redirectScheme:\n        scheme: https\n        permanent: true\n")
 		if d.StripPath && d.Path != "" && d.Path != "/" {
@@ -209,9 +202,7 @@ func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, http
 		sb.WriteString("      entryPoints:\n      - websecure\n")
 		sb.WriteString("      service: " + d.ID.String() + "\n")
 		if d.StripPath && d.Path != "" && d.Path != "/" {
-			sb.WriteString("      middlewares:\n      - " + errorMiddleware + "\n      - strip-" + d.ID.String() + "\n")
-		} else {
-			sb.WriteString("      middlewares:\n      - " + errorMiddleware + "\n")
+			sb.WriteString("      middlewares:\n      - strip-" + d.ID.String() + "\n")
 		}
 		sb.WriteString("      tls:\n        certResolver: letsencrypt\n")
 	} else {
@@ -220,13 +211,8 @@ func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, http
 		sb.WriteString("      rule: \"" + rule + "\"\n")
 		sb.WriteString("      entryPoints:\n      - web\n")
 		sb.WriteString("      service: " + d.ID.String() + "\n")
-		sb.WriteString("      middlewares:\n      - " + errorMiddleware + "\n")
 	}
 	sb.WriteString("  services:\n")
-	sb.WriteString("    " + errorService + ":\n")
-	sb.WriteString("      loadBalancer:\n")
-	sb.WriteString("        servers:\n")
-	sb.WriteString("          - url: \"http://aether-web:4000\"\n")
 	sb.WriteString("    " + d.ID.String() + ":\n")
 	sb.WriteString("      loadBalancer:\n")
 	sb.WriteString("        servers:\n")

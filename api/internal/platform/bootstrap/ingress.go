@@ -13,7 +13,7 @@ import (
 	"aether/internal/platform/worker"
 )
 
-const ingressConfigVersion = "3"
+const ingressConfigVersion = "4"
 
 func ensureIngressWithRetry(ctx context.Context, cfg *config.Config, runtime worker.Runtime) error {
 	var lastErr error
@@ -55,6 +55,9 @@ func ensureIngress(ctx context.Context, cfg *config.Config, runtime worker.Runti
 	dir := filepath.Join(cfg.StateDir, "traefik")
 	if err := os.MkdirAll(filepath.Join(dir, "dynamic"), 0o755); err != nil {
 		return fmt.Errorf("prepare ingress dynamic directory: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dynamic", "aether-errors.yml"), []byte(globalErrorConfig()), 0o644); err != nil {
+		return fmt.Errorf("write ingress error configuration: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "acme"), 0o700); err != nil {
 		return fmt.Errorf("prepare ingress certificate directory: %w", err)
@@ -136,8 +139,8 @@ func staticTraefikConfig(cfg *config.Config) string {
 	var sb strings.Builder
 	sb.WriteString("log:\n  level: INFO\n")
 	sb.WriteString("entryPoints:\n")
-	sb.WriteString("  web:\n    address: \":80\"\n")
-	sb.WriteString("  websecure:\n    address: \":443\"\n    http:\n      tls:\n        certResolver: letsencrypt\n")
+	sb.WriteString("  web:\n    address: \":80\"\n    http:\n      middlewares:\n      - aether-service-unavailable@file\n")
+	sb.WriteString("  websecure:\n    address: \":443\"\n    http:\n      middlewares:\n      - aether-service-unavailable@file\n      tls:\n        certResolver: letsencrypt\n")
 	sb.WriteString("providers:\n  file:\n    directory: " + traefikRoot + "/dynamic\n    watch: true\n")
 	sb.WriteString("certificatesResolvers:\n  letsencrypt:\n    acme:\n")
 	email := cfg.CertEmail
@@ -150,4 +153,20 @@ func staticTraefikConfig(cfg *config.Config) string {
 	}
 	sb.WriteString("      storage: " + traefikRoot + "/acme/acme.json\n      httpChallenge:\n        entryPoint: web\n")
 	return sb.String()
+}
+
+func globalErrorConfig() string {
+	return "http:\n" +
+		"  middlewares:\n" +
+		"    aether-service-unavailable:\n" +
+		"      errors:\n" +
+		"        status:\n" +
+		"        - \"502-504\"\n" +
+		"        service: aether-error-page\n" +
+		"        query: /_aether/errors/{status}\n" +
+		"  services:\n" +
+		"    aether-error-page:\n" +
+		"      loadBalancer:\n" +
+		"        servers:\n" +
+		"        - url: \"http://aether-web:4000\"\n"
 }

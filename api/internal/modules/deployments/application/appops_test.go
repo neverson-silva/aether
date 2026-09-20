@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -141,11 +140,11 @@ func TestAppOpsDeleteServiceUsesCanonicalServiceLabel(t *testing.T) {
 	}
 }
 
-func TestAppOpsStartRepairsContainerWithoutPublishedPort(t *testing.T) {
+func TestAppOpsStartStartsExistingContainerWithoutPublishedPort(t *testing.T) {
 	appID := uuid.New()
 	serviceID := uuid.New()
 	orgID := uuid.New()
-	runtime := &repairableOpsRuntime{recordingOpsRuntime: recordingOpsRuntime{state: "exited"}, portErr: errors.New("no published port")}
+	runtime := &repairableOpsRuntime{recordingOpsRuntime: recordingOpsRuntime{state: "exited"}}
 	ops := &AppOps{
 		Deployments: &Deployments{
 			Apps:  fakeOpsAppStore{app: &appsdomain.App{ID: appID, OrgID: orgID, Port: 3444, Name: "web"}},
@@ -158,11 +157,11 @@ func TestAppOpsStartRepairsContainerWithoutPublishedPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state != "deploying" {
-		t.Fatalf("state = %q, want deploying", state)
+	if state != "exited" {
+		t.Fatalf("state = %q, want exited", state)
 	}
-	if runtime.started {
-		t.Fatal("legacy container should not be started when its published port is missing")
+	if !runtime.started {
+		t.Fatal("existing container should be started without a published port")
 	}
 }
 
@@ -173,12 +172,7 @@ type recordingOpsRuntime struct {
 
 type repairableOpsRuntime struct {
 	recordingOpsRuntime
-	portErr error
 	started bool
-}
-
-func (r *repairableOpsRuntime) Port(ctx context.Context, containerID string) (string, error) {
-	return "", r.portErr
 }
 
 func (r *repairableOpsRuntime) Start(ctx context.Context, containerID string) error {

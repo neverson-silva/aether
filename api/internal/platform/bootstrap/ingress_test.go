@@ -21,9 +21,25 @@ func TestStaticTraefikConfigIncludesACMEResolver(t *testing.T) {
 		"caServer: \"https://acme-staging-v02.api.letsencrypt.org/directory\"",
 		"storage: /etc/traefik/acme/acme.json",
 		"entryPoint: web",
+		"aether-service-unavailable@file",
 	} {
 		if !strings.Contains(content, expected) {
 			t.Fatalf("Traefik config does not contain %q:\n%s", expected, content)
+		}
+	}
+}
+
+func TestGlobalErrorConfigUsesWebGateway(t *testing.T) {
+	content := globalErrorConfig()
+
+	for _, expected := range []string{
+		"aether-service-unavailable:",
+		"status:\n        - \"502-504\"",
+		"service: aether-error-page",
+		"url: \"http://aether-web:4000\"",
+	} {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("Traefik error configuration does not contain %q:\n%s", expected, content)
 		}
 	}
 }
