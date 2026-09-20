@@ -77,7 +77,7 @@ type Store interface {
 	GetDomainByHost(ctx context.Context, appID uuid.UUID, host string) (*Domain, error)
 	GetDomainByID(ctx context.Context, id uuid.UUID) (*Domain, error)
 	UpdateDomainStatus(ctx context.Context, id, appID uuid.UUID, status, certStatus string) error
-	UpdateDomainFields(ctx context.Context, id, appID uuid.UUID, host string, https bool, path, internalPath string, stripPath bool, containerPort int) error
+	UpdateDomainFields(ctx context.Context, id, appID uuid.UUID, host string, https bool, path, internalPath string, stripPath bool, containerPort int, composeServiceName string) error
 	UpdateDomainProvision(ctx context.Context, id, appID uuid.UUID, status, certStatus, lastError string, nextRetryAt *time.Time, retryCount int) error
 	ListProvisioningDomains(ctx context.Context, now time.Time, maxRetries int) ([]Domain, error)
 	DeleteDomain(ctx context.Context, id, appID uuid.UUID) error

@@ -21,12 +21,13 @@ func New(domains *application.Domains) *Handler {
 }
 
 type addDomainReq struct {
-	Host          string `json:"host"`
-	HTTPS         bool   `json:"https"`
-	Path          string `json:"path"`
-	InternalPath  string `json:"internal_path"`
-	StripPath     bool   `json:"strip_path"`
-	ContainerPort int    `json:"container_port"`
+	Host               string `json:"host"`
+	HTTPS              bool   `json:"https"`
+	Path               string `json:"path"`
+	InternalPath       string `json:"internal_path"`
+	StripPath          bool   `json:"strip_path"`
+	ContainerPort      int    `json:"container_port"`
+	ComposeServiceName string `json:"compose_service_name"`
 }
 
 type generateDomainReq struct {
@@ -50,7 +51,7 @@ func (h *Handler) AddDomain(c *gin.Context) {
 	}
 	dom, err := h.domains.Add(c.Request.Context(), serviceID, orgID(c), serviceType, application.AddDomainInput{
 		Host: req.Host, HTTPS: req.HTTPS, Path: req.Path, InternalPath: req.InternalPath,
-		StripPath: req.StripPath, ContainerPort: req.ContainerPort,
+		StripPath: req.StripPath, ContainerPort: req.ContainerPort, ComposeServiceName: req.ComposeServiceName,
 	})
 	if err != nil {
 		abort(c, err)
@@ -100,7 +101,7 @@ func (h *Handler) UpdateDomain(c *gin.Context) {
 	}
 	if err := h.domains.UpdateDomain(c.Request.Context(), serviceID, orgID(c), serviceType, domainID, application.AddDomainInput{
 		Host: req.Host, HTTPS: req.HTTPS, Path: req.Path, InternalPath: req.InternalPath,
-		StripPath: req.StripPath, ContainerPort: req.ContainerPort,
+		StripPath: req.StripPath, ContainerPort: req.ContainerPort, ComposeServiceName: req.ComposeServiceName,
 	}); err != nil {
 		abort(c, err)
 		return

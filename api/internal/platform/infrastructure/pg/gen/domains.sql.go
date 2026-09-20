@@ -472,6 +472,7 @@ SET host = $3,
     internal_path = $6,
     strip_path = $7,
     container_port = $8,
+    compose_service_name = $9,
     status = 'PROVISIONING',
     retry_count = 0,
     last_error = '',
@@ -481,14 +482,15 @@ WHERE id = $1 AND (service_id = $2 OR app_id = $2)
 `
 
 type UpdateDomainFieldsParams struct {
-	ID            uuid.UUID     `json:"id"`
-	ServiceID     uuid.NullUUID `json:"service_id"`
-	Host          string        `json:"host"`
-	Https         bool          `json:"https"`
-	Path          string        `json:"path"`
-	InternalPath  string        `json:"internal_path"`
-	StripPath     bool          `json:"strip_path"`
-	ContainerPort int32         `json:"container_port"`
+	ID                 uuid.UUID     `json:"id"`
+	ServiceID          uuid.NullUUID `json:"service_id"`
+	Host               string        `json:"host"`
+	Https              bool          `json:"https"`
+	Path               string        `json:"path"`
+	InternalPath       string        `json:"internal_path"`
+	StripPath          bool          `json:"strip_path"`
+	ContainerPort      int32         `json:"container_port"`
+	ComposeServiceName string        `json:"compose_service_name"`
 }
 
 func (q *Queries) UpdateDomainFields(ctx context.Context, arg UpdateDomainFieldsParams) error {
@@ -501,6 +503,7 @@ func (q *Queries) UpdateDomainFields(ctx context.Context, arg UpdateDomainFields
 		arg.InternalPath,
 		arg.StripPath,
 		arg.ContainerPort,
+		arg.ComposeServiceName,
 	)
 	return err
 }

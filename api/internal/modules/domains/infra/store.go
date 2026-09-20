@@ -66,10 +66,10 @@ func (s *Store) UpdateDomainStatus(ctx context.Context, id, appID uuid.UUID, sta
 	return mapErr(s.q.UpdateDomainStatus(ctx, gen.UpdateDomainStatusParams{ID: id, ServiceID: nullUUID(&appID), Status: status, CertStatus: certStatus}))
 }
 
-func (s *Store) UpdateDomainFields(ctx context.Context, id, appID uuid.UUID, host string, https bool, path, internalPath string, stripPath bool, containerPort int) error {
+func (s *Store) UpdateDomainFields(ctx context.Context, id, appID uuid.UUID, host string, https bool, path, internalPath string, stripPath bool, containerPort int, composeServiceName string) error {
 	return mapErr(s.q.UpdateDomainFields(ctx, gen.UpdateDomainFieldsParams{
 		ID: id, ServiceID: nullUUID(&appID), Host: host, Https: https, Path: path, InternalPath: internalPath,
-		StripPath: stripPath, ContainerPort: int32(containerPort),
+		StripPath: stripPath, ContainerPort: int32(containerPort), ComposeServiceName: composeServiceName,
 	}))
 }
 

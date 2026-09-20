@@ -215,9 +215,8 @@ func (d *Domains) UpdateDomain(ctx context.Context, serviceID, orgID uuid.UUID, 
 	if in.ContainerPort <= 0 || in.ContainerPort > 65535 {
 		return domain.ErrValidation
 	}
-	_ = d.Store.UpdateDomainFields(ctx, dom.ID, domainOwnerID(dom, serviceID), in.Host, in.HTTPS,
-		in.Path, in.InternalPath, in.StripPath, in.ContainerPort)
-	return nil
+	return d.Store.UpdateDomainFields(ctx, dom.ID, domainOwnerID(dom, serviceID), in.Host, in.HTTPS,
+		in.Path, in.InternalPath, in.StripPath, in.ContainerPort, in.ComposeServiceName)
 }
 
 func validateDomainPath(value string) error {

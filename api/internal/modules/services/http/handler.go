@@ -1305,12 +1305,13 @@ func (h *Handler) AddDomain(c *gin.Context) {
 		return
 	}
 	var input struct {
-		Host          string `json:"host"`
-		HTTPS         bool   `json:"https"`
-		ContainerPort int    `json:"container_port"`
-		Path          string `json:"path"`
-		InternalPath  string `json:"internal_path"`
-		StripPath     bool   `json:"strip_path"`
+		Host               string `json:"host"`
+		HTTPS              bool   `json:"https"`
+		ContainerPort      int    `json:"container_port"`
+		Path               string `json:"path"`
+		InternalPath       string `json:"internal_path"`
+		StripPath          bool   `json:"strip_path"`
+		ComposeServiceName string `json:"compose_service_name"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain"})
@@ -1320,7 +1321,7 @@ func (h *Handler) AddDomain(c *gin.Context) {
 	if kind == string(servicedomain.KindDatabase) {
 		serviceType = domainsapplication.ServiceTypeDB
 	}
-	domain, err := h.domains.Add(c.Request.Context(), specID, orgID(c), serviceType, domainsapplication.AddDomainInput{Host: input.Host, HTTPS: input.HTTPS, ContainerPort: input.ContainerPort, Path: input.Path, InternalPath: input.InternalPath, StripPath: input.StripPath})
+	domain, err := h.domains.Add(c.Request.Context(), specID, orgID(c), serviceType, domainsapplication.AddDomainInput{Host: input.Host, HTTPS: input.HTTPS, ContainerPort: input.ContainerPort, Path: input.Path, InternalPath: input.InternalPath, StripPath: input.StripPath, ComposeServiceName: input.ComposeServiceName})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

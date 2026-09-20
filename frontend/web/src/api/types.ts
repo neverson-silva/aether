@@ -260,6 +260,7 @@ export interface Domain {
   internal_path: string;
   strip_path: boolean;
   container_port: number;
+  compose_service_name?: string;
   status: string;
   cert_status: string;
   created_at: string;

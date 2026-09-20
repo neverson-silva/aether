@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"aether/internal/modules/domains/domain"
 )
 
@@ -45,7 +47,11 @@ func (w *ProvisionWorker) process(ctx context.Context) {
 
 func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 	d.ContainerPort = w.Provisioner.EffectiveContainerPort(ctx, d)
-	alias := w.Provisioner.Alias(d.AppID, d.ServiceType)
+	targetID := d.ServiceID
+	if targetID == uuid.Nil {
+		targetID = d.AppID
+	}
+	alias := w.Provisioner.Alias(targetID, d.ServiceType)
 	if d.ServiceType == ServiceTypeCompose && d.ComposeServiceName != "" {
 		alias += "-" + slugify(d.ComposeServiceName)
 	}

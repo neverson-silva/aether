@@ -131,6 +131,11 @@ func (p *Provisioner) EffectiveContainerPort(ctx context.Context, d *domain.Doma
 		if !matchesDomainContainer(container, d) {
 			continue
 		}
+		for _, port := range container.Ports {
+			if port == d.ContainerPort {
+				return d.ContainerPort
+			}
+		}
 		if len(container.Ports) > 0 {
 			return container.Ports[0]
 		}

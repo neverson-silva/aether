@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import {
   useGenerateFreeDomain,
   useHostInfo,
   useRemoveDomain,
+  useServiceDetails,
 } from "@/hooks";
 import { Check, Globe, MagicWand, X } from "@phosphor-icons/react";
 import { Badge, Button, Card, Checkbox, Input, useToast } from "@aether/design-system";
@@ -17,6 +19,8 @@ type Kind = "apps" | "databases" | "compose" | "services";
 const schema = z.object({
   host: z.string().trim().min(1, "Enter a host"),
   https: z.boolean(),
+  compose_service_name: z.string().trim().optional(),
+  container_port: z.string().optional().refine((value) => !value || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 65535), "Enter a valid container port"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -39,17 +43,42 @@ interface DomainsPanelProps {
   id: string;
 }
 
+function composeServiceNames(compose?: string): string[] {
+  if (!compose) return [];
+  const names: string[] = [];
+  let inServices = false;
+  for (const line of compose.split(/\r?\n/)) {
+    if (/^services:\s*$/.test(line)) {
+      inServices = true;
+      continue;
+    }
+    if (inServices && line.trim() && !/^\s{2,}/.test(line)) break;
+    const match = inServices ? line.match(/^\s{2}([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/) : null;
+    if (match) names.push(match[1]);
+  }
+  return names;
+}
+
 export function DomainsPanel({ kind, id }: DomainsPanelProps) {
   const { add } = useToast();
   const { data: hostInfo } = useHostInfo();
   const { data: domains } = useDomains(kind, id);
+  const { data: serviceDetails } = useServiceDetails(id, kind === "services");
   const addDomain = useAddDomain(kind, id);
   const removeDomain = useRemoveDomain(kind, id);
   const generateFreeDomain = useGenerateFreeDomain(kind, id);
+  const composeServices = composeServiceNames(serviceDetails?.spec?.compose);
+  const isComposeService = serviceDetails?.kind === "compose";
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { https: true } });
 
+  useEffect(() => {
+    if (isComposeService && composeServices.length === 1 && !form.getValues("compose_service_name")) {
+      form.setValue("compose_service_name", composeServices[0]);
+    }
+  }, [composeServices, form, isComposeService]);
+
   const submit = form.handleSubmit((values) => {
-    addDomain.mutate(values, { onSuccess: () => add({ title: "Domain linked", tone: "success" }), onError: () => add({ title: "Failed to link domain", tone: "error" }) });
+    addDomain.mutate({ ...values, container_port: values.container_port ? Number(values.container_port) : undefined }, { onSuccess: () => add({ title: "Domain linked", tone: "success" }), onError: () => add({ title: "Failed to link domain", tone: "error" }) });
   });
 
   return (
@@ -72,6 +101,18 @@ export function DomainsPanel({ kind, id }: DomainsPanelProps) {
             )}
             <Input leadingIcon={Globe as unknown as DesignIcon} placeholder="app.example.com" {...form.register("host")} />
           </div>
+          {isComposeService ? (
+            <div className="grid gap-sm sm:grid-cols-2">
+              <div className="space-y-xs">
+                <p className="font-body-sm text-body-sm text-on-surface-variant">Compose service</p>
+                <Input placeholder={composeServices[0] ?? "waf"} {...form.register("compose_service_name")} />
+              </div>
+              <div className="space-y-xs">
+                <p className="font-body-sm text-body-sm text-on-surface-variant">Container port</p>
+                <Input type="number" min={1} max={65535} placeholder="5000" {...form.register("container_port")} />
+              </div>
+            </div>
+          ) : null}
           <div className="flex items-center gap-md">
             <label className="flex items-center gap-sm cursor-pointer select-none flex-1">
               <Checkbox label="HTTPS (Let's Encrypt)" checked={form.watch("https")} onCheckedChange={(checked) => form.setValue("https", checked === true)} />
