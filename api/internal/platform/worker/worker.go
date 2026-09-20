@@ -686,21 +686,30 @@ func (w *Worker) buildFromDir(ctx context.Context, dep *deploydomain.Deployment,
 		return "", err
 	}
 	srcDir = buildDir
-	switch spec.BuildType {
+	switch resolveBuildType(srcDir, spec) {
 	case "dockerfile":
 		return w.buildDockerfile(ctx, dep, spec, srcDir, tag)
+	case "buildpacks":
+		return w.buildSmartBuild(ctx, dep, spec, srcDir, tag)
 	case "custom":
 		return w.buildCommandSource(ctx, dep, spec, srcDir, tag)
-	default:
-		df := spec.Dockerfile
-		if df == "" {
-			df = "Dockerfile"
-		}
-		if _, err := os.Stat(filepath.Join(srcDir, df)); err == nil {
-			return w.buildDockerfile(ctx, dep, spec, srcDir, tag)
-		}
-		return w.buildSmartBuild(ctx, dep, spec, srcDir, tag)
 	}
+	return "", fmt.Errorf("unsupported build type %q", spec.BuildType)
+}
+
+func resolveBuildType(srcDir string, spec runSpec) string {
+	switch spec.BuildType {
+	case "dockerfile", "buildpacks", "custom":
+		return spec.BuildType
+	}
+	dockerfile := spec.Dockerfile
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, dockerfile)); err == nil {
+		return "dockerfile"
+	}
+	return "buildpacks"
 }
 
 func resolveBuildDir(srcDir string, spec runSpec) (string, error) {
@@ -980,7 +989,10 @@ func (w *Worker) buildDockerfile(ctx context.Context, dep *deploydomain.Deployme
 	var out string
 	var err error
 	streamed := false
-	if streaming, ok := builder.(StreamingImageBuildRuntime); ok {
+	if streaming, ok := builder.(BuildEnvStreamingImageRuntime); ok {
+		streamed = true
+		out, err = streaming.BuildStreamWithEnv(ctx, srcDir, dockerfile, tag, spec.Env, func(line string) { w.appendLog(dep, line) })
+	} else if streaming, ok := builder.(StreamingImageBuildRuntime); ok {
 		streamed = true
 		out, err = streaming.BuildStream(ctx, srcDir, dockerfile, tag, func(line string) { w.appendLog(dep, line) })
 	} else {
@@ -1022,7 +1034,10 @@ func (w *Worker) buildCommandSource(ctx context.Context, dep *deploydomain.Deplo
 	var out string
 	var err error
 	streamed := false
-	if streaming, ok := builder.(StreamingImageBuildRuntime); ok {
+	if streaming, ok := builder.(BuildEnvStreamingImageRuntime); ok {
+		streamed = true
+		out, err = streaming.BuildStreamWithEnv(ctx, srcDir, df, tag, spec.Env, func(line string) { w.appendLog(dep, line) })
+	} else if streaming, ok := builder.(StreamingImageBuildRuntime); ok {
 		streamed = true
 		out, err = streaming.BuildStream(ctx, srcDir, df, tag, func(line string) { w.appendLog(dep, line) })
 	} else {

@@ -150,6 +150,37 @@ func TestDockerContextContainsRelativeFiles(t *testing.T) {
 	}
 }
 
+func TestDockerContextWithEnvIncludesGeneratedEnv(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("SERVICE=value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := dockerContextWithEnv(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	reader := tar.NewReader(archive)
+	for {
+		header, err := reader.Next()
+		if err != nil {
+			break
+		}
+		if header.Name != ".env" {
+			continue
+		}
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) != "SERVICE=value\n" {
+			t.Fatalf("environment file = %q", content)
+		}
+		return
+	}
+	t.Fatal("generated environment file was not included")
+}
+
 func TestDockerContextRejectsMissingDirectory(t *testing.T) {
 	_, err := dockerContext(filepath.Join(t.TempDir(), "missing"))
 	if err == nil {

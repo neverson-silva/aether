@@ -74,6 +74,16 @@ func TestResolveBuildDirDetectsNestedNodeProject(t *testing.T) {
 	}
 }
 
+func TestResolveBuildTypeHonorsExplicitSmartBuild(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "Dockerfile"), []byte("FROM nginx:alpine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveBuildType(source, runSpec{BuildType: "buildpacks"}); got != "buildpacks" {
+		t.Fatalf("build type = %q, want buildpacks", got)
+	}
+}
+
 func TestEmitDeploymentLogRedactsSecrets(t *testing.T) {
 	var output string
 	ctx := WithDeploymentLog(context.Background(), func(line string) { output = line })

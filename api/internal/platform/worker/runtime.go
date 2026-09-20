@@ -74,6 +74,11 @@ type StreamingImageBuildRuntime interface {
 	BuildStream(ctx context.Context, dir, dockerfile, tag string, onLine func(string)) (output string, err error)
 }
 
+type BuildEnvStreamingImageRuntime interface {
+	StreamingImageBuildRuntime
+	BuildStreamWithEnv(ctx context.Context, dir, dockerfile, tag string, env []string, onLine func(string)) (output string, err error)
+}
+
 type ImageRegistryRuntime interface {
 	Pull(ctx context.Context, image string) (output string, err error)
 	Push(ctx context.Context, image string) (output string, err error)

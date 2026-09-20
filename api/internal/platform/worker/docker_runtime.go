@@ -135,6 +135,14 @@ func (r *DockerRuntime) Build(ctx context.Context, dir, dockerfile, tag string) 
 }
 
 func (r *DockerRuntime) BuildStream(ctx context.Context, dir, dockerfile, tag string, onLine func(string)) (string, error) {
+	return r.buildStream(ctx, dir, dockerfile, tag, false, onLine)
+}
+
+func (r *DockerRuntime) BuildStreamWithEnv(ctx context.Context, dir, dockerfile, tag string, env []string, onLine func(string)) (string, error) {
+	return r.buildStream(ctx, dir, dockerfile, tag, true, onLine)
+}
+
+func (r *DockerRuntime) buildStream(ctx context.Context, dir, dockerfile, tag string, includeEnv bool, onLine func(string)) (string, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return "", runtimeError("resolve build context", err)
@@ -143,7 +151,7 @@ func (r *DockerRuntime) BuildStream(ctx context.Context, dir, dockerfile, tag st
 	if err != nil {
 		return "", runtimeError("resolve Dockerfile", err)
 	}
-	contextArchive, err := dockerContext(root)
+	contextArchive, err := dockerContextWithEnv(root, includeEnv)
 	if err != nil {
 		return "", runtimeError("create build context", err)
 	}
@@ -159,6 +167,7 @@ func (r *DockerRuntime) BuildStream(ctx context.Context, dir, dockerfile, tag st
 		Tags:        []string{tag},
 		Dockerfile:  filepath.ToSlash(relativeDockerfile),
 		PullParent:  true,
+		NoCache:     includeEnv,
 		Remove:      true,
 		ForceRemove: true,
 	})
@@ -1005,6 +1014,10 @@ func emitOutputLines(pending *string, chunk string, onLine func(string)) {
 }
 
 func dockerContext(dir string) (io.ReadCloser, error) {
+	return dockerContextWithEnv(dir, false)
+}
+
+func dockerContextWithEnv(dir string, includeEnv bool) (io.ReadCloser, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -1018,12 +1031,12 @@ func dockerContext(dir string) (io.ReadCloser, error) {
 	}
 	reader, writer := io.Pipe()
 	go func() {
-		_ = writer.CloseWithError(writeTar(root, writer))
+		_ = writer.CloseWithError(writeTar(root, writer, includeEnv))
 	}()
 	return reader, nil
 }
 
-func writeTar(root string, writer *io.PipeWriter) error {
+func writeTar(root string, writer *io.PipeWriter, includeEnv bool) error {
 	archive := tar.NewWriter(writer)
 	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
@@ -1039,7 +1052,7 @@ func writeTar(root string, writer *io.PipeWriter) error {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("build context contains unsupported symlink %q", relative)
 		}
-		if excludedBuildContextPath(relative, info.IsDir()) {
+		if excludedBuildContextPath(relative, info.IsDir(), includeEnv) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -1074,7 +1087,7 @@ func writeTar(root string, writer *io.PipeWriter) error {
 	return closeErr
 }
 
-func excludedBuildContextPath(relative string, isDir bool) bool {
+func excludedBuildContextPath(relative string, isDir bool, includeEnv bool) bool {
 	parts := strings.Split(filepath.ToSlash(relative), "/")
 	for _, part := range parts {
 		if part == ".git" || part == ".svn" || part == ".hg" || part == ".aether" || part == ".ssh" {
@@ -1085,7 +1098,10 @@ func excludedBuildContextPath(relative string, isDir bool) bool {
 	if isDir {
 		return base == "keys" || base == "secrets"
 	}
-	return base == ".env" || strings.HasPrefix(base, ".env.") || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".p12") || strings.HasSuffix(base, ".pfx")
+	if !includeEnv && (base == ".env" || strings.HasPrefix(base, ".env.")) {
+		return true
+	}
+	return strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".p12") || strings.HasSuffix(base, ".pfx")
 }
 
 func runtimeError(operation string, err error) error {
