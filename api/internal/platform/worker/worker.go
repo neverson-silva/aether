@@ -681,6 +681,11 @@ func (w *Worker) buildUploadSource(ctx context.Context, dep *deploydomain.Deploy
 }
 
 func (w *Worker) buildFromDir(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
+	buildDir, err := resolveBuildDir(srcDir, spec)
+	if err != nil {
+		return "", err
+	}
+	srcDir = buildDir
 	switch spec.BuildType {
 	case "dockerfile":
 		return w.buildDockerfile(ctx, dep, spec, srcDir, tag)
@@ -696,6 +701,54 @@ func (w *Worker) buildFromDir(ctx context.Context, dep *deploydomain.Deployment,
 		}
 		return w.buildSmartBuild(ctx, dep, spec, srcDir, tag)
 	}
+}
+
+func resolveBuildDir(srcDir string, spec runSpec) (string, error) {
+	root := strings.TrimSpace(strings.TrimPrefix(spec.RootFolder, "./"))
+	if root != "" && root != "." {
+		clean := filepath.Clean(filepath.FromSlash(root))
+		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("root folder %q escapes the source directory", spec.RootFolder)
+		}
+		buildDir := filepath.Join(srcDir, clean)
+		info, err := os.Stat(buildDir)
+		if err != nil {
+			return "", fmt.Errorf("root folder %q not found: %w", spec.RootFolder, err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("root folder %q is not a directory", spec.RootFolder)
+		}
+		return buildDir, nil
+	}
+	if hasBuildManifest(srcDir) {
+		return srcDir, nil
+	}
+	plan, err := planner.Detect(srcDir)
+	if err != nil || plan.OutputDir == "" {
+		return srcDir, nil
+	}
+	candidate := filepath.Clean(filepath.FromSlash(strings.TrimPrefix(plan.OutputDir, "./")))
+	if candidate == "." || candidate == ".." || filepath.IsAbs(candidate) || strings.HasPrefix(candidate, ".."+string(filepath.Separator)) {
+		return srcDir, nil
+	}
+	buildDir := filepath.Join(srcDir, candidate)
+	if buildDir == srcDir || !hasBuildManifest(buildDir) {
+		return srcDir, nil
+	}
+	info, err := os.Stat(buildDir)
+	if err != nil || !info.IsDir() {
+		return srcDir, nil
+	}
+	return buildDir, nil
+}
+
+func hasBuildManifest(srcDir string) bool {
+	for _, name := range []string{"package.json", "Dockerfile", "deno.json", "deno.jsonc", "go.mod", "Cargo.toml", "composer.json", "Gemfile"} {
+		if _, err := os.Stat(filepath.Join(srcDir, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *Worker) streamCmd(ctx context.Context, dep *deploydomain.Deployment, cmd *exec.Cmd) (string, error) {

@@ -34,6 +34,45 @@ type fakeRuntime struct {
 	containerErr   error
 }
 
+func TestResolveBuildDirUsesExplicitRootFolder(t *testing.T) {
+	source := t.TempDir()
+	root := filepath.Join(source, "finance-dashboard")
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"build":"vite build"}}`), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveBuildDir(source, runSpec{RootFolder: "finance-dashboard"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != root {
+		t.Fatalf("build directory = %q, want %q", got, root)
+	}
+}
+
+func TestResolveBuildDirDetectsNestedNodeProject(t *testing.T) {
+	source := t.TempDir()
+	root := filepath.Join(source, "finance-dashboard")
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"build":"vite build"}}`), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "index.html"), []byte("<html></html>"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveBuildDir(source, runSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != root {
+		t.Fatalf("build directory = %q, want %q", got, root)
+	}
+}
+
 func TestEmitDeploymentLogRedactsSecrets(t *testing.T) {
 	var output string
 	ctx := WithDeploymentLog(context.Background(), func(line string) { output = line })
