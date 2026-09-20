@@ -407,6 +407,8 @@ func (r *Router) routes() {
 		platformAdmin.POST("/registry", r.clusters.SetRegistry)
 		platformAdmin.GET("/registry/images", r.clusters.RegistryImages)
 		platformAdmin.DELETE("/registry/images/:repo/:tag", r.clusters.RegistryImageDelete)
+		platformAdmin.GET("/admin/server-domains", r.settings.GetServerDomains)
+		platformAdmin.PUT("/admin/server-domains", r.settings.SaveServerDomains)
 		if r.traefikfs != nil {
 			platformAdmin.GET("/admin/traefik/files", r.traefikfs.List)
 			platformAdmin.GET("/admin/traefik/status", r.traefikfs.Status)

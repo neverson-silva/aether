@@ -936,8 +936,15 @@ api_running() {
   $RUNTIME ps --format '{{.Names}}' 2>/dev/null | grep -qx "$API_CONTAINER"
 }
 
+ensure_api_ingress() {
+  if ! $RUNTIME network inspect "$INGRESS_NET_NAME" --format '{{range .Containers}}{{println .Name}}{{end}}' 2>/dev/null | grep -Fxq "$API_CONTAINER"; then
+    $RUNTIME network connect --alias "$API_CONTAINER" "$INGRESS_NET_NAME" "$API_CONTAINER" >/dev/null 2>&1 || fail "Failed to connect the API gateway to the ingress network."
+  fi
+}
+
 start_api() {
   if api_running && [[ "$FORCE_API_RECREATE" -eq 0 ]]; then
+    ensure_api_ingress
     info "API container already running."
     return 0
   fi
@@ -1028,6 +1035,7 @@ start_api() {
   if [[ "$api_started" -eq 0 ]]; then
     fail "Failed to start the API container."
   fi
+  ensure_api_ingress
 
   if is_true "${AETHER_WAIT_FOR_HEALTH:-false}"; then
     local tries=0

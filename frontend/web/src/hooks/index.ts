@@ -118,6 +118,8 @@ export * from "./use-create-cluster";
 export * from "./use-delete-cluster";
 export * from "./use-cluster-add-server";
 export * from "./use-cluster-remove-server";
+export * from "./use-server-domains";
+export * from "./use-save-server-domains";
 export * from "./use-sso";
 export * from "./use-create-sso";
 export * from "./use-ssoauth-url";

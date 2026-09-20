@@ -275,7 +275,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		GoogleRedirectURI: cfg.GoogleOAuthRedirectURI,
 		PublicURL:         cfg.PublicURL,
 	}
-	settingsHandler := settingshttp.New(settingsSvc).WithCookieSecure(cfg.CookieSecure).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, string, error) {
+	settingsHandler := settingshttp.New(settingsSvc).WithServerDomains(&settingsApp.ServerDomains{TraefikDir: filepath.Join(cfg.StateDir, "traefik")}).WithCookieSecure(cfg.CookieSecure).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, string, error) {
 		user, token, err := svc.SSOLogin(ctx, email, name)
 		if err != nil {
 			return nil, "", "", err

@@ -2,8 +2,10 @@ import { ServiceDomains } from "./-components/ServiceDomains";
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
 import { useNetQ, useServices } from "../../../hooks";
-import { Badge, Card, EmptyState } from "@aether/design-system";
-import { Gauge, ShareNetwork } from "@phosphor-icons/react";
+import { useSaveServerDomains, useServerDomains } from "../../../hooks";
+import { Badge, Button, Card, Checkbox, EmptyState, Field, Input, InlineError, useToast } from "@aether/design-system";
+import { Gauge, Globe, ShareNetwork } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "../../../components/PageHeader";
 
 function LatencyBar({ p50, p95 }: { p50: number; p95: number }) {
@@ -43,6 +45,29 @@ function useNetQView() {
 
 function Networking() {
   const { data: services } = useServices();
+  const serverDomains = useServerDomains();
+  const saveServerDomains = useSaveServerDomains();
+  const { add } = useToast();
+  const [webDomain, setWebDomain] = useState("");
+  const [apiDomain, setApiDomain] = useState("");
+  const [https, setHttps] = useState(true);
+
+  useEffect(() => {
+    if (!serverDomains.data) return;
+    setWebDomain(serverDomains.data.web_domain);
+    setApiDomain(serverDomains.data.api_domain);
+    setHttps(serverDomains.data.https);
+  }, [serverDomains.data]);
+
+  const save = () => {
+    saveServerDomains.mutate(
+      { web_domain: webDomain.trim(), api_domain: apiDomain.trim(), https },
+      {
+        onSuccess: () => add({ title: "Aether domains saved", description: "Traefik is updating the routes and certificates.", tone: "success" }),
+        onError: (error) => add({ title: "Could not save Aether domains", description: error.message, tone: "error" }),
+      },
+    );
+  };
 
   return (
     <div className="space-y-lg">
@@ -51,6 +76,29 @@ function Networking() {
         title="Networking"
         description="Domains, HTTPS and certificates per service. The proxy is dynamically configured in memory."
       />
+
+      <Card>
+        <div className="flex items-center justify-between gap-md mb-md">
+          <div>
+            <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Aether server domains</h2>
+            <p className="mt-xs font-body-sm text-body-sm text-on-surface-variant">Expose the Aether web interface and API through Traefik.</p>
+          </div>
+          <Globe size={20} className="text-primary" />
+        </div>
+        {serverDomains.isError ? <InlineError message="Only the global administrator can manage server domains." /> : null}
+        <div className="grid grid-cols-1 gap-md lg:grid-cols-2">
+          <Field label="Web domain">
+            <Input value={webDomain} onChange={(event) => setWebDomain(event.target.value)} placeholder="aether.example.com" />
+          </Field>
+          <Field label="API domain">
+            <Input value={apiDomain} onChange={(event) => setApiDomain(event.target.value)} placeholder="api.aether.example.com" />
+          </Field>
+        </div>
+        <div className="mt-md flex flex-wrap items-center justify-between gap-md border-t border-outline-variant pt-md">
+          <Checkbox label="HTTPS (Let's Encrypt)" checked={https} onCheckedChange={(checked) => setHttps(checked === true)} />
+          <Button onClick={save} loading={saveServerDomains.isPending}>Save domains</Button>
+        </div>
+      </Card>
 
       <Card>
         <div className="flex items-center justify-between mb-md">

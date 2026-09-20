@@ -15,15 +15,21 @@ import (
 )
 
 type Handler struct {
-	settings     *application.Settings
-	login        func(ctx context.Context, email, name string) (user any, token, refresh string, err error)
-	cookieSecure bool
+	settings      *application.Settings
+	serverDomains *application.ServerDomains
+	login         func(ctx context.Context, email, name string) (user any, token, refresh string, err error)
+	cookieSecure  bool
 }
 
 const refreshCookieMaxAge = int((30 * 24 * time.Hour) / time.Second)
 
 func New(settings *application.Settings) *Handler {
 	return &Handler{settings: settings}
+}
+
+func (h *Handler) WithServerDomains(serverDomains *application.ServerDomains) *Handler {
+	h.serverDomains = serverDomains
+	return h
 }
 
 func (h *Handler) WithSSOLogin(login func(ctx context.Context, email, name string) (user any, token, refresh string, err error)) *Handler {
@@ -92,6 +98,37 @@ func (h *Handler) SaveBranding(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, brandingDTO(branding))
+}
+
+func (h *Handler) GetServerDomains(c *gin.Context) {
+	if h.serverDomains == nil {
+		abort(c, errors.New("server domains unavailable"))
+		return
+	}
+	settings, err := h.serverDomains.Get()
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, settings)
+}
+
+func (h *Handler) SaveServerDomains(c *gin.Context) {
+	if h.serverDomains == nil {
+		abort(c, errors.New("server domains unavailable"))
+		return
+	}
+	var settings application.ServerDomainSettings
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	saved, err := h.serverDomains.Save(&settings)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, saved)
 }
 
 func (h *Handler) CreateS3(c *gin.Context) {
