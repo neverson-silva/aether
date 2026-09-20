@@ -38,3 +38,6 @@ master.key
 
 .idea/
 tools
+.agents/
+.claude/
+skills-lock.json

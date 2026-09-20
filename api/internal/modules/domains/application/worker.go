@@ -49,7 +49,7 @@ func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 	if d.ServiceType == ServiceTypeCompose && d.ComposeServiceName != "" {
 		alias += "-" + slugify(d.ComposeServiceName)
 	}
-	if err := w.Provisioner.WriteDomainConfig(d, alias, d.HTTPS); err != nil {
+	if err := w.Provisioner.WriteDomainConfig(d, alias, false); err != nil {
 		w.scheduleRetry(ctx, d, err)
 		return
 	}

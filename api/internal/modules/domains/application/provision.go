@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -220,20 +219,8 @@ func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, http
 	return sb.String()
 }
 
-// VerifyCertificate tenta confirmar que o Traefik do server já emitiu e serve
-// o certificado para o host, via HTTPS no entrypoint websecure.
 func (p *Provisioner) VerifyCertificate(d *domain.Domain) bool {
-	if p.Runtime == nil {
-		return false
-	}
-	if !p.hasCertificate(d.ServerID.String(), d.Host) {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_, _, err := p.Runtime.Exec(ctx, "aether-traefik", nil,
-		"sh", "-c", "wget -q -O /dev/null --no-check-certificate https://localhost/ --header=\"Host: $1\"; status=$?; test \"$status\" -eq 0 || test \"$status\" -eq 8", "sh", d.Host)
-	return err == nil
+	return p.hasCertificate(d.ServerID.String(), d.Host)
 }
 
 func (p *Provisioner) hasCertificate(serverID, host string) bool {

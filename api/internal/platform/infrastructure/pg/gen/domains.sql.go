@@ -411,8 +411,8 @@ SELECT id, app_id, host, https, cert_status, created_at, server_id, container_po
 FROM domains
 WHERE (status IN ('PENDING', 'PROVISIONING', 'ERROR')
     OR (status = 'ACTIVE' AND https = TRUE AND cert_status = 'pending'))
-  AND (retry_count < $1 OR (status = 'ACTIVE' AND https = TRUE AND cert_status = 'pending'))
-  AND (next_retry_at IS NULL OR next_retry_at <= $2)
+  AND ((status = 'ACTIVE' AND https = TRUE AND cert_status = 'pending')
+    OR (retry_count < $1 AND (next_retry_at IS NULL OR next_retry_at <= $2)))
 ORDER BY created_at
 `
 
