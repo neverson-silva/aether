@@ -20,6 +20,7 @@ import {
   Moon,
   Package,
   ShieldCheck,
+  ShareNetwork,
   Sun,
   UsersThree,
 } from "@phosphor-icons/react";
@@ -43,7 +44,10 @@ const navGroups = [
   },
   {
     title: "Infrastructure",
-    items: [{ label: "Databases", path: "/databases", icon: Database }],
+    items: [
+      { label: "Databases", path: "/databases", icon: Database },
+      { label: "Networking", path: "/networking", icon: ShareNetwork },
+    ],
   },
   {
     title: "Storage",
