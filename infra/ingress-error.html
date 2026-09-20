@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Service taking a tiny nap</title>
+    <title>Aether application temporarily unavailable</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #0d1117; color: #f5f7ff; }
     * { box-sizing: border-box; }
     body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #23365d 0, #0d1117 58%); }
     main { width: min(680px, 100%); text-align: center; }
+    .eyebrow { margin-bottom: 24px; color: #b0c6ff; font-size: 12px; font-weight: 700; letter-spacing: .18em; }
     .orbit { position: relative; width: 150px; height: 150px; margin: 0 auto 28px; border: 2px solid #5e7ecb; border-radius: 50%; animation: drift 5s ease-in-out infinite; }
     .orbit::before, .orbit::after { content: ""; position: absolute; inset: 18px -18px; border: 2px solid #b0c6ff; border-radius: 50%; transform: rotate(58deg); opacity: .65; }
     .orbit::after { inset: -18px 18px; transform: rotate(-58deg); opacity: .35; }
@@ -24,11 +25,12 @@
 </head>
 <body>
   <main>
+    <div class="eyebrow">AETHER // APPLICATION STATUS</div>
     <div class="orbit" aria-hidden="true"><div class="planet">zzz</div></div>
-    <h1>This service is taking a tiny nap.</h1>
-    <p>The proxy is awake, but the application wandered off for coffee. It may be restarting, deploying, or having a thoughtful moment.</p>
-    <div class="status"><span class="dot"></span>Service temporarily unavailable</div>
-    <small>Try again in a moment. If this keeps happening, check the deployment logs.</small>
+    <h1>This app drifted into the Aether.</h1>
+    <p>The application is temporarily unavailable. It is finding its way back. Please try again in a moment.</p>
+    <div class="status"><span class="dot"></span>Application temporarily unavailable</div>
+    <small>No panic. Give it a moment, then try again.</small>
   </main>
 </body>
 </html>
