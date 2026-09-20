@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"aether/internal/platform/config"
@@ -32,6 +33,16 @@ func ensureIngress(ctx context.Context, cfg *config.Config, runtime worker.Runti
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "acme"), 0o700); err != nil {
 		return fmt.Errorf("prepare ingress certificate directory: %w", err)
+	}
+	acmeStorage := filepath.Join(dir, "acme", "acme.json")
+	if _, err := os.Stat(acmeStorage); os.IsNotExist(err) {
+		if err := os.WriteFile(acmeStorage, []byte("{}\n"), 0o600); err != nil {
+			return fmt.Errorf("prepare ingress certificate storage: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("inspect ingress certificate storage: %w", err)
+	} else if err := os.Chmod(acmeStorage, 0o600); err != nil {
+		return fmt.Errorf("secure ingress certificate storage: %w", err)
 	}
 
 	traefikYml := filepath.Join(dir, "traefik.yml")
@@ -83,10 +94,16 @@ func staticTraefikConfig(cfg *config.Config) string {
 	sb.WriteString("log:\n  level: INFO\n")
 	sb.WriteString("entryPoints:\n")
 	sb.WriteString("  web:\n    address: \":80\"\n")
-	sb.WriteString("  websecure:\n    address: \":443\"\n")
+	sb.WriteString("  websecure:\n    address: \":443\"\n    http:\n      tls:\n        certResolver: letsencrypt\n")
 	sb.WriteString("providers:\n  file:\n    directory: /etc/traefik/dynamic\n    watch: true\n")
-	if cfg.CertEmail != "" {
-		sb.WriteString("certificatesResolvers:\n  letsencrypt:\n    acme:\n      email: " + cfg.CertEmail + "\n      storage: /etc/traefik/acme/acme.json\n      httpChallenge:\n        entryPoint: web\n")
+	email := cfg.CertEmail
+	if email == "" {
+		email = "test@localhost.com"
 	}
+	sb.WriteString("certificatesResolvers:\n  letsencrypt:\n    acme:\n      email: " + strconv.Quote(email) + "\n")
+	if cfg.ACMEDirectory != "" {
+		sb.WriteString("      caServer: " + strconv.Quote(cfg.ACMEDirectory) + "\n")
+	}
+	sb.WriteString("      storage: /etc/traefik/acme/acme.json\n      httpChallenge:\n        entryPoint: web\n")
 	return sb.String()
 }

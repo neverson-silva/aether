@@ -19,6 +19,7 @@ import {
   MagnifyingGlass,
   Moon,
   Package,
+  ShieldCheck,
   Sun,
   UsersThree,
 } from "@phosphor-icons/react";
@@ -56,6 +57,7 @@ const navGroups = [
     title: "Platform",
     items: [
       { label: "Registry", path: "/registry", icon: Package },
+      { label: "Traefik File System", path: "/traefik", icon: ShieldCheck },
       { label: "Notifications", path: "/notifications", icon: Bell },
     ],
   },
@@ -96,6 +98,8 @@ export function Shell() {
     ? "/apps"
     : location.pathname.startsWith("/projects/")
       ? "/projects"
+      : location.pathname.startsWith("/traefik/")
+        ? "/traefik"
       : location.pathname;
   const currentProject = useMemo(() => {
     const projectId = serviceDetail?.project_id ?? projectMatch?.[1];

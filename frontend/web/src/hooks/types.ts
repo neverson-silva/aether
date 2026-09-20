@@ -13,6 +13,32 @@ export interface RegistryImage {
   size: number;
 }
 
+export interface TraefikFileEntry {
+  path: string;
+  name: string;
+  type: "file" | "directory";
+  size: number;
+  mode: string;
+  modified_at: string;
+  protected: boolean;
+}
+
+export interface TraefikFile {
+  path: string;
+  content: string;
+  editable: boolean;
+  redacted: boolean;
+  protected: boolean;
+}
+
+export interface TraefikStatus {
+  container: string;
+  state: string;
+  config_path: string;
+  dynamic_path: string;
+  acme_path: string;
+}
+
 export interface OutWebhook {
   id: string;
   org_id: string;

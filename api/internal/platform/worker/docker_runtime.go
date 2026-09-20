@@ -317,9 +317,12 @@ func (r *DockerRuntime) ListServiceContainers(ctx context.Context, serviceID, sp
 				name = strings.TrimPrefix(item.Names[0], "/")
 			}
 			info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels, CreatedAt: time.Unix(item.Created, 0)}
-			if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil {
-				info.ExitCode = inspected.State.ExitCode
-				if inspected.State.Health != nil {
+			if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil {
+				info.Ports = exposedPorts(inspected.Config)
+				if inspected.State != nil {
+					info.ExitCode = inspected.State.ExitCode
+				}
+				if inspected.State != nil && inspected.State.Health != nil {
 					switch inspected.State.Health.Status {
 					case "healthy":
 						healthy := true
@@ -348,9 +351,12 @@ func (r *DockerRuntime) listContainers(ctx context.Context, includeStats bool) (
 			name = strings.TrimPrefix(item.Names[0], "/")
 		}
 		info := ContainerInfo{ID: item.ID, Name: name, State: string(item.State), Labels: item.Labels, CreatedAt: time.Unix(item.Created, 0)}
-		if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil && inspected.State != nil {
-			info.ExitCode = inspected.State.ExitCode
-			if inspected.State.Health != nil {
+		if inspected, inspectErr := r.client.ContainerInspect(ctx, item.ID); inspectErr == nil {
+			info.Ports = exposedPorts(inspected.Config)
+			if inspected.State != nil {
+				info.ExitCode = inspected.State.ExitCode
+			}
+			if inspected.State != nil && inspected.State.Health != nil {
 				switch inspected.State.Health.Status {
 				case "healthy":
 					healthy := true
@@ -370,6 +376,21 @@ func (r *DockerRuntime) listContainers(ctx context.Context, includeStats bool) (
 		out = append(out, info)
 	}
 	return out, nil
+}
+
+func exposedPorts(config *container.Config) []int {
+	if config == nil {
+		return nil
+	}
+	ports := make([]int, 0, len(config.ExposedPorts))
+	for exposed := range config.ExposedPorts {
+		port, err := strconv.Atoi(strings.TrimSuffix(string(exposed), "/tcp"))
+		if err == nil && port > 0 && port <= 65535 && !slices.Contains(ports, port) {
+			ports = append(ports, port)
+		}
+	}
+	slices.Sort(ports)
+	return ports
 }
 
 type dockerRuntimeEventSubscription struct {

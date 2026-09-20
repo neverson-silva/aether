@@ -34,6 +34,7 @@ import (
 	specshttp "aether/internal/modules/specs/http"
 	statshttp "aether/internal/modules/stats/http"
 	templateshttp "aether/internal/modules/templates/http"
+	traefikfshttp "aether/internal/modules/traefikfs/http"
 	variableshttp "aether/internal/modules/variables/http"
 	volumeshttp "aether/internal/modules/volumes/http"
 	webhookshttp "aether/internal/modules/webhooks/http"
@@ -74,6 +75,7 @@ type Router struct {
 	realtime    *realtimehttp.Handler
 	monitoring  *monitoringhttp.Handler
 	services    *serviceshttp.Handler
+	traefikfs   *traefikfshttp.Handler
 	ready       func(context.Context) error
 	authLimiter RateLimiterBackend
 }
@@ -114,7 +116,7 @@ func (r *Router) WithSourceControl(h *sourcecontrolhttp.Handler) *Router {
 	return r
 }
 
-func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler, monitoring *monitoringhttp.Handler, services *serviceshttp.Handler) *Router {
+func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deployments *deployhttp.Handler, domains *domainshttp.Handler, jobs *jobshttp.Handler, databases *databaseshttp.Handler, backups *backupshttp.Handler, templates *templateshttp.Handler, gitops *gitopshttp.Handler, alerts *alertshttp.Handler, snapshots *snapshotshttp.Handler, clusters *clustershttp.Handler, pipelines *pipelineshttp.Handler, settings *settingshttp.Handler, webhooks *webhookshttp.Handler, mirrors *mirrorshttp.Handler, volumes *volumeshttp.Handler, orgs *orgshttp.Handler, variables *variableshttp.Handler, host *hosthttp.Handler, specs *specshttp.Handler, stats *statshttp.Handler, realtime *realtimehttp.Handler, monitoring *monitoringhttp.Handler, services *serviceshttp.Handler, traefikfs *traefikfshttp.Handler) *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -132,7 +134,7 @@ func New(opts Options, auth *authhttp.Handler, apps *appshttp.Handler, deploymen
 		engine.Use(Timeout(opts.RequestTimeout))
 	}
 
-	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, dbBackups: nil, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, services: services, authLimiter: opts.AuthRateLimiter}
+	r := &Router{engine: engine, auth: auth, apps: apps, deployments: deployments, domains: domains, jobs: jobs, databases: databases, backups: backups, dbBackups: nil, templates: templates, gitops: gitops, alerts: alerts, snapshots: snapshots, clusters: clusters, pipelines: pipelines, settings: settings, webhooks: webhooks, mirrors: mirrors, volumes: volumes, orgs: orgs, variables: variables, host: host, specs: specs, stats: stats, realtime: realtime, monitoring: monitoring, services: services, traefikfs: traefikfs, authLimiter: opts.AuthRateLimiter}
 	r.routes()
 	return r
 }
@@ -404,6 +406,14 @@ func (r *Router) routes() {
 		platformAdmin.POST("/registry", r.clusters.SetRegistry)
 		platformAdmin.GET("/registry/images", r.clusters.RegistryImages)
 		platformAdmin.DELETE("/registry/images/:repo/:tag", r.clusters.RegistryImageDelete)
+		if r.traefikfs != nil {
+			platformAdmin.GET("/admin/traefik/files", r.traefikfs.List)
+			platformAdmin.GET("/admin/traefik/status", r.traefikfs.Status)
+			platformAdmin.GET("/admin/traefik/file", r.traefikfs.Read)
+			platformAdmin.PUT("/admin/traefik/file", r.traefikfs.Write)
+			platformAdmin.DELETE("/admin/traefik/file", r.traefikfs.Delete)
+			platformAdmin.POST("/admin/traefik/restart", r.traefikfs.Restart)
+		}
 
 		authed.GET("/pipelines", r.pipelines.List)
 		authed.POST("/pipelines", r.pipelines.Create)

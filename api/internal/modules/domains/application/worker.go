@@ -44,6 +44,7 @@ func (w *ProvisionWorker) process(ctx context.Context) {
 }
 
 func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
+	d.ContainerPort = w.Provisioner.EffectiveContainerPort(ctx, d)
 	alias := w.Provisioner.Alias(d.AppID, d.ServiceType)
 	if d.ServiceType == ServiceTypeCompose && d.ComposeServiceName != "" {
 		alias += "-" + slugify(d.ComposeServiceName)
@@ -56,7 +57,7 @@ func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 		_ = w.Store.UpdateDomainProvision(ctx, d.ID, domainOwnerID(d, d.AppID), string(domain.DomainActive), "active", "", nil, 0)
 		return
 	}
-	if w.Provisioner.VerifyCertificate(d.Host) {
+	if w.Provisioner.VerifyCertificate(d) {
 		_ = w.Provisioner.WriteDomainConfig(d, alias, true)
 		_ = w.Store.UpdateDomainProvision(ctx, d.ID, domainOwnerID(d, d.AppID), string(domain.DomainActive), "active", "", nil, 0)
 		return

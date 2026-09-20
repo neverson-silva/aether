@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -114,6 +115,38 @@ func (p *Provisioner) Alias(serviceID uuid.UUID, serviceType string) string {
 	return prefix + serviceID.String()[:8]
 }
 
+func (p *Provisioner) EffectiveContainerPort(ctx context.Context, d *domain.Domain) int {
+	if p.Runtime == nil {
+		return d.ContainerPort
+	}
+	var containers []worker.ContainerInfo
+	if metadata, ok := p.Runtime.(worker.ContainerMetadataRuntime); ok {
+		containers, _ = metadata.ListContainerMetadata(ctx)
+	} else {
+		containers, _ = p.Runtime.ListContainers(ctx)
+	}
+	for _, container := range containers {
+		if container.State != "running" {
+			continue
+		}
+		if !matchesDomainContainer(container, d) {
+			continue
+		}
+		if len(container.Ports) > 0 {
+			return container.Ports[0]
+		}
+	}
+	return d.ContainerPort
+}
+
+func matchesDomainContainer(container worker.ContainerInfo, d *domain.Domain) bool {
+	labels := container.Labels
+	if d.ServiceType == ServiceTypeCompose && d.ComposeServiceName != "" && labels["com.docker.compose.service"] != d.ComposeServiceName {
+		return false
+	}
+	return labels["aether.spec-id"] == d.AppID.String() || labels["aether.service-id"] == d.ServiceID.String()
+}
+
 func (p *Provisioner) RemoveDomainConfig(d *domain.Domain) error {
 	filename := "domain-" + d.ID.String() + ".yml"
 	removed := false
@@ -189,15 +222,60 @@ func (p *Provisioner) generateDynamicConfig(d *domain.Domain, alias string, http
 
 // VerifyCertificate tenta confirmar que o Traefik do server já emitiu e serve
 // o certificado para o host, via HTTPS no entrypoint websecure.
-func (p *Provisioner) VerifyCertificate(host string) bool {
+func (p *Provisioner) VerifyCertificate(d *domain.Domain) bool {
 	if p.Runtime == nil {
+		return false
+	}
+	if !p.hasCertificate(d.ServerID.String(), d.Host) {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, _, err := p.Runtime.Exec(ctx, "aether-traefik", nil,
-		"sh", "-c", "wget -q -O /dev/null --no-check-certificate https://localhost/ --header=\"Host: $1\"; status=$?; test \"$status\" -eq 0 || test \"$status\" -eq 8", "sh", host)
+		"sh", "-c", "wget -q -O /dev/null --no-check-certificate https://localhost/ --header=\"Host: $1\"; status=$?; test \"$status\" -eq 0 || test \"$status\" -eq 8", "sh", d.Host)
 	return err == nil
+}
+
+func (p *Provisioner) hasCertificate(serverID, host string) bool {
+	root := p.TraefikDir
+	if serverKey(serverID) != "local" {
+		root = filepath.Join(root, serverKey(serverID))
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "acme", "acme.json"))
+	if err != nil {
+		return false
+	}
+	var state map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return false
+	}
+	resolverRaw, ok := state["letsencrypt"]
+	if !ok {
+		return false
+	}
+	var resolver struct {
+		Certificates []struct {
+			Domain struct {
+				Main string   `json:"main"`
+				SANs []string `json:"sans"`
+			} `json:"domain"`
+		} `json:"Certificates"`
+	}
+	if err := json.Unmarshal(resolverRaw, &resolver); err != nil {
+		return false
+	}
+	wanted := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	for _, certificate := range resolver.Certificates {
+		if strings.TrimSuffix(strings.ToLower(certificate.Domain.Main), ".") == wanted {
+			return true
+		}
+		for _, san := range certificate.Domain.SANs {
+			if strings.TrimSuffix(strings.ToLower(san), ".") == wanted {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func itoa(n int) string {

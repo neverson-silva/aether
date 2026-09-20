@@ -36,6 +36,7 @@ import { Route as ShellSecretsIndexRouteImport } from './routes/_shell/secrets/i
 import { Route as ShellServersIndexRouteImport } from './routes/_shell/servers/index'
 import { Route as ShellSsoIndexRouteImport } from './routes/_shell/sso/index'
 import { Route as ShellStorageIndexRouteImport } from './routes/_shell/storage/index'
+import { Route as ShellTraefikIndexRouteImport } from './routes/_shell/traefik/index'
 import { Route as ShellWhitelabelIndexRouteImport } from './routes/_shell/whitelabel/index'
 import { Route as StudioDbIdIndexRouteImport } from './routes/studio.$dbId/index'
 import { Route as ShellAppsAppIdIndexRouteImport } from './routes/_shell/apps/$appId/index'
@@ -177,6 +178,11 @@ const ShellStorageIndexRoute = ShellStorageIndexRouteImport.update({
   path: '/storage/',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellTraefikIndexRoute = ShellTraefikIndexRouteImport.update({
+  id: '/traefik/',
+  path: '/traefik/',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellWhitelabelIndexRoute = ShellWhitelabelIndexRouteImport.update({
   id: '/whitelabel/',
   path: '/whitelabel/',
@@ -238,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/servers/': typeof ShellServersIndexRoute
   '/sso/': typeof ShellSsoIndexRoute
   '/storage/': typeof ShellStorageIndexRoute
+  '/traefik/': typeof ShellTraefikIndexRoute
   '/whitelabel/': typeof ShellWhitelabelIndexRoute
   '/studio/$dbId/': typeof StudioDbIdIndexRoute
   '/apps/$appId/': typeof ShellAppsAppIdIndexRoute
@@ -272,6 +279,7 @@ export interface FileRoutesByTo {
   '/servers': typeof ShellServersIndexRoute
   '/sso': typeof ShellSsoIndexRoute
   '/storage': typeof ShellStorageIndexRoute
+  '/traefik': typeof ShellTraefikIndexRoute
   '/whitelabel': typeof ShellWhitelabelIndexRoute
   '/studio/$dbId': typeof StudioDbIdIndexRoute
   '/apps/$appId': typeof ShellAppsAppIdIndexRoute
@@ -308,6 +316,7 @@ export interface FileRoutesById {
   '/_shell/servers/': typeof ShellServersIndexRoute
   '/_shell/sso/': typeof ShellSsoIndexRoute
   '/_shell/storage/': typeof ShellStorageIndexRoute
+  '/_shell/traefik/': typeof ShellTraefikIndexRoute
   '/_shell/whitelabel/': typeof ShellWhitelabelIndexRoute
   '/studio/$dbId/': typeof StudioDbIdIndexRoute
   '/_shell/apps/$appId/': typeof ShellAppsAppIdIndexRoute
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/servers/'
     | '/sso/'
     | '/storage/'
+    | '/traefik/'
     | '/whitelabel/'
     | '/studio/$dbId/'
     | '/apps/$appId/'
@@ -378,6 +388,7 @@ export interface FileRouteTypes {
     | '/servers'
     | '/sso'
     | '/storage'
+    | '/traefik'
     | '/whitelabel'
     | '/studio/$dbId'
     | '/apps/$appId'
@@ -413,6 +424,7 @@ export interface FileRouteTypes {
     | '/_shell/servers/'
     | '/_shell/sso/'
     | '/_shell/storage/'
+    | '/_shell/traefik/'
     | '/_shell/whitelabel/'
     | '/studio/$dbId/'
     | '/_shell/apps/$appId/'
@@ -621,6 +633,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellStorageIndexRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/traefik/': {
+      id: '/_shell/traefik/'
+      path: '/traefik'
+      fullPath: '/traefik/'
+      preLoaderRoute: typeof ShellTraefikIndexRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/whitelabel/': {
       id: '/_shell/whitelabel/'
       path: '/whitelabel'
@@ -689,6 +708,7 @@ interface ShellRouteChildren {
   ShellServersIndexRoute: typeof ShellServersIndexRoute
   ShellSsoIndexRoute: typeof ShellSsoIndexRoute
   ShellStorageIndexRoute: typeof ShellStorageIndexRoute
+  ShellTraefikIndexRoute: typeof ShellTraefikIndexRoute
   ShellWhitelabelIndexRoute: typeof ShellWhitelabelIndexRoute
   ShellAppsAppIdIndexRoute: typeof ShellAppsAppIdIndexRoute
   ShellDatabasesDbIdIndexRoute: typeof ShellDatabasesDbIdIndexRoute
@@ -719,6 +739,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellServersIndexRoute: ShellServersIndexRoute,
   ShellSsoIndexRoute: ShellSsoIndexRoute,
   ShellStorageIndexRoute: ShellStorageIndexRoute,
+  ShellTraefikIndexRoute: ShellTraefikIndexRoute,
   ShellWhitelabelIndexRoute: ShellWhitelabelIndexRoute,
   ShellAppsAppIdIndexRoute: ShellAppsAppIdIndexRoute,
   ShellDatabasesDbIdIndexRoute: ShellDatabasesDbIdIndexRoute,

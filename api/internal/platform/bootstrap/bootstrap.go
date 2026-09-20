@@ -82,6 +82,8 @@ import (
 	templatesdomain "aether/internal/modules/templates/domain"
 	templateshttp "aether/internal/modules/templates/http"
 	templatesInfra "aether/internal/modules/templates/infra"
+	traefikfsApp "aether/internal/modules/traefikfs/application"
+	traefikfshttp "aether/internal/modules/traefikfs/http"
 	variablesApp "aether/internal/modules/variables/application"
 	variableshttp "aether/internal/modules/variables/http"
 	variablesInfra "aether/internal/modules/variables/infra"
@@ -174,6 +176,8 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		},
 	}
 	domainsHandler := domainshttp.New(domainsSvc)
+	traefikFilesystem := &traefikfsApp.Filesystem{Root: filepath.Join(cfg.StateDir, "traefik"), Runtime: deployWorkerRuntime}
+	traefikFilesystemHandler := traefikfshttp.New(traefikFilesystem)
 	if err := ensureIngressWithRetry(ctx, cfg, deployWorkerRuntime); err != nil {
 		slog.Error("bootstrap ingress failed", "error", err)
 	}
@@ -457,7 +461,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		CORSOrigins:     cfg.CORSOrigins,
 		RequestTimeout:  60 * time.Second,
 		AuthRateLimiter: apihttp.NewPostgresRateLimiter(pool, 30, time.Minute),
-	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler, servicesHandler)
+	}, handler, appsHandler, deployHandler, domainsHandler, jobsHandler, databasesHandler, backupsHandler, templatesHandler, gitopsHandler, alertsHandler, snapshotsHandler, clustersHandler, pipelinesHandler, settingsHandler, webhooksHandler, mirrorsHandler, volumesHandler, orgsHandler, variablesHandler, hostHandler, specsHandler, statsHandler, realtimeHandler, monitoringHandler, servicesHandler, traefikFilesystemHandler)
 	router.WithDatabaseBackups(dbBackupsHandler)
 	router.WithSourceControl(sourceHandler)
 	router.SetReadiness(func(ctx context.Context) error {

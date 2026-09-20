@@ -209,6 +209,7 @@ type ContainerInfo struct {
 	ID        string            `json:"id"`
 	Name      string            `json:"name"`
 	State     string            `json:"state"`
+	Ports     []int             `json:"ports,omitempty"`
 	ExitCode  int               `json:"exit_code,omitempty"`
 	Labels    map[string]string `json:"labels"`
 	CreatedAt time.Time         `json:"created_at,omitempty"`
