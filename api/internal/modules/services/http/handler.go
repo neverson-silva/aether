@@ -79,6 +79,7 @@ type Handler struct {
 		Add(context.Context, uuid.UUID, uuid.UUID, string, domainsapplication.AddDomainInput) (*domainsdomain.Domain, error)
 		Remove(context.Context, uuid.UUID, uuid.UUID, string, string) error
 		GenerateFreeDomain(context.Context, uuid.UUID, uuid.UUID, string, bool) (*domainsdomain.Domain, error)
+		UpdateDomain(context.Context, uuid.UUID, uuid.UUID, string, uuid.UUID, domainsapplication.AddDomainInput) error
 	}
 	environment interface {
 		SetEnv(context.Context, uuid.UUID, uuid.UUID, string, string, bool) error
@@ -194,6 +195,7 @@ func (h *Handler) WithDomains(domains interface {
 	Add(context.Context, uuid.UUID, uuid.UUID, string, domainsapplication.AddDomainInput) (*domainsdomain.Domain, error)
 	Remove(context.Context, uuid.UUID, uuid.UUID, string, string) error
 	GenerateFreeDomain(context.Context, uuid.UUID, uuid.UUID, string, bool) (*domainsdomain.Domain, error)
+	UpdateDomain(context.Context, uuid.UUID, uuid.UUID, string, uuid.UUID, domainsapplication.AddDomainInput) error
 }) *Handler {
 	h.domains = domains
 	return h
@@ -1331,6 +1333,49 @@ func (h *Handler) AddDomain(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": domain.ID, "service_id": id, "host": domain.Host, "https": domain.HTTPS, "status": domain.Status, "cert_status": domain.CertStatus})
+}
+
+func (h *Handler) UpdateDomain(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("serviceID"))
+	if err != nil || h.domains == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
+		return
+	}
+	domainID, err := uuid.Parse(c.Param("domainID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain id"})
+		return
+	}
+	kind, specID, err := h.resolve(c, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
+		return
+	}
+	serviceType := kind
+	if kind == string(servicedomain.KindDatabase) {
+		serviceType = domainsapplication.ServiceTypeDB
+	}
+	var input struct {
+		Host               string `json:"host"`
+		HTTPS              bool   `json:"https"`
+		ContainerPort      int    `json:"container_port"`
+		Path               string `json:"path"`
+		InternalPath       string `json:"internal_path"`
+		StripPath          bool   `json:"strip_path"`
+		ComposeServiceName string `json:"compose_service_name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain"})
+		return
+	}
+	if err := h.domains.UpdateDomain(c.Request.Context(), specID, orgID(c), serviceType, domainID, domainsapplication.AddDomainInput{
+		Host: input.Host, HTTPS: input.HTTPS, ContainerPort: input.ContainerPort, Path: input.Path, InternalPath: input.InternalPath,
+		StripPath: input.StripPath, ComposeServiceName: input.ComposeServiceName,
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
 }
 
 func (h *Handler) RemoveDomain(c *gin.Context) {

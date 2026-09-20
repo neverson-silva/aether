@@ -39,6 +39,7 @@ export * from "./use-set-env";
 export * from "./use-delete-env";
 export * from "./use-domains";
 export * from "./use-add-domain";
+export * from "./use-update-domain";
 export * from "./use-generate-free-domain";
 export * from "./use-remove-domain";
 export * from "./use-timeline";

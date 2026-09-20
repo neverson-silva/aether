@@ -239,6 +239,7 @@ func (r *Router) routes() {
 		authed.DELETE("/services/:serviceID/cron-jobs/:jobID", r.services.DeleteCronJob)
 		authed.PUT("/services/:serviceID/webhook", r.services.SetWebhook)
 		authed.POST("/services/:serviceID/domains", r.services.AddDomain)
+		authed.PATCH("/services/:serviceID/domains/:domainID", r.services.UpdateDomain)
 		authed.POST("/services/:serviceID/domains/generate", r.services.GenerateDomain)
 		authed.PUT("/services/:serviceID/environment", r.services.SetEnvironment)
 		authed.DELETE("/services/:serviceID/environment/:name", r.services.DeleteEnvironment)

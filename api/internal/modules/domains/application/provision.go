@@ -118,19 +118,7 @@ func (p *Provisioner) EffectiveContainerPort(ctx context.Context, d *domain.Doma
 	if p.Runtime == nil {
 		return d.ContainerPort
 	}
-	var containers []worker.ContainerInfo
-	if metadata, ok := p.Runtime.(worker.ContainerMetadataRuntime); ok {
-		containers, _ = metadata.ListContainerMetadata(ctx)
-	} else {
-		containers, _ = p.Runtime.ListContainers(ctx)
-	}
-	for _, container := range containers {
-		if container.State != "running" {
-			continue
-		}
-		if !matchesDomainContainer(container, d) {
-			continue
-		}
+	for _, container := range p.matchingDomainContainers(ctx, d) {
 		for _, port := range container.Ports {
 			if port == d.ContainerPort {
 				return d.ContainerPort
@@ -141,6 +129,49 @@ func (p *Provisioner) EffectiveContainerPort(ctx context.Context, d *domain.Doma
 		}
 	}
 	return d.ContainerPort
+}
+
+func (p *Provisioner) EffectiveComposeServiceName(ctx context.Context, d *domain.Domain) string {
+	if d.ServiceType != ServiceTypeCompose {
+		return ""
+	}
+	if d.ComposeServiceName != "" {
+		return d.ComposeServiceName
+	}
+	for _, container := range p.matchingDomainContainers(ctx, d) {
+		for _, port := range container.Ports {
+			if port == d.ContainerPort {
+				if name := container.Labels["com.docker.compose.service"]; name != "" {
+					return name
+				}
+			}
+		}
+	}
+	for _, container := range p.matchingDomainContainers(ctx, d) {
+		if name := container.Labels["com.docker.compose.service"]; name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func (p *Provisioner) matchingDomainContainers(ctx context.Context, d *domain.Domain) []worker.ContainerInfo {
+	if p.Runtime == nil {
+		return nil
+	}
+	var containers []worker.ContainerInfo
+	if metadata, ok := p.Runtime.(worker.ContainerMetadataRuntime); ok {
+		containers, _ = metadata.ListContainerMetadata(ctx)
+	} else {
+		containers, _ = p.Runtime.ListContainers(ctx)
+	}
+	matches := make([]worker.ContainerInfo, 0, len(containers))
+	for _, container := range containers {
+		if container.State == "running" && matchesDomainContainer(container, d) {
+			matches = append(matches, container)
+		}
+	}
+	return matches
 }
 
 func matchesDomainContainer(container worker.ContainerInfo, d *domain.Domain) bool {

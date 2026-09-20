@@ -52,8 +52,9 @@ func (w *ProvisionWorker) provision(ctx context.Context, d *domain.Domain) {
 		targetID = d.AppID
 	}
 	alias := w.Provisioner.Alias(targetID, d.ServiceType)
-	if d.ServiceType == ServiceTypeCompose && d.ComposeServiceName != "" {
-		alias += "-" + slugify(d.ComposeServiceName)
+	composeServiceName := w.Provisioner.EffectiveComposeServiceName(ctx, d)
+	if composeServiceName != "" {
+		alias += "-" + slugify(composeServiceName)
 	}
 	if err := w.Provisioner.WriteDomainConfig(d, alias, false); err != nil {
 		w.scheduleRetry(ctx, d, err)
