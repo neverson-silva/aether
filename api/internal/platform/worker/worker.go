@@ -562,7 +562,7 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		}
 	}
 	containerID, err := w.Runtime.Run(ctx, RunSpec{
-		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: runtimePort, ContainerPort: containerPort,
+		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: runtimePort, ContainerPort: containerPort, HostIP: "0.0.0.0",
 		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8], AdditionalNetworks: []string{w.PublishedNetwork},
 		MemMB: spec.MemMB, CPUs: spec.CPUs, StorageMB: spec.StorageMB, Labels: labels,
 	})

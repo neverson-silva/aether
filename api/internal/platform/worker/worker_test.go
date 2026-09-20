@@ -216,7 +216,7 @@ func TestWorkerDeploySuccess(t *testing.T) {
 	if len(rt.ran) != 1 {
 		t.Fatalf("run inesperado: %d", len(rt.ran))
 	}
-	if rt.ran[0].Image != "nginx:alpine" || rt.ran[0].Port != 0 {
+	if rt.ran[0].Image != "nginx:alpine" || rt.ran[0].Port != 0 || rt.ran[0].HostIP != "0.0.0.0" {
 		t.Fatalf("run spec inesperado: %+v", rt.ran[0])
 	}
 	if len(store.updates) != 4 {
