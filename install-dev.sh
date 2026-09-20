@@ -512,6 +512,11 @@ EOF
 ensure_network() {
   local network
   local missing=0
+  local masquerade
+  masquerade="$($RUNTIME network inspect "$PUBLISHED_NET_NAME" --format '{{index .Options "com.docker.network.bridge.enable_ip_masquerade"}}' 2>/dev/null || true)"
+  if [[ "$masquerade" == "false" ]]; then
+    migrate_published_network
+  fi
   for network in "$NET_NAME" "$INGRESS_NET_NAME" "$PUBLISHED_NET_NAME" "$DOCKER_CONTROL_NET"; do
     if $RUNTIME network inspect "$network" >/dev/null 2>&1; then
       if [[ "$network" == "$DOCKER_CONTROL_NET" ]] && [[ "$($RUNTIME network inspect "$network" --format '{{.Internal}}')" == "true" ]]; then
@@ -536,7 +541,7 @@ ensure_network() {
     if [[ "$network" == "$INGRESS_NET_NAME" ]]; then
       create_args=(network create --internal --label "io.aether.component=$component" "$network")
     elif [[ "$network" == "$PUBLISHED_NET_NAME" ]]; then
-      create_args=(network create --opt com.docker.network.bridge.enable_ip_masquerade=false --label "io.aether.component=$component" "$network")
+      create_args=(network create --label "io.aether.component=$component" "$network")
     else
       create_args=(network create --label "io.aether.component=$component" "$network")
     fi
@@ -549,6 +554,43 @@ ensure_network() {
   else
     info "Application networks prepared."
   fi
+}
+
+migrate_published_network() {
+  local state_dir container aliases_file alias
+  state_dir="$(mktemp -d)"
+  if ! $RUNTIME network inspect "$PUBLISHED_NET_NAME" --format '{{range $id, $container := .Containers}}{{println $id}}{{end}}' >"$state_dir/containers"; then
+    rm -rf "$state_dir"
+    fail "Could not inspect the legacy published network '$PUBLISHED_NET_NAME'."
+  fi
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    aliases_file="$state_dir/$container"
+    $RUNTIME inspect "$container" --format '{{with index .NetworkSettings.Networks "'$PUBLISHED_NET_NAME'"}}{{range .Aliases}}{{println .}}{{end}}{{end}}' >"$aliases_file" 2>/dev/null || true
+    $RUNTIME network disconnect -f "$PUBLISHED_NET_NAME" "$container" >/dev/null 2>&1 || true
+  done <"$state_dir/containers"
+  if ! $RUNTIME network rm "$PUBLISHED_NET_NAME" >/dev/null 2>&1; then
+    rm -rf "$state_dir"
+    fail "Could not replace the legacy published network '$PUBLISHED_NET_NAME'."
+  fi
+  if ! $RUNTIME network create --label "io.aether.component=workload-published" "$PUBLISHED_NET_NAME" >/dev/null 2>&1; then
+    rm -rf "$state_dir"
+    fail "Could not recreate the published network '$PUBLISHED_NET_NAME'."
+  fi
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    local connect_args=(network connect)
+    while IFS= read -r alias; do
+      [[ -n "$alias" ]] || continue
+      connect_args+=(--alias "$alias")
+    done <"$state_dir/$container"
+    connect_args+=("$PUBLISHED_NET_NAME" "$container")
+    if ! $RUNTIME "${connect_args[@]}" >/dev/null 2>&1; then
+      warn "Could not reconnect container '$container' to '$PUBLISHED_NET_NAME'."
+    fi
+  done <"$state_dir/containers"
+  rm -rf "$state_dir"
+  info "Migrated '$PUBLISHED_NET_NAME' to restore outbound container access."
 }
 
 ensure_docker_proxy() {
