@@ -187,7 +187,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 
 	deployWorker := &worker.Worker{
 		Store: deployStore, Apps: appsStore, Runtime: deployRuntime,
-		LogsDir: cfg.LogsDir, BuildsDir: cfg.BuildsDir, UploadsDir: cfg.UploadsDir,
+		LogsDir: cfg.LogsDir, BuildsDir: cfg.BuildsDir, BuildTempDir: filepath.Join(cfg.StateDir, "build-tmp"), UploadsDir: cfg.UploadsDir,
 		IngressNetwork: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, CnbBuilder: cfg.CnbBuilder, BuildDockerNetwork: cfg.BuildDockerNetwork,
 		DockerHost: cfg.DockerHost, BuildDockerHost: cfg.BuildDockerHost,
 		Images: imageRuntime, Builder: imageRuntime, Registry: imageRuntime,

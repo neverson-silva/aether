@@ -47,6 +47,7 @@ type Worker struct {
 	Logger             *slog.Logger
 	LogsDir            string
 	BuildsDir          string
+	BuildTempDir       string
 	UploadsDir         string
 	IngressNetwork     string
 	PublishedNetwork   string
@@ -754,9 +755,24 @@ func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployme
 	}
 	var out string
 	var err error
+	var tempDir string
+	if w.BuildTempDir != "" {
+		if err := os.MkdirAll(w.BuildTempDir, 0o750); err != nil {
+			return "", fmt.Errorf("prepare build temporary directory: %w", err)
+		}
+		var err error
+		tempDir, err = os.MkdirTemp(w.BuildTempDir, dep.ID.String()+"-")
+		if err != nil {
+			return "", fmt.Errorf("create build temporary directory: %w", err)
+		}
+		defer os.RemoveAll(tempDir)
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		cmd := exec.CommandContext(ctx, "pack", args...)
 		cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost, "DOCKER_API_VERSION=1.40", "PACK_VOLUME_KEY=aether-"+dep.ID.String()[:8])
+		if tempDir != "" {
+			cmd.Env = append(cmd.Env, "TMPDIR="+tempDir, "TMP="+tempDir, "TEMP="+tempDir)
+		}
 		out, err = w.streamCmd(ctx, dep, cmd)
 		if err == nil || !isTransientCNBError(out) || attempt == 1 {
 			break
