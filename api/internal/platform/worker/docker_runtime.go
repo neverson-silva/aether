@@ -847,8 +847,8 @@ func (r *DockerRuntime) EnsureNetwork(ctx context.Context, name string, labels m
 		if labels["io.aether.component"] == "workload-published" && existing.Internal {
 			return fmt.Errorf("network %q must support host port publishing", name)
 		}
-		if labels["io.aether.component"] == "workload-published" && existing.Options["com.docker.network.bridge.enable_ip_masquerade"] != "false" {
-			return fmt.Errorf("network %q must disable workload masquerading", name)
+		if labels["io.aether.component"] == "workload-published" && existing.Options["com.docker.network.bridge.enable_ip_masquerade"] == "false" {
+			return fmt.Errorf("network %q must support outbound container access; run the installer to migrate it", name)
 		}
 		return nil
 	} else if !client.IsErrNotFound(err) {
@@ -856,9 +856,6 @@ func (r *DockerRuntime) EnsureNetwork(ctx context.Context, name string, labels m
 	}
 	component := labels["io.aether.component"]
 	options := map[string]string{}
-	if component == "workload-published" {
-		options["com.docker.network.bridge.enable_ip_masquerade"] = "false"
-	}
 	_, err := r.client.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge", Internal: component == "ingress", Options: options, Labels: labels})
 	if err != nil {
 		return runtimeError("create network", err)
