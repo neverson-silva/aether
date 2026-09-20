@@ -10,5 +10,6 @@ RUN npm run build
 
 FROM docker.io/library/nginx:alpine@sha256:db35bfc6b2951e7f8a72db5db120288c127ffaeeb4a6d4b95a26fead017d5913
 COPY --from=build /web/dist /usr/share/nginx/html
+COPY infra/ingress-error.html /usr/share/nginx/html/ingress-error.html
 COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 4000

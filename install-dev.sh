@@ -900,7 +900,7 @@ ensure_web_image() {
   }
   local image_stamp="$STATE_DIR/.web-image.stamp"
   local source_stamp
-  source_stamp="$(content_fingerprint "$PROJECT_ROOT/frontend/aether_ds" "$PROJECT_ROOT/frontend/web" "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT/infra/nginx.conf")|$WEB_IMAGE|$AETHER_API_PUBLIC_URL|$AETHER_PUBLIC_URL"
+  source_stamp="$(content_fingerprint "$PROJECT_ROOT/frontend/aether_ds" "$PROJECT_ROOT/frontend/web" "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT/infra/nginx.conf" "$PROJECT_ROOT/infra/ingress-error.html")|$WEB_IMAGE|$AETHER_API_PUBLIC_URL|$AETHER_PUBLIC_URL"
   if [[ "$FORCE_IMAGE_REBUILD" -eq 0 ]] && $RUNTIME image inspect "$WEB_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
     cleanup_web_build_env
     info "Application interface unchanged — reusing the cached image."
@@ -1121,6 +1121,12 @@ server {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+    location ~ ^/_aether/errors/[0-9]+\$ {
+        root /usr/share/nginx/html;
+        try_files /ingress-error.html =503;
+        add_header Cache-Control "no-store" always;
+    }
+
     location = /api/v1/ws/realtime {
         proxy_pass http://$API_CONTAINER:8080;
         proxy_http_version 1.1;
@@ -1218,6 +1224,8 @@ start_web() {
     -v "$conf:/etc/nginx/conf.d/default.conf:ro$SELINUX_READONLY_SUFFIX" \
     --restart unless-stopped \
     "$WEB_IMAGE" >/dev/null || fail "Failed to start the web container."
+
+  $RUNTIME network connect --alias "$WEB_CONTAINER" "$INGRESS_NET_NAME" "$WEB_CONTAINER" >/dev/null 2>&1 || fail "Failed to connect the web gateway to the ingress network."
 
   if is_true "${AETHER_WAIT_FOR_HEALTH:-false}"; then
     local tries=0

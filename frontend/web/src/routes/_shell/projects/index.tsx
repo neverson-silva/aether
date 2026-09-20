@@ -107,7 +107,7 @@ function Projects() {
         actions={<Button icon={designIcon(Plus)} onClick={openCreateProject}>New project</Button>}
       />
 
-      <section className="space-y-4" aria-labelledby="projects-heading">
+      <section className="space-y-3" aria-labelledby="projects-heading">
         <div className="flex items-center gap-3">
           <Typography as="h2" id="projects-heading" level="heading">Your projects</Typography>
           <Badge tone="neutral" size="md">{projects?.length ?? 0}</Badge>
@@ -120,6 +120,7 @@ function Projects() {
             title="No projects yet"
             description="Create a project to group applications, databases and environments."
             action={<Button icon={designIcon(Plus)} onClick={openCreateProject}>Create project</Button>}
+            className="mx-auto max-w-2xl border-0 bg-transparent p-6 md:p-10"
           />
         ) : null}
 
