@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,6 +19,8 @@ type Handler struct {
 	login        func(ctx context.Context, email, name string) (user any, token, refresh string, err error)
 	cookieSecure bool
 }
+
+const refreshCookieMaxAge = int((30 * 24 * time.Hour) / time.Second)
 
 func New(settings *application.Settings) *Handler {
 	return &Handler{settings: settings}
@@ -329,7 +332,7 @@ func (h *Handler) SSOCallback(c *gin.Context) {
 func (h *Handler) setAuthCookies(c *gin.Context, access, refresh string) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("aether_token", access, 600, "/", "", h.cookieSecure, true)
-	c.SetCookie("aether_refresh", refresh, 1200, "/api/v1/auth", "", h.cookieSecure, true)
+	c.SetCookie("aether_refresh", refresh, refreshCookieMaxAge, "/api/v1/auth", "", h.cookieSecure, true)
 }
 
 func brandingDTO(b *domain.Branding) gin.H {

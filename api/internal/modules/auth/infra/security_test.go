@@ -77,7 +77,7 @@ func TestSignerCapsTokenLifetimes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if refreshToken.Expires.After(time.Now().Add(21 * time.Minute)) {
+	if refreshToken.Expires.After(time.Now().Add(31 * 24 * time.Hour)) {
 		t.Fatalf("refresh token exceeded maximum lifetime: %s", refreshToken.Expires)
 	}
 }

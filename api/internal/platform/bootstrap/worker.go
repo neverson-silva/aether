@@ -78,6 +78,33 @@ func (c composeGitClone) Clone(ctx context.Context, source *sourcecontrolDomain.
 	return destination, nil
 }
 
+type appGitClone struct {
+	sources interface {
+		GetByService(context.Context, uuid.UUID, uuid.UUID) (*sourcecontrolDomain.ServiceSource, error)
+	}
+	connections *sourcecontrolApp.Connections
+}
+
+func (c appGitClone) Clone(ctx context.Context, serviceID, organizationID uuid.UUID, url, branch, destination string) error {
+	source, err := c.sources.GetByService(ctx, serviceID, organizationID)
+	if err != nil {
+		return err
+	}
+	connection, err := c.connections.Store.GetConnection(ctx, source.ConnectionID)
+	if err != nil {
+		return err
+	}
+	provider, err := c.connections.ProviderForInstallation(ctx, connection.InstallationID)
+	if err != nil {
+		return err
+	}
+	credential, err := provider.CreateCloneCredential(ctx, source.RepositoryID)
+	if err != nil {
+		return err
+	}
+	return platformgit.CloneWithCredential(ctx, url, branch, destination, credential.Username, credential.Secret)
+}
+
 func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *pgxpool.Pool, status *health.Status, metrics *observability.Metrics) error {
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -190,6 +217,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	connections := &sourcecontrolApp.Connections{Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets, APIURL: cfg.GitHubAPIURL}
 	composeSvc.Clone = composeGitClone{connections: connections}
+	deployWorker.GitClone = appGitClone{sources: sourceStore, connections: connections}.Clone
 	composeSvc.ServiceIdentity = func(ctx context.Context, specID uuid.UUID) (uuid.UUID, error) {
 		var serviceID uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT service_id FROM compose_apps WHERE id = $1 UNION ALL SELECT service_id FROM apps WHERE id = $1 LIMIT 1`, specID).Scan(&serviceID); err != nil {

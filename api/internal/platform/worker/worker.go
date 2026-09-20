@@ -61,6 +61,7 @@ type Worker struct {
 	Registry           ImageRegistryRuntime
 	Queue              queue.Queue
 	ServiceDeploy      func(context.Context, string, uuid.UUID, uuid.UUID, uuid.UUID) (string, error)
+	GitClone           func(context.Context, uuid.UUID, uuid.UUID, string, string, string) error
 	ComposeDeploy      interface {
 		UpApp(context.Context, uuid.UUID, uuid.UUID) (string, error)
 	}
@@ -649,7 +650,17 @@ func (w *Worker) buildGitSource(ctx context.Context, dep *deploydomain.Deploymen
 	if branch == "" {
 		branch = "main"
 	}
-	if err := git.Clone(ctx, spec.GitURL, branch, srcDir); err != nil {
+	clone := func() error {
+		if w.GitClone == nil || dep.ServiceID == uuid.Nil {
+			return git.Clone(ctx, spec.GitURL, branch, srcDir)
+		}
+		app, err := w.Apps.GetAppByID(ctx, dep.AppID)
+		if err != nil {
+			return err
+		}
+		return w.GitClone(ctx, dep.ServiceID, app.OrgID, spec.GitURL, branch, srcDir)
+	}
+	if err := clone(); err != nil {
 		return "", err
 	}
 	tag := "aether/" + dep.AppID.String()[:8] + ":" + strconv.Itoa(dep.Number)

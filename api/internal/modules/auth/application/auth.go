@@ -20,6 +20,8 @@ func hashKey(raw string) string {
 
 const defaultOrgName = "My Organization"
 
+const sessionTTL = 30 * 24 * time.Hour
+
 type Auth struct {
 	Users    domain.UserStore
 	Orgs     domain.OrgStore
@@ -131,7 +133,7 @@ func (a *Auth) CreateRefresh(ctx context.Context, raw string) (string, error) {
 	if _, _, err := a.currentIdentity(ctx, token); err != nil {
 		return "", err
 	}
-	return a.issueRefreshSession(ctx, token.SessionID, &domain.User{ID: token.Subject, GlobalRole: token.Global}, token.OrgID, token.Role, time.Now().Add(20*time.Minute))
+	return a.issueRefreshSession(ctx, token.SessionID, &domain.User{ID: token.Subject, GlobalRole: token.Global}, token.OrgID, token.Role, time.Now().Add(sessionTTL))
 }
 
 func (a *Auth) ValidateAccessToken(ctx context.Context, token *domain.AuthToken) error {
@@ -370,7 +372,7 @@ func (a *Auth) sign(ctx context.Context, user *domain.User, orgID uuid.UUID, rol
 	if a.Sessions == nil {
 		return a.Tokens.Sign(ctx, user.ID, orgID, role, user.GlobalRole, a.TokenTTL)
 	}
-	sessionID, err := a.Sessions.CreateSession(ctx, user.ID, orgID, time.Now().Add(20*time.Minute))
+	sessionID, err := a.Sessions.CreateSession(ctx, user.ID, orgID, time.Now().Add(sessionTTL))
 	if err != nil {
 		return "", err
 	}

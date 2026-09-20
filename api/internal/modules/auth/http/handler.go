@@ -18,6 +18,8 @@ type Handler struct {
 	cookieSecure bool
 }
 
+const refreshCookieMaxAge = int((30 * 24 * time.Hour) / time.Second)
+
 func New(auth *application.Auth, cookieSecure bool) *Handler {
 	return &Handler{auth: auth, cookieSecure: cookieSecure}
 }
@@ -414,7 +416,7 @@ func (h *Handler) setAuthCookie(c *gin.Context, token string) {
 
 func (h *Handler) setRefreshCookie(c *gin.Context, token string) {
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("aether_refresh", token, 1200, "/api/v1/auth", "", h.cookieSecureForRequest(c), true)
+	c.SetCookie("aether_refresh", token, refreshCookieMaxAge, "/api/v1/auth", "", h.cookieSecureForRequest(c), true)
 }
 
 func (h *Handler) clearAuthCookies(c *gin.Context) {

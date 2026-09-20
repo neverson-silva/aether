@@ -93,7 +93,7 @@ type payload struct {
 
 const (
 	accessTokenMaxTTL  = 10 * time.Minute
-	refreshTokenMaxTTL = 20 * time.Minute
+	refreshTokenMaxTTL = 30 * 24 * time.Hour
 )
 
 func (s *Signer) Sign(ctx context.Context, subject, orgID uuid.UUID, role domain.Role, global string, ttl time.Duration) (string, error) {
