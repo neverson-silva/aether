@@ -35,6 +35,27 @@ extract_zip() {
 node_layer="$LAYERS_DIR/spa-node"
 static_layer="$LAYERS_DIR/spa-static"
 mkdir -p "$node_layer" "$static_layer/htdocs" "$static_layer/bin"
+write_runtime_env() {
+  [ -n "${AETHER_SERVICE_ENV_KEYS:-}" ] || return 0
+  mkdir -p "$static_layer/app"
+  : > "$static_layer/app/.env"
+  previous_ifs="$IFS"
+  IFS=','
+  for key in $AETHER_SERVICE_ENV_KEYS; do
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+    esac
+    eval "value=\${$key-}"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    printf '%s="%s"\n' "$key" "$value" >> "$static_layer/app/.env"
+  done
+  IFS="$previous_ifs"
+  chmod 0644 "$static_layer/app/.env"
+}
+write_runtime_env
 
 export PATH="$node_layer/bin:$PATH"
 

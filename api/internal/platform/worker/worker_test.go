@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -79,6 +80,30 @@ func TestEmitDeploymentLogRedactsSecrets(t *testing.T) {
 	EmitDeploymentLog(ctx, `password=secret token:abc123 Authorization: Bearer xyz api_key="value" safe=value`)
 	if output != `password=[REDACTED] token:[REDACTED] Authorization: [REDACTED] api_key="[REDACTED]" safe=value` {
 		t.Fatalf("unexpected redacted log: %q", output)
+	}
+}
+
+func TestCNBBuildEnvIncludesServiceVariables(t *testing.T) {
+	got := cnbBuildEnv("", runSpec{Env: []string{"VITE_API_URL=https://api.example.com", "SECRET=value", "CNB_PLATFORM_API=0.11"}})
+	want := []string{"CNB_PLATFORM_API=0.12", "VITE_API_URL=https://api.example.com", "SECRET=value", "AETHER_SERVICE_ENV_KEYS=VITE_API_URL,SECRET"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CNB build environment = %#v, want %#v", got, want)
+	}
+}
+
+func TestWriteBuildEnvPreservesValues(t *testing.T) {
+	source := t.TempDir()
+	worker := &Worker{}
+	if err := worker.writeBuildEnv(source, []string{"VITE_API_URL=https://api.example.com", "SECRET=value with spaces"}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(source, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "VITE_API_URL=\"https://api.example.com\"\nSECRET=\"value with spaces\"\n"
+	if string(content) != want {
+		t.Fatalf("build env = %q, want %q", content, want)
 	}
 }
 

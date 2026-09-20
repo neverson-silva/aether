@@ -9,6 +9,27 @@ ruby_layer="$LAYERS_DIR/ruby"
 app_layer="$LAYERS_DIR/ruby-app"
 mkdir -p "$ruby_layer/bin" "$app_layer/bin"
 export PATH="$ruby_layer/bin:$PATH"
+write_runtime_env() {
+  [ -n "${AETHER_SERVICE_ENV_KEYS:-}" ] || return 0
+  mkdir -p "$app_layer/app"
+  : > "$app_layer/app/.env"
+  previous_ifs="$IFS"
+  IFS=','
+  for key in $AETHER_SERVICE_ENV_KEYS; do
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+    esac
+    eval "value=\${$key-}"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    printf '%s="%s"\n' "$key" "$value" >> "$app_layer/app/.env"
+  done
+  IFS="$previous_ifs"
+  chmod 0644 "$app_layer/app/.env"
+}
+write_runtime_env
 
 echo "aether/ruby-server: instalando Ruby via apt (Ubuntu LTS)..."
 apt-get update -qq >/dev/null 2>&1 || true

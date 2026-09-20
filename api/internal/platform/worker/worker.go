@@ -776,6 +776,9 @@ func (w *Worker) streamCmd(ctx context.Context, dep *deploydomain.Deployment, cm
 }
 
 func (w *Worker) buildSmartBuild(ctx context.Context, dep *deploydomain.Deployment, spec runSpec, srcDir, tag string) (string, error) {
+	if err := w.writeBuildEnv(srcDir, spec.Env); err != nil {
+		return "", err
+	}
 	img := "aether/" + dep.ID.String()[:8]
 	builder := w.CnbBuilder
 	if builder == "" {
@@ -865,13 +868,17 @@ func isTransientCNBError(output string) bool {
 
 func cnbBuildEnv(srcDir string, spec runSpec) []string {
 	out := []string{"CNB_PLATFORM_API=0.12"}
+	keys := make([]string, 0, len(spec.Env))
 	for _, e := range spec.Env {
-		if strings.HasPrefix(e, "CNB_PLATFORM_API=") {
+		key, _, ok := strings.Cut(e, "=")
+		if !ok || key == "" || key == "CNB_PLATFORM_API" {
 			continue
 		}
-		if strings.HasPrefix(e, "BP_") || strings.HasPrefix(e, "CNB_") {
-			out = append(out, e)
-		}
+		out = append(out, e)
+		keys = append(keys, key)
+	}
+	if len(keys) > 0 {
+		out = append(out, "AETHER_SERVICE_ENV_KEYS="+strings.Join(keys, ","))
 	}
 	return out
 }
@@ -962,7 +969,9 @@ func (w *Worker) buildDockerfile(ctx context.Context, dep *deploydomain.Deployme
 	if _, err := os.Stat(dockerfile); err != nil {
 		return "", fmt.Errorf("Dockerfile not found em %s", dockerfile)
 	}
-	w.writeBuildEnv(srcDir, spec.Env)
+	if err := w.writeBuildEnv(srcDir, spec.Env); err != nil {
+		return "", err
+	}
 	w.appendLog(dep, "building image (Dockerfile) "+tag)
 	builder := w.Builder
 	if builder == nil {
@@ -1001,7 +1010,9 @@ func (w *Worker) buildCommandSource(ctx context.Context, dep *deploydomain.Deplo
 			return "", err
 		}
 	}
-	w.writeBuildEnv(srcDir, spec.Env)
+	if err := w.writeBuildEnv(srcDir, spec.Env); err != nil {
+		return "", err
+	}
 	df := filepath.Join(srcDir, "Dockerfile")
 	w.appendLog(dep, "building image (install/build + nginx) "+tag)
 	builder := w.Builder
@@ -1031,15 +1042,22 @@ func (w *Worker) buildCommandSource(ctx context.Context, dep *deploydomain.Deplo
 	return tag, nil
 }
 
-func (w *Worker) writeBuildEnv(srcDir string, env []string) {
-	if len(env) == 0 {
-		return
-	}
+func (w *Worker) writeBuildEnv(srcDir string, env []string) error {
 	var sb strings.Builder
 	for _, e := range env {
-		sb.WriteString(e + "\n")
+		key, value, ok := strings.Cut(e, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			continue
+		}
+		sb.WriteString(key)
+		sb.WriteByte('=')
+		sb.WriteString(strconv.Quote(value))
+		sb.WriteByte('\n')
 	}
-	_ = os.WriteFile(filepath.Join(srcDir, ".env"), []byte(sb.String()), 0o600)
+	if sb.Len() == 0 {
+		return nil
+	}
+	return os.WriteFile(filepath.Join(srcDir, ".env"), []byte(sb.String()), 0o600)
 }
 
 func (w *Worker) setStatus(ctx context.Context, dep *deploydomain.Deployment, status deploydomain.Status, imageRef, containerID string) error {
