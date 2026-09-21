@@ -269,13 +269,15 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 
 	settingsStore := settingsInfra.NewStore(pool)
 	svc.SSO = settingsStore
+	serverDomains := &settingsApp.ServerDomains{TraefikDir: filepath.Join(cfg.StateDir, "traefik")}
 	settingsSvc := &settingsApp.Settings{
 		Store: settingsStore, Passwords: dbCipher,
 		OIDC:              settingsInfra.NewOIDCDiscoverer(cfg.PublicURL, pool),
 		GoogleRedirectURI: cfg.GoogleOAuthRedirectURI,
 		PublicURL:         cfg.PublicURL,
+		PublicURLResolver: serverDomains.PublicURL,
 	}
-	settingsHandler := settingshttp.New(settingsSvc).WithServerDomains(&settingsApp.ServerDomains{TraefikDir: filepath.Join(cfg.StateDir, "traefik")}).WithCookieSecure(cfg.CookieSecure).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, string, error) {
+	settingsHandler := settingshttp.New(settingsSvc).WithServerDomains(serverDomains).WithCookieSecure(cfg.CookieSecure).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, string, error) {
 		user, token, err := svc.SSOLogin(ctx, email, name)
 		if err != nil {
 			return nil, "", "", err

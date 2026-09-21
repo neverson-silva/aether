@@ -59,6 +59,11 @@ func (s *Settings) GoogleConnect(ctx context.Context, r *http.Request, orgID, de
 }
 
 func (s *Settings) baseURL(r *http.Request) string {
+	if s.PublicURLResolver != nil && r != nil {
+		if publicURL := strings.TrimSpace(s.PublicURLResolver(r.Context())); publicURL != "" {
+			return strings.TrimSuffix(publicURL, "/")
+		}
+	}
 	if s.PublicURL != "" {
 		return strings.TrimSuffix(s.PublicURL, "/")
 	}
@@ -99,6 +104,11 @@ type googleUserInfo struct {
 }
 
 func (s *Settings) googleRedirectURI(r *http.Request) string {
+	if s.PublicURLResolver != nil && r != nil {
+		if publicURL := strings.TrimSpace(s.PublicURLResolver(r.Context())); publicURL != "" {
+			return strings.TrimSuffix(publicURL, "/") + "/api/v1/s3-destinations/google/callback"
+		}
+	}
 	if s.GoogleRedirectURI != "" {
 		return s.GoogleRedirectURI
 	}

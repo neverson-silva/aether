@@ -30,6 +30,7 @@ type Settings struct {
 
 	GoogleRedirectURI string
 	PublicURL         string
+	PublicURLResolver func(context.Context) string
 	HTTPClient        *http.Client
 
 	oauthStates *oauthStateStore

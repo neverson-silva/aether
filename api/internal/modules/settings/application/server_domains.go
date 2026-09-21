@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,26 @@ func (s *ServerDomains) Get() (*ServerDomainSettings, error) {
 		return nil, err
 	}
 	return settings, nil
+}
+
+func (s *ServerDomains) PublicURL(ctx context.Context) string {
+	_ = ctx
+	settings, err := s.Get()
+	if err != nil {
+		return ""
+	}
+	host := settings.WebDomain
+	if host == "" {
+		host = settings.APIDomain
+	}
+	if host == "" {
+		return ""
+	}
+	scheme := "http"
+	if settings.HTTPS {
+		scheme = "https"
+	}
+	return scheme + "://" + host
 }
 
 func (s *ServerDomains) Save(settings *ServerDomainSettings) (*ServerDomainSettings, error) {
