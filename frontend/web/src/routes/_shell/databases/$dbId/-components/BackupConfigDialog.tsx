@@ -45,8 +45,12 @@ const WEEKDAYS = [
   "saturday",
 ];
 
+const CRON_FIELD =
+  /^(?:[?*]|\d+|[A-Za-z]{3})(?:-(?:\d+|[A-Za-z]{3}))?(?:\/\d+)?(?:,(?:[?*]|\d+|[A-Za-z]{3})(?:-(?:\d+|[A-Za-z]{3}))?(?:\/\d+)?)*$/;
+
 function cronValid(cron: string): boolean {
-  return /^(\*|[0-5]?\d)(\s+(\*|[0-5]?\d)){4}$/.test(cron.trim());
+  const fields = cron.trim().split(/\s+/);
+  return fields.length === 5 && fields.every((field) => CRON_FIELD.test(field));
 }
 
 function describeSchedule(s: BackupSchedule): string {
@@ -274,14 +278,14 @@ export function BackupConfigDialog({
               label="Cron expression"
               description={
                 cronOk
-                  ? "Valid 5-field crontab expression."
-                  : "Invalid cron expression. Expected a valid 5-field crontab expression."
+                  ? "Valid 5-field cron expression, for example */15 * * * *."
+                  : "Invalid cron expression. Use 5 fields with standard cron syntax, for example */15 * * * *."
               }
             >
               <Input
                 value={cron}
                 onChange={(e) => setCron(e.target.value)}
-                placeholder="0 3 * * *"
+                placeholder="*/15 * * * *"
                 className={cronOk ? "" : "border-error"}
               />
             </Field>

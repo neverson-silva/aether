@@ -17,6 +17,7 @@ func TestValidateSchedule(t *testing.T) {
 		{Type: domain.ScheduleWeekly, At: "03:00", DayOfWeek: "sunday", Timezone: "UTC"},
 		{Type: domain.ScheduleBiweekly, At: "03:00", StartDate: "2026-08-20", Timezone: "UTC"},
 		{Type: domain.ScheduleCustom, Cron: "0 3 * * *", Timezone: "UTC"},
+		{Type: domain.ScheduleCustom, Cron: "*/15 * * * *", Timezone: "UTC"},
 	}
 	for _, s := range valid {
 		if err := ValidateSchedule(s); err != nil {
@@ -111,6 +112,16 @@ func TestNextRunCustom(t *testing.T) {
 	from := time.Date(2026, 8, 20, 12, 0, 0, 0, loc)
 	next, _ := NextRun(domain.Schedule{Type: domain.ScheduleCustom, Cron: "0 3 * * *", Timezone: "UTC"}, from)
 	want := time.Date(2026, 8, 21, 3, 0, 0, 0, loc)
+	if !next.Equal(want) {
+		t.Fatalf("next = %v, want %v", next, want)
+	}
+}
+
+func TestNextRunCustomStep(t *testing.T) {
+	loc, _ := time.LoadLocation("UTC")
+	from := time.Date(2026, 8, 20, 12, 7, 0, 0, loc)
+	next, _ := NextRun(domain.Schedule{Type: domain.ScheduleCustom, Cron: "*/15 * * * *", Timezone: "UTC"}, from)
+	want := time.Date(2026, 8, 20, 12, 15, 0, 0, loc)
 	if !next.Equal(want) {
 		t.Fatalf("next = %v, want %v", next, want)
 	}
