@@ -11,7 +11,7 @@ import {
   Dialog,
   Field,
   Input,
-  NativeSelect,
+  Select,
   useToast,
 } from "@aether/design-system";
 
@@ -236,7 +236,7 @@ export function DatabaseWizard({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
           <Field label="Project" error={errors.project_id?.message}>
-            <NativeSelect
+            <Select
               {...register("project_id")}
               disabled={!!fixedProjectId}
               options={[
@@ -255,7 +255,7 @@ export function DatabaseWizard({
             label="Version"
             description="Official image tag — empty = default for the engine"
           >
-            <NativeSelect
+            <Select
               {...register("version")}
               options={[
                 { label: "Default", value: "" },

@@ -7,7 +7,7 @@ import {
   Card,
   EmptyState,
   Input,
-  NativeSelect,
+  Select,
   useToast,
 } from "@aether/design-system";
 import {
@@ -81,9 +81,9 @@ export function AlertsPanel() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <NativeSelect
+        <Select
           value={metric}
-          onChange={(e) => setMetric(e.target.value)}
+          onValueChange={(value) => value && setMetric(value)}
           options={[
             { label: "CPU %", value: "cpu" },
             { label: "Memory (MiB)", value: "memory" },
@@ -96,18 +96,18 @@ export function AlertsPanel() {
           onChange={(e) => setThreshold(e.target.value)}
           type="number"
         />
-        <NativeSelect
+        <Select
           value={severity}
-          onChange={(e) => setSeverity(e.target.value)}
+          onValueChange={(value) => value && setSeverity(value)}
           options={[
             { label: "warning", value: "warning" },
             { label: "critical", value: "critical" },
             { label: "info", value: "info" },
           ]}
         />
-        <NativeSelect
+        <Select
           value={targetApp}
-          onChange={(e) => setTargetApp(e.target.value)}
+          onValueChange={(value) => setTargetApp(value ?? "")}
           options={[
             { label: "All services", value: "" },
             ...(apps ?? []).map((a) => ({ label: a.name, value: a.id })),

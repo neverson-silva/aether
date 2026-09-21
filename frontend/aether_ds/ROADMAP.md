@@ -48,7 +48,7 @@ O roadmap usa quatro estados para evitar que exportação ou existência de uma 
 
 Estado atual após a auditoria:
 
-- **Production-ready:** Button, Input, Field, Badge, Avatar, Typography, Calendar, DatePicker, DateRangePicker, TimePicker, DateTimePicker, NativeSelect, Attachment, Message, MessageScroller, Bubble, Marker, Gauge, CodeEditorLite, Toast, Sonner, Dialog, Popover, Tooltip e primitives de tema.
+- **Production-ready:** Button, Input, Field, Badge, Avatar, Typography, Calendar, DatePicker, DateRangePicker, TimePicker, DateTimePicker, Select, Attachment, Message, MessageScroller, Bubble, Marker, Gauge, CodeEditorLite, Toast, Sonner, Dialog, Popover, Tooltip e primitives de tema.
 - **Implemented:** Chart, DiffViewer, Spotlight, HoverCard, DataTable, Select, Combobox, FileUpload, NotificationStack e os componentes de fluxo com contratos básicos.
 - **Scaffold:** DataGrid, FormBuilder, DeploymentComposer, VariableEditor, ResizableDashboard, TimelineScrubber, VirtualizedList, DragAndDrop e RealtimeActivitySurface.
 - **Missing:** nenhum item de componente listado como ausente na auditoria anterior. Os itens que ainda aparecem como scaffold continuam exigindo evolução antes de serem promovidos.

@@ -6,7 +6,7 @@ import {
   Dialog,
   Field,
   Input,
-  NativeSelect,
+  Select,
   TimePicker,
 } from "@aether/design-system";
 
@@ -154,9 +154,9 @@ export function BackupConfigDialog({
       <div className="space-y-lg">
         <div className="space-y-md">
           <Field label="Backup destination">
-            <NativeSelect
+            <Select
               value={destinationId}
-              onChange={(e) => setDestinationId(e.target.value)}
+              onValueChange={(value) => setDestinationId(value ?? "")}
               options={
                 destinations.length === 0
                   ? [{ value: "", label: "No S3 destinations available" }]
@@ -245,9 +245,9 @@ export function BackupConfigDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
               {scheduleType === "weekly" && (
                 <Field label="Day">
-                  <NativeSelect
+                  <Select
                     value={day}
-                    onChange={(e) => setDay(e.target.value)}
+                    onValueChange={(value) => value && setDay(value)}
                     options={WEEKDAYS.map((d) => ({
                       value: d,
                       label: d[0].toUpperCase() + d.slice(1),
@@ -292,10 +292,13 @@ export function BackupConfigDialog({
           )}
 
           <Field label="Timezone">
-            <NativeSelect
+            <Select
               value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
+              onValueChange={(value) => {
+                if (value) setTimezone(value)
+              }}
               options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+              placeholder="Search timezones"
             />
           </Field>
         </div>

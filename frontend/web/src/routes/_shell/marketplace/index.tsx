@@ -20,7 +20,7 @@ import {
   EmptyState,
   Field,
   Input,
-  NativeSelect,
+  Select,
   useToast,
 } from "@aether/design-system";
 import { Plus, Star } from "@phosphor-icons/react";
@@ -246,9 +246,9 @@ function Marketplace() {
           placeholder="Search templates..."
           className="min-w-[min(100%,18rem)] flex-1 sm:max-w-xl"
         />
-        <NativeSelect
+        <Select
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onValueChange={(value) => setCategory(value ?? "")}
           className="w-full sm:w-64"
           options={[
             { value: "", label: "All categories" },
@@ -413,7 +413,7 @@ function Marketplace() {
       >
         <form onSubmit={handleSubmit(submit)} className="space-y-lg" noValidate>
           <Field label="Project" error={errors.project_id?.message}>
-            <NativeSelect
+            <Select
               {...register("project_id")}
               options={[
                 { value: "", label: "Select..." },

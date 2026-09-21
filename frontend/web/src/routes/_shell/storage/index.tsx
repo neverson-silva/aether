@@ -44,7 +44,7 @@ import {
   EmptyState,
   Field,
   Input,
-  NativeSelect,
+  Select,
   useToast,
 } from "@aether/design-system";
 import { PageHeader } from "../../../components/PageHeader";
@@ -380,7 +380,7 @@ function Storage() {
           </Field>
 
           <Field label="Destination Type" error={errors.type?.message}>
-            <NativeSelect
+            <Select
               {...register("type")}
               options={(Object.keys(PROVIDERS) as DestinationType[]).map(
                 (t) => ({ label: PROVIDERS[t].label, value: t }),
@@ -645,9 +645,9 @@ export function SnapshotSchedulesSection() {
         Snapshot schedules
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-5 gap-sm mb-sm">
-        <NativeSelect
+        <Select
           value={appID}
-          onChange={(e) => setAppID(e.target.value)}
+          onValueChange={(value) => setAppID(value ?? "")}
           options={[
             { label: "App...", value: "" },
             ...(apps ?? []).map((a) => ({ label: a.name, value: a.id })),
@@ -658,9 +658,9 @@ export function SnapshotSchedulesSection() {
           value={volume}
           onChange={(e) => setVolume(e.target.value)}
         />
-        <NativeSelect
+        <Select
           value={cron}
-          onChange={(e) => setCron(e.target.value)}
+          onValueChange={(value) => value && setCron(value)}
           options={[
             { label: "Daily", value: "@daily" },
             { label: "Weekly", value: "@weekly" },

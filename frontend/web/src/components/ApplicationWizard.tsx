@@ -40,7 +40,6 @@ import {
   Button,
   Input,
   Modal,
-  NativeSelect,
   Select,
   SelectSearch,
   VariableEditor,
@@ -924,9 +923,9 @@ export function ApplicationWizard({
                     <label className="font-label-caps text-label-caps text-on-surface-variant">
                       Project / Environment
                     </label>
-                    <NativeSelect
+                    <Select
                       value={projectId}
-                      onChange={(e) => setProjectId(e.target.value)}
+                      onValueChange={(value) => setProjectId(value ?? "")}
                       disabled={!!fixedProjectId}
                       options={[
                         { label: "Select project...", value: "" },
@@ -947,10 +946,10 @@ export function ApplicationWizard({
                     Build Method
                   </h2>
                 </div>
-                <NativeSelect
+                <Select
                   value={buildType}
-                  onChange={(event) =>
-                    setBuildType(event.target.value as typeof buildType)
+                  onValueChange={(value) =>
+                    value && setBuildType(value as typeof buildType)
                   }
                   options={[
                     { label: "Dockerfile", value: "dockerfile" },

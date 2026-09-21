@@ -13,7 +13,7 @@ import {
   EmptyState,
   Field,
   Input,
-  NativeSelect,
+  Select,
   Skeleton,
   useToast,
 } from "@aether/design-system";
@@ -203,7 +203,7 @@ function CiCd() {
               <Field label="Name" error={form.formState.errors.name?.message}>
                 <Input placeholder="ci" {...form.register("name")} />
               </Field>
-              <NativeSelect
+              <Select
                 label="App"
                 {...form.register("app_id")}
                 options={[
@@ -214,7 +214,7 @@ function CiCd() {
                   })),
                 ]}
               />
-              <NativeSelect
+              <Select
                 label="Trigger"
                 {...form.register("trigger")}
                 options={[

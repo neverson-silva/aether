@@ -5,7 +5,7 @@ import {
   Dialog,
   Field,
   Input,
-  NativeSelect,
+  Select,
 } from "@aether/design-system";
 
 function cn(...classes: Array<string | false | undefined>) {
@@ -266,9 +266,9 @@ export function CreateTableModal({
               </div>
               <div className="w-56">
                 <Field label="Schema">
-                  <NativeSelect
+                  <Select
                     value={schema}
-                    onChange={(e) => setSchema(e.target.value)}
+                    onValueChange={(value) => value && setSchema(value)}
                     options={schemas.map((s) => ({ label: s, value: s }))}
                   />
                 </Field>
@@ -340,10 +340,10 @@ export function CreateTableModal({
                     />
                   </div>
                   <div className="col-span-3">
-                    <NativeSelect
+                    <Select
                       value={c.type}
-                      onChange={(e) =>
-                        updateColumn(idx, { type: e.target.value })
+                      onValueChange={(value) =>
+                        value && updateColumn(idx, { type: value })
                       }
                       options={TYPE_OPTIONS.map((t) => ({
                         label: t,

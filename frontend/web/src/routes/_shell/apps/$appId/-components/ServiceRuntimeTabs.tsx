@@ -1,5 +1,5 @@
 import { Database, Gauge, HardDrives, Target } from "@phosphor-icons/react";
-import { Button, Card, NativeSelect, RuntimeStatus, VariableEditor, type RuntimeStatusValue, type VariableRow } from "@aether/design-system";
+import { Button, Card, Select, RuntimeStatus, VariableEditor, type RuntimeStatusValue, type VariableRow } from "@aether/design-system";
 import type { Deployment, Stats, TimelineEvent } from "@/api/types";
 import type { ServiceContainer } from "@/hooks/use-service-containers";
 import { LiveLogs } from "./LiveLogs";
@@ -69,10 +69,10 @@ export function ServiceLogsTab({
       <div className="flex flex-wrap items-center justify-between gap-md">
         <h2 className="font-label-caps text-label-caps text-on-surface-variant uppercase">Live Logs</h2>
         {(containers?.length ?? 0) > 1 ? (
-          <NativeSelect
+          <Select
             aria-label="Log container"
             value={logContainer}
-            onChange={(event) => onContainerChange(event.target.value)}
+            onValueChange={(value) => onContainerChange(value ?? "")}
             options={[{ label: "All containers", value: "" }, ...(containers ?? []).map((container) => ({ label: container.name, value: container.id }))]}
           />
         ) : null}

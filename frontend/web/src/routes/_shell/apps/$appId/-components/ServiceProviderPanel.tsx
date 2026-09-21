@@ -3,7 +3,7 @@ import {
   Button,
   Checkbox,
   Input,
-  NativeSelect,
+  Select,
   Switch,
 } from "@aether/design-system";
 import type { App } from "@/api/types";
@@ -95,9 +95,9 @@ export function ServiceProviderPanel({
             {app.source_type === "git" ? "Repository" : "Image"}
           </label>
           {editing && source ? (
-            <NativeSelect
+            <Select
               value={repositoryId}
-              onChange={(event) => onRepositoryChange(event.target.value)}
+              onValueChange={(value) => onRepositoryChange(value ?? "")}
               options={[
                 {
                   label: source.repository_full_name || "Current repository",

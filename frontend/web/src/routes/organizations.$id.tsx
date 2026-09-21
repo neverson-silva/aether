@@ -31,7 +31,7 @@ import {
   Field,
   Input,
   Modal,
-  NativeSelect,
+  Select,
   Skeleton,
   useToast,
 } from "@aether/design-system";
@@ -357,9 +357,9 @@ function OrganizationPage() {
                       </td>
                       <td className="px-md py-2.5">
                         {canManage ? (
-                          <NativeSelect
+                          <Select
                             value={m.role === "developer" ? "member" : m.role}
-                            onChange={(event) => setRole(m, event.target.value)}
+                            onValueChange={(value) => value && setRole(m, value)}
                             options={[
                               { label: "admin", value: "admin" },
                               { label: "member", value: "member" },
@@ -523,10 +523,10 @@ function OrganizationPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="teammate@company.com"
             />
-            <NativeSelect
+            <Select
               label="Role"
               value={invRole}
-              onChange={(event) => setInvRole(event.target.value)}
+              onValueChange={(value) => value && setInvRole(value)}
               options={[
                 { label: "Member", value: "member" },
                 { label: "Admin", value: "admin" },

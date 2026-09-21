@@ -17,7 +17,7 @@ import {
   EmptyState,
   Field,
   Input,
-  NativeSelect,
+  Select,
   Skeleton,
   useToast,
 } from "@aether/design-system";
@@ -226,9 +226,8 @@ function GitOps() {
             </Field>
           </div>
           <Field label="Apply mode">
-            <NativeSelect
+            <Select
               value="manual"
-              onChange={() => undefined}
               options={[
                 {
                   value: "manual",

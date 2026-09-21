@@ -16,7 +16,7 @@ import {
   Dialog,
   Field,
   Input,
-  NativeSelect,
+  Select,
   useToast,
 } from "@aether/design-system";
 import { ComposeEditor } from "./ComposeEditor";
@@ -207,7 +207,7 @@ export function CreateServiceModal({
       <form onSubmit={handleSubmit(submit)} className="space-y-lg" noValidate>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
           <Field label="Project" error={errors.project_id?.message}>
-            <NativeSelect
+            <Select
               {...register("project_id")}
               disabled={!!fixedProjectId}
               options={[
@@ -223,7 +223,7 @@ export function CreateServiceModal({
             <Input placeholder="ex: api-gateway" {...register("name")} />
           </Field>
           <Field label="Source">
-            <NativeSelect
+            <Select
               {...register("source_type")}
               options={[
                 { label: "OCI Image", value: "image" },
@@ -356,7 +356,7 @@ export function CreateServiceModal({
               </Field>
             </div>
             <Field label="Build method">
-              <NativeSelect
+              <Select
                 {...register("build_type")}
                 options={[
                   { label: "Dockerfile", value: "dockerfile" },

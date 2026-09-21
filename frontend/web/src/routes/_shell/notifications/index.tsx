@@ -30,7 +30,7 @@ import {
   IconButton,
   InlineError,
   Input,
-  NativeSelect,
+  Select,
   Skeleton,
   useToast,
 } from "@aether/design-system";
@@ -218,10 +218,10 @@ function Notifications() {
                   />
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <NativeSelect
+                  <Select
                     aria-label="Metric"
                     value={metric}
-                    onChange={(event) => setMetric(event.target.value)}
+                    onValueChange={(value) => value && setMetric(value)}
                     options={[
                       { label: "CPU (%)", value: "cpu" },
                       { label: "Memory (MiB)", value: "memory" },
@@ -238,20 +238,20 @@ function Notifications() {
                   </Field>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <NativeSelect
+                  <Select
                     aria-label="Severity"
                     value={severity}
-                    onChange={(event) => setSeverity(event.target.value)}
+                    onValueChange={(value) => value && setSeverity(value)}
                     options={[
                       { label: "Warning", value: "warning" },
                       { label: "Critical", value: "critical" },
                       { label: "Info", value: "info" },
                     ]}
                   />
-                  <NativeSelect
+                  <Select
                     aria-label="Target service"
                     value={targetApp}
-                    onChange={(event) => setTargetApp(event.target.value)}
+                    onValueChange={(value) => setTargetApp(value ?? "")}
                     options={[
                       { label: "All services", value: "" },
                       ...(appsQuery.data ?? []).map((app) => ({

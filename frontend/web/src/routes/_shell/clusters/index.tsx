@@ -19,7 +19,7 @@ import {
   EmptyState,
   Field,
   Input,
-  NativeSelect,
+  Select,
   useToast,
 } from "@aether/design-system";
 import { Cube, LinkBreak, Plus, Trash } from "@phosphor-icons/react";
@@ -231,11 +231,12 @@ function Clusters() {
         {join && (
           <div className="space-y-lg">
             <Field label="Server">
-              <NativeSelect
+              <Select
                 value=""
-                onChange={(e) => {
+                onValueChange={(value) => {
+                  if (!value) return;
                   addServer.mutate(
-                    { cluster_id: join.cluster, server_id: e.target.value },
+                    { cluster_id: join.cluster, server_id: value },
                     {
                       onSuccess: () => {
                         add({ title: "Server added", tone: "success" });

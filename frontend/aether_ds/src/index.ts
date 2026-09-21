@@ -236,11 +236,6 @@ export type {
 } from './components/multi-select-resource-explorer/multi-select-resource-explorer'
 export { MultiSelectResourceExplorer } from './components/multi-select-resource-explorer/multi-select-resource-explorer'
 export type {
-  NativeSelectOption,
-  NativeSelectProps,
-} from './components/native-select/native-select'
-export { NativeSelect } from './components/native-select/native-select'
-export type {
   NavigationMenuItem,
   NavigationMenuProps,
 } from './components/navigation-menu/navigation-menu'

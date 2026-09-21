@@ -13,7 +13,7 @@ import {
   EmptyState,
   Field,
   Input,
-  NativeSelect,
+  Select,
   Skeleton,
   useToast,
 } from "@aether/design-system";
@@ -102,7 +102,7 @@ function Members() {
                 {...form.register("password")}
               />
             </Field>
-            <NativeSelect
+            <Select
               label="Role"
               {...form.register("role")}
               options={["owner", "admin", "developer", "viewer"].map(
@@ -164,14 +164,15 @@ function Members() {
                         >
                           {member.role}
                         </Badge>
-                        <NativeSelect
+                        <Select
                           aria-label={`Change role for ${member.name}`}
                           value={member.role}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
+                            value &&
                             update.mutate(
                               {
                                 userID: member.user_id,
-                                role: event.target.value,
+                                role: value,
                               },
                               {
                                 onSuccess: () =>
