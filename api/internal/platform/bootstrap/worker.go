@@ -268,7 +268,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	go (&outbox.Dispatcher{Store: outbox.NewStore(pool), Bus: rtRuntime.Events, Jobs: rtRuntime.Queue}).Run(workerCtx)
 	go deployWatcher.Run(workerCtx, 10*time.Second)
 	go provisionWorker.Run(workerCtx)
-	backupWorker := &backupsApp.BackupWorker{Service: dbBackupsSvc, Metrics: metrics, Concurrency: 2}
+	backupWorker := &backupsApp.BackupWorker{Service: dbBackupsSvc, Logger: slog.Default(), Metrics: metrics, Concurrency: 2}
 	if err := backupWorker.RecoverInterrupted(workerCtx, time.Now().Add(-90*time.Minute)); err != nil {
 		return fmt.Errorf("recover interrupted backups: %w", err)
 	}

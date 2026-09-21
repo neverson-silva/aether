@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 type BackupWorker struct {
 	Service     *DatabaseBackups
+	Logger      *slog.Logger
 	Metrics     *observability.Metrics
 	Concurrency int
 }
@@ -150,6 +152,13 @@ func (w *BackupWorker) consumeLoop(ctx context.Context, consumer queue.Consumer,
 		if w.Metrics != nil {
 			finish(processErr != nil)
 		}
+		if processErr != nil {
+			logger := w.Logger
+			if logger == nil {
+				logger = slog.Default()
+			}
+			logger.Error("backup job processing failed", "job_id", job.ID, "job_type", job.Type, "error", processErr)
+		}
 
 		mu.Lock()
 		delete(inFlight, job.ID)
@@ -163,14 +172,14 @@ func (w *BackupWorker) consumeLoop(ctx context.Context, consumer queue.Consumer,
 }
 
 func (w *BackupWorker) process(ctx context.Context, job *queue.Job) error {
-	orgID, err := uuid.Parse(job.OrgID)
-	if err != nil {
-		return queue.Permanent(fmt.Errorf("invalid organization id: %w", err))
-	}
 	switch job.Type {
 	case "backup.schedule":
 		return w.Service.RunScheduled(ctx, job.Payload)
 	case "backup":
+		orgID, err := parseBackupOrganization(job)
+		if err != nil {
+			return err
+		}
 		jobID, parseErr := uuid.Parse(job.ID)
 		if parseErr != nil {
 			return queue.Permanent(fmt.Errorf("invalid backup job id: %w", parseErr))
@@ -185,12 +194,20 @@ func (w *BackupWorker) process(ctx context.Context, job *queue.Job) error {
 		}
 		return nil
 	case "backup.cancel":
+		orgID, err := parseBackupOrganization(job)
+		if err != nil {
+			return err
+		}
 		cancelID, parseErr := uuid.Parse(string(job.Payload))
 		if parseErr != nil {
 			return queue.Permanent(fmt.Errorf("invalid cancellation job id: %w", parseErr))
 		}
 		return w.Service.cancelRunning(ctx, orgID, cancelID)
 	case "restore":
+		orgID, err := parseBackupOrganization(job)
+		if err != nil {
+			return err
+		}
 		jobID, parseErr := uuid.Parse(job.ID)
 		if parseErr != nil {
 			return queue.Permanent(fmt.Errorf("invalid restore job id: %w", parseErr))
@@ -207,6 +224,14 @@ func (w *BackupWorker) process(ctx context.Context, job *queue.Job) error {
 	default:
 		return queue.Permanent(fmt.Errorf("unsupported backup job type %q", job.Type))
 	}
+}
+
+func parseBackupOrganization(job *queue.Job) (uuid.UUID, error) {
+	orgID, err := uuid.Parse(job.OrgID)
+	if err != nil {
+		return uuid.Nil, queue.Permanent(fmt.Errorf("invalid organization id: %w", err))
+	}
+	return orgID, nil
 }
 
 func (s *DatabaseBackups) cancelRunning(ctx context.Context, orgID, jobID uuid.UUID) error {
