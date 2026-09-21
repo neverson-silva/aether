@@ -10,13 +10,13 @@ import (
 	"aether/internal/modules/backups/domain"
 )
 
-func StorageKey(prefix string, dbID uuid.UUID, engine string, backupID uuid.UUID, ts time.Time, format string) (string, error) {
+func StorageKey(prefix string, _ uuid.UUID, engine string, backupID uuid.UUID, ts time.Time, format string) (string, error) {
 	clean := sanitizePrefix(prefix)
 	if clean == "" {
 		return "", domain.ErrValidation
 	}
 	stamp := ts.UTC().Format("20060102T150405Z")
-	return fmt.Sprintf("%s/%s/%s/backup-%s-%s.%s", clean, engine, dbID, stamp, backupID, format), nil
+	return fmt.Sprintf("%s/%s/%s/backup-%s-%s.%s", clean, engine, stamp, stamp, backupID, format), nil
 }
 
 func SafeToken(s string) string {

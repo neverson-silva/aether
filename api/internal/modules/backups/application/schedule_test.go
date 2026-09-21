@@ -136,7 +136,7 @@ func TestStorageKeyDeterministicAndSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := "databases/production/postgres/" + dbID.String() + "/backup-20260820T030000Z-" + bkpID.String() + ".dump"
+	expected := "databases/production/postgres/20260820T030000Z/backup-20260820T030000Z-" + bkpID.String() + ".dump"
 	if key != expected {
 		t.Fatalf("key = %q, want %q", key, expected)
 	}
