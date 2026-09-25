@@ -1,16 +1,24 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useRealtimeStore } from "../stores/realtime";
-import { ApiError, apiGet, clearToken, getServer, isPublicRoute } from "../api/client";
-import type { Deployment } from "../api/types";
-import type { EventEnvelope, RealtimeInbound } from "../hooks/types";
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
+import type React from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+import { getServer, isPublicRoute } from '../api/client'
+import type { Deployment } from '../api/types'
+import type { EventEnvelope, RealtimeInbound } from '../hooks/types'
+import { useRealtimeStore } from '../stores/realtime'
 
 interface RealtimeContextValue {
-  connected: boolean;
-  lastSeq: number;
-  subscribe: (fn: (ev: EventEnvelope, replay: boolean) => void) => () => void;
-  subscribePresence: (fn: (scope: string, count: number) => void) => () => void;
-  send: (message: { op: string; scope?: string }) => void;
+  connected: boolean
+  lastSeq: number
+  subscribe: (fn: (ev: EventEnvelope, replay: boolean) => void) => () => void
+  subscribePresence: (fn: (scope: string, count: number) => void) => () => void
+  send: (message: { op: string; scope?: string }) => void
 }
 
 const RealtimeCtx = createContext<RealtimeContextValue>({
@@ -19,276 +27,395 @@ const RealtimeCtx = createContext<RealtimeContextValue>({
   subscribe: () => () => {},
   subscribePresence: () => () => {},
   send: () => {},
-});
+})
 
 function useRealtimeCtx(): RealtimeContextValue {
-  return useContext(RealtimeCtx);
+  return useContext(RealtimeCtx)
 }
 
 export function useRealtime(): RealtimeContextValue {
-  const context = useRealtimeCtx();
-  const connected = useRealtimeStore((st) => st.connected);
-  const lastSeq = useRealtimeStore((st) => st.lastSeq);
-  return { connected, lastSeq, subscribe: context.subscribe, subscribePresence: context.subscribePresence, send: context.send };
+  const context = useRealtimeCtx()
+  const connected = useRealtimeStore((st) => st.connected)
+  const lastSeq = useRealtimeStore((st) => st.lastSeq)
+  return {
+    connected,
+    lastSeq,
+    subscribe: context.subscribe,
+    subscribePresence: context.subscribePresence,
+    send: context.send,
+  }
 }
 
 export function useRealtimeEvent(fn: (ev: EventEnvelope, replay: boolean) => void) {
-  const subscribe = useRealtimeCtx().subscribe;
-  const ref = useRef(fn);
-  ref.current = fn;
-  useEffect(() => subscribe((ev, replay) => ref.current(ev, replay)), [subscribe]);
+  const subscribe = useRealtimeCtx().subscribe
+  const ref = useRef(fn)
+  ref.current = fn
+  useEffect(() => subscribe((ev, replay) => ref.current(ev, replay)), [subscribe])
 }
 
 function resourceKeys(ev: EventEnvelope): unknown[][] {
-  const serviceID = ev.service_id || (ev.payload?.service_id as string | undefined);
-  if (serviceID && (ev.type === "app.state" || ev.type === "service.state")) {
-    return [["service", serviceID], ["service-timeline", serviceID], ["service-stats", serviceID], ["service-containers", serviceID], ["services"]];
+  const payload = eventPayload(ev)
+  const serviceID = ev.service_id || (payload?.service_id as string | undefined)
+  const deploymentID = ev.resource_id || (payload?.deployment_id as string | undefined)
+  if (serviceID && (ev.type === 'app.state' || ev.type === 'service.state')) {
+    return [
+      ['service', serviceID],
+      ['service-timeline', serviceID],
+      ['service-stats', serviceID],
+      ['service-containers', serviceID],
+      ['services'],
+    ]
   }
-  if (ev.type.startsWith("deploy.")) {
-    const appId =
-      ev.app_id ||
-      (ev.payload?.app_id as string | undefined);
-    const keys = serviceID ? [["service", serviceID], ["service-deployments", serviceID], ["service-timeline", serviceID], ["service-stats", serviceID]] : [];
-    if (!appId) return [...keys, ["deployments"], ["system-summary"]];
+  if (ev.type.startsWith('deploy.')) {
+    const appId = ev.app_id || (payload?.app_id as string | undefined)
+    const keys = serviceID
+      ? [
+          ['service', serviceID],
+          ['service-deployments', serviceID],
+          ['service-timeline', serviceID],
+          ['service-stats', serviceID],
+          ['service-containers', serviceID],
+          ['services'],
+        ]
+      : []
+    if (serviceID && deploymentID && ev.type !== 'deploy.build.log')
+      keys.push(['service-deploy-log', serviceID, deploymentID])
+    if (!appId) return [...keys, ['deployments'], ['system-summary']]
     return [
       ...keys,
-      ["app", appId],
-      ["deployments", appId],
-      ["apps"],
-      ["timeline", appId],
-      ["stats", appId],
-      ["app-compose", appId],
-      ["system-summary"],
-    ];
+      ['app', appId],
+      ['deployments', appId],
+      ['apps'],
+      ['timeline', appId],
+      ['stats', appId],
+      ['app-compose', appId],
+      ['system-summary'],
+    ]
   }
-  if (ev.type.startsWith("backup")) {
-    const databaseID = ev.payload?.database_id as string | undefined;
-    const backupID = ev.payload?.backup_id as string | undefined;
+  if (ev.type.startsWith('backup')) {
+    const databaseID = ev.payload?.database_id as string | undefined
+    const backupID = ev.payload?.backup_id as string | undefined
     const serviceKeys = serviceID
-      ? [["database-backups", "service", serviceID], ["database-backup-configs", "service", serviceID], ["service", serviceID]]
-      : [];
+      ? [
+          ['database-backups', 'service', serviceID],
+          ['database-backup-configs', 'service', serviceID],
+          ['service', serviceID],
+        ]
+      : []
     const legacyKeys = databaseID
-      ? [["database-backups", databaseID], ["database-backup-configs", databaseID]]
-      : [];
+      ? [
+          ['database-backups', databaseID],
+          ['database-backup-configs', databaseID],
+        ]
+      : []
     return [
       ...serviceKeys,
       ...legacyKeys,
-      ...(backupID && serviceID ? [["database-backup", "service", serviceID, backupID]] : []),
-      ["databases"],
-      ["backups"],
-    ];
+      ...(backupID && serviceID
+        ? [['database-backup', 'service', serviceID, backupID]]
+        : []),
+      ['databases'],
+      ['backups'],
+    ]
   }
-  if (ev.type.startsWith("restore.")) {
-    const databaseID = ev.payload?.database_id as string | undefined;
-    const restoreID = ev.payload?.restore_id as string | undefined;
+  if (ev.type.startsWith('restore.')) {
+    const databaseID = ev.payload?.database_id as string | undefined
+    const restoreID = ev.payload?.restore_id as string | undefined
     const serviceKeys = serviceID
-      ? [["database-restore-jobs", "service", serviceID], ["service", serviceID]]
-      : [];
-    const legacyKeys = databaseID
-      ? [["database-restore-jobs", databaseID]]
-      : [];
+      ? [
+          ['database-restore-jobs', 'service', serviceID],
+          ['service', serviceID],
+        ]
+      : []
+    const legacyKeys = databaseID ? [['database-restore-jobs', databaseID]] : []
     return [
       ...serviceKeys,
       ...legacyKeys,
-      ...(restoreID && serviceID ? [["database-restore", "service", serviceID, restoreID]] : []),
-      ...(databaseID ? [["studio", databaseID]] : []),
-      ["databases"],
-    ];
+      ...(restoreID && serviceID
+        ? [['database-restore', 'service', serviceID, restoreID]]
+        : []),
+      ...(databaseID ? [['studio', databaseID]] : []),
+      ['databases'],
+    ]
   }
-  if (ev.resource_type === "database") {
-    return [["databases"]];
+  if (ev.resource_type === 'database') {
+    return [['databases']]
   }
-  if (ev.type.startsWith("server")) {
-    return [["servers"]];
+  if (ev.type.startsWith('server')) {
+    return [['servers']]
   }
-  if (ev.type.startsWith("domain")) {
-    return [["domains"]];
+  if (ev.type.startsWith('domain')) {
+    return [['domains']]
   }
-  if (ev.resource_type === "project") {
-    return [["projects"]];
+  if (ev.resource_type === 'project') {
+    return [['projects']]
   }
-  return [];
+  return []
 }
 
 function applyInvalidation(qc: QueryClient, ev: EventEnvelope, replay: boolean) {
-  if (ev.type.startsWith("deploy.") && ev.type !== "deploy.build.log") {
-    const deploymentID = ev.resource_id || (ev.payload?.deployment_id as string | undefined);
-    const status = (ev.payload?.status as string | undefined) || ev.type.slice("deploy.".length);
-    const detail = (ev.payload?.detail as string | undefined) || "";
+  if (ev.type.startsWith('deploy.') && ev.type !== 'deploy.build.log') {
+    const payload = eventPayload(ev)
+    const serviceID = ev.service_id || (payload?.service_id as string | undefined)
+    const appId = ev.app_id || (payload?.app_id as string | undefined)
+    const deploymentID =
+      ev.resource_id || (payload?.deployment_id as string | undefined)
+    const status =
+      (payload?.status as string | undefined) || ev.type.slice('deploy.'.length)
+    const detail = (payload?.detail as string | undefined) || ''
+    const deploymentIsCached =
+      !!deploymentID &&
+      ((!!serviceID &&
+        qc
+          .getQueryData<Deployment[]>(['service-deployments', serviceID])
+          ?.some((deployment) => deployment.id === deploymentID)) ||
+        (!!appId &&
+          qc
+            .getQueryData<Deployment[]>(['deployments', appId])
+            ?.some((deployment) => deployment.id === deploymentID)))
     if (deploymentID && status) {
-      qc.setQueriesData<Deployment[]>({ queryKey: ["service-deployments"] }, (deployments) =>
+      qc.setQueriesData<Deployment[]>(
+        { queryKey: ['service-deployments'] },
+        (deployments) =>
+          deployments?.map((deployment) =>
+            deployment.id === deploymentID
+              ? shouldApplyDeploymentStatus(deployment.status, status)
+                ? {
+                    ...deployment,
+                    status,
+                    error:
+                      status === 'failed' || status === 'cancelled'
+                        ? detail
+                        : deployment.error,
+                  }
+                : deployment
+              : deployment,
+          ),
+      )
+      qc.setQueriesData<Deployment[]>({ queryKey: ['deployments'] }, (deployments) =>
         deployments?.map((deployment) =>
           deployment.id === deploymentID
             ? shouldApplyDeploymentStatus(deployment.status, status)
-              ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
+              ? {
+                  ...deployment,
+                  status,
+                  error:
+                    status === 'failed' || status === 'cancelled'
+                      ? detail
+                      : deployment.error,
+                }
               : deployment
             : deployment,
         ),
-      );
-      qc.setQueriesData<Deployment[]>({ queryKey: ["deployments"] }, (deployments) =>
-        deployments?.map((deployment) =>
-          deployment.id === deploymentID
-            ? shouldApplyDeploymentStatus(deployment.status, status)
-              ? { ...deployment, status, error: status === "failed" || status === "cancelled" ? detail : deployment.error }
-              : deployment
-            : deployment,
-        ),
-      );
+      )
+    }
+    if (serviceID) {
+      const serviceStatus =
+        status === 'queued' ||
+        status === 'building' ||
+        status === 'starting' ||
+        status === 'health_checking'
+          ? 'deploying'
+          : status === 'ready'
+            ? 'running'
+            : status === 'failed' || status === 'rolled_back'
+              ? 'failed'
+              : status === 'cancelled'
+                ? 'stopped'
+                : undefined
+      if (serviceStatus) {
+        qc.setQueryData<{ status?: string }>(['service', serviceID], (service) =>
+          service ? { ...service, status: serviceStatus } : service,
+        )
+      }
+    }
+    if (replay) {
+      if (deploymentID && !deploymentIsCached) {
+        if (serviceID)
+          qc.invalidateQueries({ queryKey: ['service-deployments', serviceID] })
+        else if (appId) qc.invalidateQueries({ queryKey: ['deployments', appId] })
+      }
+      return
     }
   }
-  if (replay) return;
   for (const key of resourceKeys(ev)) {
-    qc.invalidateQueries({ queryKey: key });
+    qc.invalidateQueries({ queryKey: key })
   }
+}
+
+function eventPayload(ev: EventEnvelope): Record<string, unknown> {
+  if (!ev.payload) return {}
+  if (typeof ev.payload === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(ev.payload)
+      return parsed && typeof parsed === 'object'
+        ? (parsed as Record<string, unknown>)
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  return ev.payload
 }
 
 function shouldApplyDeploymentStatus(current: string, next: string): boolean {
-  if (current === next) return true;
-  const terminal = new Set(["ready", "failed", "rolled_back", "cancelled"]);
-  if (terminal.has(current)) return false;
-  if (terminal.has(next)) return true;
-  const rank: Record<string, number> = { queued: 0, building: 1, starting: 2, health_checking: 3 };
-  return (rank[next] ?? 0) >= (rank[current] ?? 0);
+  if (current === next) return true
+  const terminal = new Set(['ready', 'failed', 'rolled_back', 'cancelled'])
+  if (terminal.has(current)) return false
+  if (terminal.has(next)) return true
+  const rank: Record<string, number> = {
+    queued: 0,
+    building: 1,
+    starting: 2,
+    health_checking: 3,
+  }
+  return (rank[next] ?? 0) >= (rank[current] ?? 0)
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
-  const qc = useQueryClient();
-  const connected = useRealtimeStore((st) => st.connected);
-  const lastSeq = useRealtimeStore((st) => st.lastSeq);
-  const wsRef = useRef<WebSocket | null>(null);
-  const listeners = useRef(new Set<(ev: EventEnvelope, replay: boolean) => void>());
-  const presenceListeners = useRef(new Set<(scope: string, count: number) => void>());
-  const attemptRef = useRef(0);
-  const seqRef = useRef(0);
-  const sessionRef = useRef(0);
-
+  const qc = useQueryClient()
+  const connected = useRealtimeStore((st) => st.connected)
+  const lastSeq = useRealtimeStore((st) => st.lastSeq)
+  const wsRef = useRef<WebSocket | null>(null)
+  const listeners = useRef(new Set<(ev: EventEnvelope, replay: boolean) => void>())
+  const presenceListeners = useRef(new Set<(scope: string, count: number) => void>())
+  const attemptRef = useRef(0)
+  const seqRef = useRef(0)
+  const sessionRef = useRef(0)
+  const reconnectTimerRef = useRef<number | null>(null)
 
   const seqKey = useCallback(() => {
-    const org = localStorage.getItem("aether_org") || "";
-    return `aether_rt_seq_${org}`;
-  }, []);
+    const org = localStorage.getItem('aether_org') || ''
+    return `aether_rt_seq_${org}`
+  }, [])
 
   const handle = useCallback(
     (ev: EventEnvelope, replay: boolean) => {
-      if (ev.seq > seqRef.current) seqRef.current = ev.seq;
-      useRealtimeStore.getState().setLastSeq(seqRef.current);
-      applyInvalidation(qc, ev, replay);
+      if (ev.seq > seqRef.current) seqRef.current = ev.seq
+      useRealtimeStore.getState().setLastSeq(seqRef.current)
+      applyInvalidation(qc, ev, replay)
       listeners.current.forEach((fn) => {
         try {
-          fn(ev, replay);
-        } catch {
-        }
-      });
+          fn(ev, replay)
+        } catch {}
+      })
     },
     [qc],
-  );
+  )
 
   const connect = useCallback(() => {
-    if (isPublicRoute()) return;
-    const session = ++sessionRef.current;
-    wsRef.current?.close();
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const base = getServer() || "";
-    const seq = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
-    seqRef.current = seq;
-    const wsURL = `${proto}//${window.location.host}${base}/api/v1/ws/realtime`;
-    useRealtimeStore.getState().setLastSeq(seq);
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsURL);
-    } catch {
-      return;
+    if (isPublicRoute()) return
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
     }
-    const pingRef = { id: 0 as number | undefined };
+    const session = ++sessionRef.current
+    wsRef.current?.close()
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const base = getServer() || ''
+    const seq = Number.parseInt(localStorage.getItem(seqKey()) || '0', 10) || 0
+    seqRef.current = seq
+    const wsURL = `${proto}//${window.location.host}${base}/api/v1/ws/realtime`
+    useRealtimeStore.getState().setLastSeq(seq)
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(wsURL)
+    } catch {
+      return
+    }
+    const pingRef = { id: 0 as number | undefined }
     ws.onopen = () => {
-      attemptRef.current = 0;
-      useRealtimeStore.getState().setConnected(true);
-      ws.send(JSON.stringify({ op: "subscribe", subs: ["org"], seq }));
+      attemptRef.current = 0
+      useRealtimeStore.getState().setConnected(true)
+      ws.send(JSON.stringify({ op: 'subscribe', subs: ['org'], seq }))
       pingRef.id = window.setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: "ping" }));
-      }, 25000);
-    };
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 'ping' }))
+      }, 25000)
+    }
     ws.onmessage = (e: MessageEvent) => {
-      let msg: RealtimeInbound;
+      let msg: RealtimeInbound
       try {
-        msg = JSON.parse(e.data as string);
+        msg = JSON.parse(e.data as string)
       } catch {
-        return;
+        return
       }
-      if (msg.op === "event" && msg.ev) {
-        handle(msg.ev, !!msg.replay);
+      if (msg.op === 'event' && msg.ev) {
+        handle(msg.ev, !!msg.replay)
       }
-      if (msg.op === "presence" && msg.scope) {
-        presenceListeners.current.forEach((fn) => fn(msg.scope!, msg.n ?? 0));
+      if (msg.op === 'presence' && msg.scope) {
+        presenceListeners.current.forEach((fn) => fn(msg.scope!, msg.n ?? 0))
       }
-    };
-    ws.onerror = () => ws.close();
+    }
+    ws.onerror = () => ws.close()
     ws.onclose = () => {
-      if (pingRef.id !== undefined) window.clearInterval(pingRef.id);
-      useRealtimeStore.getState().setConnected(false);
-      const saved = Number.parseInt(localStorage.getItem(seqKey()) || "0", 10) || 0;
+      if (pingRef.id !== undefined) window.clearInterval(pingRef.id)
+      useRealtimeStore.getState().setConnected(false)
+      const saved = Number.parseInt(localStorage.getItem(seqKey()) || '0', 10) || 0
       if (seqRef.current > 0 && saved < seqRef.current) {
-        localStorage.setItem(seqKey(), String(seqRef.current));
+        localStorage.setItem(seqKey(), String(seqRef.current))
       }
-      if (sessionRef.current !== session) return;
-      attemptRef.current += 1;
-      const delay = Math.min(30000, Math.pow(2, Math.min(attemptRef.current - 1, 5)) * 1000);
-      setTimeout(() => {
-        if (isPublicRoute()) return;
-        apiGet("/api/v1/me")
-          .then(() => connect())
-          .catch((err: unknown) => {
-            if (err instanceof ApiError && err.status === 401 && !isPublicRoute()) {
-              clearToken();
-              window.location.href = "/login";
-              return;
-            }
-            connect();
-          });
-      }, delay);
-    };
-    wsRef.current = ws;
-  }, [handle, seqKey]);
+      if (sessionRef.current !== session) return
+      attemptRef.current += 1
+      const delay = Math.min(30000, 2 ** Math.min(attemptRef.current - 1, 5) * 1000)
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        if (isPublicRoute()) return
+        connect()
+      }, delay)
+    }
+    wsRef.current = ws
+  }, [handle, seqKey])
 
   useEffect(() => {
-    connect();
-    const onOrgChange = () => connect();
-    const onAuthChange = () => connect();
+    connect()
+    const onOrgChange = () => connect()
+    const onAuthChange = () => connect()
     const onFocus = () => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) connect();
-    };
-    window.addEventListener("aether:org", onOrgChange);
-    window.addEventListener("aether:auth", onAuthChange);
-    window.addEventListener("focus", onFocus);
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) connect()
+    }
+    window.addEventListener('aether:org', onOrgChange)
+    window.addEventListener('aether:auth', onAuthChange)
+    window.addEventListener('focus', onFocus)
     return () => {
-      window.removeEventListener("aether:org", onOrgChange);
-      window.removeEventListener("aether:auth", onAuthChange);
-      window.removeEventListener("focus", onFocus);
-      wsRef.current?.close();
-    };
-  }, [connect]);
+      window.removeEventListener('aether:org', onOrgChange)
+      window.removeEventListener('aether:auth', onAuthChange)
+      window.removeEventListener('focus', onFocus)
+      if (reconnectTimerRef.current !== null)
+        window.clearTimeout(reconnectTimerRef.current)
+      wsRef.current?.close()
+    }
+  }, [connect])
 
   const subscribe = useCallback((fn: (ev: EventEnvelope, replay: boolean) => void) => {
-    listeners.current.add(fn);
+    listeners.current.add(fn)
     return () => {
-      listeners.current.delete(fn);
-    };
-  }, []);
+      listeners.current.delete(fn)
+    }
+  }, [])
 
-  const subscribePresence = useCallback((fn: (scope: string, count: number) => void) => {
-    presenceListeners.current.add(fn);
-    return () => {
-      presenceListeners.current.delete(fn);
-    };
-  }, []);
+  const subscribePresence = useCallback(
+    (fn: (scope: string, count: number) => void) => {
+      presenceListeners.current.add(fn)
+      return () => {
+        presenceListeners.current.delete(fn)
+      }
+    },
+    [],
+  )
 
   const send = useCallback((message: { op: string; scope?: string }) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+      wsRef.current.send(JSON.stringify(message))
     }
-  }, []);
+  }, [])
 
-  const value: RealtimeContextValue = { connected, lastSeq, subscribe, subscribePresence, send };
+  const value: RealtimeContextValue = {
+    connected,
+    lastSeq,
+    subscribe,
+    subscribePresence,
+    send,
+  }
 
-  return <RealtimeCtx.Provider value={value}>{children}</RealtimeCtx.Provider>;
+  return <RealtimeCtx.Provider value={value}>{children}</RealtimeCtx.Provider>
 }

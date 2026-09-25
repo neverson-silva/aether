@@ -47,16 +47,34 @@ func TestClassifyUnknownWhenNoInfo(t *testing.T) {
 
 func TestClassifyLegacyPlatformFallback(t *testing.T) {
 	cases := map[string]string{
-		"aether-api":      "api",
-		"aether-postgres": "postgres",
-		"aether-redis":    "redis",
-		"aether-traefik":  "proxy",
+		"aether-api":                 "api",
+		"aether-docker-socket-proxy": "docker-socket-proxy",
+		"aether-monitoring":          "monitoring",
+		"aether-nats":                "nats",
+		"aether-postgres":            "postgres",
+		"aether-redis":               "redis",
+		"aether-traefik":             "proxy",
+		"aether-worker":              "worker",
 	}
 	for name, svc := range cases {
 		owner, st, _, _, _ := Classify(rawContainer{Name: name, Labels: map[string]string{}})
 		if owner != domain.OwnerAether || st != svc {
 			t.Fatalf("%s: got owner=%q type=%q", name, owner, st)
 		}
+	}
+}
+
+func TestClassifyLegacyComposeContainer(t *testing.T) {
+	owner, st, _, _, name := Classify(rawContainer{Name: "aether-d227f3fc-dragonflydb-1", Labels: map[string]string{}})
+	if owner != domain.OwnerUser || st != "app" || name != "aether-d227f3fc-dragonflydb-1" {
+		t.Fatalf("expected legacy compose container, got owner=%q type=%q name=%q", owner, st, name)
+	}
+}
+
+func TestClassifyAetherPrefixedPlatformContainer(t *testing.T) {
+	owner, st, _, _, name := Classify(rawContainer{Name: "aether-custom-platform", Labels: map[string]string{}})
+	if owner != domain.OwnerAether || st != "platform" || name != "aether-custom-platform" {
+		t.Fatalf("expected Aether platform container, got owner=%q type=%q name=%q", owner, st, name)
 	}
 }
 

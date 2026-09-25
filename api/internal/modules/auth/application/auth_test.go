@@ -94,26 +94,23 @@ func TestRegisterInvalid(t *testing.T) {
 	}
 }
 
-func TestRegisterDuplicateEmail(t *testing.T) {
+func TestRegisterRejectsDuplicateEmailAfterOwnerSetup(t *testing.T) {
 	env := newTestEnv(t)
 	if _, _, err := env.svc.Register(env.ctx, "dupe@example.com", "Dup", "senha-segura-123"); err != nil {
 		t.Fatalf("primeiro register: %v", err)
 	}
-	if _, _, err := env.svc.Register(env.ctx, "dupe@example.com", "Outro", "senha-segura-456"); !errors.Is(err, domain.ErrEmailTaken) {
-		t.Fatalf("esperava ErrEmailTaken, got %v", err)
+	if _, _, err := env.svc.Register(env.ctx, "dupe@example.com", "Outro", "senha-segura-456"); !errors.Is(err, domain.ErrOwnerAlreadyRegistered) {
+		t.Fatalf("expected owner registration conflict, got %v", err)
 	}
 }
 
-func TestRegisterMultipleEmailsCreateUniqueOrganizations(t *testing.T) {
+func TestRegisterRejectsNewAccountsAfterOwnerIsRegistered(t *testing.T) {
 	env := newTestEnv(t)
-	for i, email := range []string{"one@example.com", "two@example.com", "three@example.com"} {
-		_, token, err := env.svc.Register(env.ctx, email, "User", "senha-segura-123")
-		if err != nil {
-			t.Fatalf("register %d: %v", i, err)
-		}
-		if token == "" {
-			t.Fatalf("register %d: token vazio", i)
-		}
+	if _, _, err := env.svc.Register(env.ctx, "owner@example.com", "Owner", "senha-segura-123"); err != nil {
+		t.Fatalf("register owner: %v", err)
+	}
+	if _, _, err := env.svc.Register(env.ctx, "second@example.com", "Second", "senha-segura-456"); !errors.Is(err, domain.ErrOwnerAlreadyRegistered) {
+		t.Fatalf("register after owner should be rejected, got %v", err)
 	}
 }
 
@@ -122,11 +119,11 @@ func TestRegisterAtomicity(t *testing.T) {
 	if _, _, err := env.svc.Register(env.ctx, "alice@example.com", "Alice", "senha-segura-123"); err != nil {
 		t.Fatalf("primeiro register: %v", err)
 	}
-	if _, _, err := env.svc.Register(env.ctx, "alice2@example.com", "Alice", "senha-segura-456"); err != nil {
-		t.Fatalf("segundo register não deveria colidir: %v", err)
+	if _, _, err := env.svc.Register(env.ctx, "alice2@example.com", "Alice", "senha-segura-456"); !errors.Is(err, domain.ErrOwnerAlreadyRegistered) {
+		t.Fatalf("second registration should be rejected: %v", err)
 	}
-	if _, err := env.svc.Users.GetUserByEmail(env.ctx, "alice2@example.com"); err != nil {
-		t.Fatalf("usuário do segundo register deveria persistir: %v", err)
+	if _, err := env.svc.Users.GetUserByEmail(env.ctx, "alice2@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("second user should not persist: %v", err)
 	}
 }
 

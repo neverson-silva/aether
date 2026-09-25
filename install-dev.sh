@@ -900,7 +900,7 @@ ensure_web_image() {
   }
   local image_stamp="$STATE_DIR/.web-image.stamp"
   local source_stamp
-  source_stamp="$(content_fingerprint "$PROJECT_ROOT/frontend/aether_ds" "$PROJECT_ROOT/frontend/web" "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT/infra/nginx.conf" "$PROJECT_ROOT/infra/ingress-error.html")|$WEB_IMAGE|$AETHER_API_PUBLIC_URL|$AETHER_PUBLIC_URL"
+  source_stamp="$(content_fingerprint "$PROJECT_ROOT/frontend/elisyum_ds" "$PROJECT_ROOT/frontend/web" "$PROJECT_ROOT/infra/web.Dockerfile" "$PROJECT_ROOT/infra/nginx.conf" "$PROJECT_ROOT/infra/ingress-error.html")|$WEB_IMAGE|$AETHER_API_PUBLIC_URL|$AETHER_PUBLIC_URL"
   if [[ "$FORCE_IMAGE_REBUILD" -eq 0 ]] && $RUNTIME image inspect "$WEB_IMAGE" >/dev/null 2>&1 && [[ -f "$image_stamp" ]] && grep -Fxq "$source_stamp" "$image_stamp"; then
     cleanup_web_build_env
     info "Application interface unchanged — reusing the cached image."
@@ -944,9 +944,14 @@ ensure_api_ingress() {
 
 start_api() {
   if api_running && [[ "$FORCE_API_RECREATE" -eq 0 ]]; then
-    ensure_api_ingress
-    info "API container already running."
-    return 0
+    local current_public_url
+    current_public_url="$($RUNTIME inspect "$API_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^AETHER_PUBLIC_URL=//p' | head -1)"
+    if [[ "$current_public_url" == "$AETHER_PUBLIC_URL" ]]; then
+      ensure_api_ingress
+      info "API container already running."
+      return 0
+    fi
+    info "API public URL changed; recreating the API container."
   fi
 
   build_api_image
@@ -1302,13 +1307,16 @@ ensure_registry() {
 ensure_builder() {
   command -v "$DOCKER_RUNTIME" >/dev/null || fail "Docker CLI is required for the CNB builder."
   local lifecycle_image="docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}"
-  local run_image="${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04}"
+  local run_image="${AETHER_CNB_RUN_IMAGE:-docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3}"
+  mkdir -p "$(dirname "$INSTALL_LOG")"
   if ! "$DOCKER_RUNTIME" image inspect "$lifecycle_image" >/dev/null 2>&1; then
     "$DOCKER_RUNTIME" pull "$lifecycle_image" >/dev/null 2>&1 || true
   fi
   if ! "$DOCKER_RUNTIME" image inspect "$run_image" >/dev/null 2>&1; then
-    "$DOCKER_RUNTIME" pull "$run_image" >/dev/null 2>&1 || true
+    info "Pulling CNB run image ($run_image)..."
+    "$DOCKER_RUNTIME" pull "$run_image" >>"$INSTALL_LOG" 2>&1 || fail "CNB run image could not be pulled: $run_image."
   fi
+  "$DOCKER_RUNTIME" image inspect "$run_image" >/dev/null 2>&1 || fail "CNB run image is not available in the Docker daemon: $run_image."
   local source_stamp builder_stamp
   source_stamp="$(content_fingerprint "$PROJECT_ROOT/infra/buildpacks")|$CNB_BUILDER|$run_image|$lifecycle_image|${AETHER_BUILDER_BASE_IMAGE:-}"
   builder_stamp="$STATE_DIR/cnb-builder.stamp"
@@ -1318,8 +1326,7 @@ ensure_builder() {
     return 0
   fi
   info "Building CNB builder ($CNB_BUILDER) — aether buildpacks + ubuntu run image..."
-  mkdir -p "$(dirname "$INSTALL_LOG")"
-  bash "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" >>"$INSTALL_LOG" 2>&1 || fail "The application build environment could not be prepared."
+  RUN_IMAGE="$run_image" bash "$PROJECT_ROOT/infra/buildpacks/builders/build-builder.sh" >>"$INSTALL_LOG" 2>&1 || fail "The application build environment could not be prepared."
   "$DOCKER_RUNTIME" image inspect "$CNB_BUILDER" >/dev/null 2>&1 || fail "CNB builder image is not available as $CNB_BUILDER."
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$source_stamp" > "$builder_stamp"
@@ -1351,11 +1358,15 @@ start_agent() {
   [[ -x "$PROJECT_ROOT/infra/scripts/host-watchdog.sh" ]] || return 0
   local pidfile="$STATE_DIR/host-agent.pid"
   if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
-    info "Host watchdog already running (pid $(cat "$pidfile"))."
-    return 0
+    if [[ -n "$(find "$STATE_DIR/host-stats.json" -mmin -1 -print -quit 2>/dev/null)" ]]; then
+      info "Host watchdog already running (pid $(cat "$pidfile"))."
+      return 0
+    fi
+    kill "$(cat "$pidfile")" >/dev/null 2>&1 || true
+    rm -f "$pidfile"
   fi
   mkdir -p "$STATE_DIR/logs"
-  nohup bash "$PROJECT_ROOT/infra/scripts/host-watchdog.sh" >> "$STATE_DIR/logs/host-agent.log" 2>&1 &
+  AETHER_HOST_AGENT="$PROJECT_ROOT/infra/scripts/host-agent.sh" nohup bash "$PROJECT_ROOT/infra/scripts/host-watchdog.sh" >> "$STATE_DIR/logs/host-agent.log" 2>&1 &
   echo "$!" > "$pidfile"
   sleep 1
   if kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then

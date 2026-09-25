@@ -141,6 +141,8 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 		NetworkAlias:       "db-" + db.ID.String()[:8],
 		AdditionalNetworks: []string{d.PublishedNetwork},
 		MemMB:              db.MemMB,
+		CPUs:               db.CPUs,
+		StorageMB:          db.StorageMB,
 		Labels: map[string]string{
 			"aether.owner":        "aether",
 			"aether.service-type": "database",

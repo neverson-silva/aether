@@ -461,9 +461,16 @@ func normalizeRuntimeEvent(raw dockerevents.Message) RuntimeEvent {
 }
 
 func (r *DockerRuntime) StorageUsage(ctx context.Context) (map[string]uint64, error) {
-	usage, err := r.client.DiskUsage(ctx, types.DiskUsageOptions{Types: []types.DiskUsageObject{types.ContainerObject}})
+	usage, err := r.client.DiskUsage(ctx, types.DiskUsageOptions{Types: []types.DiskUsageObject{types.ContainerObject, types.VolumeObject}})
 	if err != nil {
 		return nil, runtimeError("read container storage usage", err)
+	}
+	volumeSizes := make(map[string]uint64, len(usage.Volumes))
+	for _, volume := range usage.Volumes {
+		if volume == nil || volume.UsageData == nil || volume.UsageData.Size <= 0 {
+			continue
+		}
+		volumeSizes[volume.Name] = uint64(volume.UsageData.Size)
 	}
 	result := make(map[string]uint64, len(usage.Containers))
 	for _, item := range usage.Containers {
@@ -474,8 +481,26 @@ func (r *DockerRuntime) StorageUsage(ctx context.Context) (map[string]uint64, er
 		if len(item.Names) > 0 {
 			name = strings.TrimPrefix(item.Names[0], "/")
 		}
-		if item.SizeRw > 0 {
-			result[name] = uint64(item.SizeRw)
+		if name == "" {
+			continue
+		}
+		size := int64(0)
+		if item.SizeRootFs > size {
+			size = item.SizeRootFs
+		}
+		if item.SizeRw > size {
+			size = item.SizeRw
+		}
+		for _, mount := range item.Mounts {
+			if string(mount.Type) != "volume" {
+				continue
+			}
+			if volumeSize, ok := volumeSizes[mount.Name]; ok {
+				size += int64(volumeSize)
+			}
+		}
+		if size > 0 {
+			result[name] = uint64(size)
 		}
 	}
 	return result, nil
@@ -515,10 +540,6 @@ func (r *DockerRuntime) OpenInteractive(ctx context.Context, containerID string,
 	stream, err := r.client.ContainerExecAttach(ctx, created.ID, container.ExecStartOptions{Tty: true})
 	if err != nil {
 		return nil, containerError("attach interactive exec", err)
-	}
-	if err := r.client.ContainerExecStart(ctx, created.ID, container.ExecStartOptions{Tty: true}); err != nil {
-		stream.Close()
-		return nil, containerError("start interactive exec", err)
 	}
 	return &dockerInteractiveSession{client: r.client, execID: created.ID, stream: stream}, nil
 }
@@ -577,6 +598,14 @@ func defaultWorkloadHostConfig() *container.HostConfig {
 			PidsLimit: &pidsLimit,
 		},
 	}
+}
+
+func runtimeHostConfig(labels map[string]string) *container.HostConfig {
+	hostConfig := defaultWorkloadHostConfig()
+	if labels["aether.service-type"] == "database" {
+		hostConfig.CapAdd = append(hostConfig.CapAdd, "FOWNER", "DAC_OVERRIDE")
+	}
+	return hostConfig
 }
 
 func validateRuntimeMount(source string) error {
@@ -640,7 +669,7 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 	if spec.Labels["aether.owner"] == "user" {
 		config.User = "101:101"
 	}
-	hostConfig := defaultWorkloadHostConfig()
+	hostConfig := runtimeHostConfig(spec.Labels)
 	if spec.Labels["aether.owner"] == "user" {
 		hostConfig.ReadonlyRootfs = true
 		hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, appArmorProfile())

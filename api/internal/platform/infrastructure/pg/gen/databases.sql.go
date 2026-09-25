@@ -7,14 +7,15 @@ package pg
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const createDatabase = `-- name: CreateDatabase :one
-INSERT INTO databases (org_id, project_id, environment_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
+INSERT INTO databases (org_id, project_id, environment_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 `
 
 type CreateDatabaseParams struct {
@@ -28,11 +29,33 @@ type CreateDatabaseParams struct {
 	DbName        string        `json:"db_name"`
 	DbUser        string        `json:"db_user"`
 	PassEnc       string        `json:"pass_enc"`
+	Cpus          string        `json:"cpus"`
 	MemMb         int32         `json:"mem_mb"`
 	StorageMb     int32         `json:"storage_mb"`
 }
 
-func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (Database, error) {
+type CreateDatabaseRow struct {
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.UUID     `json:"org_id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	Name          string        `json:"name"`
+	Engine        string        `json:"engine"`
+	Version       string        `json:"version"`
+	Port          int32         `json:"port"`
+	DbName        string        `json:"db_name"`
+	DbUser        string        `json:"db_user"`
+	PassEnc       string        `json:"pass_enc"`
+	Cpus          string        `json:"cpus"`
+	MemMb         int32         `json:"mem_mb"`
+	StorageMb     int32         `json:"storage_mb"`
+	Status        string        `json:"status"`
+	ContainerID   string        `json:"container_id"`
+	CreatedAt     time.Time     `json:"created_at"`
+	ServiceID     uuid.UUID     `json:"service_id"`
+	EnvironmentID uuid.NullUUID `json:"environment_id"`
+}
+
+func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (CreateDatabaseRow, error) {
 	row := q.db.QueryRowContext(ctx, createDatabase,
 		arg.OrgID,
 		arg.ProjectID,
@@ -44,10 +67,11 @@ func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) 
 		arg.DbName,
 		arg.DbUser,
 		arg.PassEnc,
+		arg.Cpus,
 		arg.MemMb,
 		arg.StorageMb,
 	)
-	var i Database
+	var i CreateDatabaseRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -59,6 +83,7 @@ func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) 
 		&i.DbName,
 		&i.DbUser,
 		&i.PassEnc,
+		&i.Cpus,
 		&i.MemMb,
 		&i.StorageMb,
 		&i.Status,
@@ -86,14 +111,35 @@ func (q *Queries) DeleteDatabase(ctx context.Context, arg DeleteDatabaseParams) 
 }
 
 const getDatabase = `-- name: GetDatabase :one
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
+SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE id = $1
 `
 
-func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (Database, error) {
+type GetDatabaseRow struct {
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.UUID     `json:"org_id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	Name          string        `json:"name"`
+	Engine        string        `json:"engine"`
+	Version       string        `json:"version"`
+	Port          int32         `json:"port"`
+	DbName        string        `json:"db_name"`
+	DbUser        string        `json:"db_user"`
+	PassEnc       string        `json:"pass_enc"`
+	Cpus          string        `json:"cpus"`
+	MemMb         int32         `json:"mem_mb"`
+	StorageMb     int32         `json:"storage_mb"`
+	Status        string        `json:"status"`
+	ContainerID   string        `json:"container_id"`
+	CreatedAt     time.Time     `json:"created_at"`
+	ServiceID     uuid.UUID     `json:"service_id"`
+	EnvironmentID uuid.NullUUID `json:"environment_id"`
+}
+
+func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (GetDatabaseRow, error) {
 	row := q.db.QueryRowContext(ctx, getDatabase, id)
-	var i Database
+	var i GetDatabaseRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -105,6 +151,7 @@ func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (Database, erro
 		&i.DbName,
 		&i.DbUser,
 		&i.PassEnc,
+		&i.Cpus,
 		&i.MemMb,
 		&i.StorageMb,
 		&i.Status,
@@ -117,21 +164,42 @@ func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (Database, erro
 }
 
 const listDatabasesByOrg = `-- name: ListDatabasesByOrg :many
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
+SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE org_id = $1
 ORDER BY name
 `
 
-func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Database, error) {
+type ListDatabasesByOrgRow struct {
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.UUID     `json:"org_id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	Name          string        `json:"name"`
+	Engine        string        `json:"engine"`
+	Version       string        `json:"version"`
+	Port          int32         `json:"port"`
+	DbName        string        `json:"db_name"`
+	DbUser        string        `json:"db_user"`
+	PassEnc       string        `json:"pass_enc"`
+	Cpus          string        `json:"cpus"`
+	MemMb         int32         `json:"mem_mb"`
+	StorageMb     int32         `json:"storage_mb"`
+	Status        string        `json:"status"`
+	ContainerID   string        `json:"container_id"`
+	CreatedAt     time.Time     `json:"created_at"`
+	ServiceID     uuid.UUID     `json:"service_id"`
+	EnvironmentID uuid.NullUUID `json:"environment_id"`
+}
+
+func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListDatabasesByOrgRow, error) {
 	rows, err := q.db.QueryContext(ctx, listDatabasesByOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Database{}
+	items := []ListDatabasesByOrgRow{}
 	for rows.Next() {
-		var i Database
+		var i ListDatabasesByOrgRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -143,6 +211,7 @@ func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Da
 			&i.DbName,
 			&i.DbUser,
 			&i.PassEnc,
+			&i.Cpus,
 			&i.MemMb,
 			&i.StorageMb,
 			&i.Status,

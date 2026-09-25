@@ -65,7 +65,7 @@ func TestDockerExecuteBuildsExplicitProjectCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "compose --project-directory " + dir + " --project-name aether-test --env-file " + filepath.Join(dir, ".env") + " -f " + file + " config --quiet"
+	want := "compose --project-name aether-test --env-file " + filepath.Join(dir, ".env") + " -f " + file + " config --quiet"
 	if output != want {
 		t.Fatalf("command = %q, want %q", output, want)
 	}

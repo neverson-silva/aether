@@ -69,6 +69,17 @@ func (s *Store) CreateDeploymentAndOutbox(ctx context.Context, dep *domain.Deplo
 		return nil, err
 	}
 	defer tx.Rollback()
+	var serviceStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT s.status FROM services s JOIN apps a ON a.service_id = s.id WHERE a.id = $1 AND s.org_id = $2 AND s.deleted_at IS NULL FOR UPDATE OF s`, dep.AppID, orgID).Scan(&serviceStatus); err != nil {
+		return nil, mapErr(err)
+	}
+	var lifecycleActive bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM service_lifecycle_operations WHERE service_id = $1 AND status IN ('accepted', 'running'))`, dep.ServiceID).Scan(&lifecycleActive); err != nil {
+		return nil, err
+	}
+	if lifecycleActive || serviceStatus == "starting" || serviceStatus == "stopping" {
+		return nil, domain.ErrConflict
+	}
 	q := gen.New(tx)
 	snapshot := dep.EnvSnapshot
 	if len(snapshot) == 0 {
@@ -84,6 +95,9 @@ func (s *Store) CreateDeploymentAndOutbox(ctx context.Context, dep *domain.Deplo
 		Error: dep.Error, EnvSnapshot: snapshot, ComposeYaml: dep.ComposeYAML, DeploySpec: spec, ComposeHash: dep.ComposeHash,
 	})
 	if err != nil {
+		return nil, mapErr(err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE services SET status = 'deploying', updated_at = now() WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`, uuidValue(row.ServiceID), orgID); err != nil {
 		return nil, mapErr(err)
 	}
 	jobPayload, err := json.Marshal(map[string]string{

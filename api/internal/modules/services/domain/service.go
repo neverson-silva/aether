@@ -15,6 +15,8 @@ type Status string
 const (
 	StatusPending   Status = "pending"
 	StatusDeploying Status = "deploying"
+	StatusStarting  Status = "starting"
+	StatusStopping  Status = "stopping"
 	StatusRunning   Status = "running"
 	StatusDegraded  Status = "degraded"
 	StatusStopped   Status = "stopped"
@@ -158,18 +160,11 @@ func NormalizeCompose(states []ContainerState, deploying bool) Status {
 	running := 0
 	failed := 0
 	degraded := 0
-	stopped := 0
 	for _, state := range states {
 		normalized := normalizeContainer(state.Status, state.Healthy)
 		switch normalized {
 		case StatusRunning:
 			running++
-		case StatusStopped:
-			if isIntentionalStop(state.Status) {
-				stopped++
-			} else {
-				failed++
-			}
 		case StatusDegraded:
 			degraded++
 		case StatusFailed:
@@ -190,19 +185,7 @@ func NormalizeCompose(states []ContainerState, deploying bool) Status {
 	if failed > 0 {
 		return StatusFailed
 	}
-	if stopped == len(states) {
-		return StatusStopped
-	}
 	return StatusUnknown
-}
-
-func isIntentionalStop(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "created", "stopped", "paused":
-		return true
-	default:
-		return false
-	}
 }
 
 func normalizeContainer(raw string, healthy *bool) Status {
@@ -212,12 +195,8 @@ func normalizeContainer(raw string, healthy *bool) Status {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "running", "healthy":
 		return StatusRunning
-	case "created", "configured", "stopped", "paused":
-		return StatusStopped
-	case "restarting", "starting":
+	case "created", "configured", "stopped", "paused", "exited", "restarting", "starting":
 		return StatusDegraded
-	case "exited":
-		return StatusStopped
 	case "unhealthy", "failed", "dead":
 		return StatusFailed
 	default:

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -236,6 +237,18 @@ func TestDefaultWorkloadHostConfigHardensCommandContainers(t *testing.T) {
 	}
 	if config.Memory != defaultContainerMemoryMB*1024*1024 || config.PidsLimit == nil || *config.PidsLimit != 256 {
 		t.Fatalf("resource limits = %+v", config.Resources)
+	}
+}
+
+func TestDatabaseRuntimeHostConfigAllowsOwnershipPermissionChanges(t *testing.T) {
+	config := runtimeHostConfig(map[string]string{"aether.service-type": "database"})
+	if !slices.Contains(config.CapAdd, "FOWNER") || !slices.Contains(config.CapAdd, "DAC_OVERRIDE") {
+		t.Fatalf("database capabilities = %#v", config.CapAdd)
+	}
+
+	workloadConfig := runtimeHostConfig(map[string]string{"aether.owner": "user"})
+	if slices.Contains(workloadConfig.CapAdd, "FOWNER") {
+		t.Fatalf("user workload capabilities = %#v", workloadConfig.CapAdd)
 	}
 }
 

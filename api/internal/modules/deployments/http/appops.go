@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	deploydomain "aether/internal/modules/deployments/domain"
+	servicesdomain "aether/internal/modules/services/domain"
 )
 
 func (h *Handler) AppStart(c *gin.Context) {
@@ -18,12 +19,20 @@ func (h *Handler) AppStart(c *gin.Context) {
 		abort(c, deploydomain.ErrValidation)
 		return
 	}
-	state, err := h.appOps.Start(c.Request.Context(), appID, orgID(c))
+	if h.lifecycle == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service lifecycle is not configured"})
+		return
+	}
+	if _, err := h.apps.GetApp(c.Request.Context(), appID, orgID(c)); err != nil {
+		abort(c, err)
+		return
+	}
+	operation, err := h.lifecycle.RequestBySpec(c.Request.Context(), appID, orgID(c), servicesdomain.KindApp, servicesdomain.LifecycleStart)
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "started", "state": state})
+	writeLifecycleResponse(c, operation, servicesdomain.StatusStarting)
 }
 
 func (h *Handler) AppStop(c *gin.Context) {
@@ -32,12 +41,39 @@ func (h *Handler) AppStop(c *gin.Context) {
 		abort(c, deploydomain.ErrValidation)
 		return
 	}
-	state, err := h.appOps.Stop(c.Request.Context(), appID, orgID(c))
+	if h.lifecycle == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service lifecycle is not configured"})
+		return
+	}
+	if _, err := h.apps.GetApp(c.Request.Context(), appID, orgID(c)); err != nil {
+		abort(c, err)
+		return
+	}
+	operation, err := h.lifecycle.RequestBySpec(c.Request.Context(), appID, orgID(c), servicesdomain.KindApp, servicesdomain.LifecycleStop)
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "stopped", "state": state})
+	writeLifecycleResponse(c, operation, servicesdomain.StatusStopping)
+}
+
+func writeLifecycleResponse(c *gin.Context, operation *servicesdomain.LifecycleOperation, requestedState servicesdomain.Status) {
+	statusCode := http.StatusAccepted
+	state := requestedState
+	responseStatus := "accepted"
+	if operation.ID == uuid.Nil {
+		statusCode = http.StatusOK
+		state = servicesdomain.Status(operation.Status)
+		responseStatus = "started"
+		if operation.Action == servicesdomain.LifecycleStop {
+			responseStatus = "stopped"
+		}
+	}
+	var operationID any
+	if operation.ID != uuid.Nil {
+		operationID = operation.ID
+	}
+	c.JSON(statusCode, gin.H{"service_id": operation.ServiceID, "status": responseStatus, "state": state, "operation_id": operationID})
 }
 
 func (h *Handler) AppRestart(c *gin.Context) {

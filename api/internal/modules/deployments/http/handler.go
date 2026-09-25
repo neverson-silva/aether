@@ -14,6 +14,7 @@ import (
 	authhttp "aether/internal/modules/auth/http"
 	"aether/internal/modules/deployments/application"
 	deploydomain "aether/internal/modules/deployments/domain"
+	servicesdomain "aether/internal/modules/services/domain"
 	templatesdomain "aether/internal/modules/templates/domain"
 	"aether/internal/platform/security"
 )
@@ -27,6 +28,9 @@ type Handler struct {
 	streams     *security.StreamLimiter
 	compose     interface {
 		Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
+	}
+	lifecycle interface {
+		RequestBySpec(context.Context, uuid.UUID, uuid.UUID, servicesdomain.Kind, servicesdomain.LifecycleAction) (*servicesdomain.LifecycleOperation, error)
 	}
 }
 
@@ -46,6 +50,13 @@ func (h *Handler) WithCompose(reader interface {
 	Get(context.Context, uuid.UUID, uuid.UUID) (*templatesdomain.ComposeApp, error)
 }) *Handler {
 	h.compose = reader
+	return h
+}
+
+func (h *Handler) WithLifecycle(lifecycle interface {
+	RequestBySpec(context.Context, uuid.UUID, uuid.UUID, servicesdomain.Kind, servicesdomain.LifecycleAction) (*servicesdomain.LifecycleOperation, error)
+}) *Handler {
+	h.lifecycle = lifecycle
 	return h
 }
 
@@ -200,6 +211,10 @@ func abort(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
 	case errors.Is(err, deploydomain.ErrInvalidTransition):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "invalid status transition"})
+	case errors.Is(err, servicesdomain.ErrLifecycleConflict):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, servicesdomain.ErrNotFound):
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "service not found"})
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 	}

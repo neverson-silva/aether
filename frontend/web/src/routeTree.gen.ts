@@ -13,36 +13,24 @@ import { Route as ShellRouteImport } from './routes/_shell'
 import { Route as ShellIndexRouteImport } from './routes/_shell/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as OnboardingIndexRouteImport } from './routes/onboarding/index'
-import { Route as OrganizationsIdRouteImport } from './routes/organizations.$id'
-import { Route as OrganizationsNewRouteImport } from './routes/organizations.new'
-import { Route as ShellApiKeysIndexRouteImport } from './routes/_shell/api-keys/index'
+import { Route as StudioDatabaseIdRouteImport } from './routes/studio/$databaseId'
 import { Route as ShellAppsIndexRouteImport } from './routes/_shell/apps/index'
-import { Route as ShellBackupsIndexRouteImport } from './routes/_shell/backups/index'
-import { Route as ShellCertificatesIndexRouteImport } from './routes/_shell/certificates/index'
-import { Route as ShellCiCdIndexRouteImport } from './routes/_shell/ci-cd/index'
-import { Route as ShellClustersIndexRouteImport } from './routes/_shell/clusters/index'
-import { Route as ShellComposeIdRouteImport } from './routes/_shell/compose.$id'
+import { Route as ShellAppsAppIdRouteImport } from './routes/_shell/apps/$appId'
 import { Route as ShellDatabasesIndexRouteImport } from './routes/_shell/databases/index'
-import { Route as ShellGitopsIndexRouteImport } from './routes/_shell/gitops/index'
-import { Route as ShellMarketplaceIndexRouteImport } from './routes/_shell/marketplace/index'
+import { Route as ShellDatabasesDbIdRouteImport } from './routes/_shell/databases/$dbId'
 import { Route as ShellMembersIndexRouteImport } from './routes/_shell/members/index'
 import { Route as ShellMonitoringIndexRouteImport } from './routes/_shell/monitoring/index'
 import { Route as ShellNetworkingIndexRouteImport } from './routes/_shell/networking/index'
 import { Route as ShellNotificationsIndexRouteImport } from './routes/_shell/notifications/index'
 import { Route as ShellProjectsIndexRouteImport } from './routes/_shell/projects/index'
+import { Route as ShellProjectsProjectIdRouteImport } from './routes/_shell/projects/$projectId'
+import { Route as ShellProjectsNewRouteImport } from './routes/_shell/projects/new'
 import { Route as ShellRegistryIndexRouteImport } from './routes/_shell/registry/index'
-import { Route as ShellSchedulesIndexRouteImport } from './routes/_shell/schedules/index'
-import { Route as ShellSecretsIndexRouteImport } from './routes/_shell/secrets/index'
-import { Route as ShellServersIndexRouteImport } from './routes/_shell/servers/index'
-import { Route as ShellSsoIndexRouteImport } from './routes/_shell/sso/index'
+import { Route as ShellServicesIndexRouteImport } from './routes/_shell/services/index'
+import { Route as ShellServicesServiceIdRouteImport } from './routes/_shell/services/$serviceId'
+import { Route as ShellServicesNewRouteImport } from './routes/_shell/services/new'
 import { Route as ShellStorageIndexRouteImport } from './routes/_shell/storage/index'
 import { Route as ShellTraefikIndexRouteImport } from './routes/_shell/traefik/index'
-import { Route as ShellWhitelabelIndexRouteImport } from './routes/_shell/whitelabel/index'
-import { Route as StudioDbIdIndexRouteImport } from './routes/studio.$dbId/index'
-import { Route as ShellAppsAppIdIndexRouteImport } from './routes/_shell/apps/$appId/index'
-import { Route as ShellDatabasesDbIdIndexRouteImport } from './routes/_shell/databases/$dbId/index'
-import { Route as ShellProjectsProjectIdIndexRouteImport } from './routes/_shell/projects/$projectId/index'
-import { Route as ShellProjectsNewIndexRouteImport } from './routes/_shell/projects/new/index'
 
 const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
@@ -63,49 +51,19 @@ const OnboardingIndexRoute = OnboardingIndexRouteImport.update({
   path: '/onboarding/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OrganizationsIdRoute = OrganizationsIdRouteImport.update({
-  id: '/organizations/$id',
-  path: '/organizations/$id',
+const StudioDatabaseIdRoute = StudioDatabaseIdRouteImport.update({
+  id: '/studio/$databaseId',
+  path: '/studio/$databaseId',
   getParentRoute: () => rootRouteImport,
-} as any)
-const OrganizationsNewRoute = OrganizationsNewRouteImport.update({
-  id: '/organizations/new',
-  path: '/organizations/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ShellApiKeysIndexRoute = ShellApiKeysIndexRouteImport.update({
-  id: '/api-keys/',
-  path: '/api-keys/',
-  getParentRoute: () => ShellRoute,
 } as any)
 const ShellAppsIndexRoute = ShellAppsIndexRouteImport.update({
   id: '/apps/',
   path: '/apps/',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellBackupsIndexRoute = ShellBackupsIndexRouteImport.update({
-  id: '/backups/',
-  path: '/backups/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellCertificatesIndexRoute = ShellCertificatesIndexRouteImport.update({
-  id: '/certificates/',
-  path: '/certificates/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellCiCdIndexRoute = ShellCiCdIndexRouteImport.update({
-  id: '/ci-cd/',
-  path: '/ci-cd/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellClustersIndexRoute = ShellClustersIndexRouteImport.update({
-  id: '/clusters/',
-  path: '/clusters/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellComposeIdRoute = ShellComposeIdRouteImport.update({
-  id: '/compose/$id',
-  path: '/compose/$id',
+const ShellAppsAppIdRoute = ShellAppsAppIdRouteImport.update({
+  id: '/apps/$appId',
+  path: '/apps/$appId',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellDatabasesIndexRoute = ShellDatabasesIndexRouteImport.update({
@@ -113,14 +71,9 @@ const ShellDatabasesIndexRoute = ShellDatabasesIndexRouteImport.update({
   path: '/databases/',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellGitopsIndexRoute = ShellGitopsIndexRouteImport.update({
-  id: '/gitops/',
-  path: '/gitops/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellMarketplaceIndexRoute = ShellMarketplaceIndexRouteImport.update({
-  id: '/marketplace/',
-  path: '/marketplace/',
+const ShellDatabasesDbIdRoute = ShellDatabasesDbIdRouteImport.update({
+  id: '/databases/$dbId',
+  path: '/databases/$dbId',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellMembersIndexRoute = ShellMembersIndexRouteImport.update({
@@ -148,29 +101,34 @@ const ShellProjectsIndexRoute = ShellProjectsIndexRouteImport.update({
   path: '/projects/',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellProjectsProjectIdRoute = ShellProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellProjectsNewRoute = ShellProjectsNewRouteImport.update({
+  id: '/projects/new',
+  path: '/projects/new',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellRegistryIndexRoute = ShellRegistryIndexRouteImport.update({
   id: '/registry/',
   path: '/registry/',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellSchedulesIndexRoute = ShellSchedulesIndexRouteImport.update({
-  id: '/schedules/',
-  path: '/schedules/',
+const ShellServicesIndexRoute = ShellServicesIndexRouteImport.update({
+  id: '/services/',
+  path: '/services/',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellSecretsIndexRoute = ShellSecretsIndexRouteImport.update({
-  id: '/secrets/',
-  path: '/secrets/',
+const ShellServicesServiceIdRoute = ShellServicesServiceIdRouteImport.update({
+  id: '/services/$serviceId',
+  path: '/services/$serviceId',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellServersIndexRoute = ShellServersIndexRouteImport.update({
-  id: '/servers/',
-  path: '/servers/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellSsoIndexRoute = ShellSsoIndexRouteImport.update({
-  id: '/sso/',
-  path: '/sso/',
+const ShellServicesNewRoute = ShellServicesNewRouteImport.update({
+  id: '/services/new',
+  path: '/services/new',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellStorageIndexRoute = ShellStorageIndexRouteImport.update({
@@ -183,263 +141,156 @@ const ShellTraefikIndexRoute = ShellTraefikIndexRouteImport.update({
   path: '/traefik/',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellWhitelabelIndexRoute = ShellWhitelabelIndexRouteImport.update({
-  id: '/whitelabel/',
-  path: '/whitelabel/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const StudioDbIdIndexRoute = StudioDbIdIndexRouteImport.update({
-  id: '/studio/$dbId/',
-  path: '/studio/$dbId/',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() =>
-  import('./routes/studio.$dbId/index.lazy').then((d) => d.Route),
-)
-const ShellAppsAppIdIndexRoute = ShellAppsAppIdIndexRouteImport.update({
-  id: '/apps/$appId/',
-  path: '/apps/$appId/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellDatabasesDbIdIndexRoute = ShellDatabasesDbIdIndexRouteImport.update({
-  id: '/databases/$dbId/',
-  path: '/databases/$dbId/',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellProjectsProjectIdIndexRoute =
-  ShellProjectsProjectIdIndexRouteImport.update({
-    id: '/projects/$projectId/',
-    path: '/projects/$projectId/',
-    getParentRoute: () => ShellRoute,
-  } as any)
-const ShellProjectsNewIndexRoute = ShellProjectsNewIndexRouteImport.update({
-  id: '/projects/new/',
-  path: '/projects/new/',
-  getParentRoute: () => ShellRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ShellIndexRoute
-  '/organizations/$id': typeof OrganizationsIdRoute
-  '/organizations/new': typeof OrganizationsNewRoute
+  '/studio/$databaseId': typeof StudioDatabaseIdRoute
   '/login/': typeof LoginIndexRoute
   '/onboarding/': typeof OnboardingIndexRoute
-  '/compose/$id': typeof ShellComposeIdRoute
-  '/api-keys/': typeof ShellApiKeysIndexRoute
+  '/apps/$appId': typeof ShellAppsAppIdRoute
+  '/databases/$dbId': typeof ShellDatabasesDbIdRoute
+  '/projects/$projectId': typeof ShellProjectsProjectIdRoute
+  '/projects/new': typeof ShellProjectsNewRoute
+  '/services/$serviceId': typeof ShellServicesServiceIdRoute
+  '/services/new': typeof ShellServicesNewRoute
   '/apps/': typeof ShellAppsIndexRoute
-  '/backups/': typeof ShellBackupsIndexRoute
-  '/certificates/': typeof ShellCertificatesIndexRoute
-  '/ci-cd/': typeof ShellCiCdIndexRoute
-  '/clusters/': typeof ShellClustersIndexRoute
   '/databases/': typeof ShellDatabasesIndexRoute
-  '/gitops/': typeof ShellGitopsIndexRoute
-  '/marketplace/': typeof ShellMarketplaceIndexRoute
   '/members/': typeof ShellMembersIndexRoute
   '/monitoring/': typeof ShellMonitoringIndexRoute
   '/networking/': typeof ShellNetworkingIndexRoute
   '/notifications/': typeof ShellNotificationsIndexRoute
   '/projects/': typeof ShellProjectsIndexRoute
   '/registry/': typeof ShellRegistryIndexRoute
-  '/schedules/': typeof ShellSchedulesIndexRoute
-  '/secrets/': typeof ShellSecretsIndexRoute
-  '/servers/': typeof ShellServersIndexRoute
-  '/sso/': typeof ShellSsoIndexRoute
+  '/services/': typeof ShellServicesIndexRoute
   '/storage/': typeof ShellStorageIndexRoute
   '/traefik/': typeof ShellTraefikIndexRoute
-  '/whitelabel/': typeof ShellWhitelabelIndexRoute
-  '/studio/$dbId/': typeof StudioDbIdIndexRoute
-  '/apps/$appId/': typeof ShellAppsAppIdIndexRoute
-  '/databases/$dbId/': typeof ShellDatabasesDbIdIndexRoute
-  '/projects/$projectId/': typeof ShellProjectsProjectIdIndexRoute
-  '/projects/new/': typeof ShellProjectsNewIndexRoute
 }
 export interface FileRoutesByTo {
-  '/organizations/$id': typeof OrganizationsIdRoute
-  '/organizations/new': typeof OrganizationsNewRoute
+  '/studio/$databaseId': typeof StudioDatabaseIdRoute
   '/': typeof ShellIndexRoute
   '/login': typeof LoginIndexRoute
   '/onboarding': typeof OnboardingIndexRoute
-  '/compose/$id': typeof ShellComposeIdRoute
-  '/api-keys': typeof ShellApiKeysIndexRoute
+  '/apps/$appId': typeof ShellAppsAppIdRoute
+  '/databases/$dbId': typeof ShellDatabasesDbIdRoute
+  '/projects/$projectId': typeof ShellProjectsProjectIdRoute
+  '/projects/new': typeof ShellProjectsNewRoute
+  '/services/$serviceId': typeof ShellServicesServiceIdRoute
+  '/services/new': typeof ShellServicesNewRoute
   '/apps': typeof ShellAppsIndexRoute
-  '/backups': typeof ShellBackupsIndexRoute
-  '/certificates': typeof ShellCertificatesIndexRoute
-  '/ci-cd': typeof ShellCiCdIndexRoute
-  '/clusters': typeof ShellClustersIndexRoute
   '/databases': typeof ShellDatabasesIndexRoute
-  '/gitops': typeof ShellGitopsIndexRoute
-  '/marketplace': typeof ShellMarketplaceIndexRoute
   '/members': typeof ShellMembersIndexRoute
   '/monitoring': typeof ShellMonitoringIndexRoute
   '/networking': typeof ShellNetworkingIndexRoute
   '/notifications': typeof ShellNotificationsIndexRoute
   '/projects': typeof ShellProjectsIndexRoute
   '/registry': typeof ShellRegistryIndexRoute
-  '/schedules': typeof ShellSchedulesIndexRoute
-  '/secrets': typeof ShellSecretsIndexRoute
-  '/servers': typeof ShellServersIndexRoute
-  '/sso': typeof ShellSsoIndexRoute
+  '/services': typeof ShellServicesIndexRoute
   '/storage': typeof ShellStorageIndexRoute
   '/traefik': typeof ShellTraefikIndexRoute
-  '/whitelabel': typeof ShellWhitelabelIndexRoute
-  '/studio/$dbId': typeof StudioDbIdIndexRoute
-  '/apps/$appId': typeof ShellAppsAppIdIndexRoute
-  '/databases/$dbId': typeof ShellDatabasesDbIdIndexRoute
-  '/projects/$projectId': typeof ShellProjectsProjectIdIndexRoute
-  '/projects/new': typeof ShellProjectsNewIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_shell': typeof ShellRouteWithChildren
-  '/organizations/$id': typeof OrganizationsIdRoute
-  '/organizations/new': typeof OrganizationsNewRoute
+  '/studio/$databaseId': typeof StudioDatabaseIdRoute
   '/_shell/': typeof ShellIndexRoute
   '/login/': typeof LoginIndexRoute
   '/onboarding/': typeof OnboardingIndexRoute
-  '/_shell/compose/$id': typeof ShellComposeIdRoute
-  '/_shell/api-keys/': typeof ShellApiKeysIndexRoute
+  '/_shell/apps/$appId': typeof ShellAppsAppIdRoute
+  '/_shell/databases/$dbId': typeof ShellDatabasesDbIdRoute
+  '/_shell/projects/$projectId': typeof ShellProjectsProjectIdRoute
+  '/_shell/projects/new': typeof ShellProjectsNewRoute
+  '/_shell/services/$serviceId': typeof ShellServicesServiceIdRoute
+  '/_shell/services/new': typeof ShellServicesNewRoute
   '/_shell/apps/': typeof ShellAppsIndexRoute
-  '/_shell/backups/': typeof ShellBackupsIndexRoute
-  '/_shell/certificates/': typeof ShellCertificatesIndexRoute
-  '/_shell/ci-cd/': typeof ShellCiCdIndexRoute
-  '/_shell/clusters/': typeof ShellClustersIndexRoute
   '/_shell/databases/': typeof ShellDatabasesIndexRoute
-  '/_shell/gitops/': typeof ShellGitopsIndexRoute
-  '/_shell/marketplace/': typeof ShellMarketplaceIndexRoute
   '/_shell/members/': typeof ShellMembersIndexRoute
   '/_shell/monitoring/': typeof ShellMonitoringIndexRoute
   '/_shell/networking/': typeof ShellNetworkingIndexRoute
   '/_shell/notifications/': typeof ShellNotificationsIndexRoute
   '/_shell/projects/': typeof ShellProjectsIndexRoute
   '/_shell/registry/': typeof ShellRegistryIndexRoute
-  '/_shell/schedules/': typeof ShellSchedulesIndexRoute
-  '/_shell/secrets/': typeof ShellSecretsIndexRoute
-  '/_shell/servers/': typeof ShellServersIndexRoute
-  '/_shell/sso/': typeof ShellSsoIndexRoute
+  '/_shell/services/': typeof ShellServicesIndexRoute
   '/_shell/storage/': typeof ShellStorageIndexRoute
   '/_shell/traefik/': typeof ShellTraefikIndexRoute
-  '/_shell/whitelabel/': typeof ShellWhitelabelIndexRoute
-  '/studio/$dbId/': typeof StudioDbIdIndexRoute
-  '/_shell/apps/$appId/': typeof ShellAppsAppIdIndexRoute
-  '/_shell/databases/$dbId/': typeof ShellDatabasesDbIdIndexRoute
-  '/_shell/projects/$projectId/': typeof ShellProjectsProjectIdIndexRoute
-  '/_shell/projects/new/': typeof ShellProjectsNewIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/organizations/$id'
-    | '/organizations/new'
+    | '/studio/$databaseId'
     | '/login/'
     | '/onboarding/'
-    | '/compose/$id'
-    | '/api-keys/'
+    | '/apps/$appId'
+    | '/databases/$dbId'
+    | '/projects/$projectId'
+    | '/projects/new'
+    | '/services/$serviceId'
+    | '/services/new'
     | '/apps/'
-    | '/backups/'
-    | '/certificates/'
-    | '/ci-cd/'
-    | '/clusters/'
     | '/databases/'
-    | '/gitops/'
-    | '/marketplace/'
     | '/members/'
     | '/monitoring/'
     | '/networking/'
     | '/notifications/'
     | '/projects/'
     | '/registry/'
-    | '/schedules/'
-    | '/secrets/'
-    | '/servers/'
-    | '/sso/'
+    | '/services/'
     | '/storage/'
     | '/traefik/'
-    | '/whitelabel/'
-    | '/studio/$dbId/'
-    | '/apps/$appId/'
-    | '/databases/$dbId/'
-    | '/projects/$projectId/'
-    | '/projects/new/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/organizations/$id'
-    | '/organizations/new'
+    | '/studio/$databaseId'
     | '/'
     | '/login'
     | '/onboarding'
-    | '/compose/$id'
-    | '/api-keys'
+    | '/apps/$appId'
+    | '/databases/$dbId'
+    | '/projects/$projectId'
+    | '/projects/new'
+    | '/services/$serviceId'
+    | '/services/new'
     | '/apps'
-    | '/backups'
-    | '/certificates'
-    | '/ci-cd'
-    | '/clusters'
     | '/databases'
-    | '/gitops'
-    | '/marketplace'
     | '/members'
     | '/monitoring'
     | '/networking'
     | '/notifications'
     | '/projects'
     | '/registry'
-    | '/schedules'
-    | '/secrets'
-    | '/servers'
-    | '/sso'
+    | '/services'
     | '/storage'
     | '/traefik'
-    | '/whitelabel'
-    | '/studio/$dbId'
-    | '/apps/$appId'
-    | '/databases/$dbId'
-    | '/projects/$projectId'
-    | '/projects/new'
   id:
     | '__root__'
     | '/_shell'
-    | '/organizations/$id'
-    | '/organizations/new'
+    | '/studio/$databaseId'
     | '/_shell/'
     | '/login/'
     | '/onboarding/'
-    | '/_shell/compose/$id'
-    | '/_shell/api-keys/'
+    | '/_shell/apps/$appId'
+    | '/_shell/databases/$dbId'
+    | '/_shell/projects/$projectId'
+    | '/_shell/projects/new'
+    | '/_shell/services/$serviceId'
+    | '/_shell/services/new'
     | '/_shell/apps/'
-    | '/_shell/backups/'
-    | '/_shell/certificates/'
-    | '/_shell/ci-cd/'
-    | '/_shell/clusters/'
     | '/_shell/databases/'
-    | '/_shell/gitops/'
-    | '/_shell/marketplace/'
     | '/_shell/members/'
     | '/_shell/monitoring/'
     | '/_shell/networking/'
     | '/_shell/notifications/'
     | '/_shell/projects/'
     | '/_shell/registry/'
-    | '/_shell/schedules/'
-    | '/_shell/secrets/'
-    | '/_shell/servers/'
-    | '/_shell/sso/'
+    | '/_shell/services/'
     | '/_shell/storage/'
     | '/_shell/traefik/'
-    | '/_shell/whitelabel/'
-    | '/studio/$dbId/'
-    | '/_shell/apps/$appId/'
-    | '/_shell/databases/$dbId/'
-    | '/_shell/projects/$projectId/'
-    | '/_shell/projects/new/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   ShellRoute: typeof ShellRouteWithChildren
-  OrganizationsIdRoute: typeof OrganizationsIdRoute
-  OrganizationsNewRoute: typeof OrganizationsNewRoute
+  StudioDatabaseIdRoute: typeof StudioDatabaseIdRoute
   LoginIndexRoute: typeof LoginIndexRoute
   OnboardingIndexRoute: typeof OnboardingIndexRoute
-  StudioDbIdIndexRoute: typeof StudioDbIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -472,26 +323,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/organizations/$id': {
-      id: '/organizations/$id'
-      path: '/organizations/$id'
-      fullPath: '/organizations/$id'
-      preLoaderRoute: typeof OrganizationsIdRouteImport
+    '/studio/$databaseId': {
+      id: '/studio/$databaseId'
+      path: '/studio/$databaseId'
+      fullPath: '/studio/$databaseId'
+      preLoaderRoute: typeof StudioDatabaseIdRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/organizations/new': {
-      id: '/organizations/new'
-      path: '/organizations/new'
-      fullPath: '/organizations/new'
-      preLoaderRoute: typeof OrganizationsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_shell/api-keys/': {
-      id: '/_shell/api-keys/'
-      path: '/api-keys'
-      fullPath: '/api-keys/'
-      preLoaderRoute: typeof ShellApiKeysIndexRouteImport
-      parentRoute: typeof ShellRoute
     }
     '/_shell/apps/': {
       id: '/_shell/apps/'
@@ -500,39 +337,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellAppsIndexRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/backups/': {
-      id: '/_shell/backups/'
-      path: '/backups'
-      fullPath: '/backups/'
-      preLoaderRoute: typeof ShellBackupsIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/certificates/': {
-      id: '/_shell/certificates/'
-      path: '/certificates'
-      fullPath: '/certificates/'
-      preLoaderRoute: typeof ShellCertificatesIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/ci-cd/': {
-      id: '/_shell/ci-cd/'
-      path: '/ci-cd'
-      fullPath: '/ci-cd/'
-      preLoaderRoute: typeof ShellCiCdIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/clusters/': {
-      id: '/_shell/clusters/'
-      path: '/clusters'
-      fullPath: '/clusters/'
-      preLoaderRoute: typeof ShellClustersIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/compose/$id': {
-      id: '/_shell/compose/$id'
-      path: '/compose/$id'
-      fullPath: '/compose/$id'
-      preLoaderRoute: typeof ShellComposeIdRouteImport
+    '/_shell/apps/$appId': {
+      id: '/_shell/apps/$appId'
+      path: '/apps/$appId'
+      fullPath: '/apps/$appId'
+      preLoaderRoute: typeof ShellAppsAppIdRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/databases/': {
@@ -542,18 +351,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellDatabasesIndexRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/gitops/': {
-      id: '/_shell/gitops/'
-      path: '/gitops'
-      fullPath: '/gitops/'
-      preLoaderRoute: typeof ShellGitopsIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/marketplace/': {
-      id: '/_shell/marketplace/'
-      path: '/marketplace'
-      fullPath: '/marketplace/'
-      preLoaderRoute: typeof ShellMarketplaceIndexRouteImport
+    '/_shell/databases/$dbId': {
+      id: '/_shell/databases/$dbId'
+      path: '/databases/$dbId'
+      fullPath: '/databases/$dbId'
+      preLoaderRoute: typeof ShellDatabasesDbIdRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/members/': {
@@ -591,6 +393,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellProjectsIndexRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/projects/$projectId': {
+      id: '/_shell/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ShellProjectsProjectIdRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/projects/new': {
+      id: '/_shell/projects/new'
+      path: '/projects/new'
+      fullPath: '/projects/new'
+      preLoaderRoute: typeof ShellProjectsNewRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/registry/': {
       id: '/_shell/registry/'
       path: '/registry'
@@ -598,32 +414,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellRegistryIndexRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/schedules/': {
-      id: '/_shell/schedules/'
-      path: '/schedules'
-      fullPath: '/schedules/'
-      preLoaderRoute: typeof ShellSchedulesIndexRouteImport
+    '/_shell/services/': {
+      id: '/_shell/services/'
+      path: '/services'
+      fullPath: '/services/'
+      preLoaderRoute: typeof ShellServicesIndexRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/secrets/': {
-      id: '/_shell/secrets/'
-      path: '/secrets'
-      fullPath: '/secrets/'
-      preLoaderRoute: typeof ShellSecretsIndexRouteImport
+    '/_shell/services/$serviceId': {
+      id: '/_shell/services/$serviceId'
+      path: '/services/$serviceId'
+      fullPath: '/services/$serviceId'
+      preLoaderRoute: typeof ShellServicesServiceIdRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/servers/': {
-      id: '/_shell/servers/'
-      path: '/servers'
-      fullPath: '/servers/'
-      preLoaderRoute: typeof ShellServersIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/sso/': {
-      id: '/_shell/sso/'
-      path: '/sso'
-      fullPath: '/sso/'
-      preLoaderRoute: typeof ShellSsoIndexRouteImport
+    '/_shell/services/new': {
+      id: '/_shell/services/new'
+      path: '/services/new'
+      fullPath: '/services/new'
+      preLoaderRoute: typeof ShellServicesNewRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/storage/': {
@@ -640,122 +449,58 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellTraefikIndexRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/whitelabel/': {
-      id: '/_shell/whitelabel/'
-      path: '/whitelabel'
-      fullPath: '/whitelabel/'
-      preLoaderRoute: typeof ShellWhitelabelIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/studio/$dbId/': {
-      id: '/studio/$dbId/'
-      path: '/studio/$dbId'
-      fullPath: '/studio/$dbId/'
-      preLoaderRoute: typeof StudioDbIdIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_shell/apps/$appId/': {
-      id: '/_shell/apps/$appId/'
-      path: '/apps/$appId'
-      fullPath: '/apps/$appId/'
-      preLoaderRoute: typeof ShellAppsAppIdIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/databases/$dbId/': {
-      id: '/_shell/databases/$dbId/'
-      path: '/databases/$dbId'
-      fullPath: '/databases/$dbId/'
-      preLoaderRoute: typeof ShellDatabasesDbIdIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/projects/$projectId/': {
-      id: '/_shell/projects/$projectId/'
-      path: '/projects/$projectId'
-      fullPath: '/projects/$projectId/'
-      preLoaderRoute: typeof ShellProjectsProjectIdIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
-    '/_shell/projects/new/': {
-      id: '/_shell/projects/new/'
-      path: '/projects/new'
-      fullPath: '/projects/new/'
-      preLoaderRoute: typeof ShellProjectsNewIndexRouteImport
-      parentRoute: typeof ShellRoute
-    }
   }
 }
 
 interface ShellRouteChildren {
   ShellIndexRoute: typeof ShellIndexRoute
-  ShellComposeIdRoute: typeof ShellComposeIdRoute
-  ShellApiKeysIndexRoute: typeof ShellApiKeysIndexRoute
+  ShellAppsAppIdRoute: typeof ShellAppsAppIdRoute
+  ShellDatabasesDbIdRoute: typeof ShellDatabasesDbIdRoute
+  ShellProjectsProjectIdRoute: typeof ShellProjectsProjectIdRoute
+  ShellProjectsNewRoute: typeof ShellProjectsNewRoute
+  ShellServicesServiceIdRoute: typeof ShellServicesServiceIdRoute
+  ShellServicesNewRoute: typeof ShellServicesNewRoute
   ShellAppsIndexRoute: typeof ShellAppsIndexRoute
-  ShellBackupsIndexRoute: typeof ShellBackupsIndexRoute
-  ShellCertificatesIndexRoute: typeof ShellCertificatesIndexRoute
-  ShellCiCdIndexRoute: typeof ShellCiCdIndexRoute
-  ShellClustersIndexRoute: typeof ShellClustersIndexRoute
   ShellDatabasesIndexRoute: typeof ShellDatabasesIndexRoute
-  ShellGitopsIndexRoute: typeof ShellGitopsIndexRoute
-  ShellMarketplaceIndexRoute: typeof ShellMarketplaceIndexRoute
   ShellMembersIndexRoute: typeof ShellMembersIndexRoute
   ShellMonitoringIndexRoute: typeof ShellMonitoringIndexRoute
   ShellNetworkingIndexRoute: typeof ShellNetworkingIndexRoute
   ShellNotificationsIndexRoute: typeof ShellNotificationsIndexRoute
   ShellProjectsIndexRoute: typeof ShellProjectsIndexRoute
   ShellRegistryIndexRoute: typeof ShellRegistryIndexRoute
-  ShellSchedulesIndexRoute: typeof ShellSchedulesIndexRoute
-  ShellSecretsIndexRoute: typeof ShellSecretsIndexRoute
-  ShellServersIndexRoute: typeof ShellServersIndexRoute
-  ShellSsoIndexRoute: typeof ShellSsoIndexRoute
+  ShellServicesIndexRoute: typeof ShellServicesIndexRoute
   ShellStorageIndexRoute: typeof ShellStorageIndexRoute
   ShellTraefikIndexRoute: typeof ShellTraefikIndexRoute
-  ShellWhitelabelIndexRoute: typeof ShellWhitelabelIndexRoute
-  ShellAppsAppIdIndexRoute: typeof ShellAppsAppIdIndexRoute
-  ShellDatabasesDbIdIndexRoute: typeof ShellDatabasesDbIdIndexRoute
-  ShellProjectsProjectIdIndexRoute: typeof ShellProjectsProjectIdIndexRoute
-  ShellProjectsNewIndexRoute: typeof ShellProjectsNewIndexRoute
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
   ShellIndexRoute: ShellIndexRoute,
-  ShellComposeIdRoute: ShellComposeIdRoute,
-  ShellApiKeysIndexRoute: ShellApiKeysIndexRoute,
+  ShellAppsAppIdRoute: ShellAppsAppIdRoute,
+  ShellDatabasesDbIdRoute: ShellDatabasesDbIdRoute,
+  ShellProjectsProjectIdRoute: ShellProjectsProjectIdRoute,
+  ShellProjectsNewRoute: ShellProjectsNewRoute,
+  ShellServicesServiceIdRoute: ShellServicesServiceIdRoute,
+  ShellServicesNewRoute: ShellServicesNewRoute,
   ShellAppsIndexRoute: ShellAppsIndexRoute,
-  ShellBackupsIndexRoute: ShellBackupsIndexRoute,
-  ShellCertificatesIndexRoute: ShellCertificatesIndexRoute,
-  ShellCiCdIndexRoute: ShellCiCdIndexRoute,
-  ShellClustersIndexRoute: ShellClustersIndexRoute,
   ShellDatabasesIndexRoute: ShellDatabasesIndexRoute,
-  ShellGitopsIndexRoute: ShellGitopsIndexRoute,
-  ShellMarketplaceIndexRoute: ShellMarketplaceIndexRoute,
   ShellMembersIndexRoute: ShellMembersIndexRoute,
   ShellMonitoringIndexRoute: ShellMonitoringIndexRoute,
   ShellNetworkingIndexRoute: ShellNetworkingIndexRoute,
   ShellNotificationsIndexRoute: ShellNotificationsIndexRoute,
   ShellProjectsIndexRoute: ShellProjectsIndexRoute,
   ShellRegistryIndexRoute: ShellRegistryIndexRoute,
-  ShellSchedulesIndexRoute: ShellSchedulesIndexRoute,
-  ShellSecretsIndexRoute: ShellSecretsIndexRoute,
-  ShellServersIndexRoute: ShellServersIndexRoute,
-  ShellSsoIndexRoute: ShellSsoIndexRoute,
+  ShellServicesIndexRoute: ShellServicesIndexRoute,
   ShellStorageIndexRoute: ShellStorageIndexRoute,
   ShellTraefikIndexRoute: ShellTraefikIndexRoute,
-  ShellWhitelabelIndexRoute: ShellWhitelabelIndexRoute,
-  ShellAppsAppIdIndexRoute: ShellAppsAppIdIndexRoute,
-  ShellDatabasesDbIdIndexRoute: ShellDatabasesDbIdIndexRoute,
-  ShellProjectsProjectIdIndexRoute: ShellProjectsProjectIdIndexRoute,
-  ShellProjectsNewIndexRoute: ShellProjectsNewIndexRoute,
 }
 
 const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   ShellRoute: ShellRouteWithChildren,
-  OrganizationsIdRoute: OrganizationsIdRoute,
-  OrganizationsNewRoute: OrganizationsNewRoute,
+  StudioDatabaseIdRoute: StudioDatabaseIdRoute,
   LoginIndexRoute: LoginIndexRoute,
   OnboardingIndexRoute: OnboardingIndexRoute,
-  StudioDbIdIndexRoute: StudioDbIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

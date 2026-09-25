@@ -25,6 +25,7 @@ SELECT s.id, s.org_id, s.kind, s.status,
        COALESCE((SELECT d.status FROM deployments d WHERE d.service_id = s.id ORDER BY d.number DESC LIMIT 1), '') AS latest_deployment
 FROM services s
 WHERE s.deleted_at IS NULL
+  AND s.status NOT IN ('starting', 'stopping')
 ORDER BY s.created_at, s.id`)
 	if err != nil {
 		return nil, err
@@ -44,11 +45,11 @@ ORDER BY s.created_at, s.id`)
 	return targets, nil
 }
 
-func (s *Store) UpdateRuntimeStatus(ctx context.Context, serviceID uuid.UUID, status string) (bool, error) {
+func (s *Store) UpdateRuntimeStatus(ctx context.Context, serviceID uuid.UUID, expectedStatus, status string) (bool, error) {
 	result, err := s.db.Exec(ctx, `
 UPDATE services
 SET status = $2, updated_at = now()
-WHERE id = $1 AND deleted_at IS NULL AND status IS DISTINCT FROM $2`, serviceID, status)
+WHERE id = $1 AND deleted_at IS NULL AND status = $2 AND status NOT IN ('starting', 'stopping') AND status IS DISTINCT FROM $3`, serviceID, expectedStatus, status)
 	if err != nil {
 		return false, err
 	}

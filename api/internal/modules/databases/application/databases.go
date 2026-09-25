@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -56,25 +58,25 @@ const (
 	maxOrganizationStorageMB = 512000
 )
 
-func (d *Databases) Create(ctx context.Context, orgID, projectID uuid.UUID, name string, engine domain.Engine, version, user, password string, memMB, storageMB int) (*domain.Database, error) {
+func (d *Databases) Create(ctx context.Context, orgID, projectID uuid.UUID, name string, engine domain.Engine, version, user, password, cpus string, memMB, storageMB int) (*domain.Database, error) {
 	var environmentID *uuid.UUID
 	if id, err := d.Apps.DefaultEnvironment(ctx, projectID); err == nil {
 		environmentID = &id
 	}
-	return d.create(ctx, orgID, projectID, environmentID, name, engine, version, user, password, memMB, storageMB)
+	return d.create(ctx, orgID, projectID, environmentID, name, engine, version, user, password, cpus, memMB, storageMB)
 }
 
-func (d *Databases) CreateInEnvironment(ctx context.Context, orgID, projectID, environmentID uuid.UUID, name string, engine domain.Engine, version, user, password string, memMB, storageMB int) (*domain.Database, error) {
+func (d *Databases) CreateInEnvironment(ctx context.Context, orgID, projectID, environmentID uuid.UUID, name string, engine domain.Engine, version, user, password, cpus string, memMB, storageMB int) (*domain.Database, error) {
 	if _, err := d.Apps.GetProject(ctx, projectID, orgID); err != nil {
 		return nil, err
 	}
 	if _, err := d.Apps.GetEnvironment(ctx, environmentID, projectID); err != nil {
 		return nil, err
 	}
-	return d.create(ctx, orgID, projectID, &environmentID, name, engine, version, user, password, memMB, storageMB)
+	return d.create(ctx, orgID, projectID, &environmentID, name, engine, version, user, password, cpus, memMB, storageMB)
 }
 
-func (d *Databases) create(ctx context.Context, orgID, projectID uuid.UUID, environmentID *uuid.UUID, name string, engine domain.Engine, version, user, password string, memMB, storageMB int) (*domain.Database, error) {
+func (d *Databases) create(ctx context.Context, orgID, projectID uuid.UUID, environmentID *uuid.UUID, name string, engine domain.Engine, version, user, password, cpus string, memMB, storageMB int) (*domain.Database, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 64 {
 		return nil, domain.ErrValidation
@@ -83,6 +85,13 @@ func (d *Databases) create(ctx context.Context, orgID, projectID uuid.UUID, envi
 		return nil, domain.ErrValidation
 	}
 	if memMB < 0 || memMB > maxDatabaseMemoryMB || storageMB < 0 || storageMB > maxDatabaseStorageMB {
+		return nil, domain.ErrValidation
+	}
+	cpus = strings.TrimSpace(cpus)
+	if cpus == "" {
+		cpus = "0.5"
+	}
+	if !validDatabaseCPUs(cpus) {
 		return nil, domain.ErrValidation
 	}
 	if usageStore, ok := d.Store.(domain.OrganizationStorageUsage); ok {
@@ -138,12 +147,20 @@ func (d *Databases) create(ctx context.Context, orgID, projectID uuid.UUID, envi
 	db, err := d.Store.CreateDatabase(ctx, &domain.Database{
 		OrgID: orgID, ProjectID: projectID, EnvironmentID: environmentID, Name: name, Engine: engine,
 		Version: version, Port: defaultPorts[engine], DBName: name, User: user,
-		PassEnc: passEnc, MemMB: memMB, StorageMB: storageMB, Status: "creating",
+		PassEnc: passEnc, CPUs: cpus, MemMB: memMB, StorageMB: storageMB, Status: "creating",
 	})
 	if err != nil {
 		return nil, err
 	}
 	return db, nil
+}
+
+func validDatabaseCPUs(value string) bool {
+	cpus, err := strconv.ParseFloat(value, 64)
+	if err != nil || cpus < 0.25 || cpus > 2 || math.Abs(cpus*4-math.Round(cpus*4)) > 1e-9 {
+		return false
+	}
+	return true
 }
 
 func (d *Databases) List(ctx context.Context, orgID uuid.UUID) ([]domain.Database, error) {

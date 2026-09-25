@@ -40,7 +40,7 @@ func (h *Handler) Terminal(c *gin.Context) {
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "interactive terminal unavailable"})
 		return
 	}
-	session, err := runtime.OpenInteractive(c.Request.Context(), containerID, shell)
+	session, err := runtime.OpenInteractive(c.Request.Context(), containerID, shell, "-i")
 	if err != nil {
 		conn.Close(websocket.StatusInternalError, "terminal unavailable")
 		return

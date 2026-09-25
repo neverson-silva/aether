@@ -165,9 +165,10 @@ func (s *Store) Register(ctx context.Context, email, name, passwordHash, globalR
 	if err != nil {
 		return nil, nil, err
 	}
-	if !hasUsers {
-		globalRole = "admin"
+	if hasUsers {
+		return nil, nil, domain.ErrOwnerAlreadyRegistered
 	}
+	globalRole = "admin"
 	userRow, err := q.CreateUser(ctx, gen.CreateUserParams{
 		Email: email, Name: name, PasswordHash: passwordHash, GlobalRole: globalRole,
 	})

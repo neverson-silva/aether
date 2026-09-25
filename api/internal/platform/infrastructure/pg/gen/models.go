@@ -274,6 +274,7 @@ type Database struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	ServiceID     uuid.UUID     `json:"service_id"`
 	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	Cpus          string        `json:"cpus"`
 }
 
 type Deployment struct {

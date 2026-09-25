@@ -30,6 +30,11 @@ info() { printf '\033[0;32m[builder]\033[0m %s\n' "$*"; }
 
 command -v docker >/dev/null || { echo "docker is required"; exit 1; }
 info "host distro: $HOST_DISTRO; builder base: $BUILDER_BASE_IMAGE"
+if ! docker image inspect "$RUN_IMAGE" >/dev/null 2>&1; then
+  info "pulling CNB run image: $RUN_IMAGE"
+  docker pull "$RUN_IMAGE"
+fi
+docker image inspect "$RUN_IMAGE" >/dev/null 2>&1 || { echo "CNB run image is not available in the Docker daemon: $RUN_IMAGE"; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 1. Local registry

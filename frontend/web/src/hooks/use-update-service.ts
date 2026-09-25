@@ -1,21 +1,22 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiPatch } from "../api/client";
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiPatch } from '../api/client'
 
 export interface ServiceUpdate {
-  name?: string;
-  port?: number;
-  build_type?: "dockerfile" | "buildpacks" | "custom" | "compose";
-  image_retention?: number;
-  resources?: { cpus?: string; mem_mb?: number; storage_mb?: number };
+  name?: string
+  port?: number
+  build_type?: 'dockerfile' | 'buildpacks' | 'custom' | 'compose'
+  image_retention?: number
+  resources?: { cpus?: string; mem_mb?: number; storage_mb?: number }
 }
 
 export function useUpdateService() {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ serviceId, update }: { serviceId: string; update: ServiceUpdate }) => apiPatch(`/api/v1/services/${serviceId}`, update),
+    mutationFn: ({ serviceId, update }: { serviceId: string; update: ServiceUpdate }) =>
+      apiPatch(`/api/v1/services/${serviceId}`, update),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["service", variables.serviceId] });
-      queryClient.invalidateQueries({ queryKey: ["services"] });
+      queryClient.invalidateQueries({ queryKey: ['service', variables.serviceId] })
+      queryClient.invalidateQueries({ queryKey: ['services'] })
     },
-  });
+  })
 }

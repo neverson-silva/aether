@@ -1,0 +1,159 @@
+@import "tailwindcss";
+@import "./foundations/tokens.css";
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--ely-color-canvas);
+  color: var(--ely-color-text);
+  font-family: var(--ely-font-interface);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  transition:
+    background-color var(--ely-duration-overlay) var(--ely-ease-out),
+    color var(--ely-duration-fast) var(--ely-ease-out);
+}
+
+#overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ely-z-popover);
+  pointer-events: none;
+}
+
+#overlay-root > * {
+  pointer-events: auto;
+}
+
+.ely-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ely-z-dialog);
+  width: 100%;
+  height: 100dvh;
+  background: var(--ely-overlay-backdrop-color);
+  backdrop-filter: blur(var(--ely-overlay-backdrop-blur)) saturate(var(--ely-overlay-backdrop-saturation));
+  transition: opacity var(--ely-duration-overlay) var(--ely-ease-out), backdrop-filter var(--ely-duration-overlay) var(--ely-ease-out);
+}
+
+.ely-modal-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--ely-z-dialog) + 1);
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100dvh;
+  padding: var(--ely-space-4);
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.ely-modal-surface {
+  position: relative;
+  z-index: calc(var(--ely-z-dialog) + 1);
+  width: min(100%, 32rem);
+  max-height: calc(100dvh - 2rem);
+  pointer-events: auto;
+  overflow: auto;
+  border: 1px solid var(--ely-modal-surface-border);
+  border-radius: var(--ely-modal-radius);
+  background: var(--ely-modal-surface);
+  color: var(--ely-color-text-primary);
+  box-shadow: var(--ely-modal-surface-shadow);
+  backdrop-filter: blur(var(--ely-modal-surface-blur)) saturate(1.1);
+  outline: none;
+  transition: opacity var(--ely-duration-overlay) var(--ely-ease-out), transform var(--ely-duration-overlay) var(--ely-ease-out);
+  will-change: opacity, transform;
+}
+
+.ely-modal-surface[data-starting-style],
+.ely-modal-surface[data-ending-style] {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+}
+
+.ely-modal-backdrop[data-starting-style],
+.ely-modal-backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.ely-modal-surface--command {
+  width: min(100%, 44rem);
+  max-height: min(76dvh, 45rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ely-modal-backdrop,
+  .ely-modal-surface {
+    transition: opacity 0ms;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ely-modal-backdrop {
+    background: var(--ely-color-canvas);
+    backdrop-filter: none;
+  }
+
+  .ely-modal-surface {
+    background: var(--ely-color-surface-1);
+    backdrop-filter: none;
+  }
+}
+
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+a[href],
+[role="button"]:not([aria-disabled="true"]) {
+  transition-property:
+    transform, background-color, border-color, box-shadow, color, opacity;
+  transition-duration: var(--ely-duration-fast);
+  transition-timing-function: var(--ely-ease-out);
+}
+
+button:not(:disabled):active,
+a[href]:active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(var(--ely-motion-press-scale));
+}
+
+::selection {
+  background: var(--ely-color-selection);
+  color: var(--ely-color-text-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active,
+  a[href]:active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: none;
+  }
+}
+
+[data-motion="reduced"],
+[data-motion="reduced"] * {
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0ms !important;
+}
+
+[data-motion="reduced"] button:not(:disabled):active,
+[data-motion="reduced"] a[href]:active,
+[data-motion="reduced"] [role="button"]:not([aria-disabled="true"]):active {
+  transform: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-material="translucent"] {
+    background: var(--ely-color-surface-0);
+    backdrop-filter: none;
+  }
+}

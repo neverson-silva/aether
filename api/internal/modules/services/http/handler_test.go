@@ -30,3 +30,23 @@ func TestLatestRunningContainerWithoutRunningItems(t *testing.T) {
 		t.Fatalf("expected no running container, got %s", item.ID)
 	}
 }
+
+func TestExplicitlyStoppedServiceStatus(t *testing.T) {
+	tests := []struct {
+		name             string
+		storedStatus     string
+		activeDeployment bool
+		want             bool
+	}{
+		{name: "manually stopped service", storedStatus: "stopped", want: true},
+		{name: "stopped while deployment is active", storedStatus: "stopped", activeDeployment: true, want: false},
+		{name: "unexpectedly exited container", storedStatus: "running", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := explicitlyStopped(test.storedStatus, test.activeDeployment); got != test.want {
+				t.Fatalf("explicitlyStopped() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}

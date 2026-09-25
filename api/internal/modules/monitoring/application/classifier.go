@@ -24,15 +24,19 @@ type rawContainer struct {
 }
 
 var aetherServiceNames = map[string]string{
-	"aether-api":      "api",
-	"aether-postgres": "postgres",
-	"aether-redis":    "redis",
-	"aether-web":      "web",
-	"aether-registry": "registry",
-	"aether-traefik":  "proxy",
+	"aether-api":                 "api",
+	"aether-docker-socket-proxy": "docker-socket-proxy",
+	"aether-monitoring":          "monitoring",
+	"aether-nats":                "nats",
+	"aether-postgres":            "postgres",
+	"aether-redis":               "redis",
+	"aether-worker":              "worker",
+	"aether-web":                 "web",
+	"aether-registry":            "registry",
+	"aether-traefik":             "proxy",
 }
 
-var userContainerPattern = regexp.MustCompile(`^aether-[0-9a-f]{8}-\d+$`)
+var userContainerPattern = regexp.MustCompile(`^aether-[0-9a-f]{8}-`)
 
 // Classify determines ownership (aether/user/unknown) using a single source
 // of truth: deploy-time labels (aether.owner, aether.service-*). Legacy
@@ -66,6 +70,9 @@ func Classify(raw rawContainer) (owner, serviceType, serviceID, projectID, name 
 	// Legacy fallback: user application containers (pre-label deploys).
 	if userContainerPattern.MatchString(raw.Name) {
 		return domain.OwnerUser, "app", "", "", raw.Name
+	}
+	if strings.HasPrefix(raw.Name, "aether-") {
+		return domain.OwnerAether, "platform", "", "", raw.Name
 	}
 	return domain.OwnerUnknown, "container", "", "", raw.Name
 }

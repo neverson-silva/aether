@@ -1,9 +1,11 @@
 package http
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,7 +17,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
 
@@ -30,6 +31,7 @@ import (
 	realtimedomain "aether/internal/modules/realtime/domain"
 	servicedomain "aether/internal/modules/services/domain"
 	templatesapplication "aether/internal/modules/templates/application"
+	variablesapplication "aether/internal/modules/variables/application"
 	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/queue"
 	"aether/internal/platform/worker"
@@ -56,6 +58,9 @@ type Handler struct {
 	}
 	appWebhook interface {
 		SetWebhook(context.Context, uuid.UUID, uuid.UUID, string) error
+	}
+	lifecycle interface {
+		Request(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, servicedomain.Kind, servicedomain.LifecycleAction) (*servicedomain.LifecycleOperation, error)
 	}
 	compose interface {
 		Up(context.Context, uuid.UUID, uuid.UUID) error
@@ -85,8 +90,11 @@ type Handler struct {
 		SetEnv(context.Context, uuid.UUID, uuid.UUID, string, string, bool) error
 		DeleteEnv(context.Context, uuid.UUID, uuid.UUID, string) error
 	}
-	logsDir         string
-	secretCipher    appsdomain.SecretCipher
+	logsDir      string
+	secretCipher appsdomain.SecretCipher
+	resolver     interface {
+		Effective(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error)
+	}
 	runtime         worker.Runtime
 	deploymentQueue queue.Queue
 	notifier        interface {
@@ -101,6 +109,13 @@ func (h *Handler) WithNotifier(notifier interface {
 	NotifyDeploy(context.Context, deploydomain.DeployEvent)
 }) *Handler {
 	h.notifier = notifier
+	return h
+}
+
+func (h *Handler) WithLifecycle(lifecycle interface {
+	Request(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, servicedomain.Kind, servicedomain.LifecycleAction) (*servicedomain.LifecycleOperation, error)
+}) *Handler {
+	h.lifecycle = lifecycle
 	return h
 }
 
@@ -148,6 +163,11 @@ func New(db *pgxpool.Pool) *Handler {
 
 func (h *Handler) WithRuntime(runtime worker.Runtime) *Handler {
 	h.runtime = runtime
+	return h
+}
+
+func (h *Handler) WithResolver(resolver *variablesapplication.Resolver) *Handler {
+	h.resolver = resolver
 	return h
 }
 
@@ -278,9 +298,18 @@ ORDER BY created_at, name`
 						containers = append(containers, gin.H{"id": state.ID, "name": state.Name, "status": state.Status, "healthy": state.Healthy})
 					}
 					service["runtime"] = gin.H{"containers": containers}
-					service["status"] = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(service["kind"].(string)), states, latestDeployment, deploymentInProgress(latestDeployment), deploymentCount > 0))
-				} else {
-					if latestDeployment != "" {
+					if !isLifecycleTransition(serviceStatus) {
+						active := deploymentInProgress(latestDeployment)
+						if explicitlyStopped(serviceStatus, active) {
+							service["status"] = string(servicedomain.StatusStopped)
+						} else {
+							service["status"] = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(service["kind"].(string)), states, latestDeployment, active, deploymentCount > 0))
+						}
+					}
+				} else if !isLifecycleTransition(serviceStatus) {
+					if explicitlyStopped(serviceStatus, deploymentInProgress(latestDeployment)) {
+						service["status"] = string(servicedomain.StatusStopped)
+					} else if latestDeployment != "" {
 						service["status"] = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(service["kind"].(string)), nil, latestDeployment, false, true))
 					} else {
 						service["status"] = serviceStatus
@@ -334,12 +363,18 @@ WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
 }
 
 func (h *Handler) projectedServiceStatus(c *gin.Context, serviceID, specID uuid.UUID, kind servicedomain.Kind, storedStatus string) servicedomain.Status {
+	if isLifecycleTransition(storedStatus) {
+		return servicedomain.Status(storedStatus)
+	}
 	var latestStatus string
 	var deployments int
 	if err := h.db.QueryRow(c.Request.Context(), `SELECT COUNT(*), COALESCE((SELECT status FROM deployments WHERE service_id = $1 ORDER BY number DESC LIMIT 1), '') FROM deployments WHERE service_id = $1`, serviceID).Scan(&deployments, &latestStatus); err != nil {
 		deployments = 0
 	}
 	active := latestStatus == "queued" || latestStatus == "building" || latestStatus == "starting" || latestStatus == "health_checking"
+	if explicitlyStopped(storedStatus, active) {
+		return servicedomain.StatusStopped
+	}
 	if states, err := runtimeContainerStates(c, h.runtime, serviceID, specID); err == nil && len(states) > 0 {
 		if active && !(kind == servicedomain.KindCompose && hasRunningContainer(states)) {
 			return servicedomain.StatusDeploying
@@ -380,6 +415,14 @@ func deploymentInProgress(status string) bool {
 	default:
 		return false
 	}
+}
+
+func explicitlyStopped(storedStatus string, activeDeployment bool) bool {
+	return !activeDeployment && strings.EqualFold(strings.TrimSpace(storedStatus), string(servicedomain.StatusStopped))
+}
+
+func isLifecycleTransition(status string) bool {
+	return status == string(servicedomain.StatusStarting) || status == string(servicedomain.StatusStopping)
 }
 
 func (h *Handler) latestDeploymentStatus(c *gin.Context, serviceID uuid.UUID) (string, int) {
@@ -452,6 +495,10 @@ func (h *Handler) Update(c *gin.Context) {
 			return
 		}
 	}
+	if kind == string(servicedomain.KindCompose) && (input.Resources != nil || input.ImageRetention != nil || input.BuildType != nil) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "resource allocation and image retention are configured in the compose definition"})
+		return
+	}
 	if _, err := h.db.Exec(c.Request.Context(), `UPDATE services SET name = COALESCE($2, name), updated_at = now() WHERE id = $1 AND org_id = $3`, id, name, orgID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "service could not be updated"})
 		return
@@ -469,8 +516,13 @@ func (h *Handler) Update(c *gin.Context) {
 			return
 		}
 	}
-	if kind == string(servicedomain.KindDatabase) && input.Port != nil {
-		if _, err := h.db.Exec(c.Request.Context(), `UPDATE databases SET port = $2, updated_at = now() WHERE id = $1`, specID, *input.Port); err != nil {
+	if kind == string(servicedomain.KindDatabase) {
+		var memMB, storageMB *int
+		if input.Resources != nil {
+			memMB = input.Resources.MemMB
+			storageMB = input.Resources.StorageMB
+		}
+		if _, err := h.db.Exec(c.Request.Context(), `UPDATE databases SET port = COALESCE($2, port), mem_mb = COALESCE($3, mem_mb), storage_mb = COALESCE($4, storage_mb), updated_at = now() WHERE id = $1`, specID, input.Port, memMB, storageMB); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database specification could not be updated"})
 			return
 		}
@@ -623,6 +675,37 @@ func (h *Handler) Action(c *gin.Context) {
 	}
 	action := c.Param("action")
 	ctx := c.Request.Context()
+	if action == "start" || action == "stop" {
+		if h.lifecycle == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service lifecycle queue is not configured"})
+			return
+		}
+		lifecycleAction := servicedomain.LifecycleStart
+		if action == "stop" {
+			lifecycleAction = servicedomain.LifecycleStop
+		}
+		operation, requestErr := h.lifecycle.Request(ctx, id, specID, orgID(c), servicedomain.Kind(kind), lifecycleAction)
+		if requestErr != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(requestErr, servicedomain.ErrNotFound) {
+				status = http.StatusNotFound
+			} else if errors.Is(requestErr, servicedomain.ErrLifecycleConflict) {
+				status = http.StatusConflict
+			}
+			c.JSON(status, gin.H{"error": requestErr.Error()})
+			return
+		}
+		if operation.ID == uuid.Nil {
+			c.JSON(http.StatusOK, gin.H{"service_id": operation.ServiceID, "action": action, "status": operation.Status})
+			return
+		}
+		if operation.Status == "starting" || operation.Status == "stopping" || operation.Status == "accepted" || operation.Status == "running" {
+			c.JSON(http.StatusAccepted, gin.H{"service_id": operation.ServiceID, "action": action, "status": lifecycleActionStatus(lifecycleAction), "operation_id": optionalOperationID(operation.ID)})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"service_id": operation.ServiceID, "action": action, "status": operation.Status})
+		return
+	}
 	var result any
 	handled := false
 	switch kind {
@@ -632,20 +715,6 @@ func (h *Handler) Action(c *gin.Context) {
 			result, err = h.appDeploy.Deploy(ctx, specID, orgID(c), deployapplication.DeployOpts{ServiceID: id, Trigger: "api"})
 		} else if h.appOps != nil {
 			switch action {
-			case "start":
-				handled = true
-				if h.appServiceOps != nil {
-					result, err = h.appServiceOps.StartService(ctx, specID, id, orgID(c))
-				} else {
-					result, err = h.appOps.Start(ctx, specID, orgID(c))
-				}
-			case "stop":
-				handled = true
-				if h.appServiceOps != nil {
-					result, err = h.appServiceOps.StopService(ctx, specID, id, orgID(c))
-				} else {
-					result, err = h.appOps.Stop(ctx, specID, orgID(c))
-				}
 			case "restart":
 				handled = true
 				if h.appServiceOps != nil {
@@ -665,18 +734,11 @@ func (h *Handler) Action(c *gin.Context) {
 	case string(servicedomain.KindCompose):
 		if h.compose != nil {
 			switch action {
-			case "deploy", "start":
+			case "deploy":
 				handled = true
-				if action == "deploy" {
-					var deploymentID uuid.UUID
-					deploymentID, err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
-					result = gin.H{"deployment_id": deploymentID}
-				} else {
-					err = h.compose.Start(ctx, specID, orgID(c))
-				}
-			case "stop":
-				handled = true
-				err = h.compose.Stop(ctx, specID, orgID(c))
+				var deploymentID uuid.UUID
+				deploymentID, err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
+				result = gin.H{"deployment_id": deploymentID}
 			case "restart":
 				handled = true
 				err = h.compose.Restart(ctx, specID, orgID(c))
@@ -693,12 +755,6 @@ func (h *Handler) Action(c *gin.Context) {
 				var deploymentID uuid.UUID
 				deploymentID, err = h.enqueueServiceDeployment(ctx, id, specID, orgID(c), kind)
 				result = gin.H{"deployment_id": deploymentID}
-			case "start":
-				handled = true
-				result, err = h.database.Start(ctx, specID, orgID(c))
-			case "stop":
-				handled = true
-				result, err = h.database.Stop(ctx, specID, orgID(c))
 			case "restart":
 				handled = true
 				_, err = h.database.Stop(ctx, specID, orgID(c))
@@ -715,16 +771,40 @@ func (h *Handler) Action(c *gin.Context) {
 		err = errors.New("unsupported service action")
 	}
 	if err == nil && action == "delete" {
-		var result pgconn.CommandTag
-		if result, err = h.db.Exec(ctx, `DELETE FROM services WHERE id = $1 AND org_id = $2`, id, orgID(c)); err != nil || result.RowsAffected() != 1 {
-			err = errors.New("service identity could not be removed")
-		}
+		_, err = h.db.Exec(ctx, `DELETE FROM services WHERE id = $1 AND org_id = $2`, id, orgID(c))
 	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	serviceStatus := ""
+	switch action {
+	case "stop":
+		serviceStatus = string(servicedomain.StatusStopped)
+	case "start", "restart":
+		serviceStatus = string(servicedomain.StatusRunning)
+	}
+	if serviceStatus != "" {
+		if _, err := h.db.Exec(ctx, `UPDATE services SET status = $1, updated_at = now() WHERE id = $2 AND org_id = $3 AND deleted_at IS NULL`, serviceStatus, id, orgID(c)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "service state could not be saved"})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"service_id": id, "action": action, "result": result})
+}
+
+func lifecycleActionStatus(action servicedomain.LifecycleAction) servicedomain.Status {
+	if action == servicedomain.LifecycleStart {
+		return servicedomain.StatusStarting
+	}
+	return servicedomain.StatusStopping
+}
+
+func optionalOperationID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
 }
 
 func (h *Handler) enqueueServiceDeployment(ctx context.Context, serviceID, specID, organizationID uuid.UUID, kind string) (uuid.UUID, error) {
@@ -740,6 +820,23 @@ func (h *Handler) EnqueueServiceDeployment(ctx context.Context, serviceID, specI
 		return uuid.Nil, err
 	}
 	defer tx.Rollback(ctx)
+	var currentStatus string
+	if err := tx.QueryRow(ctx, `SELECT status FROM services WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL FOR UPDATE`, serviceID, organizationID).Scan(&currentStatus); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, deploydomain.ErrNotFound
+		}
+		return uuid.Nil, err
+	}
+	if isLifecycleTransition(currentStatus) {
+		return uuid.Nil, deploydomain.ErrConflict
+	}
+	var lifecycleActive bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM service_lifecycle_operations WHERE service_id = $1 AND status IN ('accepted', 'running'))`, serviceID).Scan(&lifecycleActive); err != nil {
+		return uuid.Nil, err
+	}
+	if lifecycleActive {
+		return uuid.Nil, deploydomain.ErrConflict
+	}
 	var deploymentID uuid.UUID
 	appID := any(nil)
 	composeYAML := ""
@@ -761,6 +858,9 @@ func (h *Handler) EnqueueServiceDeployment(ctx context.Context, serviceID, specI
 		return uuid.Nil, err
 	}
 	if err := tx.QueryRow(ctx, `INSERT INTO deployments (app_id, service_id, number, status, trigger, triggered_by, compose_yaml) VALUES ($1, $2, $3, 'queued', $4, 'user', $5) RETURNING id`, appID, serviceID, number, trigger, composeYAML).Scan(&deploymentID); err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE services SET status = $1, updated_at = now() WHERE id = $2 AND org_id = $3 AND deleted_at IS NULL`, string(servicedomain.StatusDeploying), serviceID, organizationID); err != nil {
 		return uuid.Nil, err
 	}
 	payload, err := json.Marshal(queue.Job{ID: deploymentID.String(), Type: "deployment.execute", DeploymentID: deploymentID.String(), AppID: specID.String(), OrgID: organizationID.String(), Payload: mustJSON(map[string]string{
@@ -865,12 +965,77 @@ func (h *Handler) Logs(c *gin.Context) {
 		}
 	}
 	if c.Query("follow") == "1" {
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.String(http.StatusOK, "data: %s\n\n", strings.ReplaceAll(string(output), "\n", "\ndata: "))
-		return
+		stream := newServiceSSEWriter(c)
+		stream.Lines(strings.Split(strings.TrimSpace(string(output)), "\n"))
+		if len(items) == 0 {
+			stream.Ping()
+			<-c.Request.Context().Done()
+			return
+		}
+		ctx, cancel := context.WithCancel(c.Request.Context())
+		defer cancel()
+		reader, writer := io.Pipe()
+		go func() {
+			_ = h.runtime.FollowLogs(ctx, items[0].ID, writer)
+			_ = writer.Close()
+		}()
+		scanner := bufio.NewScanner(reader)
+		heartbeat := time.NewTicker(20 * time.Second)
+		defer heartbeat.Stop()
+		for {
+			select {
+			case <-c.Request.Context().Done():
+				return
+			case <-heartbeat.C:
+				stream.Ping()
+			default:
+				if scanner.Scan() {
+					stream.Line(scanner.Text())
+					continue
+				}
+				if err := scanner.Err(); err != nil {
+					return
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"service_id": id, "logs": string(output)})
+}
+
+type serviceSSEWriter struct {
+	c   *gin.Context
+	buf *bufio.Writer
+}
+
+func newServiceSSEWriter(c *gin.Context) *serviceSSEWriter {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Flush()
+	return &serviceSSEWriter{c: c, buf: bufio.NewWriter(c.Writer)}
+}
+
+func (w *serviceSSEWriter) Line(line string) {
+	if line == "" {
+		return
+	}
+	_, _ = w.buf.WriteString("data: " + line + "\n\n")
+	_ = w.buf.Flush()
+	w.c.Writer.Flush()
+}
+
+func (w *serviceSSEWriter) Lines(lines []string) {
+	for _, line := range lines {
+		w.Line(line)
+	}
+}
+
+func (w *serviceSSEWriter) Ping() {
+	_, _ = w.buf.WriteString(": ping\n\n")
+	_ = w.buf.Flush()
+	w.c.Writer.Flush()
 }
 
 func latestRunningContainer(items []worker.ContainerInfo) (worker.ContainerInfo, bool) {
@@ -1017,12 +1182,17 @@ func (h *Handler) Stats(c *gin.Context) {
 		states = append(states, servicedomain.ContainerState{ID: item.ID, Name: item.Name, Status: item.State, Healthy: item.Healthy})
 	}
 	latestDeployment, deploymentCount := h.latestDeploymentStatus(c, id)
-	if deploymentInProgress(latestDeployment) && !(servicedomain.Kind(kind) == servicedomain.KindCompose && hasRunningContainer(states)) {
+	activeDeployment := deploymentInProgress(latestDeployment)
+	if isLifecycleTransition(state) {
+		state = string(servicedomain.Status(state))
+	} else if explicitlyStopped(state, activeDeployment) {
+		state = string(servicedomain.StatusStopped)
+	} else if activeDeployment && !(servicedomain.Kind(kind) == servicedomain.KindCompose && hasRunningContainer(states)) {
 		state = string(servicedomain.StatusDeploying)
 	} else if h.hasMissingPublishedPort(c, servicedomain.Kind(kind), specID, states) {
 		state = string(servicedomain.StatusDegraded)
 	} else {
-		state = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(kind), states, latestDeployment, deploymentInProgress(latestDeployment), deploymentCount > 0))
+		state = string(servicedomain.ProjectStatusWithDeployment(servicedomain.Kind(kind), states, latestDeployment, activeDeployment, deploymentCount > 0))
 	}
 	var cpu, used, limit float64
 	for _, item := range items {
@@ -1269,6 +1439,14 @@ func (h *Handler) Environment(c *gin.Context) {
 	defer rows.Close()
 	result := make([]gin.H, 0)
 	includeSecrets := c.Query("secrets") == "1" || strings.EqualFold(c.Query("secrets"), "true")
+	resolved := map[string]string{}
+	if h.resolver != nil {
+		resolved, err = h.resolver.Effective(c.Request.Context(), id, orgID(c))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "environment could not be resolved"})
+			return
+		}
+	}
 	for rows.Next() {
 		var name, value string
 		var secret bool
@@ -1276,17 +1454,23 @@ func (h *Handler) Environment(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
+		storedValue := value
+		if resolvedValue, ok := resolved[name]; ok {
+			value = resolvedValue
+		}
+		secret = secret || strings.Contains(storedValue, "${")
 		if secret && value != "" {
 			if !includeSecrets {
 				value = ""
 			} else if h.secretCipher == nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "secret values are unavailable"})
-				return
+				value = storedValue
 			} else {
-				value, err = h.secretCipher.Decrypt(value)
-				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "secret value could not be decrypted"})
-					return
+				if _, resolvedValue := resolved[name]; !resolvedValue {
+					value, err = h.secretCipher.Decrypt(value)
+					if err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "secret value could not be decrypted"})
+						return
+					}
 				}
 			}
 		}

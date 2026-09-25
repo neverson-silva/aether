@@ -115,7 +115,10 @@ func (w *Watcher) reconcile(ctx context.Context) {
 	}
 	for _, target := range targets {
 		state := servicesdomain.ProjectStatusWithDeployment(servicesdomain.Kind(target.Kind), byService[target.ID], target.LatestDeployment, target.ActiveDeployment, target.EverDeployed)
-		changed, err := w.ServiceStore.UpdateRuntimeStatus(ctx, target.ID, string(state))
+		if target.Status == string(servicesdomain.StatusStopped) && !target.ActiveDeployment {
+			state = servicesdomain.StatusStopped
+		}
+		changed, err := w.ServiceStore.UpdateRuntimeStatus(ctx, target.ID, target.Status, string(state))
 		if err != nil {
 			w.log(ctx, "persist runtime service status", err)
 			continue

@@ -2,6 +2,7 @@ package outbox
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strconv"
 	"testing"
@@ -154,6 +155,47 @@ func TestDispatcherPublishesToNATS(t *testing.T) {
 	}
 	if publishedAt == nil {
 		t.Fatal("outbox event was not marked published")
+	}
+}
+
+func TestDispatcherPublishesServiceLifecycleCommandToNATSQueue(t *testing.T) {
+	url := os.Getenv("AETHER_NATS_TEST_URL")
+	if url == "" {
+		t.Skip("AETHER_NATS_TEST_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	runtime, err := adapter.New(ctx, druntime.Config{Backend: "nats", NATSURL: url, NATSName: "aether-lifecycle-outbox-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.Close(context.Background()) }()
+	topic := "service-operations-" + uuid.NewString()
+	group := "service-lifecycle-" + uuid.NewString()
+	consumer, err := runtime.Queue.NewConsumer(ctx, topic, group, "integration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	operationID := uuid.NewString()
+	job := queue.Job{ID: operationID, Type: "service.lifecycle.execute", OrgID: uuid.NewString(), Payload: []byte(`{"operation_id":"` + operationID + `"}`)}
+	jobPayload, err := json.Marshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := events.Event{ID: uuid.NewString(), Type: "service.lifecycle.queued", AggregateType: "service", AggregateID: uuid.NewString(), Payload: jobPayload, TS: time.Now().UTC()}
+	if err := (&Dispatcher{Jobs: runtime.Queue}).publish(ctx, event, topic); err != nil {
+		t.Fatalf("publish lifecycle command to NATS: %v", err)
+	}
+	received, err := consumer.Next(ctx)
+	if err != nil {
+		t.Fatalf("receive lifecycle command from NATS: %v", err)
+	}
+	if received.ID != operationID || received.Type != job.Type || received.OrgID != job.OrgID || string(received.Payload) != string(job.Payload) {
+		t.Fatalf("received lifecycle command does not match: got %+v, want %+v", received, job)
+	}
+	if err := consumer.Ack(ctx, received); err != nil {
+		t.Fatalf("acknowledge lifecycle command: %v", err)
 	}
 }
 

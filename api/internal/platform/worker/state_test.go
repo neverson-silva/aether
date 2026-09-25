@@ -22,16 +22,34 @@ func (s *fakeServiceStateStore) ListRuntimeServiceTargets(context.Context) ([]Ru
 	return append([]RuntimeServiceTarget(nil), s.targets...), nil
 }
 
-func (s *fakeServiceStateStore) UpdateRuntimeStatus(_ context.Context, serviceID uuid.UUID, status string) (bool, error) {
+func (s *fakeServiceStateStore) UpdateRuntimeStatus(_ context.Context, serviceID uuid.UUID, expectedStatus, status string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.status == nil {
 		s.status = map[uuid.UUID]string{}
 	}
+	current := s.status[serviceID]
+	if current == "" {
+		for i := range s.targets {
+			if s.targets[i].ID == serviceID {
+				current = s.targets[i].Status
+				break
+			}
+		}
+	}
+	if current != expectedStatus {
+		return false, nil
+	}
 	if s.status[serviceID] == status {
 		return false, nil
 	}
 	s.status[serviceID] = status
+	for i := range s.targets {
+		if s.targets[i].ID == serviceID {
+			s.targets[i].Status = status
+			break
+		}
+	}
 	return true, nil
 }
 
@@ -94,12 +112,30 @@ func TestWatcherProjectsRuntimeStateAndEmitsOnlyTransitions(t *testing.T) {
 	runtime.containers[0].State = "exited"
 	watcher.reconcile(context.Background())
 	store.mu.Lock()
-	if got := store.status[serviceID]; got != "stopped" {
-		t.Fatalf("projected exited status = %q, want stopped", got)
+	if got := store.status[serviceID]; got != "degraded" {
+		t.Fatalf("projected exited status = %q, want degraded", got)
 	}
 	store.mu.Unlock()
-	if len(notifier.states) != 2 || notifier.states[1] != "stopped" {
-		t.Fatalf("notifications = %v, want running and stopped", notifier.states)
+	if len(notifier.states) != 2 || notifier.states[1] != "degraded" {
+		t.Fatalf("notifications = %v, want running and degraded", notifier.states)
+	}
+}
+
+func TestWatcherPreservesManualStopAgainstExitedRuntime(t *testing.T) {
+	serviceID := uuid.New()
+	store := &fakeServiceStateStore{
+		targets: []RuntimeServiceTarget{{ID: serviceID, Kind: "database", Status: "stopped", EverDeployed: true}},
+		status:  map[uuid.UUID]string{serviceID: "stopped"},
+	}
+	runtime := &stateRuntime{containers: []ContainerInfo{{ID: "container-1", State: "exited", Labels: map[string]string{"aether.service-id": serviceID.String()}}}}
+	watcher := &Watcher{Runtime: runtime, ServiceStore: store}
+
+	watcher.reconcile(context.Background())
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if got := store.status[serviceID]; got != "stopped" {
+		t.Fatalf("manual stop status = %q, want stopped", got)
 	}
 }
 

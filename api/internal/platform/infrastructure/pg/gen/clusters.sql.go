@@ -7,7 +7,6 @@ package pg
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -39,21 +38,12 @@ func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) (C
 }
 
 const createServerToken = `-- name: CreateServerToken :exec
-WITH deleted AS (
-    DELETE FROM server_tokens
-    RETURNING id
-)
-INSERT INTO server_tokens (token_hash, expires_at)
-VALUES ($1, $2)
+INSERT INTO server_tokens (token_hash)
+VALUES ($1)
 `
 
-type CreateServerTokenParams struct {
-	TokenHash string    `json:"token_hash"`
-	ExpiresAt time.Time `json:"expires_at"`
-}
-
-func (q *Queries) CreateServerToken(ctx context.Context, arg CreateServerTokenParams) error {
-	_, err := q.db.ExecContext(ctx, createServerToken, arg.TokenHash, arg.ExpiresAt)
+func (q *Queries) CreateServerToken(ctx context.Context, tokenHash string) error {
+	_, err := q.db.ExecContext(ctx, createServerToken, tokenHash)
 	return err
 }
 

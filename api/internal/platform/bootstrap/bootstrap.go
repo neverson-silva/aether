@@ -64,7 +64,9 @@ import (
 	realtimeDomain "aether/internal/modules/realtime/domain"
 	realtimehttp "aether/internal/modules/realtime/http"
 	realtimeInfra "aether/internal/modules/realtime/infra"
+	servicesApp "aether/internal/modules/services/application"
 	serviceshttp "aether/internal/modules/services/http"
+	servicesInfra "aether/internal/modules/services/infra"
 	settingsApp "aether/internal/modules/settings/application"
 	settingshttp "aether/internal/modules/settings/http"
 	settingsInfra "aether/internal/modules/settings/infra"
@@ -327,9 +329,15 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	statsSvc := &statsApp.Stats{Apps: appsStore, Deployments: deployStore, Databases: databasesStore, Runtime: deployWorkerRuntime}
 	statsHandler := statshttp.New(statsSvc)
 	servicesHandler := serviceshttp.New(pool)
+	serviceLifecycle := &servicesApp.Lifecycle{Repository: servicesInfra.NewLifecycleStore(pool)}
+	servicesHandler.WithLifecycle(serviceLifecycle)
 	servicesHandler.WithRuntime(deployWorkerRuntime)
 	servicesHandler.WithSecretCipher(appsSecrets)
+	servicesHandler.WithResolver(deploySvc.Resolver)
 	servicesHandler.WithRuntimes(deploySvc, appOps, composeSvc, composeSvc, databasesSvc)
+	deployHandler.WithLifecycle(serviceLifecycle)
+	databasesHandler.WithLifecycle(serviceLifecycle)
+	templatesHandler.WithLifecycle(serviceLifecycle)
 	databasesHandler.WithDeploymentEnqueuer(servicesHandler)
 	servicesHandler.WithAppWebhook(appsSvc)
 	servicesHandler.WithDomains(domainsSvc)

@@ -1,10 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiPost } from "../api/client";
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiPost } from '../api/client'
 
 export function useRunMirror() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiPost(`/api/v1/mirrors/${id}/run`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mirrors"] }),
-  });
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mirrors'] }),
+  })
 }

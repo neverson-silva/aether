@@ -21,6 +21,7 @@ import (
 	backupsInfra "aether/internal/modules/backups/infra"
 	databasesApp "aether/internal/modules/databases/application"
 	databasesInfra "aether/internal/modules/databases/infra"
+	deployApp "aether/internal/modules/deployments/application"
 	deployInfra "aether/internal/modules/deployments/infra"
 	domainsApp "aether/internal/modules/domains/application"
 	domainsInfra "aether/internal/modules/domains/infra"
@@ -124,6 +125,8 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 		return err
 	}
 	defer deployRuntime.Close()
+	deploySvc := &deployApp.Deployments{Store: deployStore, Apps: appsStore}
+	appOps := &deployApp.AppOps{Deployments: deploySvc, Runtime: deployRuntime}
 	imageRuntime, err := worker.NewDockerRuntime(cfg.BuildDockerHost)
 	if err != nil {
 		return err
@@ -180,6 +183,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	defer eventLog.Close()
 	realtimeSvc := &realtimeApp.Realtime{
+		DB:       pool,
 		Presence: rtRuntime.Presence, PubSub: rtRuntime.PubSub,
 		Apps: appsStore, Deployments: deployStore, Ports: deployRuntime, Runtime: deployRuntime,
 		Log: eventLog, Notifications: notifications,
@@ -243,6 +247,11 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	settingsStore := settingsInfra.NewStore(pool)
 	settingsSvc := &settingsApp.Settings{Store: settingsStore, Passwords: dbCipher, PublicURL: cfg.PublicURL, OIDC: settingsInfra.NewOIDCDiscoverer(cfg.PublicURL, pool), GoogleRedirectURI: cfg.GoogleOAuthRedirectURI}
 	dbBackupsStore := backupsInfra.NewDatabaseStore(pool)
+	serviceLifecycleWorker := &worker.ServiceLifecycleWorker{
+		Queue: rtRuntime.Queue, Store: servicesInfra.NewLifecycleStore(pool), Runtime: deployRuntime,
+		Notifier: realtimeSvc, Metrics: metrics, Logger: slog.Default(),
+		Execute: worker.NewServiceLifecycleExecutor(appOps, composeSvc, databasesSvc),
+	}
 	dbBackupsSvc := &backupsApp.DatabaseBackups{
 		Store: dbBackupsStore, Databases: databasesSvc, Passwords: dbCipher,
 		Destinations: settingsDestProvider{s: settingsSvc}, Exec: deployRuntime,
@@ -267,6 +276,7 @@ func RunWorker(ctx context.Context, cfg *config.Config, secretKey []byte, pool *
 	}
 	go (&outbox.Dispatcher{Store: outbox.NewStore(pool), Bus: rtRuntime.Events, Jobs: rtRuntime.Queue}).Run(workerCtx)
 	go deployWatcher.Run(workerCtx, 10*time.Second)
+	go serviceLifecycleWorker.Run(workerCtx)
 	go provisionWorker.Run(workerCtx)
 	backupWorker := &backupsApp.BackupWorker{Service: dbBackupsSvc, Logger: slog.Default(), Metrics: metrics, Concurrency: 2}
 	if err := backupWorker.RecoverInterrupted(workerCtx, time.Now().Add(-90*time.Minute)); err != nil {
@@ -302,7 +312,7 @@ func watchWorkerHealth(ctx context.Context, status *health.Status, jobs queue.Qu
 			return
 		case <-ticker.C:
 			healthy := true
-			for _, item := range []struct{ stream, group string }{{"deployments", "workers"}, {"backups", "backup-workers"}, {"snapshots", "snapshot-workers"}, {"cron", "cron-workers"}} {
+			for _, item := range []struct{ stream, group string }{{"deployments", "workers"}, {"service-operations", "service-lifecycle-workers"}, {"backups", "backup-workers"}, {"snapshots", "snapshot-workers"}, {"cron", "cron-workers"}} {
 				if _, err := jobs.Pending(ctx, item.stream, item.group); err != nil {
 					healthy = false
 					break
@@ -314,7 +324,7 @@ func watchWorkerHealth(ctx context.Context, status *health.Status, jobs queue.Qu
 }
 
 func checkWorkerConsumers(ctx context.Context, jobs queue.Queue) error {
-	for _, item := range []struct{ stream, group, id string }{{"deployments", "workers", "readiness-deploy"}, {"backups", "backup-workers", "readiness-backup"}, {"snapshots", "snapshot-workers", "readiness-snapshot"}, {"cron", "cron-workers", "readiness-cron"}} {
+	for _, item := range []struct{ stream, group, id string }{{"deployments", "workers", "readiness-deploy"}, {"service-operations", "service-lifecycle-workers", "readiness-service-lifecycle"}, {"backups", "backup-workers", "readiness-backup"}, {"snapshots", "snapshot-workers", "readiness-snapshot"}, {"cron", "cron-workers", "readiness-cron"}} {
 		consumer, err := jobs.NewConsumer(ctx, item.stream, item.group, item.id)
 		if err != nil {
 			return err

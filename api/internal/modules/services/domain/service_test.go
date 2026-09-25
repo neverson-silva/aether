@@ -22,8 +22,8 @@ func TestNormalizeComposeRecovery(t *testing.T) {
 
 func TestNormalizeAppDoesNotTrustSuccessfulDeployment(t *testing.T) {
 	got := NormalizeApp("success", "exited", nil)
-	if got != StatusStopped {
-		t.Fatalf("expected %q, got %q", StatusStopped, got)
+	if got != StatusDegraded {
+		t.Fatalf("expected %q, got %q", StatusDegraded, got)
 	}
 }
 
@@ -50,8 +50,8 @@ func TestNormalizeComposeStatusMatrix(t *testing.T) {
 		want   Status
 	}{
 		{name: "deploying", states: []ContainerState{{Status: "running"}}, deploy: true, want: StatusDeploying},
-		{name: "stopped", states: []ContainerState{{Status: "created"}, {Status: "stopped"}}, want: StatusStopped},
-		{name: "exited", states: []ContainerState{{Status: "exited"}, {Status: "stopped"}}, want: StatusFailed},
+		{name: "stopped without explicit service stop", states: []ContainerState{{Status: "created"}, {Status: "stopped"}}, want: StatusDegraded},
+		{name: "exited without explicit service stop", states: []ContainerState{{Status: "exited"}, {Status: "stopped"}}, want: StatusDegraded},
 		{name: "failed", states: []ContainerState{{Status: "failed"}, {Status: "dead"}}, want: StatusFailed},
 		{name: "unknown", states: nil, want: StatusUnknown},
 	}
@@ -97,8 +97,8 @@ func TestProjectStatusUsesLatestDeploymentWithoutContainer(t *testing.T) {
 }
 
 func TestNormalizeDatabaseStatusMatrix(t *testing.T) {
-	if got := NormalizeDatabase("stopped", nil); got != StatusStopped {
-		t.Fatalf("expected %q, got %q", StatusStopped, got)
+	if got := NormalizeDatabase("stopped", nil); got != StatusDegraded {
+		t.Fatalf("expected %q, got %q", StatusDegraded, got)
 	}
 	if got := NormalizeDatabase("", nil); got != StatusUnknown {
 		t.Fatalf("expected %q, got %q", StatusUnknown, got)
@@ -151,8 +151,8 @@ func TestProjectStatusRuntimeMatrix(t *testing.T) {
 		status Status
 	}{
 		{name: "running", state: ContainerState{Status: "running", Healthy: &healthy}, status: StatusRunning},
-		{name: "stopped", state: ContainerState{Status: "stopped"}, status: StatusStopped},
-		{name: "exited", state: ContainerState{Status: "exited"}, status: StatusStopped},
+		{name: "stopped without manual service stop", state: ContainerState{Status: "stopped"}, status: StatusDegraded},
+		{name: "exited without manual service stop", state: ContainerState{Status: "exited"}, status: StatusDegraded},
 		{name: "restarting", state: ContainerState{Status: "restarting"}, status: StatusDegraded},
 		{name: "unhealthy", state: ContainerState{Status: "running", Healthy: &unhealthy}, status: StatusDegraded},
 	}
@@ -176,7 +176,7 @@ func TestProjectStatusComposeAggregateMatrix(t *testing.T) {
 		{name: "all running", states: []ContainerState{{Status: "running", Healthy: &healthy}, {Status: "running"}}, status: StatusRunning},
 		{name: "mixed", states: []ContainerState{{Status: "running"}, {Status: "stopped"}}, status: StatusDegraded},
 		{name: "unhealthy", states: []ContainerState{{Status: "running", Healthy: &unhealthy}}, status: StatusDegraded},
-		{name: "all stopped", states: []ContainerState{{Status: "stopped"}, {Status: "stopped"}}, status: StatusStopped},
+		{name: "all stopped without manual service stop", states: []ContainerState{{Status: "stopped"}, {Status: "stopped"}}, status: StatusDegraded},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

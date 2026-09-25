@@ -1,44 +1,51 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createRouter } from "@tanstack/react-router";
-import { routeTree } from "./routeTree.gen";
-import { AetherProvider, AetherProviderProps } from "@aether/design-system";
-import { NotificationProvider } from "./components/NotificationProvider";
-import { RealtimeProvider } from "./components/RealtimeProvider";
-import { OrgProvider } from "./components/OrgProvider";
-import "@aether/design-system/styles.css";
+import { ElisyumProvider } from '@aether/elisyum-ds'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createRouter, RouterProvider } from '@tanstack/react-router'
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { OrgProvider } from './components/OrgProvider'
+import { RealtimeProvider } from './components/RealtimeProvider'
+import { routeTree } from './routeTree.gen'
+import '@aether/elisyum-ds/styles.css'
+import './styles.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 2000,
-      refetchOnWindowFocus: false,
-    },
+    queries: { retry: 1, staleTime: 2000, refetchOnWindowFocus: false },
   },
-});
+})
 
-const router = createRouter({ routeTree, defaultPreload: false, context: { queryClient } });
-const config: AetherProviderProps['config']= {
-   
-};
-declare module "@tanstack/react-router" {
+const router = createRouter({
+  routeTree,
+  defaultPreload: false,
+  context: { queryClient },
+})
+
+declare module '@tanstack/react-router' {
   interface Register {
-    router: typeof router;
+    router: typeof router
   }
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const root = document.getElementById('root')
+
+if (!root) {
+  throw new Error('Aether root was not found')
+}
+
+createRoot(root).render(
+  <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AetherProvider defaultTheme="dark" persist storageKey="aether-theme" position="bottom-right">
+      <ElisyumProvider
+        defaultTheme="dark"
+        density="standard"
+      >
         <RealtimeProvider>
-          <NotificationProvider>
-            <OrgProvider>
-              <RouterProvider router={router} />
-            </OrgProvider>
-          </NotificationProvider>
+          <OrgProvider>
+            <RouterProvider router={router} />
+          </OrgProvider>
         </RealtimeProvider>
-      </AetherProvider>
+      </ElisyumProvider>
     </QueryClientProvider>
-);
+  </StrictMode>,
+)

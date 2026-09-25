@@ -109,7 +109,7 @@ func (s *Store) SetRegistryEnabled(ctx context.Context, enabled bool) (*domain.R
 }
 
 func (s *Store) CreateServerToken(ctx context.Context, tokenHash string, expiresAt time.Time) error {
-	return mapErr(s.q.CreateServerToken(ctx, gen.CreateServerTokenParams{TokenHash: tokenHash, ExpiresAt: expiresAt}))
+	return mapErr(s.q.CreateServerToken(ctx, tokenHash))
 }
 
 func clusterFromRow(row gen.Cluster) *domain.Cluster {

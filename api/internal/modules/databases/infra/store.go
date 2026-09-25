@@ -53,6 +53,9 @@ SELECT COALESCE((SELECT SUM(storage_mb) FROM apps WHERE org_id = $1), 0)
 }
 
 func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domain.Database, error) {
+	if db.CPUs == "" {
+		db.CPUs = "0.5"
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -64,7 +67,7 @@ func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domai
 	row, err := gen.New(tx).CreateDatabase(ctx, gen.CreateDatabaseParams{
 		OrgID: db.OrgID, ProjectID: db.ProjectID, EnvironmentID: nullableUUID(db.EnvironmentID), Name: db.Name, Engine: string(db.Engine),
 		Version: db.Version, Port: int32(db.Port), DbName: db.DBName, DbUser: db.User,
-		PassEnc: db.PassEnc, MemMb: int32(db.MemMB), StorageMb: int32(db.StorageMB),
+		PassEnc: db.PassEnc, Cpus: db.CPUs, MemMb: int32(db.MemMB), StorageMb: int32(db.StorageMB),
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -72,7 +75,7 @@ func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domai
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return databaseFromRow(row), nil
+	return databaseFromRow(gen.Database{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name, Engine: row.Engine, Version: row.Version, Port: row.Port, DbName: row.DbName, DbUser: row.DbUser, PassEnc: row.PassEnc, Cpus: row.Cpus, MemMb: row.MemMb, StorageMb: row.StorageMb, Status: row.Status, ContainerID: row.ContainerID, CreatedAt: row.CreatedAt, ServiceID: row.ServiceID, EnvironmentID: row.EnvironmentID}), nil
 }
 
 func checkOrganizationStorage(ctx context.Context, tx *sql.Tx, orgID uuid.UUID, requested int) error {
@@ -96,7 +99,7 @@ func (s *Store) GetDatabase(ctx context.Context, id uuid.UUID) (*domain.Database
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return databaseFromRow(row), nil
+	return databaseFromRow(gen.Database{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name, Engine: row.Engine, Version: row.Version, Port: row.Port, DbName: row.DbName, DbUser: row.DbUser, PassEnc: row.PassEnc, Cpus: row.Cpus, MemMb: row.MemMb, StorageMb: row.StorageMb, Status: row.Status, ContainerID: row.ContainerID, CreatedAt: row.CreatedAt, ServiceID: row.ServiceID, EnvironmentID: row.EnvironmentID}), nil
 }
 
 func (s *Store) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Database, error) {
@@ -106,7 +109,7 @@ func (s *Store) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]doma
 	}
 	out := make([]domain.Database, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *databaseFromRow(r))
+		out = append(out, *databaseFromRow(gen.Database{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, Name: r.Name, Engine: r.Engine, Version: r.Version, Port: r.Port, DbName: r.DbName, DbUser: r.DbUser, PassEnc: r.PassEnc, Cpus: r.Cpus, MemMb: r.MemMb, StorageMb: r.StorageMb, Status: r.Status, ContainerID: r.ContainerID, CreatedAt: r.CreatedAt, ServiceID: r.ServiceID, EnvironmentID: r.EnvironmentID}))
 	}
 	return out, nil
 }
@@ -140,7 +143,7 @@ func databaseFromRow(row gen.Database) *domain.Database {
 	return &domain.Database{
 		ID: row.ID, ServiceID: row.ServiceID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: nullableUUIDPointer(row.EnvironmentID), Name: row.Name,
 		Engine: domain.Engine(row.Engine), Version: row.Version, Port: int(row.Port),
-		DBName: row.DbName, User: row.DbUser, PassEnc: row.PassEnc, MemMB: int(row.MemMb),
+		DBName: row.DbName, User: row.DbUser, PassEnc: row.PassEnc, CPUs: row.Cpus, MemMB: int(row.MemMb),
 		StorageMB: int(row.StorageMb), Status: row.Status, ContainerID: row.ContainerID,
 		CreatedAt: row.CreatedAt,
 	}

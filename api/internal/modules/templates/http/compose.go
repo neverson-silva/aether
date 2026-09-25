@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	servicesdomain "aether/internal/modules/services/domain"
 	"aether/internal/modules/templates/domain"
 )
 
@@ -97,11 +98,35 @@ func (h *Handler) Down(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	if err := h.compose.Down(c.Request.Context(), id, orgID(c)); err != nil {
+	if h.lifecycle == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service lifecycle is not configured"})
+		return
+	}
+	app, err := h.compose.Get(c.Request.Context(), id, orgID(c))
+	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "stopped"})
+	operation, err := h.lifecycle.RequestBySpec(c.Request.Context(), app.ID, orgID(c), servicesdomain.KindCompose, servicesdomain.LifecycleStop)
+	if err != nil {
+		if errors.Is(err, servicesdomain.ErrLifecycleConflict) {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error()})
+		} else {
+			abort(c, err)
+		}
+		return
+	}
+	statusCode := http.StatusAccepted
+	state := servicesdomain.StatusStopping
+	if operation.ID == uuid.Nil {
+		statusCode = http.StatusOK
+		state = servicesdomain.Status(operation.Status)
+	}
+	var operationID any
+	if operation.ID != uuid.Nil {
+		operationID = operation.ID
+	}
+	c.JSON(statusCode, gin.H{"service_id": operation.ServiceID, "status": state, "state": state, "operation_id": operationID})
 }
 
 func (h *Handler) Validate(c *gin.Context) {

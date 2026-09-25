@@ -720,11 +720,28 @@ func (c *Compose) Start(ctx context.Context, id, orgID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.runCompose(ctx, app, false, "start"); err != nil {
+	if c.Runtime == nil {
+		return errors.New("container runtime unavailable")
+	}
+	containers, err := c.ContainerIDs(ctx, id, orgID)
+	if err != nil {
 		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
+	for _, container := range containers {
+		if container.State == "running" || container.State == "restarting" {
+			continue
+		}
+		if container.State != "created" && container.State != "exited" && container.State != "stopped" {
+			continue
+		}
+		if err := c.Runtime.Start(ctx, container.ID); err != nil {
+			_ = c.Store.SetComposeStatus(ctx, id, "error")
+			return err
+		}
+	}
 	if err := c.Store.SetComposeStatus(ctx, id, "running"); err != nil {
+		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
 	}
 	c.recordEvent(ctx, app, "compose.running")
@@ -736,9 +753,22 @@ func (c *Compose) Stop(ctx context.Context, id, orgID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.runCompose(ctx, app, false, "stop"); err != nil {
+	if c.Runtime == nil {
+		return errors.New("container runtime unavailable")
+	}
+	containers, err := c.ContainerIDs(ctx, id, orgID)
+	if err != nil {
 		_ = c.Store.SetComposeStatus(ctx, id, "error")
 		return err
+	}
+	for _, container := range containers {
+		if container.State != "running" && container.State != "restarting" && container.State != "created" {
+			continue
+		}
+		if err := c.Runtime.Stop(ctx, container.ID); err != nil {
+			_ = c.Store.SetComposeStatus(ctx, id, "error")
+			return err
+		}
 	}
 	if err := c.Store.SetComposeStatus(ctx, id, "stopped"); err != nil {
 		return err

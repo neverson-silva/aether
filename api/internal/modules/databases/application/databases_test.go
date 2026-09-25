@@ -47,7 +47,7 @@ func newEnv(t *testing.T) *env {
 
 func TestDatabaseLifecycle(t *testing.T) {
 	e := newEnv(t)
-	db, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "maindb", domain.EnginePostgres, "", "", "", 256, 1024)
+	db, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "maindb", domain.EnginePostgres, "", "", "", "0.5", 256, 1024)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("senha deveria estar encriptada")
 	}
 
-	if _, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "maindb", domain.EnginePostgres, "", "", "", 0, 0); !errors.Is(err, domain.ErrConflict) {
+	if _, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "maindb", domain.EnginePostgres, "", "", "", "0.5", 0, 0); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("nome duplicado deveria falhar: %v", err)
 	}
 
@@ -90,10 +90,10 @@ func TestDatabaseLifecycle(t *testing.T) {
 
 func TestDatabaseValidation(t *testing.T) {
 	e := newEnv(t)
-	if _, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "", domain.EnginePostgres, "", "", "", 0, 0); !errors.Is(err, domain.ErrValidation) {
+	if _, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "", domain.EnginePostgres, "", "", "", "0.5", 0, 0); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("nome vazio deveria falhar: %v", err)
 	}
-	if _, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "db", "oracle-fake", "", "", "", 0, 0); !errors.Is(err, domain.ErrValidation) {
+	if _, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "db", "oracle-fake", "", "", "", "0.5", 0, 0); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("engine inválida deveria falhar: %v", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestDatabaseImageUsesSelectedVersion(t *testing.T) {
 
 func TestDatabaseIsolation(t *testing.T) {
 	e := newEnv(t)
-	db, _ := e.svc.Create(e.ctx, e.orgID, e.projectID, "db", domain.EngineRedis, "", "", "", 0, 0)
+	db, _ := e.svc.Create(e.ctx, e.orgID, e.projectID, "db", domain.EngineRedis, "", "", "", "0.5", 0, 0)
 	if _, err := e.svc.Get(e.ctx, db.ID, uuid.New()); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("outra org deveria falhar: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestDatabaseEngines(t *testing.T) {
 		{domain.EngineOracle, 1521},
 	}
 	for i, c := range cases {
-		db, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "db"+uuid.NewString()[:4], c.engine, "", "", "", 0, 0)
+		db, err := e.svc.Create(e.ctx, e.orgID, e.projectID, "db"+uuid.NewString()[:4], c.engine, "", "", "", "0.5", 0, 0)
 		if err != nil {
 			t.Fatalf("engine %s: %v", c.engine, err)
 		}

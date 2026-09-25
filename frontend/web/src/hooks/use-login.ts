@@ -1,6 +1,6 @@
-import { useMutation } from "@tanstack/react-query";
-import { apiPost, setServer } from "../api/client";
-import type { LoginResponse } from "../api/types";
+import { useMutation } from '@tanstack/react-query'
+import { apiPost, setServer } from '../api/client'
+import type { LoginResponse } from '../api/types'
 
 export function useLogin() {
   return useMutation({
@@ -9,16 +9,16 @@ export function useLogin() {
       password,
       server,
     }: {
-      email: string;
-      password: string;
-      server: string;
+      email: string
+      password: string
+      server: string
     }) => {
-      setServer(server);
-      const data = await apiPost<LoginResponse>("/api/v1/auth/login", {
+      setServer(server)
+      const data = await apiPost<LoginResponse>('/api/v1/auth/login', {
         email,
         password,
-      });
-      return data;
+      })
+      return data
     },
-  });
+  })
 }

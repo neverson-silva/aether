@@ -445,6 +445,8 @@ func abort(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 	case errors.Is(err, domain.ErrNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
+	case errors.Is(err, domain.ErrOwnerAlreadyRegistered):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": domain.ErrOwnerAlreadyRegistered.Error()})
 	case errors.Is(err, domain.ErrConflict):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "already exists"})
 	case errors.Is(err, domain.ErrEmailTaken):

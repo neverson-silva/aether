@@ -8,13 +8,14 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrEmailTaken         = errors.New("email already registered")
-	ErrNotFound           = errors.New("not found")
-	ErrConflict           = errors.New("conflict")
-	ErrForbidden          = errors.New("access denied")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrValidation         = errors.New("invalid input")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrEmailTaken             = errors.New("email already registered")
+	ErrOwnerAlreadyRegistered = errors.New("an owner account is already registered for this instance")
+	ErrNotFound               = errors.New("not found")
+	ErrConflict               = errors.New("conflict")
+	ErrForbidden              = errors.New("access denied")
+	ErrUnauthorized           = errors.New("unauthorized")
+	ErrValidation             = errors.New("invalid input")
 )
 
 type Role string

@@ -13,15 +13,19 @@ import (
 	authhttp "aether/internal/modules/auth/http"
 	"aether/internal/modules/databases/application"
 	"aether/internal/modules/databases/domain"
+	servicesdomain "aether/internal/modules/services/domain"
 	"aether/internal/platform/hostinfo"
 	"aether/internal/platform/worker"
 )
 
 type Handler struct {
-	databases      *application.Databases
-	studio         *application.Studio
-	runtime        worker.Runtime
-	enqueuer       ServiceDeploymentEnqueuer
+	databases *application.Databases
+	studio    *application.Studio
+	runtime   worker.Runtime
+	enqueuer  ServiceDeploymentEnqueuer
+	lifecycle interface {
+		RequestBySpec(context.Context, uuid.UUID, uuid.UUID, servicesdomain.Kind, servicesdomain.LifecycleAction) (*servicesdomain.LifecycleOperation, error)
+	}
 	originPatterns []string
 }
 
@@ -49,6 +53,13 @@ func (h *Handler) WithDeploymentEnqueuer(enqueuer ServiceDeploymentEnqueuer) *Ha
 	return h
 }
 
+func (h *Handler) WithLifecycle(lifecycle interface {
+	RequestBySpec(context.Context, uuid.UUID, uuid.UUID, servicesdomain.Kind, servicesdomain.LifecycleAction) (*servicesdomain.LifecycleOperation, error)
+}) *Handler {
+	h.lifecycle = lifecycle
+	return h
+}
+
 type createDBReq struct {
 	ProjectID     string `json:"project_id"`
 	EnvironmentID string `json:"environment_id"`
@@ -57,6 +68,7 @@ type createDBReq struct {
 	Version       string `json:"version"`
 	User          string `json:"user"`
 	Password      string `json:"password"`
+	CPUs          string `json:"cpus"`
 	MemMB         *int   `json:"mem_mb"`
 	StorageMB     *int   `json:"storage_mb"`
 }
@@ -81,14 +93,14 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	var database *domain.Database
 	if req.EnvironmentID == "" {
-		database, err = h.databases.Create(c.Request.Context(), orgID(c), projectID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, memMB, storageMB)
+		database, err = h.databases.Create(c.Request.Context(), orgID(c), projectID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, req.CPUs, memMB, storageMB)
 	} else {
 		environmentID, parseErr := uuid.Parse(req.EnvironmentID)
 		if parseErr != nil {
 			abort(c, domain.ErrValidation)
 			return
 		}
-		database, err = h.databases.CreateInEnvironment(c.Request.Context(), orgID(c), projectID, environmentID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, memMB, storageMB)
+		database, err = h.databases.CreateInEnvironment(c.Request.Context(), orgID(c), projectID, environmentID, req.Name, domain.Engine(req.Engine), req.Version, req.User, req.Password, req.CPUs, memMB, storageMB)
 	}
 	if err != nil {
 		abort(c, err)
@@ -189,12 +201,36 @@ func (h *Handler) Start(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	db, err := h.databases.Start(c.Request.Context(), id, orgID(c))
+	if h.lifecycle == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service lifecycle is not configured"})
+		return
+	}
+	db, err := h.databases.Get(c.Request.Context(), id, orgID(c))
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, databaseDTO(db))
+	operation, requestErr := h.lifecycle.RequestBySpec(c.Request.Context(), id, orgID(c), servicesdomain.KindDatabase, servicesdomain.LifecycleStart)
+	if requestErr != nil {
+		if errors.Is(requestErr, servicesdomain.ErrLifecycleConflict) {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": requestErr.Error()})
+		} else if errors.Is(requestErr, servicesdomain.ErrNotFound) {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
+		} else {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "service start could not be accepted"})
+		}
+		return
+	}
+	responseStatus := http.StatusAccepted
+	responseState := servicesdomain.StatusStarting
+	if operation.ID == uuid.Nil {
+		responseStatus = http.StatusOK
+		responseState = servicesdomain.Status(operation.Status)
+	}
+	response := databaseDTO(db)
+	response["status"] = responseState
+	response["operation_id"] = optionalLifecycleOperationID(operation.ID)
+	c.JSON(responseStatus, response)
 }
 
 func (h *Handler) Stop(c *gin.Context) {
@@ -203,12 +239,36 @@ func (h *Handler) Stop(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	db, err := h.databases.Stop(c.Request.Context(), id, orgID(c))
+	if h.lifecycle == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service lifecycle is not configured"})
+		return
+	}
+	db, err := h.databases.Get(c.Request.Context(), id, orgID(c))
 	if err != nil {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, databaseDTO(db))
+	operation, requestErr := h.lifecycle.RequestBySpec(c.Request.Context(), id, orgID(c), servicesdomain.KindDatabase, servicesdomain.LifecycleStop)
+	if requestErr != nil {
+		if errors.Is(requestErr, servicesdomain.ErrLifecycleConflict) {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": requestErr.Error()})
+		} else if errors.Is(requestErr, servicesdomain.ErrNotFound) {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
+		} else {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "service stop could not be accepted"})
+		}
+		return
+	}
+	responseStatus := http.StatusAccepted
+	responseState := servicesdomain.StatusStopping
+	if operation.ID == uuid.Nil {
+		responseStatus = http.StatusOK
+		responseState = servicesdomain.Status(operation.Status)
+	}
+	response := databaseDTO(db)
+	response["status"] = responseState
+	response["operation_id"] = optionalLifecycleOperationID(operation.ID)
+	c.JSON(responseStatus, response)
 }
 
 func (h *Handler) ListDeployments(c *gin.Context) {
@@ -276,13 +336,20 @@ func databaseDTO(db *domain.Database) gin.H {
 	return gin.H{
 		"id": db.ID, "service_id": db.ServiceID, "org_id": db.OrgID, "project_id": db.ProjectID, "environment_id": db.EnvironmentID, "name": db.Name,
 		"engine": db.Engine, "version": db.Version, "port": db.Port, "db_name": db.DBName,
-		"user": db.User, "mem_mb": db.MemMB, "storage_mb": db.StorageMB, "status": db.Status,
+		"user": db.User, "cpus": db.CPUs, "mem_mb": db.MemMB, "storage_mb": db.StorageMB, "status": db.Status,
 		"container_id": db.ContainerID, "created_at": db.CreatedAt,
 	}
 }
 
 func orgID(c *gin.Context) uuid.UUID {
 	return c.MustGet(authhttp.ContextOrgID).(uuid.UUID)
+}
+
+func optionalLifecycleOperationID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
 }
 
 func abort(c *gin.Context, err error) {

@@ -118,6 +118,41 @@ else
   echo "warning: Docker Engine is unavailable — SmartBuild app deploys will fail." >&2
 fi
 
+HOST_WATCHDOG_STATE_DIR="${AETHER_STATE:-$HOME/.aether}"
+HOST_WATCHDOG_PID_FILE="$HOST_WATCHDOG_STATE_DIR/host-agent.pid"
+HOST_WATCHDOG_OWNED=0
+HOST_WATCHDOG_RUNNING=0
+if [[ -f "$HOST_WATCHDOG_PID_FILE" ]] && kill -0 "$(cat "$HOST_WATCHDOG_PID_FILE" 2>/dev/null)" 2>/dev/null; then
+  HOST_WATCHDOG_RUNNING=1
+fi
+if [[ "$HOST_WATCHDOG_RUNNING" -eq 1 ]] && [[ -z "$(find "$HOST_WATCHDOG_STATE_DIR/host-stats.json" -mmin -1 -print -quit 2>/dev/null)" ]]; then
+  kill "$(cat "$HOST_WATCHDOG_PID_FILE" 2>/dev/null)" >/dev/null 2>&1 || true
+  rm -f "$HOST_WATCHDOG_PID_FILE"
+  HOST_WATCHDOG_RUNNING=0
+fi
+if [[ "$HOST_WATCHDOG_RUNNING" -eq 1 ]]; then
+  echo "Host metrics watchdog already running."
+else
+  mkdir -p "$HOST_WATCHDOG_STATE_DIR/logs"
+  rm -f "$HOST_WATCHDOG_PID_FILE"
+  AETHER_API_URL="http://127.0.0.1:8090/api/v1/ready" AETHER_HOST_AGENT="$PWD/infra/scripts/host-agent.sh" nohup bash "$PWD/infra/scripts/host-watchdog.sh" >> "$HOST_WATCHDOG_STATE_DIR/logs/host-agent.log" 2>&1 &
+  echo "$!" > "$HOST_WATCHDOG_PID_FILE"
+  HOST_WATCHDOG_OWNED=1
+fi
+
+cleanup_host_watchdog() {
+  if [[ "$HOST_WATCHDOG_OWNED" -eq 1 ]] && [[ -f "$HOST_WATCHDOG_PID_FILE" ]]; then
+    local watchdog_pid
+    watchdog_pid="$(cat "$HOST_WATCHDOG_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$watchdog_pid" ]] && kill -0 "$watchdog_pid" 2>/dev/null; then
+      kill "$watchdog_pid" >/dev/null 2>&1 || true
+    fi
+    rm -f "$HOST_WATCHDOG_PID_FILE"
+  fi
+}
+
+trap cleanup_host_watchdog EXIT INT TERM
+
 if command -v docker >/dev/null 2>&1; then
   LIFECYCLE_IMAGE="docker.io/buildpacksio/lifecycle:${AETHER_LIFECYCLE_VERSION:-0.21.17}"
   if ! docker image inspect "$LIFECYCLE_IMAGE" >/dev/null 2>&1; then

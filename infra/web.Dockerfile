@@ -1,8 +1,8 @@
 FROM docker.io/library/node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS build
 WORKDIR /web
-COPY frontend/aether_ds/package.json frontend/aether_ds/package-lock.json /aether_ds/
-RUN npm --prefix /aether_ds ci --include=dev --ignore-scripts --no-audit --no-fund
-COPY frontend/aether_ds /aether_ds
+COPY frontend/elisyum_ds/package.json frontend/elisyum_ds/package-lock.json /elisyum_ds/
+RUN npm --prefix /elisyum_ds ci --include=dev --ignore-scripts --no-audit --no-fund
+COPY frontend/elisyum_ds /elisyum_ds
 COPY frontend/web/package.json frontend/web/package-lock.json ./
 RUN npm ci --legacy-peer-deps --include=dev --no-audit --no-fund
 COPY frontend/web/ ./

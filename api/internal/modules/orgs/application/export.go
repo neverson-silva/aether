@@ -38,10 +38,12 @@ type exportApp struct {
 }
 
 type exportDB struct {
-	Name    string `yaml:"name"`
-	Engine  string `yaml:"engine"`
-	Version string `yaml:"version,omitempty"`
-	MemMB   int    `yaml:"mem_mb,omitempty"`
+	Name      string `yaml:"name"`
+	Engine    string `yaml:"engine"`
+	Version   string `yaml:"version,omitempty"`
+	CPUs      string `yaml:"cpus,omitempty"`
+	MemMB     int    `yaml:"mem_mb,omitempty"`
+	StorageMB int    `yaml:"storage_mb,omitempty"`
 }
 
 type exportDoc struct {
@@ -112,7 +114,7 @@ func (o *Organizations) Export(ctx context.Context, orgID uuid.UUID) ([]byte, er
 					if d.ProjectID != p.ID {
 						continue
 					}
-					ep.Databases = append(ep.Databases, exportDB{Name: d.Name, Engine: string(d.Engine), Version: d.Version, MemMB: d.MemMB})
+					ep.Databases = append(ep.Databases, exportDB{Name: d.Name, Engine: string(d.Engine), Version: d.Version, CPUs: d.CPUs, MemMB: d.MemMB, StorageMB: d.StorageMB})
 				}
 			}
 		}
@@ -183,7 +185,7 @@ func (o *Organizations) Import(ctx context.Context, orgID uuid.UUID, data []byte
 				for _, ed := range p.Databases {
 					if _, err := dbStore.CreateDatabase(ctx, &dbdomain.Database{
 						OrgID: orgID, ProjectID: project.ID, Name: ed.Name,
-						Engine: dbdomain.Engine(ed.Engine), Version: ed.Version, MemMB: ed.MemMB,
+						Engine: dbdomain.Engine(ed.Engine), Version: ed.Version, CPUs: ed.CPUs, MemMB: ed.MemMB, StorageMB: ed.StorageMB,
 					}); err != nil {
 						return err
 					}

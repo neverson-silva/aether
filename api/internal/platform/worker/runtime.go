@@ -146,7 +146,7 @@ type RuntimeServiceTarget struct {
 
 type ServiceStateStore interface {
 	ListRuntimeServiceTargets(ctx context.Context) ([]RuntimeServiceTarget, error)
-	UpdateRuntimeStatus(ctx context.Context, serviceID uuid.UUID, status string) (bool, error)
+	UpdateRuntimeStatus(ctx context.Context, serviceID uuid.UUID, expectedStatus, status string) (bool, error)
 }
 
 type ExecRuntime interface {

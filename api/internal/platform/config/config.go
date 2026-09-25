@@ -122,6 +122,11 @@ func Load() (*Config, error) {
 		if freeDomainBase == "" {
 			freeDomainBase = "localhost"
 		}
+		for _, origin := range []string{"http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"} {
+			if !containsString(corsOrigins, origin) {
+				corsOrigins = append(corsOrigins, origin)
+			}
+		}
 	}
 	if len(corsOrigins) == 0 && publicURL != "" {
 		corsOrigins = []string{publicURL}
@@ -210,6 +215,15 @@ func Load() (*Config, error) {
 		cfg.ACMEDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 	}
 	return cfg, nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func cookieSecure(publicURL string) bool {

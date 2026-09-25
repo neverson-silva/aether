@@ -119,7 +119,7 @@ func (d *Docker) execute(ctx context.Context, project Project, sink func(string)
 		return "", err
 	}
 	defer cleanup()
-	composeArgs := []string{"compose", "--project-directory", project.Directory, "--project-name", project.Name}
+	composeArgs := []string{"compose", "--project-name", project.Name}
 	if project.EnvFile != "" {
 		composeArgs = append(composeArgs, "--env-file", project.EnvFile)
 	}

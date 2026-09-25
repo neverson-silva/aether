@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root {
+  min-width: 320px;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--ely-color-canvas);
+  color: var(--ely-color-text);
+  font-family: var(--ely-font-interface);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+a[href],
+[role="button"]:not([aria-disabled="true"]) {
+  transition-property: transform, background-color, border-color, color, opacity;
+  transition-duration: var(--ely-duration-fast);
+  transition-timing-function: var(--ely-ease-out);
+}
+
+button:not(:disabled):active,
+a[href]:active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(var(--ely-motion-press-scale));
+}
+
+::selection {
+  background: var(--ely-color-selection);
+  color: var(--ely-color-text-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active,
+  a[href]:active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: none;
+  }
+}
+
+.surface-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.surface-scrollbar::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--ely-radius-pill);
+  background: var(--ely-color-surface-4);
+  background-clip: padding-box;
+}
+
+.sidebar-scroll-area {
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-scroll-area::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}

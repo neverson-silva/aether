@@ -1,11 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "../api/client";
-import type { RegistryImage } from "./types";
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '../api/client'
+import type { RegistryImage } from './types'
 
-export function useRegistryImages() {
+export function useRegistryImages(enabled = false) {
   return useQuery({
-    queryKey: ["registry", "images"],
-    queryFn: () => apiGet<RegistryImage[]>("/api/v1/registry/images"),
-    enabled: false,
-  });
+    queryKey: ['registry', 'images'],
+    queryFn: () => apiGet<RegistryImage[]>('/api/v1/registry/images'),
+    enabled,
+  })
 }

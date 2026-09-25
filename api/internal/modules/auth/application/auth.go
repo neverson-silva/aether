@@ -46,9 +46,6 @@ func (a *Auth) Register(ctx context.Context, email, name, password string) (*dom
 	if err := validateAuth(email, name, password); err != nil {
 		return nil, "", err
 	}
-	if _, err := a.Users.GetUserByEmail(ctx, email); err == nil {
-		return nil, "", domain.ErrEmailTaken
-	}
 	hash, err := a.Hash.Hash(ctx, password)
 	if err != nil {
 		return nil, "", err

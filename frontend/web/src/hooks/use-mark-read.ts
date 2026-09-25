@@ -1,13 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiPost } from "../api/client";
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiPost } from '../api/client'
 
 export function useMarkRead() {
-  const qc = useQueryClient();
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiPost(`/api/v1/notifications/${id}/read`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications"] });
-      qc.invalidateQueries({ queryKey: ["notifications-unread"] });
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+      qc.invalidateQueries({ queryKey: ['notifications-unread'] })
     },
-  });
+  })
 }

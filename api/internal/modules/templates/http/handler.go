@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	authhttp "aether/internal/modules/auth/http"
+	servicesdomain "aether/internal/modules/services/domain"
 	"aether/internal/modules/templates/application"
 	"aether/internal/modules/templates/domain"
 	"aether/internal/platform/worker"
@@ -22,6 +23,9 @@ type Handler struct {
 	runtime            worker.Runtime
 	deploymentEnqueuer interface {
 		EnqueueServiceDeployment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)
+	}
+	lifecycle interface {
+		RequestBySpec(context.Context, uuid.UUID, uuid.UUID, servicesdomain.Kind, servicesdomain.LifecycleAction) (*servicesdomain.LifecycleOperation, error)
 	}
 }
 
@@ -38,6 +42,13 @@ func (h *Handler) WithDeploymentEnqueuer(enqueuer interface {
 	EnqueueServiceDeployment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)
 }) *Handler {
 	h.deploymentEnqueuer = enqueuer
+	return h
+}
+
+func (h *Handler) WithLifecycle(lifecycle interface {
+	RequestBySpec(context.Context, uuid.UUID, uuid.UUID, servicesdomain.Kind, servicesdomain.LifecycleAction) (*servicesdomain.LifecycleOperation, error)
+}) *Handler {
+	h.lifecycle = lifecycle
 	return h
 }
 
@@ -208,6 +219,10 @@ func abort(c *gin.Context, err error) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": message})
 	case errors.Is(err, domain.ErrForbidden):
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
+	case errors.Is(err, servicesdomain.ErrLifecycleConflict):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, servicesdomain.ErrNotFound):
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "service not found"})
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 	}

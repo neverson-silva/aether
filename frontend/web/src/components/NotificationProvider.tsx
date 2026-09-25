@@ -1,223 +1,317 @@
-import React, { useEffect, useRef } from "react";
-import { Bell, BellRinging, CheckCircle, Clock, HardDrives, Info, RocketLaunch, Warning, XCircle } from "@phosphor-icons/react";
-import { EmptyState, useToast } from "@aether/design-system";
-import { useNavigate } from "@tanstack/react-router";
-import type { EventEnvelope, NotificationItem } from "../hooks";
-import { useRealtimeEvent } from "./RealtimeProvider";
-import { useNotificationsStore } from "../stores/notifications";
-import { isPublicRoute } from "../api/client";
+import { Popover, showToast, type ToastTone } from '@aether/elisyum-ds'
+import {
+  Bell,
+  BellRinging,
+  CheckCircle,
+  Clock,
+  HardDrives,
+  Info,
+  RocketLaunch,
+  Warning,
+  XCircle,
+} from '@phosphor-icons/react'
+import { useNavigate } from '@tanstack/react-router'
+import { type ReactNode, useEffect } from 'react'
+import { isPublicRoute } from '../api/client'
+import type { NotificationItem } from '../hooks/types'
+import { useNotificationsStore } from '../stores/notifications'
+import { useRealtimeEvent } from './RealtimeProvider'
 
-interface NotificationContextValue {
-  unread: number;
-  openBell: () => void;
-  list: NotificationItem[];
-  markRead: (id: string) => void;
-  markAllRead: () => void;
-  refresh: () => void;
-}
-
-
-
-export function useNotifications(): NotificationContextValue {
-  const unread = useNotificationsStore((st) => st.unread);
-  const list = useNotificationsStore((st) => st.list);
-  const openBell = () => useNotificationsStore.getState().toggleBell();
-  const markRead = (id: string) => void useNotificationsStore.getState().markRead(id);
-  const markAllRead = () => void useNotificationsStore.getState().markAllRead();
-  const refresh = () => void useNotificationsStore.getState().refresh();
-  return { unread, openBell, list, markRead, markAllRead, refresh };
-}
-
-function toneForType(type: string): "error" | "success" | "warning" | "info" {
-  if (type.includes("failed") || type.includes("error")) return "error";
-  if (type.includes("ready") || type.includes("finished") || type.includes("completed") || type.includes("success") || type.includes("recovered")) return "success";
-  if (type.includes("queued")) return "info";
-  if (type.includes("building") || type.includes("starting") || type.includes("healthcheck")) return "warning";
-  return "info";
-}
-
-function notificationVisual(type: string) {
-  if (type.includes("failed") || type.includes("error")) return { Icon: XCircle, color: "text-error", dot: "bg-error" };
-  if (type.includes("ready") || type.includes("finished") || type.includes("completed") || type.includes("success") || type.includes("recovered")) return { Icon: CheckCircle, color: "text-success", dot: "bg-success" };
-  if (type.includes("rolled_back") || type.includes("cancelled")) return { Icon: Warning, color: "text-warning", dot: "bg-warning" };
-  if (type.includes("queued") || type.includes("building") || type.includes("starting") || type.includes("healthcheck")) return { Icon: Clock, color: "text-warning", dot: "bg-warning" };
-  if (type.startsWith("deploy.")) return { Icon: RocketLaunch, color: "text-primary", dot: "bg-primary" };
-  if (type.startsWith("server.") || type.startsWith("database.")) return { Icon: HardDrives, color: "text-primary", dot: "bg-primary" };
-  if (type.startsWith("alert.")) return { Icon: BellRinging, color: "text-error", dot: "bg-error" };
-  if (type.startsWith("backup.")) return { Icon: HardDrives, color: "text-primary", dot: "bg-primary" };
-  if (type.startsWith("info.")) return { Icon: Info, color: "text-primary", dot: "bg-primary" };
-  return { Icon: Bell, color: "text-on-surface-variant", dot: "bg-on-surface-variant" };
-}
-
-function isNotifiable(type: string): boolean {
-  if (type.startsWith("deploy.")) {
-		return ["deploy.queued", "deploy.starting", "deploy.failed", "deploy.ready", "deploy.rolled_back", "deploy.cancelled"].includes(type);
-  }
+function isNotifiable(type: string) {
+  if (type.startsWith('deploy.'))
+    return [
+      'deploy.queued',
+      'deploy.starting',
+      'deploy.failed',
+      'deploy.ready',
+      'deploy.rolled_back',
+      'deploy.cancelled',
+    ].includes(type)
   return (
-    type.startsWith("backup.") ||
-    type.startsWith("server.") ||
-    type.startsWith("database.") ||
-    type.startsWith("domain.") ||
-    type.startsWith("alert.") ||
-    type.startsWith("member.") ||
-    type.startsWith("env.")
-  );
+    type.startsWith('backup.') ||
+    type.startsWith('server.') ||
+    type.startsWith('database.') ||
+    type.startsWith('domain.') ||
+    type.startsWith('alert.') ||
+    type.startsWith('member.') ||
+    type.startsWith('env.')
+  )
 }
 
-function shouldToast(type: string): boolean {
-  if (!type.startsWith("backup.")) return true;
-  return ["backup.completed", "backup.failed", "backup.cancelled"].includes(type);
+function toastToneFor(type: string): ToastTone {
+  if (type.includes('failed') || type.includes('error')) return 'error'
+  if (type.includes('ready') || type.includes('completed') || type.includes('success'))
+    return 'success'
+  if (
+    type.includes('queued') ||
+    type.includes('building') ||
+    type.includes('starting') ||
+    type.includes('healthcheck')
+  )
+    return 'warning'
+  return 'info'
 }
 
-function toItem(ev: EventEnvelope): NotificationItem {
+function toItem(event: {
+  id: string
+  org_id?: string
+  type: string
+  message?: string
+  payload?: unknown
+  ts: string
+}): NotificationItem {
   return {
-    id: ev.id,
-    org_id: ev.org_id || "",
-    type: ev.type,
-    message: ev.message || ev.type,
-    payload: JSON.stringify(ev.payload ?? {}),
+    id: event.id,
+    org_id: event.org_id || '',
+    type: event.type,
+    message: event.message || event.type,
+    payload: JSON.stringify(event.payload ?? {}),
     read: false,
-    created_at: ev.ts,
-  };
+    created_at: event.ts,
+  }
 }
 
-export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const { add } = useToast();
-  const navigate = useNavigate();
+function visualFor(type: string) {
+  if (type.includes('failed') || type.includes('error'))
+    return { Icon: XCircle, tone: 'text-danger-strong' }
+  if (
+    type.includes('ready') ||
+    type.includes('finished') ||
+    type.includes('completed') ||
+    type.includes('success') ||
+    type.includes('recovered')
+  )
+    return { Icon: CheckCircle, tone: 'text-success-strong' }
+  if (type.includes('rolled_back') || type.includes('cancelled'))
+    return { Icon: Warning, tone: 'text-warning-strong' }
+  if (
+    type.includes('queued') ||
+    type.includes('building') ||
+    type.includes('starting') ||
+    type.includes('healthcheck')
+  )
+    return { Icon: Clock, tone: 'text-warning-strong' }
+  if (type.startsWith('deploy.'))
+    return { Icon: RocketLaunch, tone: 'text-action-strong' }
+  if (
+    type.startsWith('server.') ||
+    type.startsWith('database.') ||
+    type.startsWith('backup.')
+  )
+    return { Icon: HardDrives, tone: 'text-action-strong' }
+  if (type.startsWith('alert.'))
+    return { Icon: BellRinging, tone: 'text-danger-strong' }
+  if (type.startsWith('info.')) return { Icon: Info, tone: 'text-action-strong' }
+  return { Icon: Bell, tone: 'text-text-tertiary' }
+}
 
-  useRealtimeEvent((ev, replay) => {
-    if (!isNotifiable(ev.type)) return;
-    if (replay) {
-      useNotificationsStore.getState().prependReplay(toItem(ev));
-      return;
+function relativeTime(value: string) {
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 1000),
+  )
+  if (seconds < 10) return 'just now'
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
+const notificationPreviewLimit = 6
+
+export function useNotifications() {
+  const unread = useNotificationsStore((state) => state.unread)
+  const open = useNotificationsStore((state) => state.bellOpen)
+  const toggle = useNotificationsStore((state) => state.toggleBell)
+  return { unread, open, toggle }
+}
+
+export function NotificationProvider({ children }: { children: ReactNode }) {
+  useRealtimeEvent((event, replay) => {
+    if (!isNotifiable(event.type)) return
+    const item = toItem(event)
+    if (replay) useNotificationsStore.getState().prependReplay(item)
+    else {
+      useNotificationsStore.getState().prepend(item)
+      if (event.message && event.type !== 'deploy.build.log')
+        showToast(event.message, toastToneFor(event.type))
     }
-    useNotificationsStore.getState().prepend(toItem(ev));
-    const tone = toneForType(ev.type);
-    const isError = tone === "error";
-    const target = (ev.payload?.service_id || ev.payload?.app_id) as string | undefined;
-    if (ev.message && shouldToast(ev.type)) add({ title: ev.message, tone, action: isError ? { label: "View services", onClick: () => navigate({ to: "/apps" }) } : undefined });
-    if (target) {
-      useNotificationsStore.getState().patchPayload(ev.id, target);
-    }
-  });
+  })
 
   useEffect(() => {
     const refresh = () => {
-      if (!isPublicRoute()) void useNotificationsStore.getState().refresh();
-    };
-    refresh();
-    const onOrgChange = refresh;
-    const onAuth = refresh;
-    window.addEventListener("aether:org", onOrgChange);
-    window.addEventListener("aether:auth", onAuth);
+      if (!isPublicRoute()) void useNotificationsStore.getState().refresh()
+    }
+    refresh()
+    window.addEventListener('aether:org', refresh)
+    window.addEventListener('aether:auth', refresh)
     return () => {
-      window.removeEventListener("aether:org", onOrgChange);
-      window.removeEventListener("aether:auth", onAuth);
-    };
-  }, []);
+      window.removeEventListener('aether:org', refresh)
+      window.removeEventListener('aether:auth', refresh)
+    }
+  }, [])
 
-  return (
-    <>
-      {children}
-      <BellHost />
-    </>
-  );
+  return <>{children}</>
 }
 
-function BellHost() {
-  const open = useNotificationsStore((st) => st.bellOpen);
-  if (!open) return null;
-  return <BellDropdown />;
-}
-
-function BellDropdown() {
-  const { list, markRead, markAllRead, openBell } = useNotifications();
-  const navigate = useNavigate();
-  const ref = React.useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) openBell();
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [openBell]);
+export function NotificationBell() {
+  const unread = useNotificationsStore((state) => state.unread)
+  const open = useNotificationsStore((state) => state.bellOpen)
+  const toggleBell = useNotificationsStore((state) => state.toggleBell)
+  const closeBell = useNotificationsStore((state) => state.closeBell)
   return (
-    <div ref={ref} className="fixed right-4 top-14 z-[70] w-[calc(100vw-32px)] max-w-96 rounded-xl bg-surface-popover border border-border-subtle shadow-md overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-subtle">
-        <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Notifications</span>
-        <button onClick={markAllRead} className="font-body-sm text-body-sm text-primary hover:underline">
-          Mark all as read
-        </button>
-      </div>
-      <div className="max-h-96 overflow-y-auto">
-        {list.length === 0 && (
-          <EmptyState title="No notifications yet" className="border-0 p-6" />
-        )}
-        {list.slice(0, 50).map((n) => {
-          let parsed: Record<string, string> = {};
-          try {
-            parsed = JSON.parse(n.payload || "{}");
-          } catch {
-          }
-          const target = parsed.app_id || parsed.service_id;
-          const visual = notificationVisual(n.type);
-          const NotificationIcon = visual.Icon;
-          return (
-            <button
-              key={n.id}
-              onClick={() => {
-                markRead(n.id);
-                if (target) navigate({ to: "/apps/$appId", params: { appId: target } } as never);
-              }}
-              className={`w-full flex items-start gap-2 px-3 py-2.5 hover:bg-surface-container-high transition-colors text-left ${!n.read ? "bg-surface-container-high/40" : ""}`}
+    <Popover
+      placement="anchor-overlap-center"
+      className="!w-[min(380px,calc(100vw-24px))] !min-w-0 !rounded-xl !border-border-subtle/80 !bg-surface-1 !p-0 !shadow-elevation-4 !z-[var(--ely-z-dialog)]"
+      onOpenChange={(nextOpen) => {
+        if (nextOpen !== open) toggleBell()
+      }}
+      open={open}
+      collisionPadding={12}
+      trigger={
+        <span className="relative inline-flex size-10 items-center justify-center">
+          <Bell size={19} />
+          {unread ? (
+            <span
+              aria-label={`${unread} unread notifications`}
+              className="absolute right-0.5 top-0.5 min-w-1.5 rounded-full bg-danger px-0.5 text-center font-technical text-[0.5rem] leading-3 text-text-primary"
             >
-              <NotificationIcon size={16} weight="duotone" className={`mt-0.5 shrink-0 ${visual.color}`} aria-hidden="true" />
-              <span className="flex-1 min-w-0">
-                <span className={`font-body-sm text-body-sm line-clamp-5 break-words ${!n.read ? "text-on-surface font-semibold" : "text-on-surface-variant"}`} title={n.message}>{n.message}</span>
-                <span className="block font-code-md text-code-md text-on-surface-variant/60">{relativeTime(n.created_at)}</span>
-              </span>
-              {!n.read && <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${visual.dot}`} />}
-            </button>
-          );
-        })}
-      </div>
-      <button
-        onClick={() => navigate({ to: "/notifications" })}
-        className="w-full px-3 py-2 border-t border-border-subtle font-label-caps text-label-caps text-primary uppercase hover:bg-surface-container-high transition-colors"
-      >
-        View all history
-      </button>
-    </div>
-  );
+              {unread > 99 ? '99+' : unread}
+            </span>
+          ) : null}
+        </span>
+      }
+      triggerClassName={`inline-flex size-10 cursor-pointer items-center justify-center rounded-xl p-0 text-text-secondary transition-[background-color,color,transform] duration-[var(--ely-duration-fast)] ease-ely-out hover:bg-surface-2 hover:text-text-primary active:bg-surface-3 focus-visible:outline-2 focus-visible:outline-focus ${open ? 'bg-surface-2 text-text-primary' : 'bg-transparent'}`}
+    >
+      <NotificationPanel closeBell={closeBell} />
+    </Popover>
+  )
 }
 
-export function BellButton() {
-  const { unread, openBell } = useNotifications();
+function NotificationPanel({ closeBell }: { closeBell: () => void }) {
+  const navigate = useNavigate()
+  const list = useNotificationsStore((state) => state.list)
+  const unread = useNotificationsStore((state) => state.unread)
+  const markRead = useNotificationsStore((state) => state.markRead)
+  const markAllRead = useNotificationsStore((state) => state.markAllRead)
+  return (
+    <div className="grid text-text-primary">
+      <div className="flex items-center justify-between gap-4 px-4 pb-2 pt-4">
+        <span className="text-[0.9375rem] font-semibold text-text-primary">
+          Notifications
+        </span>
+        {unread ? (
+          <button
+            className="text-label text-action-strong transition-colors hover:text-text-primary"
+            onClick={() => {
+              void markAllRead()
+            }}
+            type="button"
+          >
+            Mark all read
+          </button>
+        ) : null}
+      </div>
+      {list.length ? (
+        <div className="max-h-[min(32rem,calc(100vh-10rem))] overflow-y-auto px-2 pb-2">
+          {list.slice(0, notificationPreviewLimit).map((item) => (
+            <NotificationRow
+              item={item}
+              key={item.id}
+              onRead={() => {
+                if (!item.read) void markRead(item.id)
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid justify-items-center px-6 pb-8 pt-7 text-center">
+          <span className="relative mb-4 grid size-11 place-items-center rounded-full border border-border-subtle bg-surface-1 text-action-strong">
+            <span className="absolute size-2 rounded-full bg-action" />
+            <span className="absolute size-7 rounded-full border border-action/35" />
+          </span>
+          <strong className="text-[0.9375rem] font-semibold text-text-primary">
+            You&apos;re all caught up
+          </strong>
+          <span className="mt-1 max-w-56 text-supporting text-text-tertiary">
+            Operational events will appear here as they arrive.
+          </span>
+          <button
+            className="mt-5 inline-flex items-center gap-2 text-label text-action-strong transition-colors hover:text-text-primary"
+            onClick={() => {
+              closeBell()
+              void navigate({ to: '/notifications' })
+            }}
+            type="button"
+          >
+            View history <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      )}
+      {list.length ? (
+        <button
+          className="px-4 pb-4 pt-2 text-left text-label text-action-strong transition-colors hover:text-text-primary"
+          onClick={() => {
+            closeBell()
+            void navigate({ to: '/notifications' })
+          }}
+          type="button"
+        >
+          View all notifications <span aria-hidden="true">→</span>
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function NotificationRow({
+  item,
+  onRead,
+}: {
+  item: NotificationItem
+  onRead: () => void
+}) {
+  const navigate = useNavigate()
+  const visual = visualFor(item.type)
+  const Icon = visual.Icon
+  const target = (() => {
+    try {
+      const payload = JSON.parse(item.payload || '{}') as {
+        app_id?: string
+        service_id?: string
+      }
+      return payload.app_id || payload.service_id
+    } catch {}
+  })()
   return (
     <button
-      onClick={openBell}
-      className="relative text-primary hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high"
-      aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
+      className={`relative flex w-full items-start gap-3 rounded-[0.6875rem] px-3 py-2.5 text-left transition-[background-color,color] duration-[var(--ely-duration-fast)] hover:bg-surface-2 ${item.read ? '' : 'bg-surface-2/65 before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 before:rounded-full before:bg-action'}`}
+      onClick={() => {
+        onRead()
+        if (target) void navigate({ to: `/apps/${target}` })
+      }}
+      type="button"
     >
-      <Bell size={18} aria-hidden="true" />
-      {unread > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-action-danger text-primary-foreground font-label-caps text-[10px] flex items-center justify-center">
-          {unread > 99 ? "99+" : unread}
+      <Icon
+        aria-hidden="true"
+        className={`mt-0.5 shrink-0 ${visual.tone}`}
+        size={18}
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className={`block break-words text-supporting ${item.read ? 'text-text-secondary' : 'font-medium text-text-primary'}`}
+        >
+          {item.message}
         </span>
-      )}
+        <span className="mt-1 block font-technical text-log text-text-subtle">
+          {item.type} · {relativeTime(item.created_at)}
+        </span>
+      </span>
+      {!item.read ? (
+        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-danger" />
+      ) : null}
     </button>
-  );
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 10) return "just now";
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const d = Math.floor(hr / 24);
-  return `${d}d ago`;
+  )
 }

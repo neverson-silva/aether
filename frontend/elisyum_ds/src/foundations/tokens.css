@@ -1,0 +1,417 @@
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ely-color-canvas: #0b0d0f;
+  --ely-color-surface-0: #111417;
+  --ely-color-surface-1: #171b1f;
+  --ely-color-surface-2: #20262b;
+  --ely-color-surface-3: #293137;
+  --ely-color-surface-4: #333d43;
+  --ely-color-surface-interactive: #26323a;
+  --ely-color-field: #29343b;
+  --ely-color-field-hover: #34424a;
+  --ely-color-text-strong: #f3f5f3;
+  --ely-color-text: #d9dfdc;
+  --ely-color-text-muted: #a0aaa6;
+  --ely-color-text-subtle: #77837f;
+  --ely-color-outline: #596662;
+  --ely-color-outline-subtle: #303a38;
+  --ely-color-accent: #4f5fc9;
+  --ely-color-accent-strong: #4453b5;
+  --ely-color-accent-surface: #252b52;
+  --ely-color-focus: #bdc6ff;
+  --ely-color-selection: #3a427e;
+  --ely-color-info: #83b9e8;
+  --ely-color-success: #72d19b;
+  --ely-color-success-action: #3f8f65;
+  --ely-color-warning: #efbd71;
+  --ely-color-danger: #a84755;
+  --ely-color-neutral-state: #aab3b0;
+  --ely-color-code-canvas: #0a0c0e;
+  --ely-color-scrim: rgb(0 0 0 / 68%);
+  --ely-color-action: var(--ely-color-accent);
+  --ely-color-action-strong: var(--ely-color-accent-strong);
+  --ely-color-action-soft: var(--ely-color-accent-surface);
+  --ely-color-on-action: #f3f5f3;
+  --ely-color-text-primary: var(--ely-color-text-strong);
+  --ely-color-text-secondary: var(--ely-color-text);
+  --ely-color-text-tertiary: var(--ely-color-text-muted);
+  --ely-color-success-soft: rgb(103 214 164 / 16%);
+  --ely-color-success-strong: #a1edbd;
+  --ely-color-warning-soft: rgb(242 189 104 / 16%);
+  --ely-color-warning-strong: #ffd58d;
+  --ely-color-danger-soft: rgb(200 91 104 / 16%);
+  --ely-color-danger-strong: #ffc2c3;
+  --ely-color-overlay: var(--ely-color-surface-3);
+  --ely-color-critical-overlay: #332528;
+  --ely-overlay-backdrop-color: rgb(0 0 0 / 52%);
+  --ely-overlay-backdrop-blur: 18px;
+  --ely-overlay-backdrop-saturation: 0.86;
+  --ely-modal-surface: rgb(23 27 31 / 94%);
+  --ely-modal-surface-border: rgb(137 153 148 / 28%);
+  --ely-modal-surface-blur: 30px;
+  --ely-modal-surface-shadow: 0 28px 80px rgb(0 0 0 / 52%), 0 8px 28px rgb(0 0 0 / 30%);
+  --ely-modal-surface-highlight: rgb(255 255 255 / 9%);
+  --ely-modal-radius: var(--ely-radius-xl);
+  --ely-color-border-subtle: var(--ely-color-outline-subtle);
+  --ely-color-border-default: var(--ely-color-outline);
+  --ely-color-border-strong: var(--ely-color-focus);
+  --ely-color-border-danger: var(--ely-color-danger);
+  --ely-elevation-0: none;
+  --ely-elevation-1: 0 4px 12px rgb(0 0 0 / 18%);
+  --ely-elevation-2: 0 10px 24px rgb(0 0 0 / 26%);
+  --ely-elevation-3: 0 16px 36px rgb(0 0 0 / 34%);
+  --ely-elevation-4: 0 24px 56px rgb(0 0 0 / 44%);
+}
+
+:root[data-theme="light"],
+[data-theme="light"] {
+  color-scheme: light;
+  --ely-color-canvas: #f3f4f1;
+  --ely-color-surface-0: #fafbf9;
+  --ely-color-surface-1: #f6f8f6;
+  --ely-color-surface-2: #ebefed;
+  --ely-color-surface-3: #dde4e1;
+  --ely-color-surface-4: #cbd6d1;
+  --ely-color-surface-interactive: #e7edeb;
+  --ely-color-field: #ffffff;
+  --ely-color-field-hover: #f7faf8;
+  --ely-color-text-strong: #18201d;
+  --ely-color-text: #303936;
+  --ely-color-text-muted: #5d6964;
+  --ely-color-text-subtle: #74807a;
+  --ely-color-outline: #87938d;
+  --ely-color-outline-subtle: #d2dbd6;
+  --ely-color-accent: #5666d6;
+  --ely-color-accent-strong: #3f4fb9;
+  --ely-color-accent-surface: #e5e8ff;
+  --ely-color-focus: #4b5bc8;
+  --ely-color-selection: #cdd4ff;
+  --ely-color-info: #236994;
+  --ely-color-success: #21734d;
+  --ely-color-success-action: #21734d;
+  --ely-color-warning: #8b5d12;
+  --ely-color-danger: #b94450;
+  --ely-color-neutral-state: #687570;
+  --ely-color-code-canvas: #eef1ef;
+  --ely-color-scrim: rgb(11 14 18 / 42%);
+  --ely-color-action: var(--ely-color-accent);
+  --ely-color-action-strong: var(--ely-color-accent-strong);
+  --ely-color-action-soft: var(--ely-color-accent-surface);
+  --ely-color-on-action: #ffffff;
+  --ely-color-text-primary: var(--ely-color-text-strong);
+  --ely-color-text-secondary: var(--ely-color-text);
+  --ely-color-text-tertiary: var(--ely-color-text-muted);
+  --ely-color-success-soft: rgb(25 115 78 / 12%);
+  --ely-color-success-strong: #145d40;
+  --ely-color-warning-soft: rgb(138 93 8 / 12%);
+  --ely-color-warning-strong: #714b05;
+  --ely-color-danger-soft: rgb(187 60 80 / 12%);
+  --ely-color-danger-strong: #9e2f43;
+  --ely-color-overlay: var(--ely-color-surface-3);
+  --ely-color-critical-overlay: #f0dddd;
+  --ely-overlay-backdrop-color: rgb(11 14 18 / 46%);
+  --ely-overlay-backdrop-blur: 18px;
+  --ely-overlay-backdrop-saturation: 0.86;
+  --ely-modal-surface: rgb(250 251 249 / 94%);
+  --ely-modal-surface-border: rgb(73 91 83 / 24%);
+  --ely-modal-surface-blur: 30px;
+  --ely-modal-surface-shadow: 0 28px 80px rgb(32 49 42 / 22%), 0 8px 28px rgb(32 49 42 / 12%);
+  --ely-modal-surface-highlight: rgb(255 255 255 / 72%);
+  --ely-modal-radius: var(--ely-radius-xl);
+  --ely-color-border-subtle: var(--ely-color-outline-subtle);
+  --ely-color-border-default: var(--ely-color-outline);
+  --ely-color-border-strong: var(--ely-color-focus);
+  --ely-color-border-danger: var(--ely-color-danger);
+  --ely-elevation-0: none;
+  --ely-elevation-1: 0 4px 12px rgb(32 49 42 / 8%);
+  --ely-elevation-2: 0 10px 24px rgb(32 49 42 / 12%);
+  --ely-elevation-3: 0 16px 36px rgb(32 49 42 / 16%);
+  --ely-elevation-4: 0 24px 56px rgb(32 49 42 / 20%);
+}
+
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --ely-font-interface:
+    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", ui-sans-serif, sans-serif;
+  --ely-font-technical: ui-monospace, SFMono-Regular, "IBM Plex Mono", Menlo, monospace;
+  --ely-text-display-size: 3rem;
+  --ely-text-display-line-height: 1.04;
+  --ely-text-display-weight: 650;
+  --ely-text-display-tracking: -0.035em;
+  --ely-text-page-title-size: 2rem;
+  --ely-text-page-title-line-height: 1.1;
+  --ely-text-page-title-weight: 650;
+  --ely-text-page-title-tracking: -0.028em;
+  --ely-text-section-title-size: 1.125rem;
+  --ely-text-section-title-line-height: 1.25;
+  --ely-text-section-title-weight: 650;
+  --ely-text-body-size: 1rem;
+  --ely-text-body-line-height: 1.5;
+  --ely-text-body-weight: 400;
+  --ely-text-supporting-size: 0.875rem;
+  --ely-text-supporting-line-height: 1.4;
+  --ely-text-label-size: 0.75rem;
+  --ely-text-label-line-height: 1.2;
+  --ely-text-label-weight: 650;
+  --ely-text-label-tracking: 0.035em;
+  --ely-text-metric-size: 2.25rem;
+  --ely-text-metric-line-height: 1;
+  --ely-text-metric-weight: 650;
+  --ely-text-code-size: 0.875rem;
+  --ely-text-code-line-height: 1.5;
+  --ely-text-log-size: 0.8125rem;
+  --ely-text-log-line-height: 1.5;
+  --ely-space-0: 0;
+  --ely-space-1: 0.25rem;
+  --ely-space-2: 0.5rem;
+  --ely-space-3: 0.75rem;
+  --ely-space-4: 1rem;
+  --ely-space-5: 1.25rem;
+  --ely-space-6: 1.5rem;
+  --ely-space-8: 2rem;
+  --ely-space-10: 2.5rem;
+  --ely-space-12: 3rem;
+  --ely-space-16: 4rem;
+  --ely-radius-none: 0;
+  --ely-radius-sm: 0.25rem;
+  --ely-radius-md: 0.5rem;
+  --ely-radius-lg: 0.75rem;
+  --ely-radius-xl: 1rem;
+  --ely-radius-pill: 999px;
+  --ely-duration-instant: 0ms;
+  --ely-duration-fast: 140ms;
+  --ely-duration-standard: 180ms;
+  --ely-duration-popover: 220ms;
+  --ely-duration-overlay: 280ms;
+  --ely-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ely-ease-in-out: cubic-bezier(0.65, 0, 0.78, 0);
+  --ely-ease-drawer: cubic-bezier(0.22, 1, 0.36, 1);
+  --ely-motion-press-scale: 0.985;
+  --ely-motion-hover-lift: -1px;
+  --ely-icon-size-dense: 1rem;
+  --ely-icon-size-standard: 1.125rem;
+  --ely-icon-size-navigation: 1.25rem;
+  --ely-icon-size-identity: 1.75rem;
+  --ely-z-base: 0;
+  --ely-z-sticky: 10;
+  --ely-z-navigation: 20;
+  --ely-z-popover: 1000;
+  --ely-z-dialog: 40;
+  --ely-z-toast: 50;
+  --ely-surface-opacity: 0.86;
+  --ely-surface-blur: blur(18px);
+  --ely-density-control-height: 2.5rem;
+  --ely-density-row-height: 2.75rem;
+  --ely-density-section-gap: var(--ely-space-6);
+  --ely-density-content-gap: var(--ely-space-4);
+  --ely-density-control-padding: var(--ely-space-3);
+  --ely-modal-radius: var(--ely-radius-xl);
+}
+
+[data-density="focused"] {
+  --ely-density-control-height: 2.75rem;
+  --ely-density-row-height: 3rem;
+  --ely-density-section-gap: var(--ely-space-8);
+  --ely-density-content-gap: var(--ely-space-5);
+  --ely-density-control-padding: var(--ely-space-4);
+}
+
+[data-density="dense"] {
+  --ely-density-control-height: 2.25rem;
+  --ely-density-row-height: 2.25rem;
+  --ely-density-section-gap: var(--ely-space-4);
+  --ely-density-content-gap: var(--ely-space-2);
+  --ely-density-control-padding: var(--ely-space-2);
+}
+
+[data-density="stream"] {
+  --ely-density-control-height: 2.125rem;
+  --ely-density-row-height: 2rem;
+  --ely-density-section-gap: var(--ely-space-3);
+  --ely-density-content-gap: var(--ely-space-2);
+  --ely-density-control-padding: var(--ely-space-2);
+}
+
+[data-density="telemetry"] {
+  --ely-density-control-height: 2.375rem;
+  --ely-density-row-height: 2.5rem;
+  --ely-density-section-gap: var(--ely-space-6);
+  --ely-density-content-gap: var(--ely-space-3);
+  --ely-density-control-padding: var(--ely-space-3);
+}
+
+[data-motion="reduced"] {
+  --ely-duration-fast: 0ms;
+  --ely-duration-standard: 0ms;
+  --ely-duration-popover: 0ms;
+  --ely-duration-overlay: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]),
+  [data-motion="system"] {
+    --ely-duration-fast: 0ms;
+    --ely-duration-standard: 0ms;
+    --ely-duration-popover: 0ms;
+    --ely-duration-overlay: 0ms;
+  }
+}
+
+[data-transparency="reduced"] {
+  --ely-surface-opacity: 1;
+  --ely-surface-blur: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-transparency="full"]),
+  [data-transparency="system"] {
+    --ely-surface-opacity: 1;
+    --ely-surface-blur: none;
+  }
+}
+
+[data-contrast="more"] {
+  --ely-color-outline: color-mix(
+    in srgb,
+    var(--ely-color-outline) 75%,
+    var(--ely-color-text-strong)
+  );
+  --ely-color-outline-subtle: color-mix(
+    in srgb,
+    var(--ely-color-outline-subtle) 75%,
+    var(--ely-color-text-strong)
+  );
+}
+
+@media (prefers-contrast: more) {
+  :root:not([data-contrast="standard"]),
+  [data-contrast="system"] {
+    --ely-color-outline: color-mix(
+      in srgb,
+      var(--ely-color-outline) 75%,
+      var(--ely-color-text-strong)
+    );
+    --ely-color-outline-subtle: color-mix(
+      in srgb,
+      var(--ely-color-outline-subtle) 75%,
+      var(--ely-color-text-strong)
+    );
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--ely-color-canvas);
+  --color-surface-0: var(--ely-color-surface-0);
+  --color-surface-1: var(--ely-color-surface-1);
+  --color-surface-2: var(--ely-color-surface-2);
+  --color-surface-3: var(--ely-color-surface-3);
+  --color-surface-4: var(--ely-color-surface-4);
+  --color-surface-interactive: var(--ely-color-surface-interactive);
+  --color-field: var(--ely-color-field);
+  --color-field-hover: var(--ely-color-field-hover);
+  --color-text-strong: var(--ely-color-text-strong);
+  --color-text: var(--ely-color-text);
+  --color-text-muted: var(--ely-color-text-muted);
+  --color-text-subtle: var(--ely-color-text-subtle);
+  --color-outline: var(--ely-color-outline);
+  --color-outline-subtle: var(--ely-color-outline-subtle);
+  --color-accent: var(--ely-color-accent);
+  --color-accent-strong: var(--ely-color-accent-strong);
+  --color-accent-surface: var(--ely-color-accent-surface);
+  --color-action: var(--ely-color-action);
+  --color-action-strong: var(--ely-color-action-strong);
+  --color-action-soft: var(--ely-color-action-soft);
+  --color-on-action: var(--ely-color-on-action);
+  --color-text-primary: var(--ely-color-text-primary);
+  --color-text-secondary: var(--ely-color-text-secondary);
+  --color-text-tertiary: var(--ely-color-text-tertiary);
+  --color-overlay: var(--ely-color-overlay);
+  --color-critical-overlay: var(--ely-color-critical-overlay);
+  --color-focus: var(--ely-color-focus);
+  --color-selection: var(--ely-color-selection);
+  --color-info: var(--ely-color-info);
+  --color-success: var(--ely-color-success);
+  --color-success-action: var(--ely-color-success-action);
+  --color-warning: var(--ely-color-warning);
+  --color-danger: var(--ely-color-danger);
+  --color-success-soft: var(--ely-color-success-soft);
+  --color-success-strong: var(--ely-color-success-strong);
+  --color-warning-soft: var(--ely-color-warning-soft);
+  --color-warning-strong: var(--ely-color-warning-strong);
+  --color-danger-soft: var(--ely-color-danger-soft);
+  --color-danger-strong: var(--ely-color-danger-strong);
+  --color-neutral-state: var(--ely-color-neutral-state);
+  --color-code-canvas: var(--ely-color-code-canvas);
+  --color-scrim: var(--ely-color-scrim);
+  --color-border-subtle: var(--ely-color-border-subtle);
+  --color-border-default: var(--ely-color-border-default);
+  --color-border-strong: var(--ely-color-border-strong);
+  --color-border-danger: var(--ely-color-border-danger);
+  --font-interface: var(--ely-font-interface);
+  --font-technical: var(--ely-font-technical);
+  --text-display: var(--ely-text-display-size);
+  --text-display--line-height: var(--ely-text-display-line-height);
+  --text-display--font-weight: var(--ely-text-display-weight);
+  --text-display--letter-spacing: var(--ely-text-display-tracking);
+  --text-page-title: var(--ely-text-page-title-size);
+  --text-page-title--line-height: var(--ely-text-page-title-line-height);
+  --text-page-title--font-weight: var(--ely-text-page-title-weight);
+  --text-page-title--letter-spacing: var(--ely-text-page-title-tracking);
+  --text-section-title: var(--ely-text-section-title-size);
+  --text-section-title--line-height: var(--ely-text-section-title-line-height);
+  --text-section-title--font-weight: var(--ely-text-section-title-weight);
+  --text-body: var(--ely-text-body-size);
+  --text-body--line-height: var(--ely-text-body-line-height);
+  --text-body--font-weight: var(--ely-text-body-weight);
+  --text-supporting: var(--ely-text-supporting-size);
+  --text-supporting--line-height: var(--ely-text-supporting-line-height);
+  --text-label: var(--ely-text-label-size);
+  --text-label--line-height: var(--ely-text-label-line-height);
+  --text-label--font-weight: var(--ely-text-label-weight);
+  --text-label--letter-spacing: var(--ely-text-label-tracking);
+  --text-metric: var(--ely-text-metric-size);
+  --text-metric--line-height: var(--ely-text-metric-line-height);
+  --text-metric--font-weight: var(--ely-text-metric-weight);
+  --text-code: var(--ely-text-code-size);
+  --text-code--line-height: var(--ely-text-code-line-height);
+  --text-log: var(--ely-text-log-size);
+  --text-log--line-height: var(--ely-text-log-line-height);
+  --spacing-0: var(--ely-space-0);
+  --spacing-1: var(--ely-space-1);
+  --spacing-2: var(--ely-space-2);
+  --spacing-3: var(--ely-space-3);
+  --spacing-4: var(--ely-space-4);
+  --spacing-5: var(--ely-space-5);
+  --spacing-6: var(--ely-space-6);
+  --spacing-8: var(--ely-space-8);
+  --spacing-10: var(--ely-space-10);
+  --spacing-12: var(--ely-space-12);
+  --spacing-16: var(--ely-space-16);
+  --radius-none: var(--ely-radius-none);
+  --radius-sm: var(--ely-radius-sm);
+  --radius-md: var(--ely-radius-md);
+  --radius-lg: var(--ely-radius-lg);
+  --radius-xl: var(--ely-radius-xl);
+  --radius-pill: var(--ely-radius-pill);
+  --shadow-elevation-0: var(--ely-elevation-0);
+  --shadow-elevation-1: var(--ely-elevation-1);
+  --shadow-elevation-2: var(--ely-elevation-2);
+  --shadow-elevation-3: var(--ely-elevation-3);
+  --shadow-elevation-4: var(--ely-elevation-4);
+  --ease-ely-out: var(--ely-ease-out);
+  --ease-ely-in-out: var(--ely-ease-in-out);
+  --ease-ely-drawer: var(--ely-ease-drawer);
+  --duration-ely-fast: var(--ely-duration-fast);
+  --duration-ely-standard: var(--ely-duration-standard);
+  --duration-ely-popover: var(--ely-duration-popover);
+  --duration-ely-overlay: var(--ely-duration-overlay);
+  --scale-ely-press: var(--ely-motion-press-scale);
+  --z-index-ely-base: var(--ely-z-base);
+  --z-index-ely-sticky: var(--ely-z-sticky);
+  --z-index-ely-navigation: var(--ely-z-navigation);
+  --z-index-ely-popover: var(--ely-z-popover);
+  --z-index-ely-dialog: var(--ely-z-dialog);
+  --z-index-ely-toast: var(--ely-z-toast);
+}

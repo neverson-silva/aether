@@ -63,6 +63,7 @@ type Database struct {
 	DBName        string
 	User          string
 	PassEnc       string
+	CPUs          string
 	MemMB         int
 	StorageMB     int
 	Status        string

@@ -32,7 +32,7 @@ type Querier interface {
 	CreateCluster(ctx context.Context, arg CreateClusterParams) (Cluster, error)
 	CreateComposeApp(ctx context.Context, arg CreateComposeAppParams) (CreateComposeAppRow, error)
 	CreateCronJob(ctx context.Context, arg CreateCronJobParams) (CronJob, error)
-	CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (Database, error)
+	CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (CreateDatabaseRow, error)
 	CreateDeployment(ctx context.Context, arg CreateDeploymentParams) (Deployment, error)
 	CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error)
 	CreateEnvironment(ctx context.Context, arg CreateEnvironmentParams) (Environment, error)
@@ -50,7 +50,7 @@ type Querier interface {
 	CreateRestoreJob(ctx context.Context, arg CreateRestoreJobParams) (RestoreJob, error)
 	CreateS3Destination(ctx context.Context, arg CreateS3DestinationParams) (CreateS3DestinationRow, error)
 	CreateSCMManifestState(ctx context.Context, arg CreateSCMManifestStateParams) error
-	CreateServerToken(ctx context.Context, arg CreateServerTokenParams) error
+	CreateServerToken(ctx context.Context, tokenHash string) error
 	CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) (Snapshot, error)
 	CreateSnapshotForService(ctx context.Context, arg CreateSnapshotForServiceParams) (Snapshot, error)
 	CreateSnapshotSchedule(ctx context.Context, arg CreateSnapshotScheduleParams) (SnapshotSchedule, error)
@@ -105,7 +105,7 @@ type Querier interface {
 	GetCluster(ctx context.Context, id uuid.UUID) (Cluster, error)
 	GetComposeApp(ctx context.Context, id uuid.UUID) (GetComposeAppRow, error)
 	GetCronJob(ctx context.Context, id uuid.UUID) (CronJob, error)
-	GetDatabase(ctx context.Context, id uuid.UUID) (Database, error)
+	GetDatabase(ctx context.Context, id uuid.UUID) (GetDatabaseRow, error)
 	GetDeployment(ctx context.Context, id uuid.UUID) (Deployment, error)
 	GetDeploymentByApp(ctx context.Context, arg GetDeploymentByAppParams) (Deployment, error)
 	GetDeploymentCompose(ctx context.Context, id uuid.UUID) (string, error)
@@ -163,7 +163,7 @@ type Querier interface {
 	ListComposeAppsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListComposeAppsByOrgRow, error)
 	ListCronJobsByApp(ctx context.Context, id uuid.UUID) ([]CronJob, error)
 	ListCronJobsByOrg(ctx context.Context, orgID uuid.UUID) ([]CronJob, error)
-	ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Database, error)
+	ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListDatabasesByOrgRow, error)
 	ListDeployments(ctx context.Context, arg ListDeploymentsParams) ([]Deployment, error)
 	ListDomains(ctx context.Context, serviceID uuid.NullUUID) ([]Domain, error)
 	ListEnabledBackupConfigurations(ctx context.Context) ([]ListEnabledBackupConfigurationsRow, error)
