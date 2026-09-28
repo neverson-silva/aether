@@ -361,7 +361,7 @@ func (s *DatabaseBackups) ensureNoActiveRestoreExcept(ctx context.Context, dbID 
 		if job.ID == except {
 			continue
 		}
-		if job.SourceType == domain.RestoreSourceUpload && job.Status == domain.RestoreQueued {
+		if job.SourceType == domain.RestoreSourceUpload && (job.Status == domain.RestoreQueued || job.Status == domain.RestoreReady) {
 			continue
 		}
 		if restoreJobActive(job.Status) {

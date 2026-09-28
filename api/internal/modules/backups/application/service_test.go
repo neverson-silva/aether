@@ -3,6 +3,7 @@ package application
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -435,16 +436,30 @@ func TestUploadRestoreLifecycle(t *testing.T) {
 }
 
 func TestUnstartedFileRestoreDoesNotBlockAnotherRestore(t *testing.T) {
-	svc, store, _, _, _ := newService()
-	dbID := uuid.New()
-	store.restores[uuid.New()] = &domain.RestoreJob{
-		TargetDatabaseID: dbID,
-		SourceType:       domain.RestoreSourceUpload,
-		Status:           domain.RestoreQueued,
-	}
+	for _, test := range []struct {
+		status       domain.RestoreStatus
+		wantConflict bool
+	}{
+		{status: domain.RestoreQueued},
+		{status: domain.RestoreReady},
+		{status: domain.RestoreRunning, wantConflict: true},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			svc, store, _, _, _ := newService()
+			dbID := uuid.New()
+			jobID := uuid.New()
+			store.restores[jobID] = &domain.RestoreJob{
+				ID:               jobID,
+				TargetDatabaseID: dbID,
+				SourceType:       domain.RestoreSourceUpload,
+				Status:           test.status,
+			}
 
-	if err := svc.ensureNoActiveRestore(context.Background(), dbID); err != nil {
-		t.Fatalf("expected unstarted file restore not to block, got %v", err)
+			err := svc.ensureNoActiveRestore(context.Background(), dbID)
+			if gotConflict := errors.Is(err, domain.ErrConflict); gotConflict != test.wantConflict {
+				t.Fatalf("conflict = %t, want %t (error: %v)", gotConflict, test.wantConflict, err)
+			}
+		})
 	}
 }
 
