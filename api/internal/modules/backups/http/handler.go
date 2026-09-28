@@ -134,7 +134,7 @@ func abort(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
 	case errors.Is(err, domain.ErrConflict):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "conflict"})
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrValidation):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 	case errors.Is(err, domain.ErrForbidden):

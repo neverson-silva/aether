@@ -1953,39 +1953,114 @@ function DomainRow({
   )
 }
 function LiveLogsPanel({ serviceId }: { serviceId: string }) {
-  const [lines, setLines] = useState<
-    Array<{ id: string; level: string; message: string }>
-  >([])
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const terminalRef = useRef<XTerm | null>(null)
+  const [connectionState, setConnectionState] = useState<
+    'connecting' | 'live' | 'reconnecting' | 'disconnected'
+  >('connecting')
+  const [lineCount, setLineCount] = useState(0)
+
   useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const styles = getComputedStyle(host)
+    const terminal = new XTerm({
+      convertEol: true,
+      cursorBlink: false,
+      cursorInactiveStyle: 'none',
+      disableStdin: true,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      fontSize: 13,
+      lineHeight: 1.45,
+      scrollback: 10000,
+      theme: {
+        background: styles.getPropertyValue('--ely-color-code-canvas').trim(),
+        foreground: styles.getPropertyValue('--ely-color-text-secondary').trim(),
+        cursor: styles.getPropertyValue('--ely-color-action').trim(),
+        selectionBackground: styles.getPropertyValue('--ely-color-selection').trim(),
+      },
+    })
+    const fit = new FitAddon()
+    terminal.loadAddon(fit)
+    terminal.open(host)
+    terminalRef.current = terminal
+    terminal.writeln('Waiting for live output…')
+    const fitTerminal = () => {
+      if (host.clientWidth && host.clientHeight) fit.fit()
+    }
+    const observer = new ResizeObserver(fitTerminal)
+    observer.observe(host)
+    const animationFrame = requestAnimationFrame(fitTerminal)
+    return () => {
+      cancelAnimationFrame(animationFrame)
+      observer.disconnect()
+      terminal.dispose()
+      terminalRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) return
+    setConnectionState('connecting')
+    setLineCount(0)
+    terminal.clear()
+    terminal.writeln('Connecting to live output…')
     const server = getServer() || window.location.origin
     const url = new URL(`/api/v1/services/${serviceId}/logs`, server)
     url.searchParams.set('running', '1')
     url.searchParams.set('follow', '1')
     const stream = new EventSource(url, { withCredentials: true })
-    stream.onmessage = (event) =>
-      setLines((current) => [
-        ...current.slice(-499),
-        { id: `${Date.now()}-${current.length}`, level: 'OUT', message: event.data },
-      ])
+    stream.onopen = () => setConnectionState('live')
+    stream.onmessage = (event) => {
+      if (!event.data) return
+      terminal.writeln(event.data)
+      terminal.scrollToBottom()
+      setLineCount((current) => current + event.data.split('\n').length)
+    }
+    stream.onerror = () =>
+      setConnectionState(
+        stream.readyState === EventSource.CLOSED ? 'disconnected' : 'reconnecting',
+      )
     return () => stream.close()
   }, [serviceId])
+  const statusLabel =
+    connectionState === 'live'
+      ? 'LIVE'
+      : connectionState === 'connecting'
+        ? 'CONNECTING'
+        : connectionState === 'reconnecting'
+          ? 'RECONNECTING'
+          : 'DISCONNECTED'
+  const statusTone =
+    connectionState === 'live'
+      ? 'bg-success'
+      : connectionState === 'disconnected'
+        ? 'bg-danger'
+        : 'bg-warning'
+
   return (
-    <section className="grid gap-4">
-      <div>
-        <Typography
-          as="h2"
-          role="section-title"
-        >
-          Live logs
-        </Typography>
-        <p className="text-supporting text-text-tertiary">
-          Runtime output arrives through the service log stream.
-        </p>
+    <section className="grid min-w-0 gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-xl border border-border-subtle bg-surface-2 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex items-center gap-2 font-technical text-log text-text-secondary">
+            <span className={`size-2 rounded-full ${statusTone}`} />
+            {statusLabel}
+          </span>
+          <span className="truncate font-technical text-log text-text-tertiary">
+            /api/v1/services/{serviceId}/logs
+          </span>
+        </div>
+        <span className="font-technical text-log text-text-subtle">
+          {lineCount.toLocaleString()} lines
+        </span>
       </div>
-      <LogViewer
-        className="w-full lg:w-[110%]"
-        follow
-        lines={lines}
+      <div
+        aria-label="Live service logs"
+        className="h-[min(560px,calc(100dvh-18rem))] min-h-72 overflow-hidden rounded-b-xl border-x border-b border-border-subtle bg-code-canvas px-4 py-3"
+        ref={hostRef}
+        role="log"
+        aria-live="polite"
       />
     </section>
   )

@@ -350,7 +350,8 @@ func (s *DatabaseBackups) ensureNoActiveRestoreExcept(ctx context.Context, dbID 
 		return err
 	}
 	if len(activeBackups) > 0 {
-		return domain.ErrConflict
+		job := activeBackups[0]
+		return fmt.Errorf("%w: backup job %s is still %s", domain.ErrConflict, job.ID, job.Status)
 	}
 	restores, err := s.Store.ListRestoreJobsByTarget(ctx, dbID, 50)
 	if err != nil {
@@ -361,7 +362,7 @@ func (s *DatabaseBackups) ensureNoActiveRestoreExcept(ctx context.Context, dbID 
 			continue
 		}
 		if restoreJobActive(job.Status) {
-			return domain.ErrConflict
+			return fmt.Errorf("%w: restore job %s is still %s", domain.ErrConflict, job.ID, job.Status)
 		}
 	}
 	return nil
