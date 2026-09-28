@@ -289,7 +289,7 @@ ensure_runtime() {
     if install_docker; then
       runtime="$(detect_runtime)"
     else
-      fail "Docker CLI is required but could not be installed. Install Docker Engine or Docker Desktop and run again."
+      fail "Docker CLI is required but could not be installed. See $HOST_LOG for installation details, install Docker Engine, and run again."
     fi
   fi
   if ! docker info >/dev/null 2>&1; then
@@ -402,18 +402,8 @@ install_docker_rpm() {
     amzn) repo_base="amazon" ;;
   esac
   local package_manager="dnf"
-  local plugins_package="dnf-plugins-core"
   [[ "$distro" == "amzn" ]] && package_manager="yum"
-  [[ "$package_manager" == "yum" ]] && plugins_package="yum-utils"
-  local repo_command=""
-  if command_exists dnf && dnf config-manager addrepo --help >/dev/null 2>&1; then
-    repo_command="dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/$repo_base/docker-ce.repo"
-  elif command_exists dnf; then
-    repo_command="dnf config-manager --add-repo https://download.docker.com/linux/$repo_base/docker-ce.repo"
-  else
-    repo_command="yum-config-manager --add-repo https://download.docker.com/linux/$repo_base/docker-ce.repo"
-  fi
-  install_docker_command "$package_manager install -y $plugins_package ca-certificates && $repo_command && $package_manager install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+  install_docker_command "$package_manager install -y ca-certificates curl && install -d -m 0755 /etc/yum.repos.d && curl -fsSL https://download.docker.com/linux/$repo_base/docker-ce.repo -o /etc/yum.repos.d/docker-ce.repo && $package_manager install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
 }
 
 install_docker_debian() {
