@@ -16,7 +16,6 @@ import {
 } from '@phosphor-icons/react'
 import { type ReactNode, useState } from 'react'
 import type { Project, ServiceSummary } from '../api/types'
-import { CreateProjectDialog } from '../components/create-project-dialog'
 import { useProjects } from '../hooks/use-projects'
 import { useServices } from '../hooks/use-service-details'
 
@@ -46,7 +45,12 @@ function ProjectInventory({ onNavigate }: { onNavigate: (path: string) => void }
         eyebrow="PROJECT SYSTEM / BOUNDARIES"
         title="Project field"
         description="Operational boundaries for environments, delivery ownership and team scope."
-        action={<CreateProjectDialog />}
+        action={
+          <Button onClick={() => onNavigate('/projects/new')}>
+            <Plus size={17} />
+            Create project
+          </Button>
+        }
       />
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
         <section className="grid min-w-0 content-start gap-4">
@@ -75,7 +79,12 @@ function ProjectInventory({ onNavigate }: { onNavigate: (path: string) => void }
               title="No project boundaries"
               description="Create a project to establish the first operational scope."
               icon={<Stack size={28} />}
-              action={<CreateProjectDialog />}
+              action={
+                <Button onClick={() => onNavigate('/projects/new')}>
+                  <Plus size={17} />
+                  Create project
+                </Button>
+              }
             />
           ) : null}
           {projects.length ? (

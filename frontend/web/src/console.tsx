@@ -73,7 +73,7 @@ function contentWidth(pathname: string, search: string): PageWidth {
     if (tab === 'deployments' || tab === 'logs' || tab === 'metrics') return 'wide'
     return 'standard'
   }
-  if (pathname === '/services/new' || pathname === '/projects/new') return 'readable'
+  if (pathname === '/services/new') return 'readable'
   if (pathname.startsWith('/databases/')) return 'standard'
   return 'standard'
 }

@@ -331,9 +331,8 @@ export function CreateServiceFlow({
       !(
         kind &&
         identityValid &&
-        sourceValid &&
-        buildConfigurationValid &&
-        environmentVariablesValid
+        (isDatabase ||
+          (sourceValid && buildConfigurationValid && environmentVariablesValid))
       )
     )
       return
