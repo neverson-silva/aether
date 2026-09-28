@@ -671,13 +671,7 @@ function DestinationRow({
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <RuntimeStatus
-          status={
-            google
-              ? destination.oauth_status === 'connected'
-                ? 'healthy'
-                : 'degraded'
-              : 'healthy'
-          }
+          status={destinationRuntimeStatus(destination)}
           label={google ? destination.oauth_status || 'NOT CONNECTED' : 'CONFIGURED'}
         />
         {google ? (
@@ -719,6 +713,16 @@ function DestinationRow({
       </div>
     </div>
   )
+}
+
+function destinationRuntimeStatus(
+  destination: S3Destination,
+): 'healthy' | 'deploying' | 'degraded' | 'failed' {
+  if (destination.type !== 'google-drive') return 'healthy'
+  if (destination.oauth_status === 'connected') return 'healthy'
+  if (destination.oauth_status === 'error') return 'failed'
+  if (destination.oauth_status === 'connecting') return 'deploying'
+  return 'degraded'
 }
 
 function SnapshotWorkplane({

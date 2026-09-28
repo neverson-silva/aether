@@ -885,7 +885,7 @@ function ServiceCard({
             ) : null}
           </div>
           <RuntimeStatus
-            className="shrink-0 rounded-full bg-surface-3 px-2.5 py-1"
+            className="shrink-0"
             label={statusLabel}
             status={toRuntimeStatus(service.status)}
           />

@@ -104,13 +104,13 @@ type googleUserInfo struct {
 }
 
 func (s *Settings) googleRedirectURI(r *http.Request) string {
+	if s.GoogleRedirectURI != "" {
+		return s.GoogleRedirectURI
+	}
 	if s.PublicURLResolver != nil && r != nil {
 		if publicURL := strings.TrimSpace(s.PublicURLResolver(r.Context())); publicURL != "" {
 			return strings.TrimSuffix(publicURL, "/") + "/api/v1/s3-destinations/google/callback"
 		}
-	}
-	if s.GoogleRedirectURI != "" {
-		return s.GoogleRedirectURI
 	}
 	return s.baseURL(r) + "/api/v1/s3-destinations/google/callback"
 }
@@ -128,9 +128,6 @@ func (s *Settings) GoogleCallback(ctx context.Context, r *http.Request, state, c
 	redirect := func(status string) string {
 		return base + "/storage?oauth=google-drive&status=" + url.QueryEscape(status)
 	}
-	if oauthError != "" {
-		return redirect("error:" + oauthError), nil
-	}
 	if s.oauthStates == nil {
 		return redirect("error:invalid_state"), nil
 	}
@@ -145,23 +142,31 @@ func (s *Settings) GoogleCallback(ctx context.Context, r *http.Request, state, c
 	if !dest.IsOAuth() {
 		return redirect("error:invalid_destination"), nil
 	}
+	if oauthError != "" {
+		_ = s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthError, dest.OAuthEmail, "", "")
+		return redirect("error:" + oauthError), nil
+	}
 	secret, err := s.googleClientSecret(dest)
 	if err != nil {
+		_ = s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthError, dest.OAuthEmail, "", "")
 		return redirect("error:not_configured"), nil
 	}
 
 	tokens, err := s.exchangeCode(ctx, code, dest.GoogleClientID, secret, s.googleRedirectURI(r))
 	if err != nil {
+		_ = s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthError, dest.OAuthEmail, "", "")
 		return redirect("error:token_exchange"), nil
 	}
 	accessEnc, err := s.Passwords.Encrypt(tokens.AccessToken)
 	if err != nil {
+		_ = s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthError, dest.OAuthEmail, "", "")
 		return redirect("error:storage"), nil
 	}
 	refreshEnc := ""
 	if tokens.RefreshToken != "" {
 		refreshEnc, err = s.Passwords.Encrypt(tokens.RefreshToken)
 		if err != nil {
+			_ = s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthError, dest.OAuthEmail, "", "")
 			return redirect("error:storage"), nil
 		}
 	}
@@ -170,6 +175,7 @@ func (s *Settings) GoogleCallback(ctx context.Context, r *http.Request, state, c
 		email = info.Email
 	}
 	if err := s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthConnected, email, accessEnc, refreshEnc); err != nil {
+		_ = s.Store.UpdateS3OAuth(ctx, entry.DestID, entry.OrgID, domain.OAuthError, dest.OAuthEmail, "", "")
 		return redirect("error:storage"), nil
 	}
 	if name := strings.TrimSpace(dest.Bucket); name != "" {
