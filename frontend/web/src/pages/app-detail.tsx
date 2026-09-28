@@ -74,7 +74,6 @@ export function AppDetail() {
     .filter(Boolean)
     .map((line, index) => ({
       id: `${deployment?.id ?? 'log'}-${index}`,
-      level: 'OUT',
       message: line,
     }))
   const timeline = (deployments.data ?? [])
@@ -315,7 +314,7 @@ function Delivery({
   deployments: Deployment[]
   selectedId?: string
   onSelect: (id: string) => void
-  lines: Array<{ id: string; level: string; message: string }>
+  lines: Array<{ id: string; level?: string; message: string }>
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">

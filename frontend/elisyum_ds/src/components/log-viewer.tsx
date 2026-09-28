@@ -24,25 +24,30 @@ export function LogViewer({ className = '', follow = false, lines }: LogViewerPr
   }, [follow, latestLineId, lines.length])
 
   return (
-    <ScrollArea
-      aria-label="Logs"
-      aria-live={follow ? 'polite' : undefined}
-      className={`max-h-[min(44rem,calc(100dvh-22rem))] cursor-text overflow-y-auto rounded-xl border border-border-subtle bg-code-canvas px-4 py-3 ${className}`}
-      role="log"
-      ref={viewportRef}
+    <div
+      className={`flex max-h-[min(44rem,calc(100dvh-22rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-code-canvas ${className}`}
     >
-      <div className="grid gap-0.5 font-technical text-log">
+      <ScrollArea
+        aria-label="Logs"
+        aria-live={follow ? 'polite' : undefined}
+        className="min-h-0 flex-1 cursor-text overflow-y-auto px-3 py-2 font-technical text-log"
+        role="log"
+        ref={viewportRef}
+      >
         {lines.length ? (
           lines.map((line, index) => (
             <div
-              className="grid grid-cols-[3rem_auto_minmax(0,1fr)] gap-3 border-l-2 border-transparent px-2 py-1 transition-[background-color,border-color] duration-[var(--ely-duration-fast)] motion-reduce:transition-none hover:border-info hover:bg-surface-1"
+              className="flex min-w-0 items-start gap-3 border-l-2 border-transparent px-2 py-0.5 leading-5 transition-colors duration-[var(--ely-duration-fast)] motion-reduce:transition-none hover:border-info hover:bg-surface-1"
               key={line.id}
             >
-              <span className="select-none text-right text-text-subtle">
+              <span className="w-10 shrink-0 select-none text-right text-text-subtle">
                 {index + 1}
               </span>
-              <span className="text-info">{line.level}</span>
-              <span className="min-w-0 break-words text-text-secondary">
+              {line.timestamp ? (
+                <span className="shrink-0 text-text-subtle">{line.timestamp}</span>
+              ) : null}
+              {line.level ? <span className="shrink-0 text-info">{line.level}</span> : null}
+              <span className="min-w-0 whitespace-pre-wrap break-words text-text-secondary">
                 {line.message}
               </span>
             </div>
@@ -52,12 +57,12 @@ export function LogViewer({ className = '', follow = false, lines }: LogViewerPr
             No log output yet.
           </p>
         )}
-        {follow ? (
-          <span className="mt-2 border-t border-border-subtle px-2 pt-2 text-success">
-            Following live output
-          </span>
-        ) : null}
-      </div>
-    </ScrollArea>
+      </ScrollArea>
+      {follow ? (
+        <div className="shrink-0 border-t border-border-subtle px-4 py-2 font-technical text-log text-success">
+          Following live output
+        </div>
+      ) : null}
+    </div>
   )
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Tabs as BaseTabs } from '@base-ui/react/tabs'
 
 export interface TabItem {
@@ -23,18 +23,25 @@ export function Tabs({
   onValueChange,
   value,
 }: TabsProps) {
+  const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? items[0]?.value)
+  const selectedValue = value ?? uncontrolledValue
+
   return (
     <BaseTabs.Root
       className={`grid gap-4 ${className}`}
       defaultValue={defaultValue}
-      onValueChange={(nextValue) => onValueChange?.(String(nextValue))}
-      value={value}
+      onValueChange={(nextValue) => {
+        const nextTab = String(nextValue)
+        if (value === undefined) setUncontrolledValue(nextTab)
+        onValueChange?.(nextTab)
+      }}
+      value={selectedValue}
     >
       <BaseTabs.List className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border-subtle">
         <>
           {items.map((item) => (
             <BaseTabs.Tab
-              className="relative cursor-pointer select-none whitespace-nowrap border-b-2 border-transparent bg-transparent px-3 py-2 text-label text-text-tertiary transition-[color,transform] duration-[var(--ely-duration-fast)] hover:text-text-primary active:scale-[0.98] data-[active]:bg-action-soft data-[active]:text-action-strong aria-selected:border-action aria-selected:bg-action-soft aria-selected:text-action-strong after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:origin-center after:scale-x-0 after:bg-action after:transition-transform after:duration-[var(--ely-duration-fast)] data-[active]:after:scale-x-100 aria-selected:after:scale-x-100 focus-visible:bg-transparent focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none motion-reduce:active:scale-100 motion-reduce:after:transition-none disabled:cursor-not-allowed"
+              className={`relative cursor-pointer select-none whitespace-nowrap border-b-2 px-3 py-2 text-label transition-[color,transform] duration-[var(--ely-duration-fast)] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:origin-center after:transition-transform after:duration-[var(--ely-duration-fast)] focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none motion-reduce:active:scale-100 motion-reduce:after:transition-none disabled:cursor-not-allowed ${selectedValue === item.value ? 'border-action bg-action-soft text-action-strong after:scale-x-100 after:bg-action' : 'border-transparent bg-transparent text-text-tertiary after:scale-x-0 after:bg-action hover:text-text-primary'} active:scale-[0.98]`}
               disabled={item.disabled}
               key={item.value}
               value={item.value}

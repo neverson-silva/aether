@@ -128,7 +128,6 @@ export function ServiceDetail() {
     .filter(Boolean)
     .map((line, index) => ({
       id: `${deployment?.id ?? 'log'}-${index}`,
-      level: 'OUT',
       message: line,
     }))
   const items = [
@@ -1123,7 +1122,7 @@ function DeploymentsPanel({
   onCancel: (id: string) => void
   cancellingDeploymentId?: string
   cancelPending: boolean
-  log: Array<{ id: string; level: string; message: string }>
+  log: Array<{ id: string; level?: string; message: string }>
 }) {
   return (
     <div className="grid min-h-0 gap-8 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
