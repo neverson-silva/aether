@@ -140,8 +140,14 @@ func (s *fakeStore) UpdateRestoreJob(_ context.Context, job *domain.RestoreJob) 
 	s.restores[job.ID] = job
 	return job, nil
 }
-func (s *fakeStore) ListRestoreJobsByTarget(_ context.Context, _ uuid.UUID, _ int) ([]domain.RestoreJob, error) {
-	return nil, nil
+func (s *fakeStore) ListRestoreJobsByTarget(_ context.Context, targetID uuid.UUID, _ int) ([]domain.RestoreJob, error) {
+	var out []domain.RestoreJob
+	for _, job := range s.restores {
+		if job.TargetDatabaseID == targetID {
+			out = append(out, *job)
+		}
+	}
+	return out, nil
 }
 func (s *fakeStore) ListQueuedRestoreJobs(_ context.Context, _ int) ([]domain.RestoreJob, error) {
 	return nil, nil
@@ -425,6 +431,20 @@ func TestUploadRestoreLifecycle(t *testing.T) {
 	}
 	if err := svc.CancelUploadRestore(context.Background(), dbID, job.ID, uuid.New()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUnstartedFileRestoreDoesNotBlockAnotherRestore(t *testing.T) {
+	svc, store, _, _, _ := newService()
+	dbID := uuid.New()
+	store.restores[uuid.New()] = &domain.RestoreJob{
+		TargetDatabaseID: dbID,
+		SourceType:       domain.RestoreSourceUpload,
+		Status:           domain.RestoreQueued,
+	}
+
+	if err := svc.ensureNoActiveRestore(context.Background(), dbID); err != nil {
+		t.Fatalf("expected unstarted file restore not to block, got %v", err)
 	}
 }
 

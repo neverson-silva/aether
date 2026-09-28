@@ -361,6 +361,9 @@ func (s *DatabaseBackups) ensureNoActiveRestoreExcept(ctx context.Context, dbID 
 		if job.ID == except {
 			continue
 		}
+		if job.SourceType == domain.RestoreSourceUpload && job.Status == domain.RestoreQueued {
+			continue
+		}
 		if restoreJobActive(job.Status) {
 			return fmt.Errorf("%w: restore job %s is still %s", domain.ErrConflict, job.ID, job.Status)
 		}
