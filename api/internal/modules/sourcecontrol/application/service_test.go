@@ -3,6 +3,8 @@ package application
 import (
 	"strings"
 	"testing"
+
+	"aether/internal/modules/sourcecontrol/domain"
 )
 
 func TestParseEnvironmentKeys(t *testing.T) {
@@ -30,5 +32,25 @@ func TestServiceTemplatePathRespectsRootAndRejectsTraversal(t *testing.T) {
 	}
 	if _, err := serviceTemplatePath("apps/api", "../../etc/passwd"); err == nil {
 		t.Fatal("expected traversal path to be rejected")
+	}
+}
+
+func TestComposeSourceWatchPathsScopeAutomaticDeploys(t *testing.T) {
+	rules := composeSourceTriggerRules(domain.ServiceSource{
+		AutoDeploy:    true,
+		RootDirectory: "apps/payments",
+		ComposeFile:   "compose.yaml",
+		WatchPaths:    []string{"apps/payments/services/api/**"},
+	})
+	if rules.RootDirectory != "" {
+		t.Fatalf("root directory = %q, want no broad root filter", rules.RootDirectory)
+	}
+	for _, changedFile := range []string{"apps/payments/compose.yaml", "apps/payments/services/api/main.go"} {
+		if decision := domain.EvaluateTrigger(rules, []string{changedFile}, true); !decision.Trigger {
+			t.Fatalf("expected %q to trigger deployment: %+v", changedFile, decision)
+		}
+	}
+	if decision := domain.EvaluateTrigger(rules, []string{"apps/payments/docs/readme.md"}, true); decision.Trigger {
+		t.Fatalf("unexpected deployment for an unmonitored path: %+v", decision)
 	}
 }

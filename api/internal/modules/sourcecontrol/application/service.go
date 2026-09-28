@@ -111,11 +111,7 @@ func (s *Service) processPush(ctx context.Context, event domain.PushEvent, files
 		if source.Branch != "" && source.Branch != event.Branch {
 			continue
 		}
-		decision := domain.EvaluateTrigger(domain.BuildTriggerRules{
-			Branch: source.Branch, AutoDeploy: source.AutoDeploy,
-			RootDirectory: source.RootDirectory, WatchPaths: source.WatchPaths,
-			IgnorePaths: source.IgnorePaths, WatchRootFiles: source.WatchRootFiles,
-		}, changedFiles, filesKnown)
+		decision := domain.EvaluateTrigger(composeSourceTriggerRules(source), changedFiles, filesKnown)
 		if !decision.Trigger {
 			continue
 		}
@@ -133,6 +129,20 @@ func (s *Service) processPush(ctx context.Context, event domain.PushEvent, files
 		}
 	}
 	return nil
+}
+
+func composeSourceTriggerRules(source domain.ServiceSource) domain.BuildTriggerRules {
+	rootDirectory := source.RootDirectory
+	watchPaths := source.WatchPaths
+	if source.ComposeFile != "" && len(watchPaths) > 0 {
+		watchPaths = append(append([]string(nil), watchPaths...), path.Join(source.RootDirectory, source.ComposeFile))
+		rootDirectory = ""
+	}
+	return domain.BuildTriggerRules{
+		Branch: source.Branch, AutoDeploy: source.AutoDeploy,
+		RootDirectory: rootDirectory, WatchPaths: watchPaths,
+		IgnorePaths: source.IgnorePaths, WatchRootFiles: source.WatchRootFiles,
+	}
 }
 
 const defaultEnvironmentTemplatePath = ".env.example"

@@ -456,7 +456,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 	}
 	sourceConnections := &sourcecontrolApp.Connections{
 		Store: sourceStore, Provider: githubProvider, Cipher: appsSecrets,
-		PublicURL: cfg.PublicURL, APIURL: cfg.GitHubAPIURL,
+		PublicURL: cfg.PublicURL, PublicURLResolver: serverDomains.PublicURL, APIURL: cfg.GitHubAPIURL,
 	}
 	composeSvc.Source = sourceStore
 	composeSvc.Clone = composeGitClone{connections: sourceConnections}

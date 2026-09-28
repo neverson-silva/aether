@@ -19,11 +19,21 @@ import (
 )
 
 type Connections struct {
-	Store     ports.ConnectionStore
-	Provider  ports.InstallationProvider
-	Cipher    ports.SecretCipher
-	PublicURL string
-	APIURL    string
+	Store             ports.ConnectionStore
+	Provider          ports.InstallationProvider
+	Cipher            ports.SecretCipher
+	PublicURL         string
+	PublicURLResolver func(context.Context) string
+	APIURL            string
+}
+
+func (s *Connections) ResolvePublicURL(ctx context.Context) string {
+	if s.PublicURLResolver != nil {
+		if publicURL := strings.TrimSpace(s.PublicURLResolver(ctx)); publicURL != "" {
+			return strings.TrimRight(publicURL, "/")
+		}
+	}
+	return strings.TrimRight(strings.TrimSpace(s.PublicURL), "/")
 }
 
 func (s *Connections) ConnectGitHub(ctx context.Context, organizationID uuid.UUID, installationID string) (*domain.Connection, error) {

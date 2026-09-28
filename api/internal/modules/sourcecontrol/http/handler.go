@@ -171,9 +171,9 @@ func (h *Handler) StartGitHubManifest(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "github source control is not configured"})
 		return
 	}
-	publicURL := h.Connections.PublicURL
+	publicURL := h.Connections.ResolvePublicURL(c.Request.Context())
 	if publicURL == "" {
-		publicURL = "http://" + c.Request.Host
+		publicURL = requestPublicURL(c)
 	}
 	var request struct {
 		ReturnURL string `json:"return_url"`
@@ -221,9 +221,9 @@ func (h *Handler) CompleteGitHubInstallation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	publicURL := h.Connections.PublicURL
+	publicURL := h.Connections.ResolvePublicURL(c.Request.Context())
 	if publicURL == "" {
-		publicURL = "http://" + c.Request.Host
+		publicURL = requestPublicURL(c)
 	}
 	returnURL := c.Query("return_url")
 	if returnURL == "" || returnURL[0] != '/' || len(returnURL) > 2048 {
@@ -232,6 +232,18 @@ func (h *Handler) CompleteGitHubInstallation(c *gin.Context) {
 		returnURL = "/?github=connected"
 	}
 	c.Redirect(http.StatusFound, publicURL+returnURL)
+}
+
+func requestPublicURL(c *gin.Context) string {
+	scheme := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
+	if scheme == "" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	return scheme + "://" + c.Request.Host
 }
 
 func (h *Handler) GetServiceSource(c *gin.Context) {
