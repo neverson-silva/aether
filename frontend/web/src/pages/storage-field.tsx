@@ -5,7 +5,6 @@ import {
   EmptyState,
   Field,
   Input,
-  Marker,
   Modal,
   RuntimeStatus,
   Select,
@@ -245,7 +244,7 @@ export function StorageField() {
     })
   }
 
-  const createSchedule = (body: {
+  const createSchedule = async (body: {
     app_id: string
     volume: string
     name_prefix: string
@@ -253,16 +252,19 @@ export function StorageField() {
     retention: number
     enabled: boolean
   }) => {
-    createScheduleMutation.mutate(body, {
-      onSuccess: () => showToast('Snapshot schedule created successfully.', 'success'),
-      onError: (error) =>
-        showToast(
-          error instanceof Error
-            ? error.message
-            : 'Could not create the snapshot schedule.',
-          'error',
-        ),
-    })
+    try {
+      await createScheduleMutation.mutateAsync(body)
+      showToast('Snapshot schedule created successfully.', 'success')
+      return true
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : 'Could not create the snapshot schedule.',
+        'error',
+      )
+      return false
+    }
   }
 
   const deleteSchedule = (id: string) => {
@@ -279,24 +281,23 @@ export function StorageField() {
   }
 
   return (
-    <div className="grid gap-7">
+    <div className="mx-auto grid w-full max-w-screen-2xl gap-8">
       <header className="flex flex-wrap items-end justify-between gap-5">
         <div className="grid gap-3">
-          <div className="flex items-center gap-3 text-label tracking-[0.16em] text-text-subtle">
-            <CloudArrowUp size={18} />
+          <div className="flex items-center gap-2 text-label tracking-[0.16em] text-text-subtle">
             PROTECTION / DESTINATIONS
           </div>
           <Typography
             as="h1"
             role="page-title"
           >
-            Storage field
+            S3 Destinations
           </Typography>
           <Typography
             className="max-w-2xl"
             role="supporting"
           >
-            External destinations and snapshots used to protect operational data.
+            Configure external storage for backups and snapshots.
           </Typography>
         </div>
         <Modal
@@ -343,21 +344,23 @@ export function StorageField() {
       </header>
       <section className="grid gap-4">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Marker tone="accent" />
-            <span className="text-label tracking-[0.12em] text-text-subtle">
-              DESTINATION INVENTORY / {destinations.data?.length ?? 0}
-            </span>
-          </div>
-          <span className="font-technical text-log text-text-subtle">
-            CREDENTIALS REMAIN PROTECTED
+          <Typography
+            as="h2"
+            role="section-title"
+          >
+            Destinations
+          </Typography>
+          <span className="text-supporting text-text-tertiary">
+            {destinations.data
+              ? `${destinations.data.length} ${destinations.data.length === 1 ? 'destination' : 'destinations'}`
+              : '—'}
           </span>
         </div>
         {destinations.isLoading ? (
-          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
         ) : destinations.isError ? (
           <EmptyState
-            title="Storage field unavailable"
+            title="Destinations unavailable"
             description="The control plane did not return storage destinations."
             action={
               <Button
@@ -369,7 +372,7 @@ export function StorageField() {
             }
           />
         ) : destinations.data?.length ? (
-          <Card className="grid gap-2 rounded-2xl border-border-subtle bg-surface-1 p-3">
+          <div className="grid gap-3">
             {destinations.data.map((destination) => (
               <DestinationRow
                 key={destination.id}
@@ -387,46 +390,38 @@ export function StorageField() {
                 onDisconnect={() => disconnectGoogle(destination)}
               />
             ))}
-          </Card>
+          </div>
         ) : (
           <EmptyState
             title="No destinations configured"
-            description="Create a destination to make backups and artifacts durable."
+            description="Connect an S3-compatible storage destination to store backups and snapshots securely."
             icon={<CloudArrowUp size={28} />}
-            action={
-              <Button
-                onClick={() => {
-                  setEditing(null)
-                  setOpen(true)
-                }}
-              >
-                <Plus size={17} />
-                Create destination
-              </Button>
-            }
           />
         )}
       </section>
-      <section className="grid gap-4 xl:grid-cols-2">
-        <SnapshotWorkplane
-          title="Snapshots"
-          icon={<Archive size={18} />}
-          items={(snapshots.data ?? []).map((item) => ({
-            id: item.id,
-            name: item.name,
-            meta: `${item.volume} · ${formatBytes(item.size)}`,
-            state: item.created_at,
-          }))}
-          loading={snapshots.isLoading}
-        />
-        <ScheduleWorkplane
-          apps={apps.data ?? []}
-          schedules={schedules.data ?? []}
-          loading={schedules.isLoading}
-          creating={createScheduleMutation.isPending}
-          onCreate={createSchedule}
-          onDelete={deleteSchedule}
-        />
+      <section className="grid gap-4">
+        <h2 className="text-label tracking-[0.16em] text-text-subtle">SNAPSHOTS</h2>
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <SnapshotWorkplane
+            title="Snapshots"
+            icon={<Archive size={18} />}
+            items={(snapshots.data ?? []).map((item) => ({
+              id: item.id,
+              name: item.name,
+              meta: `${item.volume} · ${formatBytes(item.size)}`,
+              state: item.created_at,
+            }))}
+            loading={snapshots.isLoading}
+          />
+          <ScheduleWorkplane
+            apps={apps.data ?? []}
+            schedules={schedules.data ?? []}
+            loading={schedules.isLoading || apps.isLoading}
+            creating={createScheduleMutation.isPending}
+            onCreate={createSchedule}
+            onDelete={deleteSchedule}
+          />
+        </div>
       </section>
     </div>
   )
@@ -479,7 +474,7 @@ function DestinationForm({
           ))}
         </Select>
       </Field>
-      <div className="grid gap-4 rounded-xl bg-surface-2 p-4">
+      <div className="grid gap-4">
         <Typography role="supporting">
           {google
             ? 'Connect Google Drive through the organization OAuth boundary.'
@@ -557,7 +552,7 @@ function DestinationForm({
           </>
         ) : (
           <>
-            <div className="grid gap-2 rounded-lg border border-border-subtle bg-surface-1 p-3">
+            <div className="grid gap-2 rounded-lg bg-surface-2 px-4 py-3">
               <span className="text-label text-text-tertiary">REDIRECT URI</span>
               <code className="break-all font-technical text-log text-action-strong">
                 {window.location.origin}/api/v1/s3-destinations/google/callback
@@ -645,7 +640,7 @@ function DestinationRow({
 }) {
   const google = destination.type === 'google-drive'
   return (
-    <div className="grid gap-4 rounded-xl border border-transparent bg-surface-2 p-4 transition-[background-color,border-color] hover:border-border-default hover:bg-surface-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+    <div className="grid min-w-0 gap-4 rounded-xl border border-border-subtle bg-surface-1 p-4 transition-[background-color,border-color] hover:border-border-default sm:grid-cols-[minmax(0,1fr)_auto] sm:p-5">
       <div className="grid min-w-0 gap-2">
         <div className="flex items-center gap-3">
           <span className="grid size-10 place-items-center rounded-xl bg-surface-1 text-text-tertiary">
@@ -738,44 +733,58 @@ function SnapshotWorkplane({
   loading: boolean
 }) {
   return (
-    <section className="grid gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-action-strong">{icon}</span>
+    <Card
+      padding="none"
+      className="grid min-w-0 content-start gap-4 rounded-2xl border-border-subtle bg-surface-1 p-5 sm:p-6"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 text-action-strong">{icon}</span>
           <Typography
-            as="h2"
+            as="h3"
             role="section-title"
           >
             {title}
           </Typography>
         </div>
-        <span className="font-technical text-log text-text-subtle">
-          {items.length} ITEMS
+        <span className="shrink-0 text-supporting text-text-tertiary">
+          {loading ? '—' : items.length}
         </span>
       </div>
       {loading ? (
-        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-28 rounded-xl" />
       ) : items.length ? (
-        <Card className="grid gap-2 rounded-2xl border-border-subtle bg-surface-1 p-3">
+        <div className="grid divide-y divide-border-subtle">
           {items.map((item) => (
             <div
-              className="grid gap-1 rounded-xl bg-surface-2 p-4"
+              className="grid gap-1 py-3 first:pt-0 last:pb-0"
               key={item.id}
             >
-              <span className="text-supporting text-text-primary">{item.name}</span>
-              <span className="font-technical text-log text-text-subtle">
+              <span className="truncate text-supporting text-text-primary">
+                {item.name}
+              </span>
+              <span className="break-words font-technical text-log text-text-subtle">
                 {item.meta} · {item.state}
               </span>
             </div>
           ))}
-        </Card>
+        </div>
       ) : (
-        <EmptyState
-          title={`No ${title.toLowerCase()} available`}
-          description="The control plane will surface this protection state when it exists."
-        />
+        <div className="grid min-h-32 content-center justify-items-center gap-2 py-4 text-center">
+          <Archive
+            aria-hidden="true"
+            className="text-text-tertiary"
+            size={20}
+          />
+          <p className="text-supporting font-medium text-text-primary">
+            No snapshots yet
+          </p>
+          <p className="max-w-xs text-supporting text-text-tertiary">
+            Snapshots created manually or by schedules will appear here.
+          </p>
+        </div>
       )}
-    </section>
+    </Card>
   )
 }
 
@@ -804,124 +813,181 @@ function ScheduleWorkplane({
     cron: string
     retention: number
     enabled: boolean
-  }) => void
+  }) => Promise<boolean>
   onDelete: (id: string) => void
 }) {
   const [appId, setAppId] = useState('')
   const [volume, setVolume] = useState('')
   const [cron, setCron] = useState('@daily')
-  const [retention, setRetention] = useState('7')
-  const submit = () => {
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const submit = async () => {
     if (!(appId && volume.trim())) return
-    onCreate({
+    const created = await onCreate({
       app_id: appId,
       volume: volume.trim(),
       name_prefix: 'scheduled',
       cron,
-      retention: Number(retention) || 7,
+      retention: 7,
       enabled: true,
     })
+    if (!created) return
+    setScheduleOpen(false)
     setVolume('')
   }
   return (
-    <section className="grid gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-action-strong">
+    <Card
+      padding="none"
+      className="grid min-w-0 content-start gap-4 rounded-2xl border-border-subtle bg-surface-1 p-5 sm:p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 text-action-strong">
             <CheckCircle size={18} />
           </span>
           <Typography
-            as="h2"
+            as="h3"
             role="section-title"
           >
             Snapshot schedules
           </Typography>
         </div>
-        <span className="font-technical text-log text-text-subtle">
-          {schedules.length} ITEMS
+        <span className="shrink-0 text-supporting text-text-tertiary">
+          {loading ? '—' : schedules.length}
         </span>
       </div>
-      <Card className="grid gap-4 rounded-2xl border-border-subtle bg-surface-1 p-4">
-        <div className="grid gap-3">
-          <Select
-            aria-label="Service"
-            value={appId}
-            onChange={(event) => setAppId(event.target.value)}
-          >
-            <option value="">Choose service</option>
-            {apps.map((app) => (
-              <option
-                key={app.id}
-                value={app.id}
-              >
-                {app.name}
-              </option>
-            ))}
-          </Select>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <Input
-              aria-label="Volume"
-              placeholder="Volume path"
-              value={volume}
-              onChange={(event) => setVolume(event.target.value)}
-            />
-            <Select
-              aria-label="Frequency"
-              value={cron}
-              onChange={(event) => setCron(event.target.value)}
-            >
-              <option value="@daily">Daily</option>
-              <option value="@weekly">Weekly</option>
-              <option value="@hourly">Hourly</option>
-              <option value="0 3 * * *">Daily at 03:00</option>
-              <option value="30 22 * * 5">Weekly Friday</option>
-            </Select>
+      {apps.length ? (
+        <Modal
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          trigger={
+            <>
+              <Plus size={16} />
+              Create schedule
+            </>
+          }
+          title="Create snapshot schedule"
+          description="Choose a service volume and how often to capture it."
+          footer={
             <Button
               disabled={!(appId && volume.trim()) || creating}
-              onClick={submit}
+              onClick={() => void submit()}
             >
               <Plus size={16} />
-              {creating ? 'Scheduling...' : 'Schedule'}
+              {creating ? 'Creating schedule…' : 'Create schedule'}
             </Button>
-          </div>
-        </div>
-        {loading ? (
-          <Skeleton className="h-24 rounded-xl" />
-        ) : schedules.length ? (
-          <div className="grid gap-2">
-            {schedules.map((schedule) => (
-              <div
-                className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-2 p-3"
-                key={schedule.id}
+          }
+        >
+          <div className="grid gap-4">
+            <Field
+              id="schedule-service"
+              label="Service"
+              required
+            >
+              <Select
+                value={appId}
+                onChange={(event) => setAppId(event.target.value)}
               >
-                <Archive
-                  className={schedule.enabled ? 'text-success' : 'text-text-tertiary'}
-                  size={16}
-                />
-                <span className="min-w-0 flex-1 truncate text-supporting text-text-primary">
-                  {schedule.volume}
-                </span>
-                <span className="font-technical text-log text-text-subtle">
-                  {schedule.cron}
-                </span>
-                <AlertDialog
-                  trigger={<Trash size={15} />}
-                  title={`Delete ${schedule.volume} schedule?`}
-                  description="This removes the schedule. Existing snapshots remain available."
-                  confirmLabel="Delete schedule"
-                  onConfirm={() => onDelete(schedule.id)}
-                />
-              </div>
-            ))}
+                <option value="">Choose a service</option>
+                {apps.map((app) => (
+                  <option
+                    key={app.id}
+                    value={app.id}
+                  >
+                    {app.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              id="schedule-volume"
+              label="Volume path"
+              required
+            >
+              <Input
+                placeholder="/data"
+                value={volume}
+                onChange={(event) => setVolume(event.target.value)}
+              />
+            </Field>
+            <Field
+              id="schedule-frequency"
+              label="Frequency"
+              required
+            >
+              <Select
+                value={cron}
+                onChange={(event) => setCron(event.target.value)}
+              >
+                <option value="@daily">Daily</option>
+                <option value="@weekly">Weekly</option>
+                <option value="@hourly">Hourly</option>
+                <option value="0 3 * * *">Daily at 03:00</option>
+                <option value="30 22 * * 5">Weekly Friday</option>
+              </Select>
+            </Field>
           </div>
-        ) : (
-          <EmptyState
-            title="No schedules yet"
-            description="Create a schedule to automate snapshots for a service."
+        </Modal>
+      ) : null}
+      {loading ? (
+        <Skeleton className="h-28 rounded-xl" />
+      ) : schedules.length ? (
+        <div className="grid divide-y divide-border-subtle">
+          {schedules.map((schedule) => (
+            <div
+              className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0"
+              key={schedule.id}
+            >
+              <Archive
+                aria-hidden="true"
+                className={`shrink-0 ${schedule.enabled ? 'text-success' : 'text-text-tertiary'}`}
+                size={16}
+              />
+              <span className="min-w-0 flex-1 truncate text-supporting text-text-primary">
+                {schedule.volume}
+              </span>
+              <span className="font-technical text-log text-text-subtle">
+                {schedule.cron}
+              </span>
+              <AlertDialog
+                trigger={<Trash size={15} />}
+                title={`Delete ${schedule.volume} schedule?`}
+                description="This removes the schedule. Existing snapshots remain available."
+                confirmLabel="Delete schedule"
+                onConfirm={() => onDelete(schedule.id)}
+              />
+            </div>
+          ))}
+        </div>
+      ) : apps.length ? (
+        <div className="grid min-h-32 content-center justify-items-center gap-2 py-4 text-center">
+          <CheckCircle
+            aria-hidden="true"
+            className="text-text-tertiary"
+            size={20}
           />
-        )}
-      </Card>
-    </section>
+          <p className="text-supporting font-medium text-text-primary">
+            No schedules configured
+          </p>
+          <p className="max-w-xs text-supporting text-text-tertiary">
+            Automate snapshots for a service with a recurring schedule.
+          </p>
+        </div>
+      ) : (
+        <div className="grid min-h-32 content-center justify-items-center gap-2 py-4 text-center">
+          <CheckCircle
+            aria-hidden="true"
+            className="text-text-tertiary"
+            size={20}
+          />
+          <p className="text-supporting font-medium text-text-primary">
+            No services available
+          </p>
+          <p className="max-w-xs text-supporting text-text-tertiary">
+            Add a service before creating a snapshot schedule.
+          </p>
+        </div>
+      )}
+    </Card>
   )
 }
 

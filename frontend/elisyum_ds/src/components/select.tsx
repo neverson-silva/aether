@@ -2,6 +2,7 @@ import { CaretDown, Check } from '@phosphor-icons/react'
 import { Select as BaseSelect } from '@base-ui/react/select'
 import {
   Children,
+  Fragment,
   forwardRef,
   isValidElement,
   useMemo,
@@ -33,6 +34,8 @@ export interface SelectProps
 
 function getOptions(children: ReactNode): SelectOption[] {
   return Children.toArray(children).flatMap((child) => {
+    if (isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment)
+      return getOptions(child.props.children)
     if (
       !isValidElement<{ children?: ReactNode; disabled?: boolean; value?: string }>(
         child,
@@ -146,7 +149,7 @@ export const Select = forwardRef<HTMLInputElement, SelectProps>(function SelectV
         <BaseSelect.Positioner
           alignItemWithTrigger={false}
           collisionAvoidance={{ align: 'shift', fallbackAxisSide: 'none', side: 'shift' }}
-          className="z-50"
+          style={{ zIndex: 'calc(var(--ely-z-popover) + 1)' }}
           side="bottom"
           sideOffset={6}
         >

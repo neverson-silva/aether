@@ -31,7 +31,11 @@ export function RuntimeStatus({ className = '', label, status }: RuntimeStatusPr
     >
       <Marker
         aria-hidden="true"
-        className={status === 'deploying' ? 'motion-safe:animate-pulse' : ''}
+        className={
+          status === 'healthy' || status === 'deploying'
+            ? 'motion-safe:animate-pulse'
+            : ''
+        }
         tone={tones[status]}
       />
       <span className="text-supporting text-text-secondary">{label ?? status}</span>
