@@ -156,7 +156,7 @@ preserve_install_configuration() {
 validate_checkout() {
   [[ -x "$INSTALL_DIR/install-dev.sh" ]] || fail "The cloned repository does not contain executable install-dev.sh."
   [[ -f "$INSTALL_DIR/infra/Dockerfile" ]] || fail "The cloned repository is missing infra/Dockerfile."
-  [[ -f "$INSTALL_DIR/frontend/aether_ds/package.json" ]] || fail "The cloned repository is missing frontend/aether_ds/package.json required by the web image build."
+  [[ -f "$INSTALL_DIR/frontend/web/package.json" ]] || fail "The cloned repository is missing frontend/web/package.json required by the web image build."
   chmod +x "$INSTALL_DIR/install-dev.sh"
 }
 

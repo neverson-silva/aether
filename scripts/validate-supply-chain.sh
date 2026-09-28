@@ -8,7 +8,7 @@ if rg -n 'image:[[:space:]]*["'"'"']?[^[:space:]"'"'"']*:latest(["'"'"'[:space:]
   failed=1
 fi
 
-for lockfile in api/go.sum frontend/web/package-lock.json frontend/aether_ds/package-lock.json; do
+for lockfile in api/go.sum frontend/web/package-lock.json frontend/elisyum_ds/package-lock.json; do
   if [[ ! -s "$lockfile" ]]; then
     printf 'required dependency lockfile is missing or empty: %s\n' "$lockfile" >&2
     failed=1
