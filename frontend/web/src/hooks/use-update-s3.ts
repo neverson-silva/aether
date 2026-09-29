@@ -7,6 +7,11 @@ export function useUpdateS3() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: unknown }) =>
       apiPatch<S3Destination>(`/api/v1/s3-destinations/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['s3'] }),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ['s3'] }),
+        qc.invalidateQueries({ queryKey: ['templates'] }),
+        qc.invalidateQueries({ queryKey: ['templates-categories'] }),
+      ]),
   })
 }

@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+const ObjectETagMetadataKey = "aether_s3_etag"
+const ObjectChecksumTypeMetadataKey = "aether_s3_checksum_type"
+const ObjectChecksumMetadataPrefix = "aether_s3_checksum_"
+
 type PutObjectInput struct {
 	Key         string
 	Body        io.Reader

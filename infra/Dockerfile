@@ -11,7 +11,8 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-api ./cmd/api \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-worker ./cmd/worker \
-    && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-monitoring ./cmd/monitoring
+    && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-monitoring ./cmd/monitoring \
+    && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/aether-gdrive-s3 ./cmd/gdrive-s3
 
 FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
 ARG TARGETARCH
@@ -28,12 +29,13 @@ RUN apk add --no-cache ca-certificates tzdata curl git docker-cli docker-cli-com
     && rm -f /tmp/pack.tgz /tmp/pack.tgz.sha256 \
     && addgroup -S aether \
     && adduser -S -G aether -h /home/aether aether \
-    && mkdir -p /var/run /home/aether/.cache/pack /var/lib/aether \
-    && chown -R aether:aether /home/aether /var/lib/aether
+    && mkdir -p /var/run /home/aether/.cache/pack /var/lib/aether /var/lib/aether-gdrive-s3 \
+    && chown -R aether:aether /home/aether /var/lib/aether /var/lib/aether-gdrive-s3
 WORKDIR /app
 COPY --from=build /out/aether-api /usr/local/bin/aether-api
 COPY --from=build /out/aether-worker /usr/local/bin/aether-worker
 COPY --from=build /out/aether-monitoring /usr/local/bin/aether-monitoring
+COPY --from=build /out/aether-gdrive-s3 /usr/local/bin/aether-gdrive-s3
 COPY --from=build /out/bin/cosign /usr/local/bin/cosign
 COPY api/db/migrations /app/api/db/migrations
 EXPOSE 8080

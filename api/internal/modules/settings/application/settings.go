@@ -318,6 +318,63 @@ func (s *Settings) ListS3(ctx context.Context, orgID uuid.UUID) ([]domain.S3Dest
 	return s.Store.ListS3ByOrg(ctx, orgID)
 }
 
+type ConnectedGoogleDriveDestination struct {
+	ID   uuid.UUID
+	Name string
+}
+
+type GoogleDriveS3Credentials struct {
+	ClientID     string
+	ClientSecret string
+	AccessToken  string
+	RefreshToken string
+	RootFolder   string
+}
+
+func (s *Settings) ListConnectedGoogleDriveDestinations(ctx context.Context, orgID uuid.UUID) ([]ConnectedGoogleDriveDestination, error) {
+	destinations, err := s.Store.ListS3ByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	connected := make([]ConnectedGoogleDriveDestination, 0, len(destinations))
+	for _, destination := range destinations {
+		if destination.Type != domain.TypeGoogleDrive || destination.OAuthStatus != domain.OAuthConnected || strings.TrimSpace(destination.Bucket) == "" || destination.GoogleClientID == "" || destination.GoogleClientSecretEnc == "" || destination.AccessTokenEnc == "" || destination.RefreshTokenEnc == "" {
+			continue
+		}
+		connected = append(connected, ConnectedGoogleDriveDestination{ID: destination.ID, Name: destination.Name})
+	}
+	return connected, nil
+}
+
+func (s *Settings) GoogleDriveS3Credentials(ctx context.Context, orgID, destinationID uuid.UUID) (*GoogleDriveS3Credentials, error) {
+	destination, err := s.Store.GetS3(ctx, destinationID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if destination.Type != domain.TypeGoogleDrive || destination.OAuthStatus != domain.OAuthConnected || strings.TrimSpace(destination.Bucket) == "" {
+		return nil, domain.ErrReauthRequired
+	}
+	clientSecret, err := s.googleClientSecret(destination)
+	if err != nil {
+		return nil, domain.ErrReauthRequired
+	}
+	refreshToken, err := s.Passwords.Decrypt(destination.RefreshTokenEnc)
+	if err != nil || refreshToken == "" {
+		return nil, domain.ErrReauthRequired
+	}
+	accessToken, err := s.Passwords.Decrypt(destination.AccessTokenEnc)
+	if err != nil || accessToken == "" {
+		return nil, domain.ErrReauthRequired
+	}
+	return &GoogleDriveS3Credentials{
+		ClientID:     destination.GoogleClientID,
+		ClientSecret: clientSecret,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		RootFolder:   destination.Bucket,
+	}, nil
+}
+
 func (s *Settings) GetS3(ctx context.Context, id, orgID uuid.UUID) (*domain.S3Destination, error) {
 	return s.Store.GetS3(ctx, id, orgID)
 }

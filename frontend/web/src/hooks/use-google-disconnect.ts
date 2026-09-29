@@ -6,6 +6,11 @@ export function useGoogleDisconnect() {
   return useMutation({
     mutationFn: (id: string) =>
       apiPost(`/api/v1/s3-destinations/${id}/google/disconnect`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['s3'] }),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ['s3'] }),
+        qc.invalidateQueries({ queryKey: ['templates'] }),
+        qc.invalidateQueries({ queryKey: ['templates-categories'] }),
+      ]),
   })
 }

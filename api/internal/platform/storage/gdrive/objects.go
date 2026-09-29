@@ -47,7 +47,7 @@ func (p *Provider) PutObject(ctx context.Context, input storage.PutObjectInput) 
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return &storage.PutObjectOutput{Key: key, Size: created.Size}, nil
+	return &storage.PutObjectOutput{Key: key, ETag: objectETag(created), Size: created.Size}, nil
 }
 
 func (p *Provider) GetObject(ctx context.Context, input storage.GetObjectInput) (*storage.GetObjectOutput, error) {
@@ -71,6 +71,7 @@ func (p *Provider) GetObject(ctx context.Context, input storage.GetObjectInput) 
 		Body:          body,
 		ContentType:   file.MimeType,
 		ContentLength: file.Size,
+		ETag:          objectETag(file),
 		LastModified:  file.ModifiedTime,
 		Metadata:      file.AppProperties,
 	}, nil
@@ -92,6 +93,7 @@ func (p *Provider) HeadObject(ctx context.Context, input storage.HeadObjectInput
 		Key:           key,
 		ContentLength: file.Size,
 		ContentType:   file.MimeType,
+		ETag:          objectETag(file),
 		LastModified:  file.ModifiedTime,
 		Metadata:      file.AppProperties,
 	}, nil
@@ -162,6 +164,7 @@ func (p *Provider) ListObjects(ctx context.Context, input storage.ListObjectsInp
 				Key:          head.Path + f.Name,
 				Size:         f.Size,
 				ContentType:  f.MimeType,
+				ETag:         objectETag(f),
 				LastModified: f.ModifiedTime,
 			})
 			if len(results) >= limit {
@@ -180,6 +183,16 @@ func (p *Provider) ListObjects(ctx context.Context, input storage.ListObjectsInp
 		out.NextCursor = encodeListState(state)
 	}
 	return out, nil
+}
+
+func objectETag(file *File) string {
+	if file == nil {
+		return ""
+	}
+	if etag := file.AppProperties[storage.ObjectETagMetadataKey]; etag != "" {
+		return etag
+	}
+	return file.MD5Checksum
 }
 
 type listFolder struct {

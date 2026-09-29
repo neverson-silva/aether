@@ -8,18 +8,20 @@ import (
 	"time"
 
 	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
 
 const folderMIME = "application/vnd.google-apps.folder"
 
-const fileFields = "id,name,mimeType,size,modifiedTime,appProperties,parents,trashed"
+const fileFields = "id,name,mimeType,size,md5Checksum,modifiedTime,appProperties,parents,trashed"
 
 type File struct {
 	ID            string
 	Name          string
 	MimeType      string
 	Size          int64
+	MD5Checksum   string
 	ModifiedTime  time.Time
 	AppProperties map[string]string
 	Parents       []string
@@ -120,6 +122,7 @@ func fileFromDrive(f *drive.File) *File {
 		Name:          f.Name,
 		MimeType:      f.MimeType,
 		Size:          f.Size,
+		MD5Checksum:   f.Md5Checksum,
 		AppProperties: f.AppProperties,
 		Parents:       f.Parents,
 		Trashed:       f.Trashed,
@@ -147,7 +150,7 @@ func (c *driveServiceClient) CreateFile(ctx context.Context, input CreateFileInp
 		if body == nil {
 			body = strings.NewReader("")
 		}
-		call = call.Media(body)
+		call = call.Media(body, googleapi.ChunkSize(4*1024*1024))
 	}
 	res, err := call.Do()
 	if err != nil {
@@ -173,7 +176,7 @@ func (c *driveServiceClient) UpdateFile(ctx context.Context, fileID string, inpu
 	}
 	call := c.svc.Files.Update(fileID, meta).Fields(fileFields).Context(ctx)
 	if input.Body != nil {
-		call = call.Media(input.Body)
+		call = call.Media(input.Body, googleapi.ChunkSize(4*1024*1024))
 	}
 	res, err := call.Do()
 	if err != nil {

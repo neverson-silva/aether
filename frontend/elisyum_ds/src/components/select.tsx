@@ -153,7 +153,10 @@ export const Select = forwardRef<HTMLInputElement, SelectProps>(function SelectV
           side="bottom"
           sideOffset={6}
         >
-          <BaseSelect.Popup className="max-h-64 min-w-[var(--anchor-width)] origin-[var(--transform-origin)] overflow-hidden rounded-lg border border-border-default bg-overlay p-1 text-text-primary shadow-elevation-2 transition-[opacity,transform] duration-[var(--ely-duration-popover)] ease-ely-out data-[ending-style]:scale-[.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[.98] data-[starting-style]:opacity-0 motion-reduce:transition-opacity">
+          <BaseSelect.Popup
+            className="max-h-64 origin-[var(--transform-origin)] overflow-hidden rounded-lg border border-border-default bg-overlay p-1 text-text-primary shadow-elevation-2 transition-[opacity,transform] duration-[var(--ely-duration-popover)] ease-ely-out data-[ending-style]:scale-[.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[.98] data-[starting-style]:opacity-0 motion-reduce:transition-opacity"
+            style={{ minWidth: 'var(--anchor-width)' }}
+          >
             <BaseSelect.List className="grid max-h-64 content-start overflow-auto">
               {items.map((option) => (
                 <BaseSelect.Item

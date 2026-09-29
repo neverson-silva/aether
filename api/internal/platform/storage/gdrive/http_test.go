@@ -1,6 +1,7 @@
 package gdrive
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -74,6 +75,61 @@ func TestServiceCreateFileWithBodyUsesUpload(t *testing.T) {
 	}
 	if f.ID != "f9" || f.Size != 11 {
 		t.Errorf("file = %+v", f)
+	}
+}
+
+func TestServiceCreateLargeFileUsesResumableUpload(t *testing.T) {
+	const chunkSize = 4 * 1024 * 1024
+	body := bytes.Repeat([]byte("x"), chunkSize+512*1024)
+	var resumableURL string
+	var ranges []string
+	var uploaded []byte
+	client, srv := newTestServiceClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/upload/drive/v3/files":
+			if r.URL.Query().Get("uploadType") != "resumable" {
+				t.Errorf("upload type = %q", r.URL.Query().Get("uploadType"))
+			}
+			if r.Header.Get("X-Upload-Content-Type") == "" {
+				t.Error("resumable upload content type was not declared")
+			}
+			w.Header().Set("Location", resumableURL+"/upload-session")
+			w.WriteHeader(http.StatusOK)
+		case "/upload-session":
+			ranges = append(ranges, r.Header.Get("Content-Range"))
+			chunk, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read uploaded chunk: %v", err)
+			}
+			uploaded = append(uploaded, chunk...)
+			if len(ranges) == 1 {
+				w.Header().Set("X-HTTP-Status-Code-Override", "308")
+				w.Header().Set("Range", "bytes=0-4194303")
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			writeFileJSON(w, `{"id":"large-file","name":"large.bin","mimeType":"application/octet-stream","size":"4718592"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	resumableURL = srv.URL
+
+	file, err := client.CreateFile(context.Background(), CreateFileInput{
+		Name: "large.bin", MimeType: "application/octet-stream", ParentID: "root", Body: bytes.NewReader(body),
+	})
+	if err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+	if file.ID != "large-file" || file.Size != int64(len(body)) {
+		t.Fatalf("created file = %+v", file)
+	}
+	if len(ranges) != 2 || ranges[0] != "bytes 0-4194303/*" || ranges[1] != "bytes 4194304-4718591/4718592" {
+		t.Fatalf("resumable ranges = %v", ranges)
+	}
+	if !bytes.Equal(uploaded, body) {
+		t.Fatalf("resumable upload wrote %d bytes, want %d", len(uploaded), len(body))
 	}
 }
 

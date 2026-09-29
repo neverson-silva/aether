@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -26,14 +27,46 @@ import (
 )
 
 type Templates struct {
-	Store                    domain.Store
-	Apps                     AppStore
-	Catalog                  RemoteCatalog
-	Variables                variablesDomain.Store
-	ProvisionTemplateDomains func(context.Context, uuid.UUID, *domain.ComposeApp, []domain.TemplateDomain) error
-	TemplateDomainGenerator  func(string) string
-	IngressNetwork           string
-	DataDir                  string
+	Store                         domain.Store
+	Apps                          AppStore
+	Catalog                       RemoteCatalog
+	Variables                     variablesDomain.Store
+	GoogleDriveS3Image            string
+	ListGoogleDriveDestinations   func(context.Context, uuid.UUID) ([]GoogleDriveDestination, error)
+	ResolveGoogleDriveCredentials func(context.Context, uuid.UUID, uuid.UUID) (*GoogleDriveCredentials, error)
+	ProvisionTemplateDomains      func(context.Context, uuid.UUID, *domain.ComposeApp, []domain.TemplateDomain) error
+	TemplateDomainGenerator       func(string) string
+	IngressNetwork                string
+	DataDir                       string
+}
+
+var googleDriveLiteTemplateID = uuid.MustParse("afd55119-5f89-4c17-a1c8-77301d9556d3")
+
+type GoogleDriveDestination struct {
+	ID   uuid.UUID
+	Name string
+}
+
+type GoogleDriveCredentials struct {
+	ClientID     string
+	ClientSecret string
+	AccessToken  string
+	RefreshToken string
+	RootFolder   string
+}
+
+type GoogleDriveS3Setup struct {
+	Endpoint        string
+	Bucket          string
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+}
+
+type InstallResult struct {
+	Template      *domain.Template
+	App           *domain.ComposeApp
+	GoogleDriveS3 *GoogleDriveS3Setup
 }
 
 var errCatalogUnavailable = errors.New("template catalog unavailable")
@@ -45,6 +78,73 @@ type RemoteCatalog interface {
 
 type RemoteCatalogLogo interface {
 	Logo(ctx context.Context, id uuid.UUID) ([]byte, string, error)
+}
+
+func googleDriveLiteTemplate(image string) *domain.Template {
+	if strings.TrimSpace(image) == "" {
+		image = "aether.local/api:1"
+	}
+	environment := []domain.TemplateEnvironmentVariable{
+		{Name: "GOOGLE_CLIENT_ID"},
+		{Name: "GOOGLE_CLIENT_SECRET"},
+		{Name: "GOOGLE_ACCESS_TOKEN"},
+		{Name: "GOOGLE_REFRESH_TOKEN"},
+		{Name: "GOOGLE_DRIVE_ROOT_FOLDER"},
+		{Name: "S3_ACCESS_KEY_ID"},
+		{Name: "S3_SECRET_ACCESS_KEY"},
+		{Name: "S3_BUCKET"},
+	}
+	compose, _ := yaml.Marshal(map[string]any{
+		"services": map[string]any{
+			"gdrive-s3": map[string]any{
+				"image":       image,
+				"pull_policy": "never",
+				"entrypoint":  []string{"/usr/local/bin/aether-gdrive-s3"},
+				"expose":      []string{"9000"},
+				"volumes":     []string{"gdrive-s3-data:/var/lib/aether-gdrive-s3"},
+				"environment": map[string]string{
+					"GOOGLE_CLIENT_ID":         "${GOOGLE_CLIENT_ID}",
+					"GOOGLE_CLIENT_SECRET":     "${GOOGLE_CLIENT_SECRET}",
+					"GOOGLE_ACCESS_TOKEN":      "${GOOGLE_ACCESS_TOKEN}",
+					"GOOGLE_REFRESH_TOKEN":     "${GOOGLE_REFRESH_TOKEN}",
+					"GOOGLE_DRIVE_ROOT_FOLDER": "${GOOGLE_DRIVE_ROOT_FOLDER}",
+					"GDRIVE_S3_DATA_DIR":       "/var/lib/aether-gdrive-s3",
+					"GDRIVE_S3_TEMP_DIR":       "/var/lib/aether-gdrive-s3/tmp",
+					"S3_ACCESS_KEY_ID":         "${S3_ACCESS_KEY_ID}",
+					"S3_SECRET_ACCESS_KEY":     "${S3_SECRET_ACCESS_KEY}",
+					"S3_BUCKET":                "${S3_BUCKET}",
+				},
+			},
+		},
+		"volumes": map[string]any{"gdrive-s3-data": map[string]any{}},
+	})
+	return &domain.Template{
+		ID:          googleDriveLiteTemplateID,
+		Name:        "S3 GDrive Lite",
+		Description: "Public HTTPS S3-compatible access to a connected Google Drive destination, protected by generated access keys.",
+		Category:    "Storage",
+		Integration: "google-drive-s3",
+		Icon:        "google-drive",
+		Version:     "1.0.0",
+		Tags:        []string{"s3", "google-drive", "storage"},
+		ComposeYAML: string(compose),
+		Environment: environment,
+		Domains: []domain.TemplateDomain{{
+			ServiceName: "gdrive-s3",
+			Port:        9000,
+			Host:        "${domain}",
+			Path:        "/",
+			HTTPS:       true,
+		}},
+	}
+}
+
+func generatedGatewayAccessKey() (string, error) {
+	value := make([]byte, 10)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return "AKIA" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(value), nil
 }
 
 func (t *Templates) Logo(ctx context.Context, id uuid.UUID) ([]byte, string, error) {
@@ -63,7 +163,7 @@ func (t *Templates) List(ctx context.Context, filter domain.Filter) ([]domain.Te
 	if err != nil {
 		return nil, err
 	}
-	out := make([]domain.Template, 0, len(remote))
+	out := make([]domain.Template, 0, len(remote)+1)
 	for _, template := range remote {
 		if filter.Category != "" && !strings.EqualFold(filter.Category, template.Category) {
 			continue
@@ -73,16 +173,97 @@ func (t *Templates) List(ctx context.Context, filter domain.Filter) ([]domain.Te
 		}
 		out = append(out, template)
 	}
+	if filter.OrganizationID != uuid.Nil && t.ListGoogleDriveDestinations != nil {
+		destinations, err := t.ListGoogleDriveDestinations(ctx, filter.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		if len(destinations) > 0 {
+			integration := googleDriveLiteTemplate(t.GoogleDriveS3Image)
+			if filter.Category == "" || strings.EqualFold(filter.Category, integration.Category) {
+				if filter.Search == "" || strings.Contains(strings.ToLower(integration.Name+" "+integration.Description), strings.ToLower(filter.Search)) {
+					out = append(out, *integration)
+				}
+			}
+		}
+	}
 	return out, nil
 }
 
 func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uuid.UUID, name string, overrides map[string]string) (*domain.Template, error) {
-	if t.Catalog == nil {
-		return nil, errCatalogUnavailable
-	}
-	tpl, err := t.Catalog.Get(ctx, templateID)
+	result, err := t.InstallConfigured(ctx, templateID, orgID, projectID, uuid.Nil, name, overrides)
 	if err != nil {
 		return nil, err
+	}
+	return result.Template, nil
+}
+
+func (t *Templates) InstallConfigured(ctx context.Context, templateID, orgID, projectID, destinationID uuid.UUID, name string, overrides map[string]string) (*InstallResult, error) {
+	if t.Catalog == nil {
+		if templateID != googleDriveLiteTemplateID {
+			return nil, errCatalogUnavailable
+		}
+	}
+	var tpl *domain.Template
+	installOverrides := make(map[string]string, len(overrides)+7)
+	for key, value := range overrides {
+		installOverrides[key] = value
+	}
+	var setup *GoogleDriveS3Setup
+	if templateID == googleDriveLiteTemplateID {
+		if destinationID == uuid.Nil || t.ListGoogleDriveDestinations == nil || t.ResolveGoogleDriveCredentials == nil || strings.TrimSpace(t.IngressNetwork) == "" {
+			return nil, domain.ErrValidation
+		}
+		destinations, err := t.ListGoogleDriveDestinations(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		connected := false
+		for _, destination := range destinations {
+			if destination.ID == destinationID {
+				connected = true
+				break
+			}
+		}
+		if !connected {
+			return nil, domain.ErrValidation
+		}
+		credentials, err := t.ResolveGoogleDriveCredentials(ctx, orgID, destinationID)
+		if err != nil {
+			return nil, err
+		}
+		if credentials == nil || strings.TrimSpace(credentials.ClientID) == "" || credentials.ClientSecret == "" || credentials.AccessToken == "" || credentials.RefreshToken == "" || strings.TrimSpace(credentials.RootFolder) == "" {
+			return nil, domain.ErrValidation
+		}
+		accessKeyID, err := generatedGatewayAccessKey()
+		if err != nil {
+			return nil, fmt.Errorf("generate gateway access key: %w", err)
+		}
+		secretAccessKey, err := generatedTemplateSecret()
+		if err != nil {
+			return nil, fmt.Errorf("generate gateway secret key: %w", err)
+		}
+		tpl = googleDriveLiteTemplate(t.GoogleDriveS3Image)
+		installOverrides["GOOGLE_CLIENT_ID"] = credentials.ClientID
+		installOverrides["GOOGLE_CLIENT_SECRET"] = credentials.ClientSecret
+		installOverrides["GOOGLE_ACCESS_TOKEN"] = credentials.AccessToken
+		installOverrides["GOOGLE_REFRESH_TOKEN"] = credentials.RefreshToken
+		installOverrides["GOOGLE_DRIVE_ROOT_FOLDER"] = credentials.RootFolder
+		installOverrides["S3_ACCESS_KEY_ID"] = accessKeyID
+		installOverrides["S3_SECRET_ACCESS_KEY"] = secretAccessKey
+		installOverrides["S3_BUCKET"] = "gdrive"
+		setup = &GoogleDriveS3Setup{
+			Bucket: "gdrive", Region: "us-east-1", AccessKeyID: accessKeyID, SecretAccessKey: secretAccessKey,
+		}
+	} else {
+		if destinationID != uuid.Nil {
+			return nil, domain.ErrValidation
+		}
+		var err error
+		tpl, err = t.Catalog.Get(ctx, templateID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if _, err := t.Apps.GetProject(ctx, projectID, orgID); err != nil {
 		return nil, err
@@ -106,9 +287,10 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 	if err := validateName(appName); err != nil {
 		return nil, domain.ErrValidation
 	}
+	var err error
 	compose := strings.TrimSpace(tpl.ComposeYAML)
 	if compose == "" {
-		compose, err = composeYAML(tpl.Definition, overrides)
+		compose, err = composeYAML(tpl.Definition, installOverrides)
 		if err != nil {
 			return nil, domain.ErrValidation
 		}
@@ -131,7 +313,7 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 			return nil, domain.ErrValidation
 		}
 	}
-	configuredVariables, resolvedDomains, resolvedMounts := t.resolveTemplateConfig(tpl, appName, overrides)
+	configuredVariables, resolvedDomains, resolvedMounts := t.resolveTemplateConfig(tpl, appName, installOverrides)
 	configuredEnvironment := mergeTemplateEnvironmentVariables(templateEnvironmentVariables(compose), configuredVariables)
 	compose, err = injectComposeSecurityDefaults(compose)
 	if err != nil {
@@ -140,8 +322,12 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 	if err := composeengine.ValidatePolicy(compose); err != nil {
 		return nil, fmt.Errorf("%w: template Compose is not supported: %v", domain.ErrValidation, err)
 	}
-	if _, serviceVariables := t.Apps.(ServiceVariableStore); !serviceVariables {
-		if err := t.ensureTemplateVariables(ctx, projectID, compose, overrides, configuredEnvironment); err != nil {
+	_, serviceVariables := t.Apps.(ServiceVariableStore)
+	if setup != nil && !serviceVariables {
+		return nil, domain.ErrValidation
+	}
+	if !serviceVariables {
+		if err := t.ensureTemplateVariables(ctx, projectID, compose, installOverrides, configuredEnvironment); err != nil {
 			return nil, err
 		}
 	}
@@ -174,6 +360,25 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 			return nil, cleanupCreated(err)
 		}
 	}
+	if setup != nil {
+		ingressApp := *created
+		ingressApp.Compose = updatedCompose
+		updatedCompose, err = t.materializeTemplateIngress(&ingressApp, []domain.TemplateDomain{{ServiceName: "gdrive-s3"}})
+		if err != nil {
+			return nil, cleanupCreated(err)
+		}
+		publicHost := ""
+		for _, resolvedDomain := range resolvedDomains {
+			if resolvedDomain.ServiceName == "gdrive-s3" && resolvedDomain.Port == 9000 {
+				publicHost = strings.TrimSpace(resolvedDomain.Host)
+				break
+			}
+		}
+		if publicHost == "" {
+			return nil, cleanupCreated(errors.New("public Google Drive S3 endpoint could not be generated"))
+		}
+		setup.Endpoint = "https://" + publicHost
+	}
 	if updatedCompose != created.Compose {
 		if err := composeengine.ValidatePolicy(updatedCompose); err != nil {
 			return nil, cleanupCreated(fmt.Errorf("%w: generated template Compose is not supported: %v", domain.ErrValidation, err))
@@ -184,7 +389,7 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 		created.Compose = updatedCompose
 		compose = updatedCompose
 	}
-	if err := t.ensureServiceVariables(ctx, created, compose, overrides, configuredEnvironment); err != nil {
+	if err := t.ensureServiceVariables(ctx, created, compose, installOverrides, configuredEnvironment); err != nil {
 		return nil, cleanupCreated(err)
 	}
 	if t.ProvisionTemplateDomains != nil && len(resolvedDomains) > 0 {
@@ -194,7 +399,7 @@ func (t *Templates) Install(ctx context.Context, templateID, orgID, projectID uu
 	}
 	tpl.Installs++
 	tpl.ComposeYAML = compose
-	return tpl, nil
+	return &InstallResult{Template: tpl, App: created, GoogleDriveS3: setup}, nil
 }
 
 func (t *Templates) ensureServiceVariables(ctx context.Context, app *domain.ComposeApp, compose string, overrides map[string]string, configured []templateEnvironmentVariable) error {
@@ -604,7 +809,7 @@ func (t *Templates) materializeTemplateIngress(app *domain.ComposeApp, domains [
 		if !ok {
 			return "", fmt.Errorf("template domain service %s is invalid", serviceName)
 		}
-		ensureTemplateIngressNetwork(serviceMap, t.IngressNetwork, templateIngressAlias(app.ID, serviceName))
+		ensureTemplateIngressNetwork(serviceMap, t.IngressNetwork, templateIngressAlias(templateIngressServiceID(app), serviceName))
 		if mapping.Publish {
 			ensureTemplatePublishedPort(serviceMap, mapping.Port)
 		}
@@ -676,6 +881,13 @@ func templateIngressAlias(serviceID uuid.UUID, serviceName string) string {
 		clean = "service"
 	}
 	return "app-" + serviceID.String()[:8] + "-" + clean
+}
+
+func templateIngressServiceID(app *domain.ComposeApp) uuid.UUID {
+	if app.ServiceID != uuid.Nil {
+		return app.ServiceID
+	}
+	return app.ID
 }
 
 func templateMountTarget(value string) (string, error) {

@@ -37,6 +37,7 @@ type Config struct {
 	FreeDomainProvider      string
 	FreeDomainBase          string
 	IngressNetwork          string
+	GoogleDriveS3Image      string
 	PublishedNetwork        string
 	TraefikImage            string
 	TraefikMountSource      string
@@ -182,6 +183,7 @@ func Load() (*Config, error) {
 		FreeDomainProvider:       envOr("AETHER_FREE_DOMAIN_PROVIDER", "nip.io"),
 		FreeDomainBase:           freeDomainBase,
 		IngressNetwork:           envOr("AETHER_INGRESS_NETWORK", "aether-ingress"),
+		GoogleDriveS3Image:       envOr("AETHER_API_IMAGE", "aether.local/api:1"),
 		PublishedNetwork:         envOr("AETHER_PUBLISHED_NETWORK", "aether-workload-host"),
 		TraefikImage:             envOr("AETHER_TRAEFIK_IMAGE", "docker.io/library/traefik:v3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9"),
 		TraefikMountSource:       envOr("AETHER_TRAEFIK_MOUNT_SOURCE", ""),

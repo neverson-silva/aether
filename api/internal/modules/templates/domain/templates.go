@@ -22,6 +22,7 @@ type Template struct {
 	Name           string
 	Description    string
 	Category       string
+	Integration    string
 	Icon           string
 	Version        string
 	Definition     string
@@ -63,6 +64,7 @@ type TemplateDomain struct {
 	Port        int    `json:"port"`
 	Host        string `json:"host"`
 	Path        string `json:"path"`
+	HTTPS       bool   `json:"https,omitempty"`
 	Publish     bool   `json:"publish,omitempty"`
 }
 
@@ -80,11 +82,12 @@ type ComposeApp struct {
 }
 
 type Filter struct {
-	Category      string
-	Search        string
-	Featured      bool
-	Verified      bool
-	EditorsChoice bool
+	OrganizationID uuid.UUID
+	Category       string
+	Search         string
+	Featured       bool
+	Verified       bool
+	EditorsChoice  bool
 }
 
 type Store interface {

@@ -1,5 +1,6 @@
 import {
   Button,
+  CopyButton,
   Field,
   Input,
   Modal,
@@ -13,6 +14,7 @@ import type { TemplateItem } from '../hooks/types'
 import { useInstallTemplate } from '../hooks/use-install-template'
 import { useTemplateCategories } from '../hooks/use-template-categories'
 import { useTemplatesFiltered } from '../hooks/use-templates-filtered'
+import { useS3Destinations } from '../hooks/use-s3-destinations'
 import { TemplateBrandIcon } from './template-brand-icon'
 
 export function TemplateBrowserDialog({
@@ -30,12 +32,27 @@ export function TemplateBrowserDialog({
   const [name, setName] = useState('')
   const [overrides, setOverrides] = useState<Record<string, string>>({})
   const [initialOverrides, setInitialOverrides] = useState<Record<string, string>>({})
+  const [googleDriveDestinationID, setGoogleDriveDestinationID] = useState('')
+  const [integrationSetup, setIntegrationSetup] = useState<{
+    endpoint: string
+    bucket: string
+    region: string
+    access_key_id: string
+    secret_access_key: string
+    path_style: boolean
+  } | null>(null)
   const templates = useTemplatesFiltered({
     category: category || undefined,
     q: query || undefined,
   })
   const categories = useTemplateCategories()
+  const destinations = useS3Destinations()
   const install = useInstallTemplate()
+  const googleDriveDestinations = (destinations.data ?? []).filter(
+    (destination) =>
+      destination.type === 'google-drive' &&
+      destination.oauth_status === 'connected',
+  )
 
   useEffect(() => {
     if (!open) return
@@ -43,10 +60,14 @@ export function TemplateBrowserDialog({
     setName('')
     setOverrides({})
     setInitialOverrides({})
+    setGoogleDriveDestinationID('')
+    setIntegrationSetup(null)
   }, [open])
 
   const pick = (template: TemplateItem) => {
     setSelected(template)
+    setGoogleDriveDestinationID('')
+    setIntegrationSetup(null)
     setName(
       template.name
         .toLowerCase()
@@ -59,39 +80,79 @@ export function TemplateBrowserDialog({
   }
 
   const submit = async () => {
-    if (!(selected && name.trim())) return
+    if (
+      !(selected && name.trim()) ||
+      (selected.integration === 'google-drive-s3' && !googleDriveDestinationID)
+    )
+      return
     const changedOverrides = Object.fromEntries(
       Object.entries(overrides).filter(
         ([key, value]) => value !== initialOverrides[key],
       ),
     )
-    await install.mutateAsync({
+    const result = await install.mutateAsync({
       id: selected.id,
       project_id: projectId,
       name: name.trim(),
       overrides: changedOverrides,
+      ...(selected.integration === 'google-drive-s3'
+        ? { google_drive_destination_id: googleDriveDestinationID }
+        : {}),
     })
+    if (result.integration_setup) {
+      setIntegrationSetup(result.integration_setup)
+      return
+    }
     onClose()
   }
 
-  const variableEntries = selected ? Object.entries(overrides) : []
+  const variableEntries =
+    selected && selected.integration !== 'google-drive-s3'
+      ? Object.entries(overrides)
+      : []
   return (
     <Modal
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose()
+        if (!nextOpen) {
+          setIntegrationSetup(null)
+          onClose()
+        }
       }}
       trigger={<span>Open template browser</span>}
       triggerClassName="sr-only"
-      title={selected ? `${selected.name} · Configure` : 'Browse templates'}
-      description={
-        selected
-          ? 'Review the template identity and environment defaults before installation.'
-          : 'Choose a ready-made service template from the live catalog.'
+      title={
+        integrationSetup
+          ? 'S3 GDrive Lite · Created'
+          : selected
+            ? `${selected.name} · Configure`
+            : 'Browse templates'
       }
-      popupClassName="!w-[min(72rem,calc(100vw-32px))] !max-w-[72rem]"
+      description={
+        integrationSetup
+          ? 'The service was created without starting a deployment.'
+          : selected
+            ? 'Review the template identity and environment defaults before installation.'
+            : 'Choose a ready-made service template from the live catalog.'
+      }
+      popupClassName={
+        selected || integrationSetup
+          ? '!w-[min(48rem,calc(100vw-32px))] !max-w-[48rem]'
+          : '!w-[min(72rem,calc(100vw-32px))] !max-w-[72rem]'
+      }
       footer={
-        selected ? (
+        integrationSetup ? (
+          <div className="flex w-full justify-end">
+            <Button
+              onClick={() => {
+                setIntegrationSetup(null)
+                onClose()
+              }}
+            >
+              Done
+            </Button>
+          </div>
+        ) : selected ? (
           <div className="flex w-full justify-between gap-2">
             <Button
               tone="ghost"
@@ -100,7 +161,12 @@ export function TemplateBrowserDialog({
               Back to templates
             </Button>
             <Button
-              disabled={!name.trim() || install.isPending}
+              disabled={
+                !name.trim() ||
+                install.isPending ||
+                (selected.integration === 'google-drive-s3' &&
+                  (!googleDriveDestinationID || destinations.isLoading))
+              }
               onClick={() => void submit()}
             >
               {install.isPending ? 'Installing...' : 'Install template'}
@@ -109,7 +175,38 @@ export function TemplateBrowserDialog({
         ) : null
       }
     >
-      {selected ? (
+      {integrationSetup ? (
+        <div className="grid gap-5">
+          <div className="grid gap-2 rounded-xl border border-action/35 bg-action-soft p-4">
+            <Typography as="h2" role="section-title">
+              Service created
+            </Typography>
+            <p className="text-supporting text-text-secondary">
+              The service and its HTTPS ingress configuration were created. No deployment
+              was started. Deploy the service manually from its service page when you're
+              ready. Save the secret access key now; it will not be shown again.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            <SetupValue label="Endpoint" value={integrationSetup.endpoint} />
+            <SetupValue label="Bucket" value={integrationSetup.bucket} />
+            <SetupValue label="Region" value={integrationSetup.region} />
+            <SetupValue label="Access key ID" value={integrationSetup.access_key_id} />
+            <SetupValue
+              label="Secret access key"
+              value={integrationSetup.secret_access_key}
+              secret
+            />
+            <SetupValue
+              label="Addressing style"
+              value={integrationSetup.path_style ? 'Path style' : 'Virtual-host style'}
+            />
+          </div>
+          <p className="text-label text-text-tertiary">
+            After deployment, the endpoint is publicly reachable over HTTPS through Aether ingress. Your host must allow inbound traffic on ports 80 and 443, and the generated domain must resolve to it. Configure your S3 client to use path-style addressing.
+          </p>
+        </div>
+      ) : selected ? (
         <div className="grid gap-5">
           <div className="grid gap-2 rounded-xl border border-action/35 bg-action-soft p-4">
             <Typography
@@ -135,6 +232,26 @@ export function TemplateBrowserDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </Field>
+          {selected.integration === 'google-drive-s3' ? (
+            <Field
+              id="template-google-drive-destination"
+              label="Google Drive destination"
+              required
+            >
+              <Select
+                value={googleDriveDestinationID}
+                onChange={(event) => setGoogleDriveDestinationID(event.target.value)}
+                disabled={destinations.isLoading || googleDriveDestinations.length === 0}
+              >
+                <option value="">Select a connected destination</option>
+                {googleDriveDestinations.map((destination) => (
+                  <option key={destination.id} value={destination.id}>
+                    {destination.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
           {variableEntries.length ? (
             <div className="grid gap-3">
               <span className="text-label-caps text-text-subtle">
@@ -251,6 +368,31 @@ export function TemplateBrowserDialog({
         </div>
       )}
     </Modal>
+  )
+}
+
+function SetupValue({
+  label,
+  value,
+  secret = false,
+}: {
+  label: string
+  value: string
+  secret?: boolean
+}) {
+  return (
+    <div className="grid min-w-0 gap-1">
+      <span className="text-label text-text-tertiary">{label}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <Input
+          className="min-w-0 flex-1"
+          readOnly
+          type={secret ? 'password' : 'text'}
+          value={value}
+        />
+        <CopyButton label={`Copy ${label.toLowerCase()}`} value={value} />
+      </div>
+    </div>
   )
 }
 

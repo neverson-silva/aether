@@ -10,6 +10,16 @@ import (
 	"aether/internal/platform/storage"
 )
 
+func (p *Provider) EnsureFolder(ctx context.Context, key string) error {
+	cleanKey := strings.Trim(key, "/")
+	normalized, err := p.normalizeKey(cleanKey)
+	if err != nil {
+		return err
+	}
+	_, err = p.ensureFolderPath(ctx, strings.Split(normalized, "/"))
+	return err
+}
+
 func (p *Provider) findFolder(ctx context.Context, parentID, name string) (*File, error) {
 	out, err := p.client.ListFiles(ctx, ListFilesInput{
 		ParentID: parentID, Name: name, MimeType: folderMIME, PageSize: 100,

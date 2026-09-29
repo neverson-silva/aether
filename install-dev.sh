@@ -982,6 +982,7 @@ start_api() {
     -e "AETHER_STATE=/var/lib/aether"
     -e "AETHER_SNAPSHOT_HOST_DIR=$STATE_DIR/snapshots"
     -e "AETHER_API_ADDR=0.0.0.0:8080"
+    -e "AETHER_API_IMAGE=$API_IMAGE"
     -e "DATABASE_HOST=$PG_CONTAINER"
     -e "DATABASE_PORT=5432"
     -e "DATABASE_NAME=$DB_NAME"

@@ -3,11 +3,13 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -218,9 +220,10 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		return domainsSvc.Provisioner.GenerateFreeDomain(seed, uuid.New())
 	}
 	templatesSvc.ProvisionTemplateDomains = func(ctx context.Context, orgID uuid.UUID, app *templatesdomain.ComposeApp, mappings []templatesdomain.TemplateDomain) error {
-		if app == nil || domainsSvc.Provisioner.EffectiveBase() == "" {
+		if app == nil {
 			return nil
 		}
+		base := domainsSvc.Provisioner.EffectiveBase()
 		for _, mapping := range mappings {
 			serviceName := mapping.ServiceName
 			if serviceName == "" {
@@ -228,10 +231,16 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 			}
 			host := mapping.Host
 			if host == "" {
+				if mapping.HTTPS && base == "" {
+					return fmt.Errorf("a public domain base is required for HTTPS template endpoints")
+				}
 				host = domainsSvc.Provisioner.GenerateFreeDomain(serviceName+"-"+strconv.Itoa(mapping.Port), app.ID)
 			}
+			if mapping.HTTPS && !domainsSvc.Provisioner.IsPublicBase() && (base == "" || strings.HasSuffix(host, "."+base)) {
+				return fmt.Errorf("a publicly resolvable domain is required for HTTPS template endpoints")
+			}
 			if _, err := domainsSvc.Add(ctx, app.ID, orgID, domainsApp.ServiceTypeCompose, domainsApp.AddDomainInput{
-				Host: host, Path: mapping.Path, InternalPath: "/", ContainerPort: mapping.Port, ComposeServiceName: serviceName,
+				Host: host, HTTPS: mapping.HTTPS, Path: mapping.Path, InternalPath: "/", ContainerPort: mapping.Port, ComposeServiceName: serviceName,
 			}); err != nil {
 				return err
 			}
@@ -278,6 +287,29 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		GoogleRedirectURI: cfg.GoogleOAuthRedirectURI,
 		PublicURL:         cfg.PublicURL,
 		PublicURLResolver: serverDomains.PublicURL,
+	}
+	templatesSvc.GoogleDriveS3Image = cfg.GoogleDriveS3Image
+	templatesSvc.ListGoogleDriveDestinations = func(ctx context.Context, orgID uuid.UUID) ([]templatesApp.GoogleDriveDestination, error) {
+		destinations, err := settingsSvc.ListConnectedGoogleDriveDestinations(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]templatesApp.GoogleDriveDestination, 0, len(destinations))
+		for _, destination := range destinations {
+			result = append(result, templatesApp.GoogleDriveDestination{ID: destination.ID, Name: destination.Name})
+		}
+		return result, nil
+	}
+	templatesSvc.ResolveGoogleDriveCredentials = func(ctx context.Context, orgID, destinationID uuid.UUID) (*templatesApp.GoogleDriveCredentials, error) {
+		credentials, err := settingsSvc.GoogleDriveS3Credentials(ctx, orgID, destinationID)
+		if err != nil {
+			return nil, err
+		}
+		return &templatesApp.GoogleDriveCredentials{
+			ClientID: credentials.ClientID, ClientSecret: credentials.ClientSecret,
+			AccessToken:  credentials.AccessToken,
+			RefreshToken: credentials.RefreshToken, RootFolder: credentials.RootFolder,
+		}, nil
 	}
 	settingsHandler := settingshttp.New(settingsSvc).WithServerDomains(serverDomains).WithCookieSecure(cfg.CookieSecure).WithSSOLogin(func(ctx context.Context, email, name string) (any, string, string, error) {
 		user, token, err := svc.SSOLogin(ctx, email, name)

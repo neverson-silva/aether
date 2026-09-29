@@ -53,14 +53,15 @@ func (h *Handler) WithLifecycle(lifecycle interface {
 }
 
 type installReq struct {
-	ProjectID string            `json:"project_id"`
-	Name      string            `json:"name"`
-	Overrides map[string]string `json:"overrides"`
+	ProjectID                string            `json:"project_id"`
+	Name                     string            `json:"name"`
+	Overrides                map[string]string `json:"overrides"`
+	GoogleDriveDestinationID string            `json:"google_drive_destination_id"`
 }
 
 func (h *Handler) List(c *gin.Context) {
 	if c.Query("categories") == "true" {
-		filter := domain.Filter{}
+		filter := domain.Filter{OrganizationID: orgID(c)}
 		templates, err := h.templates.List(c.Request.Context(), filter)
 		if err != nil {
 			abort(c, err)
@@ -83,8 +84,9 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	filter := domain.Filter{
-		Category: c.Query("category"),
-		Search:   c.Query("q"),
+		OrganizationID: orgID(c),
+		Category:       c.Query("category"),
+		Search:         c.Query("q"),
 	}
 	if c.Query("featured") == "true" {
 		filter.Featured = true
@@ -123,13 +125,37 @@ func (h *Handler) Install(c *gin.Context) {
 		abort(c, domain.ErrValidation)
 		return
 	}
-	tpl, err := h.templates.Install(c.Request.Context(), templateID, orgID(c), projectID, req.Name, req.Overrides)
+	destinationID := uuid.Nil
+	if req.GoogleDriveDestinationID != "" {
+		destinationID, err = uuid.Parse(req.GoogleDriveDestinationID)
+		if err != nil {
+			abort(c, domain.ErrValidation)
+			return
+		}
+	}
+	result, err := h.templates.InstallConfigured(c.Request.Context(), templateID, orgID(c), projectID, destinationID, req.Name, req.Overrides)
 	if err != nil {
 		slog.Error("template installation failed", "error", err, "template_id", templateID, "project_id", projectID, "request_id", c.GetString("request_id"))
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, templateDTO(tpl))
+	if result.GoogleDriveS3 != nil {
+		c.JSON(http.StatusCreated, gin.H{
+			"template": templateDTO(result.Template),
+			"integration_setup": gin.H{
+				"compose_id":        result.App.ID,
+				"service_id":        result.App.ServiceID,
+				"endpoint":          result.GoogleDriveS3.Endpoint,
+				"bucket":            result.GoogleDriveS3.Bucket,
+				"region":            result.GoogleDriveS3.Region,
+				"access_key_id":     result.GoogleDriveS3.AccessKeyID,
+				"secret_access_key": result.GoogleDriveS3.SecretAccessKey,
+				"path_style":        true,
+			},
+		})
+		return
+	}
+	c.JSON(http.StatusCreated, templateDTO(result.Template))
 }
 
 func (h *Handler) ListCompose(c *gin.Context) {
@@ -173,6 +199,9 @@ func templateDTO(t *domain.Template) gin.H {
 		"github": t.GitHub, "license": t.License, "installs": t.Installs,
 		"featured": t.Featured, "editors_choice": t.EditorsChoice, "verified": t.Verified,
 		"updated_at": t.UpdatedAt,
+	}
+	if t.Integration != "" {
+		result["integration"] = t.Integration
 	}
 	logoID := t.LogoTemplateID
 	if logoID == uuid.Nil {

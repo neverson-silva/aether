@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiPost } from '../api/client'
 import { qk } from './query-keys'
+import type { TemplateInstallResponse } from './types'
 
 export function useInstallTemplate() {
   const queryClient = useQueryClient()
@@ -11,7 +12,9 @@ export function useInstallTemplate() {
       project_id: string
       name?: string
       overrides?: Record<string, string>
-    }) => apiPost(`/api/v1/templates/${body.id}/install`, body),
+      google_drive_destination_id?: string
+    }) =>
+      apiPost<TemplateInstallResponse>(`/api/v1/templates/${body.id}/install`, body),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: qk.services }),

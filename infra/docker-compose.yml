@@ -81,6 +81,7 @@ services:
     restart: unless-stopped
 
   aether:
+    image: ${AETHER_API_IMAGE:-aether.local/api:1}
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -144,6 +145,7 @@ services:
     restart: unless-stopped
 
   worker:
+    image: ${AETHER_API_IMAGE:-aether.local/api:1}
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -193,6 +195,7 @@ services:
       retries: 6
 
   monitoring:
+    image: ${AETHER_API_IMAGE:-aether.local/api:1}
     build:
       context: ..
       dockerfile: infra/Dockerfile

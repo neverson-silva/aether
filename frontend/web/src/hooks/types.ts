@@ -464,6 +464,7 @@ export interface TemplateItem {
   name: string
   description: string
   category: string
+  integration?: string
   tags: string[]
   icon: string
   logo_url?: string
@@ -474,7 +475,7 @@ export interface TemplateItem {
   environment?: Array<{ name: string; value: string }>
   variables?: Array<{ name: string; value: string }>
   mounts?: Array<{ service_name?: string; file_path: string; content: string }>
-  domains?: Array<{ service_name: string; port: number; host: string; path: string }>
+  domains?: Array<{ service_name: string; port: number; host: string; path: string; https?: boolean }>
   readme: string
   homepage: string
   github: string
@@ -483,6 +484,22 @@ export interface TemplateItem {
   featured: boolean
   verified: boolean
   updated_at: string
+}
+
+export interface TemplateIntegrationSetup {
+  compose_id: string
+  service_id: string
+  endpoint: string
+  bucket: string
+  region: string
+  access_key_id: string
+  secret_access_key: string
+  path_style: boolean
+}
+
+export interface TemplateInstallResponse {
+  template?: TemplateItem
+  integration_setup?: TemplateIntegrationSetup
 }
 
 export interface DeployCompare {

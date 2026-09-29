@@ -3,10 +3,12 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"gopkg.in/yaml.v3"
 
 	appsInfra "aether/internal/modules/apps/infra"
 	"aether/internal/modules/templates/domain"
@@ -84,6 +86,131 @@ func TestTemplateListAndFilters(t *testing.T) {
 	search, err := e.svc.List(e.ctx, domain.Filter{Search: "postgres"})
 	if err != nil || len(search) != 1 {
 		t.Fatalf("filtro busca: %v %d", err, len(search))
+	}
+}
+
+func TestGoogleDriveLiteIsListedOnlyForConnectedDestinations(t *testing.T) {
+	organizationID := uuid.New()
+	service := &Templates{Catalog: testCatalog{templates: []domain.Template{{ID: uuid.New(), Name: "nginx"}}}}
+	listed, err := service.List(context.Background(), domain.Filter{OrganizationID: organizationID})
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("template list without Drive integration = %d, err = %v", len(listed), err)
+	}
+	service.ListGoogleDriveDestinations = func(context.Context, uuid.UUID) ([]GoogleDriveDestination, error) {
+		return []GoogleDriveDestination{}, nil
+	}
+	listed, err = service.List(context.Background(), domain.Filter{OrganizationID: organizationID})
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("template list without connected Drive destination = %d, err = %v", len(listed), err)
+	}
+	service.ListGoogleDriveDestinations = func(_ context.Context, requestedOrganizationID uuid.UUID) ([]GoogleDriveDestination, error) {
+		if requestedOrganizationID != organizationID {
+			t.Fatalf("organization ID = %s, want %s", requestedOrganizationID, organizationID)
+		}
+		return []GoogleDriveDestination{{ID: uuid.New(), Name: "connected-drive"}}, nil
+	}
+	listed, err = service.List(context.Background(), domain.Filter{OrganizationID: organizationID})
+	if err != nil || len(listed) != 2 || listed[1].ID != googleDriveLiteTemplateID {
+		t.Fatalf("template list with connected Drive destination = %+v, err = %v", listed, err)
+	}
+}
+
+func TestGoogleDriveLiteInstallReusesStoredOAuthCredentials(t *testing.T) {
+	e := newEnv(t)
+	destination := GoogleDriveDestination{ID: uuid.New(), Name: "connected-drive"}
+	credentials := GoogleDriveCredentials{
+		ClientID: "stored-client-id", ClientSecret: "stored-client-secret", AccessToken: "stored-access-token",
+		RefreshToken: "stored-refresh-token", RootFolder: "stored-folder-id",
+	}
+	e.svc.IngressNetwork = "aether-ingress"
+	e.svc.TemplateDomainGenerator = func(string) string { return "gdrive.example.test" }
+	e.svc.ListGoogleDriveDestinations = func(context.Context, uuid.UUID) ([]GoogleDriveDestination, error) {
+		return []GoogleDriveDestination{destination}, nil
+	}
+	e.svc.ResolveGoogleDriveCredentials = func(_ context.Context, orgID, destinationID uuid.UUID) (*GoogleDriveCredentials, error) {
+		if orgID != e.orgID || destinationID != destination.ID {
+			t.Fatalf("resolved destination scope = %s/%s", orgID, destinationID)
+		}
+		return &credentials, nil
+	}
+	var provisionedDomains []domain.TemplateDomain
+	e.svc.ProvisionTemplateDomains = func(_ context.Context, _ uuid.UUID, _ *domain.ComposeApp, mappings []domain.TemplateDomain) error {
+		provisionedDomains = mappings
+		return nil
+	}
+
+	result, err := e.svc.InstallConfigured(e.ctx, googleDriveLiteTemplateID, e.orgID, e.proj, destination.ID, "drive-s3", nil)
+	if err != nil {
+		t.Fatalf("install S3 GDrive Lite: %v", err)
+	}
+	if result.GoogleDriveS3 == nil || result.GoogleDriveS3.Endpoint != "https://gdrive.example.test" {
+		t.Fatalf("public endpoint setup = %+v", result.GoogleDriveS3)
+	}
+	if result.App.Status != "stopped" {
+		t.Fatalf("new service status = %s, want stopped", result.App.Status)
+	}
+	if len(provisionedDomains) != 1 {
+		t.Fatalf("provisioned public HTTPS domains = %+v", provisionedDomains)
+	}
+	publicDomain := provisionedDomains[0]
+	if publicDomain.ServiceName != "gdrive-s3" || publicDomain.Port != 9000 || publicDomain.Publish || !publicDomain.HTTPS || publicDomain.Host != "gdrive.example.test" {
+		t.Fatalf("provisioned public HTTPS domain = %+v", publicDomain)
+	}
+	var compose struct {
+		Services map[string]struct {
+			Expose   []string `yaml:"expose"`
+			Ports    []string `yaml:"ports"`
+			Networks map[string]struct {
+				Aliases []string `yaml:"aliases"`
+			} `yaml:"networks"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte(result.App.Compose), &compose); err != nil {
+		t.Fatalf("decode generated Compose: %v", err)
+	}
+	service := compose.Services["gdrive-s3"]
+	if len(service.Expose) != 1 || service.Expose[0] != "9000" || len(service.Ports) != 0 {
+		t.Fatalf("gateway ports = expose %v, published %v", service.Expose, service.Ports)
+	}
+	expectedAlias := "app-" + result.App.ServiceID.String()[:8] + "-gdrive-s3"
+	hasIngressAlias := false
+	for _, alias := range service.Networks["aether-ingress"].Aliases {
+		if alias == expectedAlias {
+			hasIngressAlias = true
+			break
+		}
+	}
+	if !hasIngressAlias {
+		t.Fatalf("Compose ingress aliases = %v, want %s", service.Networks["aether-ingress"].Aliases, expectedAlias)
+	}
+	serviceVariables, ok := e.svc.Apps.(ServiceVariableStore)
+	if !ok {
+		t.Fatal("app store does not support service variables")
+	}
+	variables, err := serviceVariables.ListServiceEnvVars(e.ctx, result.App.ServiceID)
+	if err != nil {
+		t.Fatalf("list generated service variables: %v", err)
+	}
+	values := make(map[string]string, len(variables))
+	secrets := make(map[string]bool, len(variables))
+	for _, variable := range variables {
+		values[variable.Name] = variable.Value
+		secrets[variable.Name] = variable.Secret
+	}
+	for name, value := range map[string]string{
+		"GOOGLE_CLIENT_SECRET": credentials.ClientSecret,
+		"GOOGLE_ACCESS_TOKEN":  credentials.AccessToken,
+		"GOOGLE_REFRESH_TOKEN": credentials.RefreshToken,
+	} {
+		if values[name] != value || !secrets[name] {
+			t.Fatalf("stored credential %s is missing or not secret", name)
+		}
+	}
+	if strings.Contains(result.App.Compose, credentials.RefreshToken) || strings.Contains(result.App.Compose, credentials.AccessToken) {
+		t.Fatal("stored OAuth tokens were embedded in Compose")
+	}
+	if result.Template.ComposeYAML != result.App.Compose {
+		t.Fatal("installed template response did not return the generated Compose")
 	}
 }
 
