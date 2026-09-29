@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "./components";
 @import "./foundations/tokens.css";
 
 body {

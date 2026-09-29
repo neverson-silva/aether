@@ -525,6 +525,12 @@ function OverviewPanel({
   deployments: Deployment[]
   containers: NonNullable<ServiceSummary['runtime']>['containers']
 }) {
+  const gitSource = useServiceSource(
+    service.id,
+    true,
+    service.capabilities.can_manage_source &&
+      (service.spec?.source_type === 'git' || Boolean(service.spec?.git_url)),
+  )
   const neverDeployed =
     service.status === 'pending' && deployments.length === 0 && containers.length === 0
   const telemetryAvailable =
@@ -545,8 +551,8 @@ function OverviewPanel({
         ]
       : []),
     ...(service.spec?.image ? [{ label: 'IMAGE', value: service.spec.image }] : []),
-    ...(service.spec?.compose_file
-      ? [{ label: 'COMPOSE FILE', value: service.spec.compose_file }]
+    ...(service.spec?.compose_file || gitSource.data?.compose_file
+      ? [{ label: 'COMPOSE FILE', value: gitSource.data?.compose_file || service.spec?.compose_file || '' }]
       : []),
     ...(service.spec?.git_url
       ? [{ label: 'SOURCE', value: service.spec.git_url }]
@@ -731,7 +737,11 @@ function OverviewPanel({
       ) : null}
       {service.capabilities.can_manage_source &&
       (service.spec?.source_type === 'git' || Boolean(service.spec?.git_url)) ? (
-        <GitProviderPanel serviceId={service.id} />
+        <GitProviderPanel
+          serviceId={service.id}
+          composeBuild={service.spec?.build_type === 'compose'}
+          configuredComposeFile={service.spec?.compose_file ?? ''}
+        />
       ) : null}
     </div>
   )
@@ -889,7 +899,15 @@ function formatRuntimeBytes(value: number) {
   return `${size.toFixed(1)} ${units[unit]}`
 }
 
-function GitProviderPanel({ serviceId }: { serviceId: string }) {
+function GitProviderPanel({
+  serviceId,
+  composeBuild,
+  configuredComposeFile,
+}: {
+  serviceId: string
+  composeBuild: boolean
+  configuredComposeFile: string
+}) {
   const source = useServiceSource(serviceId, true)
   const connections = useSourceControlConnections()
   const connection = selectGitHubConnection(connections.data)
@@ -898,6 +916,7 @@ function GitProviderPanel({ serviceId }: { serviceId: string }) {
   const [repositoryId, setRepositoryId] = useState('')
   const [branch, setBranch] = useState('')
   const [rootDirectory, setRootDirectory] = useState('')
+  const [composeFile, setComposeFile] = useState(configuredComposeFile)
   const [autoDeploy, setAutoDeploy] = useState(false)
   const selectedRepository = repositories.data?.find((item) => item.id === repositoryId)
   const branches = useSourceControlBranches(
@@ -910,9 +929,10 @@ function GitProviderPanel({ serviceId }: { serviceId: string }) {
       setRepositoryId(source.data.repository_id)
       setBranch(source.data.branch || source.data.default_branch)
       setRootDirectory(source.data.root_directory)
+      setComposeFile(source.data.compose_file || configuredComposeFile)
       setAutoDeploy(source.data.auto_deploy)
     }
-  }, [source.data])
+  }, [configuredComposeFile, source.data])
   const submit = () => {
     if (!(source.data && selectedRepository)) return
     const payload: ServiceSourceInput = {
@@ -929,7 +949,7 @@ function GitProviderPanel({ serviceId }: { serviceId: string }) {
       watch_paths: source.data.watch_paths,
       ignore_paths: source.data.ignore_paths,
       watch_root_files: source.data.watch_root_files,
-      compose_file: source.data.compose_file,
+      compose_file: composeFile.trim(),
     }
     save.mutate(payload, { onSuccess: () => setEditing(false) })
   }
@@ -1035,6 +1055,12 @@ function GitProviderPanel({ serviceId }: { serviceId: string }) {
           label="Root directory"
           value={source.data.root_directory || '/'}
         />
+        {composeBuild ? (
+          <SourceValue
+            label="Compose file"
+            value={source.data.compose_file || configuredComposeFile || 'docker-compose.yml'}
+          />
+        ) : null}
         <SourceValue
           label="Watch paths"
           value={
@@ -1049,6 +1075,7 @@ function GitProviderPanel({ serviceId }: { serviceId: string }) {
           </span>
           {editing ? (
             <Switch
+              aria-label="Autodeploy"
               checked={autoDeploy}
               onChange={(event) => setAutoDeploy(event.target.checked)}
             />
@@ -1060,16 +1087,32 @@ function GitProviderPanel({ serviceId }: { serviceId: string }) {
         </div>
       </div>
       {editing ? (
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-          <Field
-            id="source-root"
-            label="Root directory"
-          >
-            <Input
-              value={rootDirectory}
-              onChange={(event) => setRootDirectory(event.target.value)}
-            />
-          </Field>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <Field
+              id="source-root"
+              label="Root directory"
+            >
+              <Input
+                value={rootDirectory}
+                onChange={(event) => setRootDirectory(event.target.value)}
+              />
+            </Field>
+          </div>
+          {composeBuild ? (
+            <div className="min-w-56 flex-1">
+              <Field
+                id="source-compose-file"
+                label="Compose file"
+                description="Path relative to the root directory."
+              >
+                <Input
+                  value={composeFile}
+                  onChange={(event) => setComposeFile(event.target.value)}
+                />
+              </Field>
+            </div>
+          ) : null}
           <Button
             tone="ghost"
             onClick={() => setEditing(false)}
@@ -2365,7 +2408,11 @@ function SettingsPanel({ service }: { service: ServiceSummary }) {
       ) : null}
       {service.capabilities.can_manage_source &&
       (service.spec?.source_type === 'git' || Boolean(service.spec?.git_url)) ? (
-        <GitProviderPanel serviceId={service.id} />
+        <GitProviderPanel
+          serviceId={service.id}
+          composeBuild={service.spec?.build_type === 'compose'}
+          configuredComposeFile={service.spec?.compose_file ?? ''}
+        />
       ) : null}
       {service.kind === 'app' && service.capabilities.can_build ? (
         <WebhookSettings serviceId={service.id} />
