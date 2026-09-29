@@ -3,6 +3,7 @@ import {
   Field,
   Input,
   Modal,
+  Select,
   Textarea,
   Wizard,
   type WizardStep,
@@ -11,6 +12,8 @@ import { GitBranch, GithubLogo, Stack } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { apiPut } from '../api/client'
 import { useCreateCompose } from '../hooks/use-create-compose'
+import { useEnvironments } from '../hooks/use-environments'
+import { useProjects } from '../hooks/use-projects'
 import {
   selectGitHubConnection,
   useSourceControlBranches,
@@ -35,13 +38,15 @@ export function ComposeStackDialog({
   projectId,
 }: {
   environmentId?: string
-  onCreated: (serviceId: string) => void
+  onCreated: (serviceId: string, projectId: string) => void
   onClose: () => void
   open: boolean
   projectId: string
 }) {
   const [step, setStep] = useState(0)
   const [name, setName] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState(environmentId ?? '')
   const [sourceMode, setSourceMode] = useState<ComposeSourceMode>('inline')
   const [compose, setCompose] = useState('')
   const [repositoryId, setRepositoryId] = useState('')
@@ -55,6 +60,14 @@ export function ComposeStackDialog({
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const create = useCreateCompose()
+  const projects = useProjects()
+  const environments = useEnvironments(selectedProjectId)
+  const availableProjects = projects.data ?? []
+  const availableEnvironments = environments.data ?? []
+  const selectedProject = availableProjects.find((project) => project.id === selectedProjectId)
+  const selectedEnvironment = availableEnvironments.find(
+    (environment) => environment.id === selectedEnvironmentId,
+  )
   const connections = useSourceControlConnections(sourceMode === 'github')
   const githubConnection = selectGitHubConnection(connections.data)
   const repositories = useSourceControlRepositories(githubConnection?.installation_id)
@@ -112,11 +125,27 @@ export function ComposeStackDialog({
         !fileQuery.isLoading &&
         !fileQuery.isError &&
         Boolean(githubCompose.trim())
-  const canComplete = Boolean(name.trim() && name.trim().length >= 2) &&
-    sourceValid &&
-    variablesValid &&
-    !isSubmitting
+  const identityValid = Boolean(
+    name.trim().length >= 2 && selectedProject,
+  )
+  const canComplete = identityValid && sourceValid && variablesValid && !isSubmitting
   const startGitHubManifest = useStartGitHubManifest()
+
+  useEffect(() => {
+    if (open) return
+    setSelectedProjectId(projectId)
+    setSelectedEnvironmentId(environmentId ?? '')
+  }, [environmentId, open, projectId])
+
+  useEffect(() => {
+    if (environments.isFetching || !availableEnvironments.length) return
+    if (availableEnvironments.some((environment) => environment.id === selectedEnvironmentId))
+      return
+    setSelectedEnvironmentId(
+      (availableEnvironments.find((environment) => environment.is_default) ??
+        availableEnvironments[0]).id,
+    )
+  }, [availableEnvironments, environments.isFetching, selectedEnvironmentId])
 
   useEffect(() => {
     if (!selectedRepository || branches.isFetching || branches.isError || !branches.data) return
@@ -131,6 +160,8 @@ export function ComposeStackDialog({
   const reset = () => {
     setStep(0)
     setName('')
+    setSelectedProjectId(projectId)
+    setSelectedEnvironmentId(environmentId ?? '')
     setSourceMode('inline')
     setCompose('')
     setRepositoryId('')
@@ -179,8 +210,8 @@ export function ComposeStackDialog({
       let serviceId = createdServiceId
       if (!serviceId) {
         const result = await create.mutateAsync({
-          project_id: projectId,
-          environment_id: environmentId,
+          project_id: selectedProjectId,
+          environment_id: selectedEnvironmentId || undefined,
           name: name.trim(),
           compose: definition.trim(),
         })
@@ -216,7 +247,7 @@ export function ComposeStackDialog({
         })
       }
       close()
-      onCreated(serviceId)
+      onCreated(serviceId, selectedProjectId)
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -232,10 +263,10 @@ export function ComposeStackDialog({
     {
       id: 'identity',
       label: 'Identity',
-      description: 'Name the stack and confirm its project boundary.',
+      description: 'Name the stack and choose its project and environment.',
       summary: name || 'Awaiting stack name',
-      status: name.trim().length >= 2 ? 'complete' : 'default',
-      canContinue: name.trim().length >= 2,
+      status: identityValid ? 'complete' : 'default',
+      canContinue: identityValid,
       content: (
         <div className="grid max-w-2xl gap-5">
           <div className="flex items-center gap-3 rounded-xl border border-action/30 bg-action-soft p-4">
@@ -246,6 +277,65 @@ export function ComposeStackDialog({
                 All services in this Compose definition will share the selected project and environment.
               </span>
             </span>
+          </div>
+          <div className="grid min-w-0 gap-5 sm:grid-cols-2 [&>*]:min-w-0">
+            <Field
+              id="compose-project"
+              label="Project"
+              required
+            >
+              <Select
+                className="min-w-0"
+                disabled={
+                  Boolean(createdServiceId) || projects.isLoading || projects.isError
+                }
+                value={selectedProject ? selectedProjectId : ''}
+                onChange={(event) => {
+                  setSelectedProjectId(event.target.value)
+                  setSelectedEnvironmentId('')
+                }}
+              >
+                <option value="">
+                  {projects.isLoading ? 'Loading projects…' : 'Choose a project'}
+                </option>
+                {availableProjects.map((project) => (
+                  <option
+                    key={project.id}
+                    value={project.id}
+                  >
+                    {project.name || project.slug || 'Unnamed project'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              id="compose-environment"
+              label="Environment"
+            >
+              <Select
+                className="min-w-0"
+                disabled={
+                  Boolean(createdServiceId) ||
+                  !selectedProjectId ||
+                  environments.isLoading ||
+                  environments.isError
+                }
+                value={selectedEnvironment ? selectedEnvironmentId : ''}
+                onChange={(event) => setSelectedEnvironmentId(event.target.value)}
+              >
+                <option value="">
+                  {environments.isLoading ? 'Loading environments…' : 'Project default'}
+                </option>
+                {availableEnvironments.map((environment) => (
+                  <option
+                    key={environment.id}
+                    value={environment.id}
+                  >
+                    {environment.name || environment.slug || 'Unnamed environment'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
           <Field
             id="compose-name"
@@ -521,6 +611,11 @@ export function ComposeStackDialog({
         <div className="grid max-w-3xl gap-5">
           <div className="grid gap-4 rounded-xl border border-border-subtle bg-surface-1 p-4 sm:grid-cols-2">
             <ReviewValue label="Stack name" value={name || '—'} />
+            <ReviewValue label="Project" value={selectedProject?.name || '—'} />
+            <ReviewValue
+              label="Environment"
+              value={selectedEnvironment?.name || 'Project default'}
+            />
             <ReviewValue
               label="Source"
               value={sourceMode === 'inline' ? 'Pasted Compose definition' : 'GitHub repository'}
@@ -561,30 +656,27 @@ export function ComposeStackDialog({
       }}
       trigger={<span>Open compose creation</span>}
       triggerClassName="sr-only"
-      title="Create compose stack"
-      description="Define the stack source, repository paths, and deployment behavior."
-      popupClassName="max-h-[90dvh] w-[min(64rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
-      footer={
-        <Button tone="ghost" onClick={close}>
-          Cancel
-        </Button>
-      }
+      hideCancel
+      popupClassName="!grid-rows-[minmax(0,1fr)_auto] !h-[min(50rem,calc(100dvh-2rem))] !max-h-[calc(100dvh-2rem)] !w-[min(64rem,calc(100vw-2rem))] !max-w-[64rem] !gap-0 !p-0 [&>div:first-of-type]:!h-full [&>div:first-of-type]:!min-h-0"
     >
-      <Wizard
-        activeStep={step}
-        backLabel="Back"
-        completeLabel={
-          isSubmitting
-            ? 'Creating…'
-            : createdServiceId
-              ? 'Retry setup'
-              : 'Create compose stack'
-        }
-        continueLabel="Continue"
-        onComplete={() => void submit()}
-        onStepChange={setStep}
-        steps={steps}
-      />
+      <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+        <Wizard
+          activeStep={step}
+          backLabel="Back"
+          completeLabel={
+            isSubmitting
+              ? 'Creating…'
+              : createdServiceId
+                ? 'Retry setup'
+                : 'Create compose stack'
+          }
+          continueLabel="Continue"
+          className="!h-full !min-h-0 !grid-rows-[auto_minmax(0,1fr)] rounded-none border-0 [&>div]:!h-full [&>div]:!min-h-0 [&>div>nav>ol]:!grid [&>div>nav>ol]:!grid-cols-1 [&>div>nav>ol]:!overflow-visible [&>div>nav>ol>li]:!min-w-0 [&>div>div:last-child]:!h-full [&>div>div:last-child]:!min-h-0 [&>div>div:last-child]:!grid-rows-[minmax(0,1fr)_auto] [&>div>div:last-child>div:first-child]:!min-h-0 [&>div>div:last-child>div:first-child]:!overflow-y-auto"
+          onComplete={() => void submit()}
+          onStepChange={setStep}
+          steps={steps}
+        />
+      </div>
     </Modal>
   )
 }

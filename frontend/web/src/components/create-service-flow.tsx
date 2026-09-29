@@ -982,10 +982,10 @@ export function CreateServiceFlow({
       <ComposeStackDialog
         environmentId={selectedEnvironmentId || undefined}
         onClose={() => setComposeOpen(false)}
-        onCreated={(serviceId) => {
+        onCreated={(serviceId, createdProjectId) => {
           void navigate({
             to: `/services/${serviceId}`,
-            search: { from: 'project', projectId: selectedProjectId },
+            search: { from: 'project', projectId: createdProjectId },
           })
         }}
         open={composeOpen}
