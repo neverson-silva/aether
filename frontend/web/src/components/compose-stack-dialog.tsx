@@ -44,6 +44,7 @@ export function ComposeStackDialog({
   projectId: string
 }) {
   const [step, setStep] = useState(0)
+  const [furthestStep, setFurthestStep] = useState(0)
   const [name, setName] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState(projectId)
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState(environmentId ?? '')
@@ -125,6 +126,8 @@ export function ComposeStackDialog({
         !fileQuery.isLoading &&
         !fileQuery.isError &&
         Boolean(githubCompose.trim())
+  const configurationValid =
+    variablesValid && (sourceMode === 'inline' || sourceValid)
   const identityValid = Boolean(
     name.trim().length >= 2 && selectedProject,
   )
@@ -159,6 +162,7 @@ export function ComposeStackDialog({
 
   const reset = () => {
     setStep(0)
+    setFurthestStep(0)
     setName('')
     setSelectedProjectId(projectId)
     setSelectedEnvironmentId(environmentId ?? '')
@@ -174,6 +178,11 @@ export function ComposeStackDialog({
     setCreatedServiceId('')
     setError('')
     setIsSubmitting(false)
+  }
+
+  const changeStep = (nextStep: number) => {
+    setStep(nextStep)
+    setFurthestStep((current) => Math.max(current, nextStep))
   }
 
   const close = () => {
@@ -510,8 +519,9 @@ export function ComposeStackDialog({
         sourceMode === 'github'
           ? `${composePath || 'Compose file'}${watchDirectory.trim() ? ` · watching ${watchDirectory.trim()}` : ''}`
           : `${variables.length} environment variables`,
-      status: sourceMode === 'inline' || (sourceValid && variablesValid) ? 'complete' : 'default',
-      canContinue: sourceMode === 'inline' ? variablesValid : sourceValid && variablesValid,
+      status:
+        furthestStep > 2 && configurationValid ? 'complete' : 'default',
+      canContinue: configurationValid,
       content: (
         <div className="grid max-w-3xl gap-6">
           {sourceMode === 'github' ? (
@@ -605,7 +615,7 @@ export function ComposeStackDialog({
       label: 'Review',
       description: 'Confirm the stack source and deployment scope.',
       summary: name || 'Ready to create',
-      status: canComplete ? 'complete' : error ? 'error' : 'default',
+      status: error ? 'error' : createdServiceId ? 'complete' : 'default',
       canContinue: canComplete,
       content: (
         <div className="grid max-w-3xl gap-5">
@@ -673,7 +683,7 @@ export function ComposeStackDialog({
           continueLabel="Continue"
           className="!h-full !min-h-0 !grid-rows-[auto_minmax(0,1fr)] rounded-none border-0 [&>div]:!h-full [&>div]:!min-h-0 [&>div>nav>ol]:!grid [&>div>nav>ol]:!grid-cols-1 [&>div>nav>ol]:!overflow-visible [&>div>nav>ol>li]:!min-w-0 [&>div>div:last-child]:!h-full [&>div>div:last-child]:!min-h-0 [&>div>div:last-child]:!grid-rows-[minmax(0,1fr)_auto] [&>div>div:last-child>div:first-child]:!min-h-0 [&>div>div:last-child>div:first-child]:!overflow-y-auto"
           onComplete={() => void submit()}
-          onStepChange={setStep}
+          onStepChange={changeStep}
           steps={steps}
         />
       </div>

@@ -3,10 +3,13 @@ import {
   CheckCircle,
   CopySimple,
   Cube,
+  Cpu,
   DotsThree,
   Eye,
   EyeSlash,
   Globe,
+  HardDrives,
+  Memory,
   MagnifyingGlass,
   PencilSimple,
   Play,
@@ -525,12 +528,6 @@ function OverviewPanel({
   deployments: Deployment[]
   containers: NonNullable<ServiceSummary['runtime']>['containers']
 }) {
-  const gitSource = useServiceSource(
-    service.id,
-    true,
-    service.capabilities.can_manage_source &&
-      (service.spec?.source_type === 'git' || Boolean(service.spec?.git_url)),
-  )
   const neverDeployed =
     service.status === 'pending' && deployments.length === 0 && containers.length === 0
   const telemetryAvailable =
@@ -538,38 +535,6 @@ function OverviewPanel({
     stats?.state !== 'unknown' &&
     (stats?.containers?.length ?? 0) > 0
   const latestDeployment = deployments[0]
-  const configuration = [
-    ...(service.spec?.build_type
-      ? [{ label: 'BUILD', value: service.spec.build_type }]
-      : []),
-    ...(service.spec?.engine
-      ? [
-          {
-            label: 'ENGINE',
-            value: `${service.spec.engine}${service.spec.version ? ` ${service.spec.version}` : ''}`,
-          },
-        ]
-      : []),
-    ...(service.spec?.image ? [{ label: 'IMAGE', value: service.spec.image }] : []),
-    ...(service.spec?.compose_file || gitSource.data?.compose_file
-      ? [{ label: 'COMPOSE FILE', value: gitSource.data?.compose_file || service.spec?.compose_file || '' }]
-      : []),
-    ...(service.spec?.git_url
-      ? [{ label: 'SOURCE', value: service.spec.git_url }]
-      : []),
-    ...(service.spec?.port
-      ? [{ label: 'PORT', value: String(service.spec.port) }]
-      : []),
-    ...(service.spec?.cpus
-      ? [{ label: 'CPU LIMIT', value: `${service.spec.cpus} vCPU` }]
-      : []),
-    ...(service.spec?.mem_mb
-      ? [{ label: 'MEMORY LIMIT', value: `${service.spec.mem_mb} MB` }]
-      : []),
-    ...(service.spec?.storage_mb
-      ? [{ label: 'STORAGE LIMIT', value: `${service.spec.storage_mb} MB` }]
-      : []),
-  ]
   return (
     <div className="grid content-start gap-5">
       <section
@@ -713,25 +678,11 @@ function OverviewPanel({
           </div>
         )}
       </section>
-      {configuration.length ? (
-        <section className="grid gap-3">
-          <Typography
-            as="h2"
-            role="section-title"
-          >
-            Configuration
-          </Typography>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-8">
-            {configuration.map((item) => (
-              <DefinitionValue
-                key={item.label}
-                label={item.label}
-                value={item.value}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <ResourceAllocations
+        service={service}
+        stats={stats}
+        telemetryAvailable={telemetryAvailable}
+      />
       {service.kind === 'database' ? (
         <DatabaseConnection serviceId={service.id} />
       ) : null}
@@ -852,15 +803,115 @@ function RuntimeMetric({
   )
 }
 
-function DefinitionValue({ label, value }: { label: string; value: string }) {
+function ResourceAllocations({
+  service,
+  stats,
+  telemetryAvailable,
+}: {
+  service: ServiceSummary
+  stats?: Stats
+  telemetryAvailable: boolean
+}) {
+  const cpuLimit = service.spec?.cpus ? `${service.spec.cpus} vCPU` : 'Not configured'
+  const memoryLimit = service.spec?.mem_mb
+    ? formatResourceMemory(service.spec.mem_mb)
+    : 'Not configured'
+  const storageLimit = service.spec?.storage_mb
+    ? formatResourceStorage(service.spec.storage_mb)
+    : 'Unlimited'
+
   return (
-    <div className="grid min-w-0 gap-1 border-b border-border-subtle py-3">
-      <span className="text-label tracking-[0.08em] text-text-subtle">{label}</span>
-      <span className="break-all font-technical text-log text-text-secondary">
-        {value}
-      </span>
+    <section
+      aria-label="Resource allocations"
+      className="grid gap-4 rounded-xl border border-border-subtle bg-surface-1 p-4"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="grid gap-1">
+          <Typography as="h2" role="section-title">
+            Resource allocations
+          </Typography>
+          <p className="text-supporting text-text-tertiary">
+            Reserved capacity for this service runtime.
+          </p>
+        </div>
+        <span className="text-label text-text-tertiary">APPLIES ON NEXT DEPLOY</span>
+      </div>
+      <div className="grid gap-3 border-t border-border-subtle pt-4 md:grid-cols-3">
+        <ResourceAllocationCard
+          icon={<Cpu size={18} />}
+          label="CPU"
+          allocation={cpuLimit}
+          usage={telemetryAvailable ? `${stats!.stats.cpu_percent.toFixed(1)}% in use` : 'Usage unavailable'}
+          usagePercent={telemetryAvailable ? stats!.stats.cpu_percent : undefined}
+        />
+        <ResourceAllocationCard
+          icon={<Memory size={18} />}
+          label="Memory"
+          allocation={memoryLimit}
+          usage={telemetryAvailable ? `${stats!.stats.mem_percent.toFixed(1)}% in use` : 'Usage unavailable'}
+          usagePercent={telemetryAvailable ? stats!.stats.mem_percent : undefined}
+        />
+        <ResourceAllocationCard
+          icon={<HardDrives size={18} />}
+          label="Storage"
+          allocation={storageLimit}
+          usage="Persistent allocation"
+        />
+      </div>
+    </section>
+  )
+}
+
+function ResourceAllocationCard({
+  icon,
+  label,
+  allocation,
+  usage,
+  usagePercent,
+}: {
+  icon: ReactNode
+  label: string
+  allocation: string
+  usage: string
+  usagePercent?: number
+}) {
+  const progress = usagePercent === undefined ? 0 : Math.min(Math.max(usagePercent, 0), 100)
+
+  return (
+    <div className="grid gap-4 rounded-lg border border-border-subtle bg-surface-2 p-4">
+      <div className="flex items-center gap-3">
+        <span className="grid size-9 place-items-center rounded-lg bg-action-soft text-action-strong">
+          {icon}
+        </span>
+        <span className="text-label tracking-[0.08em] text-text-subtle">{label}</span>
+      </div>
+      <div className="grid gap-1">
+        <span className="font-technical text-code text-text-primary">{allocation}</span>
+        <span className="text-label text-text-tertiary">{usage}</span>
+      </div>
+      <div
+        aria-label={`${label} usage${usagePercent === undefined ? ' unavailable' : ` ${progress.toFixed(0)} percent`}`}
+        className="h-1.5 overflow-hidden rounded-full bg-surface-3"
+        role="progressbar"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={usagePercent === undefined ? undefined : progress}
+      >
+        <div
+          className="h-full rounded-full bg-action transition-[width] duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
     </div>
   )
+}
+
+function formatResourceMemory(value: number) {
+  return value >= 1024 && value % 1024 === 0 ? `${value / 1024} GB` : `${value} MB`
+}
+
+function formatResourceStorage(value: number) {
+  return value >= 1024 && value % 1024 === 0 ? `${value / 1024} GB` : `${value} MB`
 }
 
 function serviceContext(service: ServiceSummary) {
