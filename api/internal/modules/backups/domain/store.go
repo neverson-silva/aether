@@ -19,7 +19,8 @@ type DatabaseBackupStore interface {
 	CreateJob(ctx context.Context, job *BackupJob) (*BackupJob, error)
 	GetJob(ctx context.Context, id uuid.UUID) (*BackupJob, error)
 	UpdateJob(ctx context.Context, job *BackupJob) (*BackupJob, error)
-	ListJobsByDatabase(ctx context.Context, databaseID uuid.UUID, limit int) ([]BackupJob, error)
+	DeleteJob(ctx context.Context, id uuid.UUID) error
+	ListJobsByDatabase(ctx context.Context, databaseID uuid.UUID, limit int, fromDate, toDate string) ([]BackupJob, error)
 	ListActiveJobsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupJob, error)
 	ListQueuedJobs(ctx context.Context, limit int) ([]BackupJob, error)
 

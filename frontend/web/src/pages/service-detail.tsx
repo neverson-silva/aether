@@ -1867,12 +1867,14 @@ function DomainRow({
 function LiveLogsPanel({ serviceId }: { serviceId: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTerm | null>(null)
+  const searchRef = useRef<SearchAddon | null>(null)
   const [connectionState, setConnectionState] = useState<
     'connecting' | 'live' | 'reconnecting' | 'disconnected'
   >('connecting')
   const [lineCount, setLineCount] = useState(0)
   const [lineLimit, setLineLimit] = useState('200')
   const [period, setPeriod] = useState('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const host = hostRef.current
@@ -1895,9 +1897,12 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
       },
     })
     const fit = new FitAddon()
+    const searchAddon = new SearchAddon()
     terminal.loadAddon(fit)
+    terminal.loadAddon(searchAddon)
     terminal.open(host)
     terminalRef.current = terminal
+    searchRef.current = searchAddon
     terminal.writeln('Waiting for live output…')
     const fitTerminal = () => {
       if (host.clientWidth && host.clientHeight) fit.fit()
@@ -1910,6 +1915,7 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
       observer.disconnect()
       terminal.dispose()
       terminalRef.current = null
+      searchRef.current = null
     }
   }, [])
 
@@ -1940,6 +1946,11 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
       )
     return () => stream.close()
   }, [lineLimit, period, serviceId])
+
+  useEffect(() => {
+    if (search) searchRef.current?.findNext(search)
+  }, [lineLimit, period, search])
+
   const statusLabel =
     connectionState === 'live'
       ? 'LIVE'
@@ -1967,7 +1978,22 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
             /api/v1/services/{serviceId}/logs
           </span>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="min-w-52 max-w-sm flex-1">
+            <Input
+              aria-label="Search logs"
+              className="min-h-8 text-log"
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && search) {
+                  searchRef.current?.findNext(search)
+                }
+              }}
+              placeholder="Search logs"
+              type="search"
+              value={search}
+            />
+          </div>
           <label className="flex items-center gap-2 text-label text-text-tertiary">
             Lines
             <Select

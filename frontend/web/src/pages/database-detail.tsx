@@ -146,7 +146,7 @@ export function DatabaseDetail() {
             label: 'Backups',
             content: (
               <BackupSurface
-                backups={backups.data ?? []}
+                backups={backups.data?.items ?? []}
                 configCount={backupConfig.data?.length ?? 0}
                 loading={backups.isLoading || backupConfig.isLoading}
               />

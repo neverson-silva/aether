@@ -223,6 +223,15 @@ func (q *Queries) DeleteBackupConfiguration(ctx context.Context, id uuid.UUID) e
 	return err
 }
 
+const deleteBackupJob = `-- name: DeleteBackupJob :exec
+DELETE FROM backup_jobs WHERE id = $1
+`
+
+func (q *Queries) DeleteBackupJob(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteBackupJob, id)
+	return err
+}
+
 const failAbandonedUploadRestores = `-- name: FailAbandonedUploadRestores :exec
 UPDATE restore_jobs
 SET status = 'failed', error_code = 'RESTORE_UPLOAD_INTERRUPTED',
@@ -395,8 +404,8 @@ WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.i
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListBackupConfigurationsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupConfiguration, error) {
-	rows, err := q.db.QueryContext(ctx, listBackupConfigurationsByDatabase, id)
+func (q *Queries) ListBackupConfigurationsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupConfiguration, error) {
+	rows, err := q.db.QueryContext(ctx, listBackupConfigurationsByDatabase, databaseID)
 	if err != nil {
 		return nil, err
 	}
@@ -442,17 +451,26 @@ SELECT id, database_id, configuration_id, trigger_type, status, engine,
        checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
 WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
+  AND ($2 = '' OR created_at >= NULLIF($2, '')::timestamptz)
+  AND ($3 = '' OR created_at < (NULLIF($3, '')::date + INTERVAL '1 day'))
 ORDER BY created_at DESC
-LIMIT $2
+LIMIT $4
 `
 
 type ListBackupJobsByDatabaseParams struct {
-	ID    uuid.UUID `json:"id"`
-	Limit int32     `json:"limit"`
+	ID          uuid.UUID   `json:"id"`
+	FromDate    interface{} `json:"from_date"`
+	ToDate      interface{} `json:"to_date"`
+	RecordLimit int32       `json:"record_limit"`
 }
 
 func (q *Queries) ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJobsByDatabaseParams) ([]BackupJob, error) {
-	rows, err := q.db.QueryContext(ctx, listBackupJobsByDatabase, arg.ID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listBackupJobsByDatabase,
+		arg.ID,
+		arg.FromDate,
+		arg.ToDate,
+		arg.RecordLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

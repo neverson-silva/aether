@@ -10,7 +10,7 @@ SELECT id, database_id, enabled, destination_id, path_prefix, schedule_type,
        schedule_minute, schedule_at, schedule_day, schedule_start, schedule_cron,
        timezone, retention_type, next_run_at, created_at, updated_at, service_id
 FROM backup_configurations
-WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
+WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = sqlc.arg(database_id))
 ORDER BY created_at DESC;
 
 -- name: CreateBackupConfiguration :one
@@ -97,8 +97,13 @@ SELECT id, database_id, configuration_id, trigger_type, status, engine,
        checksum, error_code, error_message, started_at, completed_at, created_at, service_id
 FROM backup_jobs
 WHERE service_id = (SELECT databases.service_id FROM databases WHERE databases.id = $1)
+  AND (sqlc.arg(from_date) = '' OR created_at >= NULLIF(sqlc.arg(from_date), '')::timestamptz)
+  AND (sqlc.arg(to_date) = '' OR created_at < (NULLIF(sqlc.arg(to_date), '')::date + INTERVAL '1 day'))
 ORDER BY created_at DESC
-LIMIT $2;
+LIMIT sqlc.arg(record_limit);
+
+-- name: DeleteBackupJob :exec
+DELETE FROM backup_jobs WHERE id = $1;
 
 -- name: ListActiveBackupJobsByDatabase :many
 SELECT id, database_id, configuration_id, trigger_type, status, engine,

@@ -266,7 +266,18 @@ func (h *DBBackupHandler) ListBackups(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	jobs, err := h.svc.ListBackups(c.Request.Context(), dbID, orgID(c), limit)
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	fromDate, toDate, ok := backupDateRange(c)
+	if !ok {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	jobs, err := h.svc.ListBackups(c.Request.Context(), dbID, orgID(c), limit, fromDate, toDate)
 	if err != nil {
 		abort(c, err)
 		return
@@ -276,6 +287,23 @@ func (h *DBBackupHandler) ListBackups(c *gin.Context) {
 		out = append(out, backupJobDTOFrom(j))
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+func backupDateRange(c *gin.Context) (string, string, bool) {
+	fromDate := c.Query("from")
+	toDate := c.Query("to")
+	for _, value := range []string{fromDate, toDate} {
+		if value == "" {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return "", "", false
+		}
+	}
+	if fromDate != "" && toDate != "" && fromDate > toDate {
+		return "", "", false
+	}
+	return fromDate, toDate, true
 }
 
 func (h *DBBackupHandler) GetBackup(c *gin.Context) {
@@ -302,6 +330,22 @@ func (h *DBBackupHandler) CancelBackup(c *gin.Context) {
 		return
 	}
 	if err := h.svc.CancelBackup(c.Request.Context(), backupID, orgID(c)); err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *DBBackupHandler) DeleteBackup(c *gin.Context) {
+	if !h.manage(c) {
+		return
+	}
+	backupID, err := uuid.Parse(c.Param("backupID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	if err := h.svc.DeleteBackup(c.Request.Context(), backupID, orgID(c)); err != nil {
 		abort(c, err)
 		return
 	}

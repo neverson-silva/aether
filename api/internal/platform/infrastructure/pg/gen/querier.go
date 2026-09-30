@@ -63,6 +63,7 @@ type Querier interface {
 	DeleteAlertRule(ctx context.Context, arg DeleteAlertRuleParams) error
 	DeleteApp(ctx context.Context, arg DeleteAppParams) error
 	DeleteBackupConfiguration(ctx context.Context, id uuid.UUID) error
+	DeleteBackupJob(ctx context.Context, id uuid.UUID) error
 	DeleteChannel(ctx context.Context, arg DeleteChannelParams) error
 	DeleteCluster(ctx context.Context, arg DeleteClusterParams) error
 	DeleteComposeApp(ctx context.Context, arg DeleteComposeAppParams) error
@@ -152,7 +153,7 @@ type Querier interface {
 	ListAppsByProject(ctx context.Context, arg ListAppsByProjectParams) ([]ListAppsByProjectRow, error)
 	ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrgParams) ([]AuditLog, error)
 	ListAutopilotEvents(ctx context.Context, arg ListAutopilotEventsParams) ([]AutopilotEvent, error)
-	ListBackupConfigurationsByDatabase(ctx context.Context, id uuid.UUID) ([]BackupConfiguration, error)
+	ListBackupConfigurationsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]BackupConfiguration, error)
 	ListBackupJobsByDatabase(ctx context.Context, arg ListBackupJobsByDatabaseParams) ([]BackupJob, error)
 	ListBackupJobsDue(ctx context.Context, limit int32) ([]BackupJob, error)
 	ListBackupsByDatabase(ctx context.Context, arg ListBackupsByDatabaseParams) ([]Backup, error)

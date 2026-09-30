@@ -102,7 +102,11 @@ func (s *fakeStore) UpdateJob(_ context.Context, job *domain.BackupJob) (*domain
 	s.jobs[job.ID] = job
 	return job, nil
 }
-func (s *fakeStore) ListJobsByDatabase(_ context.Context, dbID uuid.UUID, _ int) ([]domain.BackupJob, error) {
+func (s *fakeStore) DeleteJob(_ context.Context, id uuid.UUID) error {
+	delete(s.jobs, id)
+	return nil
+}
+func (s *fakeStore) ListJobsByDatabase(_ context.Context, dbID uuid.UUID, _ int, _, _ string) ([]domain.BackupJob, error) {
 	var out []domain.BackupJob
 	for _, j := range s.jobs {
 		if j.DatabaseID == dbID {

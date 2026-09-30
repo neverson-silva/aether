@@ -196,8 +196,12 @@ func (s *DatabaseStore) UpdateJob(ctx context.Context, job *domain.BackupJob) (*
 	return savedJob, nil
 }
 
-func (s *DatabaseStore) ListJobsByDatabase(ctx context.Context, databaseID uuid.UUID, limit int) ([]domain.BackupJob, error) {
-	rows, err := s.q.ListBackupJobsByDatabase(ctx, gen.ListBackupJobsByDatabaseParams{ID: databaseID, Limit: int32(limit)})
+func (s *DatabaseStore) DeleteJob(ctx context.Context, id uuid.UUID) error {
+	return mapErr(s.q.DeleteBackupJob(ctx, id))
+}
+
+func (s *DatabaseStore) ListJobsByDatabase(ctx context.Context, databaseID uuid.UUID, limit int, fromDate, toDate string) ([]domain.BackupJob, error) {
+	rows, err := s.q.ListBackupJobsByDatabase(ctx, gen.ListBackupJobsByDatabaseParams{ID: databaseID, FromDate: fromDate, ToDate: toDate, RecordLimit: int32(limit)})
 	if err != nil {
 		return nil, mapErr(err)
 	}

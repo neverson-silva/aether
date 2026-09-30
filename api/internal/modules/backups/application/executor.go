@@ -238,7 +238,7 @@ func (s *DatabaseBackups) upload(ctx context.Context, provider storage.Provider,
 }
 
 func (s *DatabaseBackups) applyLatestRetention(ctx context.Context, provider storage.Provider, current *domain.BackupJob) {
-	older, err := s.Store.ListJobsByDatabase(ctx, current.DatabaseID, 100)
+	older, err := s.Store.ListJobsByDatabase(ctx, current.DatabaseID, 100, "", "")
 	if err != nil {
 		return
 	}
@@ -251,7 +251,7 @@ func (s *DatabaseBackups) applyLatestRetention(ctx context.Context, provider sto
 }
 
 func (s *DatabaseBackups) cleanupExternalOrphans(ctx context.Context, provider storage.Provider, prefix string, current *domain.BackupJob) {
-	jobs, err := s.Store.ListJobsByDatabase(ctx, current.DatabaseID, 10000)
+	jobs, err := s.Store.ListJobsByDatabase(ctx, current.DatabaseID, 10000, "", "")
 	if err != nil {
 		return
 	}

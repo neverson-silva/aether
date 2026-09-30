@@ -10,6 +10,7 @@ import (
 	"aether/internal/modules/backups/domain"
 	"aether/internal/platform/druntime/events"
 	"aether/internal/platform/druntime/queue"
+	"aether/internal/platform/storage"
 )
 
 func (s *DatabaseBackups) StartManualBackup(ctx context.Context, dbID, orgID uuid.UUID, configIDs ...uuid.UUID) (*domain.BackupJob, error) {
@@ -56,11 +57,11 @@ func (s *DatabaseBackups) StartManualBackup(ctx context.Context, dbID, orgID uui
 	return job, nil
 }
 
-func (s *DatabaseBackups) ListBackups(ctx context.Context, dbID, orgID uuid.UUID, limit int) ([]domain.BackupJob, error) {
+func (s *DatabaseBackups) ListBackups(ctx context.Context, dbID, orgID uuid.UUID, limit int, fromDate, toDate string) ([]domain.BackupJob, error) {
 	if _, err := s.Databases.Get(ctx, dbID, orgID); err != nil {
 		return nil, err
 	}
-	return s.Store.ListJobsByDatabase(ctx, dbID, limit)
+	return s.Store.ListJobsByDatabase(ctx, dbID, limit, fromDate, toDate)
 }
 
 func (s *DatabaseBackups) GetBackup(ctx context.Context, backupID, orgID uuid.UUID) (*domain.BackupJob, error) {
@@ -101,6 +102,30 @@ func (s *DatabaseBackups) CancelBackup(ctx context.Context, backupID, orgID uuid
 	default:
 		return domain.ErrValidation
 	}
+}
+
+func (s *DatabaseBackups) DeleteBackup(ctx context.Context, backupID, orgID uuid.UUID) error {
+	job, err := s.GetBackup(ctx, backupID, orgID)
+	if err != nil {
+		return err
+	}
+	if !job.Terminal() {
+		return domain.ErrConflict
+	}
+	if job.StorageKey != "" {
+		provider, err := s.Destinations.GetProvider(ctx, job.DestinationID, orgID)
+		if err != nil {
+			return err
+		}
+		if err := provider.DeleteObject(ctx, storage.DeleteObjectInput{Key: job.StorageKey}); err != nil {
+			return err
+		}
+	}
+	if err := s.Store.DeleteJob(ctx, backupID); err != nil {
+		return err
+	}
+	s.Audit.Record(ctx, orgID, "backup.delete", "database", job.DatabaseID.String(), backupID.String())
+	return nil
 }
 
 func (s *DatabaseBackups) enqueue(ctx context.Context, job queue.Job) error {

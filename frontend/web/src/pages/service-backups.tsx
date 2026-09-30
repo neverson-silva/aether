@@ -41,6 +41,7 @@ import { useDatabaseBackupNow } from '../hooks/use-database-backup-now'
 import { useDatabaseBackupPreflight } from '../hooks/use-database-backup-preflight'
 import { useDatabaseBackupRestore } from '../hooks/use-database-backup-restore'
 import { useDatabaseBackups } from '../hooks/use-database-backups'
+import { useDeleteDatabaseBackup } from '../hooks/use-delete-database-backup'
 import {
   useDatabaseUploadRestore,
   useRestoreJob,
@@ -131,10 +132,15 @@ export function ServiceBackups({
   serviceName: string
 }) {
   const configs = useDatabaseBackupConfig(serviceId)
-  const backups = useDatabaseBackups(serviceId, 50)
+  const [backupLimit, setBackupLimit] = useState(10)
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<BackupJob | null>(null)
+  const backups = useDatabaseBackups(serviceId, backupLimit, fromDate, toDate)
   const destinations = useS3Destinations()
   const backupNow = useDatabaseBackupNow(serviceId)
   const cancelBackup = useDatabaseBackupCancel(serviceId)
+  const deleteBackup = useDeleteDatabaseBackup(serviceId)
   const removeConfig = useDeleteDatabaseBackupConfig(serviceId)
   const [editing, setEditing] = useState<BackupConfig | null | undefined>(undefined)
   const [restoreTarget, setRestoreTarget] = useState<BackupJob | null>(null)
@@ -284,7 +290,7 @@ export function ServiceBackups({
                 Backup history
               </Typography>
               <p className="text-label text-text-tertiary">
-                {backups.data?.length ?? 0} recovery points
+                Showing {backups.data?.items.length ?? 0} recovery points
               </p>
             </div>
           </div>
@@ -298,6 +304,47 @@ export function ServiceBackups({
             Run backup now
           </Button>
         </div>
+        <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-4 py-3 sm:px-5">
+          <Field
+            id="backup-from-date"
+            label="From"
+          >
+            <Input
+              type="date"
+              value={fromDate}
+              onChange={(event) => {
+                setFromDate(event.target.value)
+                setBackupLimit(10)
+              }}
+            />
+          </Field>
+          <Field
+            id="backup-to-date"
+            label="To"
+          >
+            <Input
+              type="date"
+              value={toDate}
+              onChange={(event) => {
+                setToDate(event.target.value)
+                setBackupLimit(10)
+              }}
+            />
+          </Field>
+          {fromDate || toDate ? (
+            <Button
+              size="sm"
+              tone="ghost"
+              onClick={() => {
+                setFromDate('')
+                setToDate('')
+                setBackupLimit(10)
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : null}
+        </div>
         {backups.isLoading ? (
           <div className="grid gap-2 p-4">
             <Skeleton className="h-16 rounded-xl" />
@@ -310,9 +357,9 @@ export function ServiceBackups({
           >
             Backup history could not be loaded.
           </div>
-        ) : backups.data?.length ? (
+        ) : backups.data?.items.length ? (
           <div className="divide-y divide-border-subtle">
-            {backups.data.map((backup) => (
+            {backups.data.items.map((backup) => (
               <BackupHistoryRow
                 backup={backup}
                 key={backup.id}
@@ -330,9 +377,21 @@ export function ServiceBackups({
                   })
                 }
                 onRestore={() => setRestoreTarget(backup)}
+                onDelete={() => setDeleteTarget(backup)}
                 canceling={cancelBackup.isPending}
               />
             ))}
+            {backups.data.hasMore ? (
+              <div className="flex justify-center border-t border-border-subtle px-4 py-3">
+                <Button
+                  size="sm"
+                  tone="ghost"
+                  onClick={() => setBackupLimit((current) => current + 10)}
+                >
+                  Load more
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="p-4">
@@ -363,6 +422,35 @@ export function ServiceBackups({
           serviceId={serviceId}
           serviceName={serviceName}
           onClose={() => setRestoreTarget(null)}
+        />
+      ) : null}
+      {deleteTarget ? (
+        <AlertDialog
+          description={
+            <span>
+              Delete this backup record and its stored file from the configured S3
+              destination? This action cannot be undone.
+            </span>
+          }
+          confirmLabel={deleteBackup.isPending ? 'Deleting…' : 'Delete backup'}
+          onConfirm={() =>
+            deleteBackup.mutate(deleteTarget.id, {
+              onSuccess: () => {
+                setDeleteTarget(null)
+                showToast('Backup deleted.', 'success')
+              },
+              onError: (error) =>
+                showToast(
+                  error instanceof Error ? error.message : 'Could not delete the backup.',
+                  'error',
+                ),
+            })
+          }
+          onOpenChange={(open) => {
+            if (!open && !deleteBackup.isPending) setDeleteTarget(null)
+          }}
+          open
+          title="Delete backup?"
         />
       ) : null}
       {uploadOpen ? (
@@ -472,11 +560,13 @@ function BackupHistoryRow({
   backup,
   onCancel,
   onRestore,
+  onDelete,
   canceling,
 }: {
   backup: BackupJob
   onCancel: () => void
   onRestore: () => void
+  onDelete: () => void
   canceling: boolean
 }) {
   const active = activeBackupStatuses.has(backup.status)
@@ -527,6 +617,17 @@ function BackupHistoryRow({
           >
             <ArrowCounterClockwise size={15} />
             Restore
+          </Button>
+        ) : null}
+        {!active ? (
+          <Button
+            aria-label={`Delete backup from ${formatDate(backup.completed_at ?? backup.started_at)}`}
+            size="sm"
+            tone="ghost"
+            onClick={onDelete}
+          >
+            <Trash size={15} />
+            Delete
           </Button>
         ) : null}
       </div>

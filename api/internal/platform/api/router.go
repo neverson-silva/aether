@@ -546,6 +546,7 @@ func (r *Router) registerServiceDatabaseBackupRoutes(authed *gin.RouterGroup) {
 	services.GET("/backups", r.dbBackups.ListBackups)
 	services.GET("/backups/:backupID", r.dbBackups.GetBackup)
 	services.POST("/backups/:backupID/cancel", r.dbBackups.CancelBackup)
+	services.DELETE("/backups/:backupID", r.dbBackups.DeleteBackup)
 	services.POST("/backups/:backupID/restore", r.dbBackups.RequestRestore)
 	services.GET("/backups/:backupID/preflight", r.dbBackups.PreflightRestore)
 	services.GET("/backups/:backupID/restore-jobs", r.dbBackups.ListRestoreJobs)
