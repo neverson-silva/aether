@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  DateRangePicker,
   EmptyState,
   Field,
   Input,
@@ -304,46 +305,18 @@ export function ServiceBackups({
             Run backup now
           </Button>
         </div>
-        <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-4 py-3 sm:px-5">
-          <Field
-            id="backup-from-date"
-            label="From"
-          >
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(event) => {
-                setFromDate(event.target.value)
+        <div className="border-b border-border-subtle px-4 py-3 sm:px-5">
+          <div className="max-w-md">
+            <DateRangePicker
+              aria-label="Backup date range"
+              value={{ start: fromDate, end: toDate }}
+              onChange={(range) => {
+                setFromDate(range.start)
+                setToDate(range.end)
                 setBackupLimit(10)
               }}
             />
-          </Field>
-          <Field
-            id="backup-to-date"
-            label="To"
-          >
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(event) => {
-                setToDate(event.target.value)
-                setBackupLimit(10)
-              }}
-            />
-          </Field>
-          {fromDate || toDate ? (
-            <Button
-              size="sm"
-              tone="ghost"
-              onClick={() => {
-                setFromDate('')
-                setToDate('')
-                setBackupLimit(10)
-              }}
-            >
-              Clear filters
-            </Button>
-          ) : null}
+          </div>
         </div>
         {backups.isLoading ? (
           <div className="grid gap-2 p-4">
