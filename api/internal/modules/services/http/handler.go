@@ -956,9 +956,11 @@ func (h *Handler) Logs(c *gin.Context) {
 		}
 		items = filtered
 	}
+	lines := parseLogLines(c.Query("lines"))
+	since := parseLogSince(c.Query("period"))
 	var output []byte
 	for _, item := range items {
-		logs, logsErr := h.runtime.LogTail(c.Request.Context(), item.ID, 200)
+		logs, logsErr := serviceLogTail(c.Request.Context(), h.runtime, item.ID, lines, since)
 		if logsErr == nil || len(logs) > 0 {
 			output = append(output, []byte(strings.Join(logs, "\n"))...)
 			output = append(output, '\n')
@@ -976,7 +978,7 @@ func (h *Handler) Logs(c *gin.Context) {
 		defer cancel()
 		reader, writer := io.Pipe()
 		go func() {
-			_ = h.runtime.FollowLogs(ctx, items[0].ID, writer)
+			_ = serviceFollowLogs(ctx, h.runtime, items[0].ID, 0, since, writer)
 			_ = writer.Close()
 		}()
 		scanner := bufio.NewScanner(reader)
@@ -1001,6 +1003,46 @@ func (h *Handler) Logs(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"service_id": id, "logs": string(output)})
+}
+
+func parseLogLines(value string) int {
+	if lines, err := strconv.Atoi(value); err == nil {
+		if lines >= 10 && lines <= 5000 {
+			return lines
+		}
+	}
+	return 200
+}
+
+func parseLogSince(value string) time.Time {
+	durations := map[string]time.Duration{
+		"15m": 15 * time.Minute,
+		"1h":  time.Hour,
+		"6h":  6 * time.Hour,
+		"24h": 24 * time.Hour,
+		"7d":  7 * 24 * time.Hour,
+		"all": 0,
+		"":    0,
+	}
+	duration, ok := durations[value]
+	if !ok || duration == 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(-duration)
+}
+
+func serviceLogTail(ctx context.Context, runtime worker.LogsRuntime, containerID string, lines int, since time.Time) ([]string, error) {
+	if runtimeWithOptions, ok := runtime.(worker.LogsRuntimeOptions); ok {
+		return runtimeWithOptions.LogTailWithOptions(ctx, containerID, lines, since)
+	}
+	return runtime.LogTail(ctx, containerID, lines)
+}
+
+func serviceFollowLogs(ctx context.Context, runtime worker.LogsRuntime, containerID string, lines int, since time.Time, writer io.Writer) error {
+	if runtimeWithOptions, ok := runtime.(worker.LogsRuntimeOptions); ok {
+		return runtimeWithOptions.FollowLogsWithOptions(ctx, containerID, lines, since, writer)
+	}
+	return runtime.FollowLogs(ctx, containerID, writer)
 }
 
 type serviceSSEWriter struct {

@@ -142,10 +142,6 @@ export function ServiceDetail() {
           <OverviewPanel
             service={service}
             stats={statsQuery.data}
-            telemetryLoading={statsQuery.isLoading}
-            telemetryError={statsQuery.isError}
-            deployments={deploymentsQuery.data ?? []}
-            containers={runtimeContainers}
           />
         </div>
       ),
@@ -516,168 +512,16 @@ function ServiceActions({
 function OverviewPanel({
   service,
   stats,
-  telemetryLoading,
-  telemetryError,
-  deployments,
-  containers,
 }: {
   service: ServiceSummary
   stats?: Stats
-  telemetryLoading: boolean
-  telemetryError: boolean
-  deployments: Deployment[]
-  containers: NonNullable<ServiceSummary['runtime']>['containers']
 }) {
-  const neverDeployed =
-    service.status === 'pending' && deployments.length === 0 && containers.length === 0
   const telemetryAvailable =
     Boolean(stats?.stats) &&
     stats?.state !== 'unknown' &&
     (stats?.containers?.length ?? 0) > 0
-  const latestDeployment = deployments[0]
   return (
     <div className="grid content-start gap-5">
-      <section
-        aria-label="Runtime summary"
-        className="grid gap-3 rounded-xl border border-border-subtle bg-surface-1 p-4"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
-          <Typography
-            as="h2"
-            role="section-title"
-          >
-            Runtime
-          </Typography>
-          {latestDeployment ? (
-            <span className="text-label text-text-tertiary">Latest deployment</span>
-          ) : (
-            <span className="text-label text-text-tertiary">No deployment yet</span>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3 border-t border-border-subtle pt-3 sm:grid-cols-3 sm:gap-5">
-          <RuntimeMetric
-            label="CPU"
-            value={
-              telemetryLoading
-                ? 'Loading…'
-                : telemetryAvailable
-                  ? `${stats!.stats.cpu_percent.toFixed(1)}%`
-                  : '—'
-            }
-            detail={
-              telemetryLoading
-                ? 'Collecting telemetry'
-                : telemetryError
-                  ? 'Telemetry request failed'
-                  : telemetryAvailable
-                    ? 'Current usage'
-                    : 'No telemetry'
-            }
-          />
-          <RuntimeMetric
-            label="Memory"
-            value={
-              telemetryLoading
-                ? 'Loading…'
-                : telemetryAvailable
-                  ? `${stats!.stats.mem_percent.toFixed(1)}%`
-                  : '—'
-            }
-            detail={
-              telemetryLoading
-                ? 'Collecting telemetry'
-                : telemetryError
-                  ? 'Telemetry request failed'
-                  : telemetryAvailable
-                    ? `${formatRuntimeBytes(stats!.stats.mem_bytes)}${stats!.stats.mem_limit > 0 ? ` of ${formatRuntimeBytes(stats!.stats.mem_limit)}` : ' used'}`
-                    : 'No telemetry'
-            }
-          />
-          <RuntimeMetric
-            label="Containers"
-            value={String(containers.length)}
-            detail="Attached to runtime"
-          />
-        </div>
-        {latestDeployment ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-subtle pt-3">
-            <RuntimeStatus
-              label={latestDeployment.status}
-              status={toRuntimeStatus(latestDeployment.status)}
-            />
-            <span className="text-label text-text-tertiary">
-              RUN / {String(latestDeployment.number).padStart(3, '0')}
-            </span>
-            <span className="min-w-0 flex-1 truncate font-technical text-log text-text-secondary">
-              {latestDeployment.commit ||
-                latestDeployment.image_ref ||
-                latestDeployment.id}
-            </span>
-            <time
-              className="shrink-0 font-technical text-log text-text-tertiary"
-              dateTime={latestDeployment.created_at}
-            >
-              {formatTimelineTimestamp(latestDeployment.created_at)}
-            </time>
-          </div>
-        ) : null}
-      </section>
-      <section className="grid gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Typography
-            as="h2"
-            role="section-title"
-          >
-            Runtime topology
-          </Typography>
-          <span className="font-technical text-log text-text-subtle">
-            {containers.length} {containers.length === 1 ? 'CONTAINER' : 'CONTAINERS'}
-          </span>
-        </div>
-        {containers.length ? (
-          <div className="grid gap-1">
-            {containers.map((container) => (
-              <div
-                className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg bg-surface-1 px-3 py-2.5"
-                key={container.id}
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <Cube
-                    aria-hidden="true"
-                    className="shrink-0 text-text-tertiary"
-                    size={17}
-                  />
-                  <span className="truncate font-technical text-log text-text-primary">
-                    {container.name}
-                  </span>
-                </div>
-                <RuntimeStatus
-                  label={container.status}
-                  status={
-                    container.healthy === false
-                      ? 'degraded'
-                      : toRuntimeStatus(container.status)
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-2 border-y border-border-subtle py-4">
-            <Typography
-              as="h3"
-              role="section-title"
-            >
-              {neverDeployed ? 'No runtime yet' : 'No containers attached'}
-            </Typography>
-            <p className="text-supporting text-text-tertiary">
-              {neverDeployed
-                ? 'Deploy this service to create its first runtime container.'
-                : 'The runtime has not reported any attached containers.'}
-            </p>
-          </div>
-        )}
-      </section>
       <ResourceAllocations
         service={service}
         stats={stats}
@@ -778,31 +622,6 @@ function DatabaseConnection({ serviceId }: { serviceId: string }) {
   )
 }
 
-function RuntimeMetric({
-  label,
-  value,
-  detail,
-}: {
-  label: string
-  value: string
-  detail: string
-}) {
-  return (
-    <div className="grid gap-1">
-      <span className="text-label tracking-[0.08em] text-text-subtle">
-        {label.toUpperCase()}
-      </span>
-      <span
-        aria-live={label === 'CPU' || label === 'Memory' ? 'polite' : undefined}
-        className="font-technical text-code text-text-primary"
-      >
-        {value}
-      </span>
-      <span className="text-label text-text-tertiary">{detail}</span>
-    </div>
-  )
-}
-
 function ResourceAllocations({
   service,
   stats,
@@ -836,7 +655,7 @@ function ResourceAllocations({
         </div>
         <span className="text-label text-text-tertiary">APPLIES ON NEXT DEPLOY</span>
       </div>
-      <div className="grid gap-3 border-t border-border-subtle pt-4 md:grid-cols-3">
+      <div className="grid divide-y divide-border-subtle border-t border-border-subtle pt-1 md:grid-cols-3 md:divide-x md:divide-y-0">
         <ResourceAllocationCard
           icon={<Cpu size={18} />}
           label="CPU"
@@ -875,12 +694,10 @@ function ResourceAllocationCard({
   usage: string
   usagePercent?: number
 }) {
-  const progress = usagePercent === undefined ? 0 : Math.min(Math.max(usagePercent, 0), 100)
-
   return (
-    <div className="grid gap-4 rounded-lg border border-border-subtle bg-surface-2 p-4">
+    <div className="grid gap-3 px-0 py-4 md:px-5 md:py-3 first:md:pl-0 last:md:pr-0">
       <div className="flex items-center gap-3">
-        <span className="grid size-9 place-items-center rounded-lg bg-action-soft text-action-strong">
+        <span className="text-action-strong">
           {icon}
         </span>
         <span className="text-label tracking-[0.08em] text-text-subtle">{label}</span>
@@ -889,19 +706,21 @@ function ResourceAllocationCard({
         <span className="font-technical text-code text-text-primary">{allocation}</span>
         <span className="text-label text-text-tertiary">{usage}</span>
       </div>
-      <div
-        aria-label={`${label} usage${usagePercent === undefined ? ' unavailable' : ` ${progress.toFixed(0)} percent`}`}
-        className="h-1.5 overflow-hidden rounded-full bg-surface-3"
-        role="progressbar"
-        aria-valuemax={100}
-        aria-valuemin={0}
-        aria-valuenow={usagePercent === undefined ? undefined : progress}
-      >
+      {usagePercent !== undefined ? (
         <div
-          className="h-full rounded-full bg-action transition-[width] duration-300"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+          aria-label={`${label} usage ${Math.min(Math.max(usagePercent, 0), 100).toFixed(0)} percent`}
+          className="h-1.5 overflow-hidden rounded-full bg-surface-3"
+          role="progressbar"
+          aria-valuemax={100}
+          aria-valuemin={0}
+          aria-valuenow={Math.min(Math.max(usagePercent, 0), 100)}
+        >
+          <div
+            className="h-full rounded-full bg-action transition-[width] duration-300"
+            style={{ width: `${Math.min(Math.max(usagePercent, 0), 100)}%` }}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -938,18 +757,6 @@ function serviceContext(service: ServiceSummary) {
       : 'Application'
 }
 
-function formatRuntimeBytes(value: number) {
-  if (value < 1024) return `${value} B`
-  const units = ['KiB', 'MiB', 'GiB', 'TiB']
-  let size = value / 1024
-  let unit = 0
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024
-    unit += 1
-  }
-  return `${size.toFixed(1)} ${units[unit]}`
-}
-
 function GitProviderPanel({
   serviceId,
   composeBuild,
@@ -968,6 +775,7 @@ function GitProviderPanel({
   const [branch, setBranch] = useState('')
   const [rootDirectory, setRootDirectory] = useState('')
   const [composeFile, setComposeFile] = useState(configuredComposeFile)
+  const [watchPaths, setWatchPaths] = useState('')
   const [autoDeploy, setAutoDeploy] = useState(false)
   const selectedRepository = repositories.data?.find((item) => item.id === repositoryId)
   const branches = useSourceControlBranches(
@@ -975,14 +783,17 @@ function GitProviderPanel({
     connection?.installation_id,
   )
   const save = useSaveServiceSource(serviceId, true)
+  const resetDraft = () => {
+    if (!source.data) return
+    setRepositoryId(source.data.repository_id)
+    setBranch(source.data.branch || source.data.default_branch)
+    setRootDirectory(source.data.root_directory)
+    setComposeFile(source.data.compose_file || configuredComposeFile)
+    setWatchPaths(source.data.watch_paths.join('\n'))
+    setAutoDeploy(source.data.auto_deploy)
+  }
   useEffect(() => {
-    if (source.data) {
-      setRepositoryId(source.data.repository_id)
-      setBranch(source.data.branch || source.data.default_branch)
-      setRootDirectory(source.data.root_directory)
-      setComposeFile(source.data.compose_file || configuredComposeFile)
-      setAutoDeploy(source.data.auto_deploy)
-    }
+    resetDraft()
   }, [configuredComposeFile, source.data])
   const submit = () => {
     if (!(source.data && selectedRepository)) return
@@ -997,7 +808,10 @@ function GitProviderPanel({
       auto_deploy: autoDeploy,
       root_directory: rootDirectory,
       environment_template_path: source.data.environment_template_path,
-      watch_paths: source.data.watch_paths,
+      watch_paths: watchPaths
+        .split('\n')
+        .map((path) => path.trim())
+        .filter(Boolean),
       ignore_paths: source.data.ignore_paths,
       watch_root_files: source.data.watch_root_files,
       compose_file: composeFile.trim(),
@@ -1024,33 +838,42 @@ function GitProviderPanel({
     (item) => item.id === source.data?.repository_id,
   )
   return (
-    <section className="grid gap-4 border-y border-border-subtle py-5">
+    <section className="grid gap-5 border-y border-border-subtle py-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Typography
-            as="h2"
-            role="section-title"
-          >
+          <Typography as="h2" role="section-title">
             Source control
           </Typography>
           <p className="text-supporting text-text-tertiary">
             Git provider and deployment source for this service.
           </p>
         </div>
-        <span className="font-technical text-log uppercase text-text-subtle">
-          {connection?.provider ?? 'Git provider'}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="font-technical text-log uppercase text-text-subtle">
+            {connection?.provider ?? 'Git provider'}
+          </span>
+          {!editing ? (
+            <Button
+              size="sm"
+              tone="ghost"
+              onClick={() => {
+                resetDraft()
+                setEditing(true)
+              }}
+            >
+              <PencilSimple size={15} />
+              Edit source
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+      <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
         <SourceValue
           label="Provider"
           value={connection?.external_account_name || connection?.provider || 'GitHub'}
         />
-        <div className="grid gap-2">
-          <span className="text-label tracking-[0.08em] text-text-subtle">
-            REPOSITORY
-          </span>
-          {editing ? (
+        {editing ? (
+          <Field id="source-repository" label="Repository">
             <Select
               value={repositoryId}
               onChange={(event) => {
@@ -1058,72 +881,98 @@ function GitProviderPanel({
                 const repo = repositories.data?.find(
                   (item) => item.id === event.target.value,
                 )
-                if (repo) {
-                  setBranch(repo.default_branch)
-                }
+                if (repo) setBranch(repo.default_branch)
               }}
             >
               <option value="">Choose repository</option>
               {(repositories.data ?? []).map((repo) => (
-                <option
-                  key={repo.id}
-                  value={repo.id}
-                >
+                <option key={repo.id} value={repo.id}>
                   {repo.full_name}
                 </option>
               ))}
             </Select>
-          ) : (
-            <span className="font-technical text-code text-text-primary">
-              {source.data.repository_full_name || currentRepository?.full_name || '—'}
-            </span>
-          )}
-        </div>
-        <div className="grid gap-2">
-          <span className="text-label tracking-[0.08em] text-text-subtle">BRANCH</span>
-          {editing ? (
+          </Field>
+        ) : (
+          <SourceValue
+            label="Repository"
+            value={source.data.repository_full_name || currentRepository?.full_name || '—'}
+          />
+        )}
+        {editing ? (
+          <Field id="source-branch" label="Branch">
             <Select
               value={branch}
               onChange={(event) => setBranch(event.target.value)}
             >
               <option value="">Choose branch</option>
               {(branches.data ?? []).map((item) => (
-                <option
-                  key={item.name}
-                  value={item.name}
-                >
+                <option key={item.name} value={item.name}>
                   {item.name}
                 </option>
               ))}
             </Select>
-          ) : (
-            <span className="font-technical text-code text-text-primary">
-              {source.data.branch || source.data.default_branch || 'main'}
-            </span>
-          )}
-        </div>
-        <SourceValue
-          label="Root directory"
-          value={source.data.root_directory || '/'}
-        />
-        {composeBuild ? (
+          </Field>
+        ) : (
           <SourceValue
-            label="Compose file"
-            value={source.data.compose_file || configuredComposeFile || 'docker-compose.yml'}
+            label="Branch"
+            value={source.data.branch || source.data.default_branch || 'main'}
           />
+        )}
+        {editing ? (
+          <Field id="source-root" label="Root directory">
+            <Input
+              value={rootDirectory}
+              onChange={(event) => setRootDirectory(event.target.value)}
+            />
+          </Field>
+        ) : (
+          <SourceValue label="Root directory" value={source.data.root_directory || '/'} />
+        )}
+        {composeBuild ? (
+          editing ? (
+            <Field
+              id="source-compose-file"
+              label="Compose file"
+              description="Path relative to the root directory."
+            >
+              <Input
+                value={composeFile}
+                onChange={(event) => setComposeFile(event.target.value)}
+              />
+            </Field>
+          ) : (
+            <SourceValue
+              label="Compose file"
+              value={source.data.compose_file || configuredComposeFile || 'docker-compose.yml'}
+            />
+          )
         ) : null}
-        <SourceValue
-          label="Watch paths"
-          value={
-            source.data.watch_paths.length
-              ? source.data.watch_paths.join(', ')
-              : 'All service files'
-          }
-        />
+        {editing ? (
+          <div className="sm:col-span-2">
+            <Field
+              id="source-watch-paths"
+              label="Watch paths"
+              description="One path per line. Leave empty to watch all service files."
+            >
+              <Textarea
+                rows={3}
+                value={watchPaths}
+                onChange={(event) => setWatchPaths(event.target.value)}
+              />
+            </Field>
+          </div>
+        ) : (
+          <SourceValue
+            label="Watch paths"
+            value={
+              source.data.watch_paths.length
+                ? source.data.watch_paths.join(', ')
+                : 'All service files'
+            }
+          />
+        )}
         <div className="flex items-center gap-3">
-          <span className="text-label tracking-[0.08em] text-text-subtle">
-            AUTODEPLOY
-          </span>
+          <span className="text-label tracking-[0.08em] text-text-subtle">AUTODEPLOY</span>
           {editing ? (
             <Switch
               aria-label="Autodeploy"
@@ -1138,35 +987,13 @@ function GitProviderPanel({
         </div>
       </div>
       {editing ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-56 flex-1">
-            <Field
-              id="source-root"
-              label="Root directory"
-            >
-              <Input
-                value={rootDirectory}
-                onChange={(event) => setRootDirectory(event.target.value)}
-              />
-            </Field>
-          </div>
-          {composeBuild ? (
-            <div className="min-w-56 flex-1">
-              <Field
-                id="source-compose-file"
-                label="Compose file"
-                description="Path relative to the root directory."
-              >
-                <Input
-                  value={composeFile}
-                  onChange={(event) => setComposeFile(event.target.value)}
-                />
-              </Field>
-            </div>
-          ) : null}
+        <div className="flex flex-wrap justify-end gap-3 border-t border-border-subtle pt-4">
           <Button
             tone="ghost"
-            onClick={() => setEditing(false)}
+            onClick={() => {
+              resetDraft()
+              setEditing(false)
+            }}
           >
             Cancel
           </Button>
@@ -1177,15 +1004,7 @@ function GitProviderPanel({
             {save.isPending ? 'Saving…' : 'Save source'}
           </Button>
         </div>
-      ) : (
-        <Button
-          className="w-fit"
-          tone="ghost"
-          onClick={() => setEditing(true)}
-        >
-          Edit source
-        </Button>
-      )}
+      ) : null}
     </section>
   )
 }
@@ -2052,6 +1871,8 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
     'connecting' | 'live' | 'reconnecting' | 'disconnected'
   >('connecting')
   const [lineCount, setLineCount] = useState(0)
+  const [lineLimit, setLineLimit] = useState('200')
+  const [period, setPeriod] = useState('all')
 
   useEffect(() => {
     const host = hostRef.current
@@ -2103,6 +1924,8 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
     const url = new URL(`/api/v1/services/${serviceId}/logs`, server)
     url.searchParams.set('running', '1')
     url.searchParams.set('follow', '1')
+    url.searchParams.set('lines', lineLimit)
+    url.searchParams.set('period', period)
     const stream = new EventSource(url, { withCredentials: true })
     stream.onopen = () => setConnectionState('live')
     stream.onmessage = (event) => {
@@ -2116,7 +1939,7 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
         stream.readyState === EventSource.CLOSED ? 'disconnected' : 'reconnecting',
       )
     return () => stream.close()
-  }, [serviceId])
+  }, [lineLimit, period, serviceId])
   const statusLabel =
     connectionState === 'live'
       ? 'LIVE'
@@ -2144,9 +1967,42 @@ function LiveLogsPanel({ serviceId }: { serviceId: string }) {
             /api/v1/services/{serviceId}/logs
           </span>
         </div>
-        <span className="font-technical text-log text-text-subtle">
-          {lineCount.toLocaleString()} lines
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-2 text-label text-text-tertiary">
+            Lines
+            <Select
+              aria-label="Number of log lines"
+              className="min-h-8 w-24 text-log"
+              onChange={(event) => setLineLimit(event.target.value)}
+              value={lineLimit}
+            >
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+              <option value="1000">1,000</option>
+              <option value="5000">5,000</option>
+            </Select>
+          </label>
+          <label className="flex items-center gap-2 text-label text-text-tertiary">
+            Period
+            <Select
+              aria-label="Log time period"
+              className="min-h-8 w-28 text-log"
+              onChange={(event) => setPeriod(event.target.value)}
+              value={period}
+            >
+              <option value="15m">15 minutes</option>
+              <option value="1h">1 hour</option>
+              <option value="6h">6 hours</option>
+              <option value="24h">24 hours</option>
+              <option value="7d">7 days</option>
+              <option value="all">All available</option>
+            </Select>
+          </label>
+          <span className="font-technical text-log text-text-subtle">
+            {lineCount.toLocaleString()} lines
+          </span>
+        </div>
       </div>
       <div
         aria-label="Live service logs"
@@ -2456,14 +2312,6 @@ function SettingsPanel({ service }: { service: ServiceSummary }) {
             </div>
           ) : null}
         </SettingsCard>
-      ) : null}
-      {service.capabilities.can_manage_source &&
-      (service.spec?.source_type === 'git' || Boolean(service.spec?.git_url)) ? (
-        <GitProviderPanel
-          serviceId={service.id}
-          composeBuild={service.spec?.build_type === 'compose'}
-          configuredComposeFile={service.spec?.compose_file ?? ''}
-        />
       ) : null}
       {service.kind === 'app' && service.capabilities.can_build ? (
         <WebhookSettings serviceId={service.id} />

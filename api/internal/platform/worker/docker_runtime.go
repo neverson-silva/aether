@@ -216,7 +216,21 @@ func (r *DockerRuntime) RemoveImage(ctx context.Context, imageRef string) error 
 }
 
 func (r *DockerRuntime) FollowLogs(ctx context.Context, containerID string, writer io.Writer) error {
-	logs, err := r.client.ContainerLogs(ctx, containerID, container.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true, Tail: "100"})
+	return r.FollowLogsWithOptions(ctx, containerID, 100, time.Time{}, writer)
+}
+
+func (r *DockerRuntime) FollowLogsWithOptions(ctx context.Context, containerID string, lines int, since time.Time, writer io.Writer) error {
+	if lines < 0 {
+		lines = 0
+	}
+	options := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+		Tail:       strconv.Itoa(lines),
+		Since:      dockerLogSince(since),
+	}
+	logs, err := r.client.ContainerLogs(ctx, containerID, options)
 	if err != nil {
 		return containerError("follow container logs", err)
 	}
@@ -228,10 +242,19 @@ func (r *DockerRuntime) FollowLogs(ctx context.Context, containerID string, writ
 }
 
 func (r *DockerRuntime) LogTail(ctx context.Context, containerID string, lines int) ([]string, error) {
+	return r.LogTailWithOptions(ctx, containerID, lines, time.Time{})
+}
+
+func (r *DockerRuntime) LogTailWithOptions(ctx context.Context, containerID string, lines int, since time.Time) ([]string, error) {
 	if lines < 0 {
 		lines = 0
 	}
-	logs, err := r.client.ContainerLogs(ctx, containerID, container.LogsOptions{ShowStdout: true, ShowStderr: true, Tail: strconv.Itoa(lines)})
+	logs, err := r.client.ContainerLogs(ctx, containerID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Tail:       strconv.Itoa(lines),
+		Since:      dockerLogSince(since),
+	})
 	if err != nil {
 		return nil, containerError("read container logs", err)
 	}
@@ -245,6 +268,13 @@ func (r *DockerRuntime) LogTail(ctx context.Context, containerID string, lines i
 		return []string{}, nil
 	}
 	return strings.Split(trimmed, "\n"), nil
+}
+
+func dockerLogSince(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.RFC3339Nano)
 }
 
 func (r *DockerRuntime) ContainerState(ctx context.Context, containerID string) (string, error) {

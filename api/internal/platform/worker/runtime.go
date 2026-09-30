@@ -99,6 +99,11 @@ type LogsRuntime interface {
 	LogTail(ctx context.Context, containerID string, lines int) ([]string, error)
 }
 
+type LogsRuntimeOptions interface {
+	FollowLogsWithOptions(ctx context.Context, containerID string, lines int, since time.Time, writer io.Writer) error
+	LogTailWithOptions(ctx context.Context, containerID string, lines int, since time.Time) ([]string, error)
+}
+
 type StatsRuntime interface {
 	ContainerState(ctx context.Context, containerID string) (string, error)
 	Stats(ctx context.Context, containerID string) (ContainerStats, error)

@@ -37,7 +37,10 @@ export function ResourceInventory({
 function ProjectInventory({ onNavigate }: { onNavigate: (path: string) => void }) {
   const query = useProjects()
   const projects = query.data ?? []
-  const selected = projects[0]
+  const [selectedId, setSelectedId] = useState<string>()
+  const selected = projects.find((project) => project.id === selectedId) ?? projects[0]
+  const hasProjects = projects.length > 0
+  const hasMultipleProjects = projects.length >= 2
 
   return (
     <div className="grid gap-7">
@@ -52,58 +55,66 @@ function ProjectInventory({ onNavigate }: { onNavigate: (path: string) => void }
           </Button>
         }
       />
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
-        <section className="grid min-w-0 content-start gap-4">
-          <InventoryLead
-            icon={<Stack size={18} />}
-            label={`${projects.length} PROJECTS IN SCOPE`}
-            meta="SORT / RECENT"
-          />
-          {query.isError ? (
-            <EmptyState
-              title="Project field unavailable"
-              description="The control plane did not return the project collection."
-              action={
-                <Button
-                  tone="neutral"
-                  onClick={() => query.refetch()}
-                >
-                  Retry request
-                </Button>
-              }
+      {query.isError ? (
+        <EmptyState
+          title="Project field unavailable"
+          description="The control plane did not return the project collection."
+          action={
+            <Button
+              tone="neutral"
+              onClick={() => query.refetch()}
+            >
+              Retry request
+            </Button>
+          }
+        />
+      ) : null}
+      {query.isLoading ? <InventorySkeleton /> : null}
+      {!query.isLoading && !query.isError && !hasProjects ? (
+        <EmptyState
+          className="max-w-3xl justify-self-start px-8 py-14 sm:px-12"
+          title="No projects yet"
+          description="Projects group your services, environments and deployments."
+          icon={<Stack size={28} />}
+          action={
+            <Button onClick={() => onNavigate('/projects/new')}>
+              <Plus size={17} />
+              Create project
+            </Button>
+          }
+        />
+      ) : null}
+      {!query.isLoading && !query.isError && projects.length === 1 ? (
+        <SingleProjectOverview
+          project={projects[0]}
+          onNavigate={onNavigate}
+        />
+      ) : null}
+      {!query.isLoading && !query.isError && hasMultipleProjects ? (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
+          <section className="grid min-w-0 content-start gap-4">
+            <InventoryLead
+              icon={<Stack size={18} />}
+              label={`${projects.length} PROJECTS IN SCOPE`}
+              meta="SORT / RECENT"
             />
-          ) : null}
-          {query.isLoading ? <InventorySkeleton /> : null}
-          {!(query.isLoading || query.isError || projects.length) ? (
-            <EmptyState
-              title="No project boundaries"
-              description="Create a project to establish the first operational scope."
-              icon={<Stack size={28} />}
-              action={
-                <Button onClick={() => onNavigate('/projects/new')}>
-                  <Plus size={17} />
-                  Create project
-                </Button>
-              }
-            />
-          ) : null}
-          {projects.length ? (
             <Card className="grid gap-2 rounded-2xl border-border-subtle bg-surface-1 p-3">
               {projects.map((project) => (
                 <ProjectLine
                   key={project.id}
                   project={project}
-                  onOpen={() => onNavigate(`/projects/${project.id}`)}
+                  selected={project.id === selected?.id}
+                  onSelect={() => setSelectedId(project.id)}
                 />
               ))}
             </Card>
-          ) : null}
-        </section>
-        <ProjectInspector
-          project={selected}
-          onNavigate={onNavigate}
-        />
-      </div>
+          </section>
+          <ProjectInspector
+            project={selected}
+            onNavigate={onNavigate}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -229,7 +240,7 @@ function InventoryLead({
 }: {
   icon: ReactNode
   label: string
-  meta: string
+  meta?: string
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -238,19 +249,28 @@ function InventoryLead({
         {icon}
         {label}
       </div>
-      <span className="font-technical text-log text-text-subtle">{meta}</span>
+      {meta ? <span className="font-technical text-log text-text-subtle">{meta}</span> : null}
     </div>
   )
 }
 
-function ProjectLine({ project, onOpen }: { project: Project; onOpen: () => void }) {
+function ProjectLine({
+  project,
+  selected,
+  onSelect,
+}: {
+  project: Project
+  selected: boolean
+  onSelect: () => void
+}) {
   return (
     <button
-      className="group grid min-h-[5.25rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-left transition-[background-color,border-color,transform] duration-[var(--ely-duration-fast)] hover:-translate-y-px hover:border-border-default hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-focus"
-      onClick={onOpen}
+      aria-pressed={selected}
+      className={`group relative grid min-h-[5.25rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-xl border px-4 py-3 text-left transition-[background-color,border-color,transform] duration-[var(--ely-duration-fast)] focus-visible:outline-2 focus-visible:outline-focus ${selected ? 'border-action/65 bg-action/10 before:absolute before:inset-y-3 before:left-0 before:w-0.5 before:rounded-full before:bg-action' : 'border-transparent bg-surface-2 hover:-translate-y-px hover:border-border-default hover:bg-surface-3'}`}
+      onClick={onSelect}
       type="button"
     >
-      <span className="grid size-10 place-items-center rounded-xl bg-surface-1 text-text-tertiary">
+      <span className={`grid size-10 place-items-center rounded-xl bg-surface-1 ${selected ? 'text-action-strong' : 'text-text-tertiary'}`}>
         <GlobeHemisphereWest size={19} />
       </span>
       <span className="grid min-w-0 gap-1">
@@ -266,6 +286,54 @@ function ProjectLine({ project, onOpen }: { project: Project; onOpen: () => void
         size={18}
       />
     </button>
+  )
+}
+
+function SingleProjectOverview({
+  project,
+  onNavigate,
+}: {
+  project: Project
+  onNavigate: (path: string) => void
+}) {
+  return (
+    <section className="grid max-w-4xl gap-4">
+      <InventoryLead
+        icon={<Stack size={18} />}
+        label="1 PROJECT IN SCOPE"
+      />
+      <Card className="grid gap-7 rounded-2xl border-border-subtle bg-surface-1 p-5 sm:p-7">
+        <div className="grid gap-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
+          <span className="grid size-12 place-items-center rounded-xl bg-surface-2 text-text-tertiary">
+            <GlobeHemisphereWest size={22} />
+          </span>
+          <div className="grid min-w-0 gap-1">
+            <Typography
+              as="h2"
+              role="section-title"
+            >
+              {project.name}
+            </Typography>
+            <span className="truncate font-technical text-log text-text-subtle">
+              {project.slug || project.id}
+            </span>
+            <p className="mt-2 text-supporting text-text-tertiary">
+              {project.description || 'No description supplied'}
+            </p>
+          </div>
+          <ArrowRight className="hidden text-text-tertiary sm:block" size={20} />
+        </div>
+        <div className="flex flex-wrap items-end justify-between gap-5 border-t border-border-subtle pt-5">
+          <Fact
+            label="CREATED"
+            value={formatProjectDate(project.created_at)}
+          />
+          <Button onClick={() => onNavigate(`/projects/${project.id}`)}>
+            Open project <ArrowRight size={16} />
+          </Button>
+        </div>
+      </Card>
+    </section>
   )
 }
 
@@ -347,10 +415,7 @@ function ProjectInspector({
               label="DESCRIPTION"
               value={project.description || 'No description supplied'}
             />
-            <Fact
-              label="CREATED"
-              value={project.created_at}
-            />
+            <Fact label="CREATED" value={formatProjectDate(project.created_at)} />
           </div>
           <Button onClick={() => onNavigate(`/projects/${project.id}`)}>
             Open project <ArrowRight size={16} />
@@ -444,6 +509,15 @@ function Fact({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   )
+}
+
+function formatProjectDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
 }
 
 function toRuntimeStatus(
