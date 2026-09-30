@@ -269,7 +269,7 @@ export function ServiceDetail() {
   ]
 
   return (
-    <div className="grid gap-6">
+    <div className="grid w-full max-w-[88rem] gap-6">
       <header className="grid gap-4 pb-5">
         <button
           className="flex w-fit items-center gap-2 text-label text-text-tertiary transition-colors hover:text-text-primary"

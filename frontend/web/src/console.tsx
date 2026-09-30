@@ -69,11 +69,11 @@ function contentWidth(pathname: string, search: string): PageWidth {
     return 'wide'
   if (pathname === '/traefik') return 'full'
   if (pathname.startsWith('/services/')) {
+    if (pathname === '/services/new') return 'readable'
     const tab = new URLSearchParams(search).get('tab')
     if (tab === 'deployments' || tab === 'logs' || tab === 'metrics') return 'wide'
-    return 'standard'
+    return 'full'
   }
-  if (pathname === '/services/new') return 'readable'
   if (pathname.startsWith('/databases/')) return 'standard'
   return 'standard'
 }

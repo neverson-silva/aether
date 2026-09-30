@@ -331,6 +331,22 @@ export function ServiceBackups({
         </div>
       ) : null}
 
+      <BulkActionBar
+        count={selectedCount}
+        actions={[
+          {
+            id: 'delete-backups',
+            label: (
+              <>
+                <Trash size={15} />
+                Delete selected
+              </>
+            ),
+            tone: 'danger',
+            onSelect: () => setBulkDeleteOpen(true),
+          },
+        ]}
+      />
       <Card className="grid min-w-0 gap-0 overflow-hidden rounded-2xl border-border-subtle bg-surface-1 p-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-4 py-4 sm:px-5">
           <div className="flex items-center gap-3">
@@ -373,22 +389,6 @@ export function ServiceBackups({
             />
           </div>
         </div>
-        <BulkActionBar
-          count={selectedCount}
-          actions={[
-            {
-              id: 'delete-backups',
-              label: (
-                <>
-                  <Trash size={15} />
-                  Delete selected
-                </>
-              ),
-              tone: 'danger',
-              onSelect: () => setBulkDeleteOpen(true),
-            },
-          ]}
-        />
         {backups.isLoading ? (
           <div className="grid gap-2 p-4">
             <Skeleton className="h-16 rounded-xl" />
