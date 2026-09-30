@@ -41,7 +41,7 @@ export function BulkActionBar({
   return (
     <section
       aria-live="polite"
-      className={`fixed inset-x-3 bottom-20 z-50 flex w-auto flex-wrap items-center gap-3 rounded-2xl border border-border-subtle/70 bg-surface-1/90 p-3 shadow-[0_18px_50px_rgb(0_0_0_/_0.32),0_4px_14px_rgb(0_0_0_/_0.18)] backdrop-blur-xl transform-gpu transition-[opacity,transform] duration-[var(--ely-duration-overlay)] ease-ely-out motion-reduce:transform-none motion-reduce:transition-opacity lg:sticky lg:inset-x-auto lg:bottom-4 lg:z-20 lg:w-full ${visible ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-3 scale-[0.97] opacity-0'} ${className}`}
+      className={`fixed inset-x-3 bottom-20 z-50 flex w-auto flex-wrap items-center gap-3 rounded-2xl border border-border-subtle/70 bg-surface-1/90 p-3 shadow-[0_18px_50px_rgb(0_0_0_/_0.32),0_4px_14px_rgb(0_0_0_/_0.18)] backdrop-blur-xl transform-gpu transition-[opacity,transform] duration-[var(--ely-duration-overlay)] ease-ely-out motion-reduce:transform-none motion-reduce:transition-opacity lg:static lg:mb-4 lg:w-full lg:transform-none lg:transition-none ${visible ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-3 scale-[0.97] opacity-0'} ${className}`}
       aria-label="Bulk actions"
     >
       <span className="border-l-2 border-action pl-2 text-supporting text-text-secondary">

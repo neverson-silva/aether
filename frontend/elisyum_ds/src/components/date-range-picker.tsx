@@ -273,9 +273,15 @@ export function DateRangePicker({
           size={17}
         />
       </BasePopover.Trigger>
-      <BasePopover.Portal>
+      <BasePopover.Portal
+        container={
+          typeof document === 'undefined'
+            ? null
+            : document.getElementById('overlay-root') ?? document.body
+        }
+      >
         <BasePopover.Positioner
-          className="z-30"
+          className="z-[calc(var(--ely-z-popover)+1)]"
           sideOffset={6}
         >
           <BasePopover.Popup

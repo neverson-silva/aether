@@ -1,8 +1,10 @@
 import {
   AlertDialog,
   Badge,
+  BulkActionBar,
   Button,
   Card,
+  Checkbox,
   DateRangePicker,
   EmptyState,
   Field,
@@ -28,7 +30,7 @@ import {
   XCircle,
 } from '@phosphor-icons/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   BackupConfig,
   BackupJob,
@@ -137,6 +139,8 @@ export function ServiceBackups({
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<BackupJob | null>(null)
+  const [selectedBackupIds, setSelectedBackupIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const backups = useDatabaseBackups(serviceId, backupLimit, fromDate, toDate)
   const destinations = useS3Destinations()
   const backupNow = useDatabaseBackupNow(serviceId)
@@ -149,6 +153,24 @@ export function ServiceBackups({
   const destinationsById = new Map(
     (destinations.data ?? []).map((destination) => [destination.id, destination]),
   )
+  const backupItems = backups.data?.items ?? []
+  const selectableBackupIds = backupItems
+    .filter((backup) => !activeBackupStatuses.has(backup.status))
+    .map((backup) => backup.id)
+  const selectedCount = selectedBackupIds.size
+  const allSelectableSelected =
+    selectableBackupIds.length > 0 &&
+    selectableBackupIds.every((backupId) => selectedBackupIds.has(backupId))
+
+  useEffect(() => {
+    const availableIds = new Set(selectableBackupIds)
+    setSelectedBackupIds((current) => {
+      const next = new Set(
+        Array.from(current).filter((backupId) => availableIds.has(backupId)),
+      )
+      return next.size === current.size ? current : next
+    })
+  }, [backups.data?.items])
 
   const onBackupNow = (configId: string) =>
     backupNow.mutate(configId, {
@@ -159,6 +181,39 @@ export function ServiceBackups({
           'error',
         ),
     })
+
+  const toggleBackup = (backupId: string) => {
+    setSelectedBackupIds((current) => {
+      const next = new Set(current)
+      if (next.has(backupId)) next.delete(backupId)
+      else next.add(backupId)
+      return next
+    })
+  }
+
+  const toggleAllBackups = () => {
+    setSelectedBackupIds(
+      allSelectableSelected ? new Set() : new Set(selectableBackupIds),
+    )
+  }
+
+  const deleteSelectedBackups = async () => {
+    try {
+      await Promise.all(
+        Array.from(selectedBackupIds).map((backupId) =>
+          deleteBackup.mutateAsync(backupId),
+        ),
+      )
+      setSelectedBackupIds(new Set())
+      setBulkDeleteOpen(false)
+      showToast('Backups deleted.', 'success')
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Could not delete the selected backups.',
+        'error',
+      )
+    }
+  }
 
   return (
     <section className="grid min-w-0 gap-6">
@@ -318,6 +373,22 @@ export function ServiceBackups({
             />
           </div>
         </div>
+        <BulkActionBar
+          count={selectedCount}
+          actions={[
+            {
+              id: 'delete-backups',
+              label: (
+                <>
+                  <Trash size={15} />
+                  Delete selected
+                </>
+              ),
+              tone: 'danger',
+              onSelect: () => setBulkDeleteOpen(true),
+            },
+          ]}
+        />
         {backups.isLoading ? (
           <div className="grid gap-2 p-4">
             <Skeleton className="h-16 rounded-xl" />
@@ -332,7 +403,18 @@ export function ServiceBackups({
           </div>
         ) : backups.data?.items.length ? (
           <div className="divide-y divide-border-subtle">
-            {backups.data.items.map((backup) => (
+            <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3 sm:px-5">
+              <Checkbox
+                aria-label="Select all deletable backups"
+                checked={allSelectableSelected}
+                disabled={!selectableBackupIds.length}
+                onChange={toggleAllBackups}
+              />
+              <span className="text-label text-text-secondary">
+                Select deletable backups
+              </span>
+            </div>
+            {backupItems.map((backup) => (
               <BackupHistoryRow
                 backup={backup}
                 key={backup.id}
@@ -352,6 +434,8 @@ export function ServiceBackups({
                 onRestore={() => setRestoreTarget(backup)}
                 onDelete={() => setDeleteTarget(backup)}
                 canceling={cancelBackup.isPending}
+                selected={selectedBackupIds.has(backup.id)}
+                onSelect={() => toggleBackup(backup.id)}
               />
             ))}
             {backups.data.hasMore ? (
@@ -424,6 +508,23 @@ export function ServiceBackups({
           }}
           open
           title="Delete backup?"
+        />
+      ) : null}
+      {bulkDeleteOpen ? (
+        <AlertDialog
+          description={
+            <span>
+              Delete the {selectedCount} selected backup records and their stored files
+              from the configured S3 destination? This action cannot be undone.
+            </span>
+          }
+          confirmLabel={deleteBackup.isPending ? 'Deleting…' : 'Delete backups'}
+          onConfirm={() => void deleteSelectedBackups()}
+          onOpenChange={(open) => {
+            if (!open && !deleteBackup.isPending) setBulkDeleteOpen(false)
+          }}
+          open
+          title="Delete selected backups?"
         />
       ) : null}
       {uploadOpen ? (
@@ -534,41 +635,53 @@ function BackupHistoryRow({
   onCancel,
   onRestore,
   onDelete,
+  onSelect,
   canceling,
+  selected,
 }: {
   backup: BackupJob
   onCancel: () => void
   onRestore: () => void
   onDelete: () => void
+  onSelect: () => void
   canceling: boolean
+  selected: boolean
 }) {
   const active = activeBackupStatuses.has(backup.status)
   const tone = statusTone(backup.status)
   return (
     <div className="grid min-w-0 gap-3 px-4 py-4 transition-colors hover:bg-surface-2/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
-      <div className="grid min-w-0 gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={tone}>{backup.status}</Badge>
-          <span className="font-technical text-log text-text-primary">
-            {formatDate(backup.completed_at ?? backup.started_at)} · {backup.trigger}
+      <div className="flex min-w-0 items-start gap-3">
+        <Checkbox
+          aria-label={`Select backup from ${formatDate(backup.completed_at ?? backup.started_at)}`}
+          checked={selected}
+          disabled={active}
+          onChange={onSelect}
+        />
+        <div className="grid min-w-0 gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={tone}>{backup.status}</Badge>
+            <span className="font-technical text-log text-text-primary">
+              {formatDate(backup.completed_at ?? backup.started_at)} · {backup.trigger}
+            </span>
+          </div>
+          <span className="truncate font-technical text-log text-text-tertiary">
+            {backup.format.toUpperCase()}
+            {backup.size_bytes > 0 ? ` · ${formatBytes(backup.size_bytes)}` : ''}
+            {backup.engine ? ` · ${backup.engine} ${backup.engine_version}` : ''}
           </span>
+          {backup.checksum ? (
+            <span className="truncate font-technical text-log text-text-subtle">
+              SHA-256 · {backup.checksum}
+            </span>
+          ) : null}
+          {backup.error_message ? (
+            <span className="text-label text-danger-strong">
+              {backup.error_code ? `${backup.error_code} · ` : ''}
+              {backup.error_message}
+            </span>
+          ) : null}
         </div>
-        <span className="truncate font-technical text-log text-text-tertiary">
-          {backup.format.toUpperCase()}
-          {backup.size_bytes > 0 ? ` · ${formatBytes(backup.size_bytes)}` : ''}
-          {backup.engine ? ` · ${backup.engine} ${backup.engine_version}` : ''}
-        </span>
-        {backup.checksum ? (
-          <span className="truncate font-technical text-log text-text-subtle">
-            SHA-256 · {backup.checksum}
-          </span>
-        ) : null}
-        {backup.error_message ? (
-          <span className="text-label text-danger-strong">
-            {backup.error_code ? `${backup.error_code} · ` : ''}
-            {backup.error_message}
-          </span>
-        ) : null}
       </div>
       <div className="flex flex-wrap gap-2 sm:justify-end">
         {active ? (
