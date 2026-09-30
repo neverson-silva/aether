@@ -300,7 +300,7 @@ export function ProjectDetail() {
     )
 
   return (
-    <div className="grid w-full max-w-[88rem] gap-4">
+    <div className="grid w-full gap-4">
       <button
         className="flex w-fit items-center gap-2 text-supporting text-text-tertiary transition-colors hover:text-text-primary"
         onClick={() => navigate({ to: '/projects' })}

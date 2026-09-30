@@ -59,7 +59,7 @@ function isActive(pathname: string, href: string) {
 
 function contentWidth(pathname: string, search: string): PageWidth {
   if (pathname === '/') return 'wide'
-  if (pathname.startsWith('/projects/') && pathname !== '/projects/new') return 'full'
+  if (pathname.startsWith('/projects/') && pathname !== '/projects/new') return 'wide'
   if (
     pathname === '/monitoring' ||
     pathname === '/apps' ||
@@ -72,7 +72,7 @@ function contentWidth(pathname: string, search: string): PageWidth {
     if (pathname === '/services/new') return 'readable'
     const tab = new URLSearchParams(search).get('tab')
     if (tab === 'deployments' || tab === 'logs' || tab === 'metrics') return 'wide'
-    return 'full'
+    return 'wide'
   }
   if (pathname.startsWith('/databases/')) return 'standard'
   return 'standard'

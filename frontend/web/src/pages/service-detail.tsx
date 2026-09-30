@@ -269,7 +269,7 @@ export function ServiceDetail() {
   ]
 
   return (
-    <div className="grid w-full max-w-[88rem] gap-6">
+    <div className="grid w-full gap-6">
       <header className="grid gap-4 pb-5">
         <button
           className="flex w-fit items-center gap-2 text-label text-text-tertiary transition-colors hover:text-text-primary"
@@ -518,7 +518,6 @@ function OverviewPanel({
 }) {
   const telemetryAvailable =
     Boolean(stats?.stats) &&
-    stats?.state !== 'unknown' &&
     (stats?.containers?.length ?? 0) > 0
   return (
     <div className="grid content-start gap-5">

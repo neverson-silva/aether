@@ -363,6 +363,12 @@ func (r *DockerRuntime) ListServiceContainers(ctx context.Context, serviceID, sp
 					}
 				}
 			}
+			if item.State == container.StateRunning || item.State == container.StateRestarting {
+				if stats, statsErr := r.Stats(ctx, item.ID); statsErr == nil {
+					info.Stats = stats
+					info.HasStats = true
+				}
+			}
 			out = append(out, info)
 		}
 	}
