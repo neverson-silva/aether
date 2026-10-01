@@ -216,7 +216,7 @@ export function ServiceBackups({
   }
 
   return (
-    <section className="grid min-w-0 gap-6">
+    <section className="grid w-full min-w-0 max-w-full gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="grid gap-1">
           <Typography
@@ -333,6 +333,8 @@ export function ServiceBackups({
 
       <BulkActionBar
         count={selectedCount}
+        layout="inline"
+        onClear={() => setSelectedBackupIds(new Set())}
         actions={[
           {
             id: 'delete-backups',

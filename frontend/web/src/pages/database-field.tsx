@@ -77,9 +77,11 @@ export function DatabaseField() {
             {rows.map((service) => (
               <button
                 className="grid min-h-[5rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-left transition-colors hover:border-border-default hover:bg-surface-3"
+                disabled={!service.spec_id}
                 key={service.id}
                 onClick={() => {
-                  void navigate({ to: `/databases/${service.id}` })
+                  if (!service.spec_id) return
+                  void navigate({ to: `/databases/${service.spec_id}` })
                 }}
                 type="button"
               >
@@ -92,7 +94,7 @@ export function DatabaseField() {
                   </span>
                   <span className="truncate font-technical text-log text-text-subtle">
                     {service.spec?.engine ?? 'managed'} ·{' '}
-                    {service.spec?.version ?? 'default'} · {service.id}
+                    {service.spec?.version ?? 'default'} · {service.spec_id ?? service.id}
                   </span>
                 </span>
                 <RuntimeStatus

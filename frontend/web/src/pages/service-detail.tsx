@@ -50,6 +50,8 @@ import { getServer } from '../api/client'
 import type { Deployment, Domain, ServiceSummary, Stats } from '../api/types'
 import { useAddDomain } from '../hooks/use-add-domain'
 import { useAppCompose } from '../hooks/use-app-compose'
+import { useDatabaseDetail } from '../hooks/use-database-detail'
+import { useUpdateDatabaseNetworkAccess } from '../hooks/use-update-database-network-access'
 import { useCronJobs } from '../hooks/use-cron-jobs'
 import { useDeleteEnv } from '../hooks/use-delete-env'
 import { useDomains } from '../hooks/use-domains'
@@ -256,7 +258,7 @@ export function ServiceDetail() {
             value: 'backup',
             label: 'Backups',
             content: (
-              <div className="w-full max-w-6xl">
+              <div className="w-full min-w-0 max-w-6xl">
                 <ServiceBackups
                   serviceId={service.id}
                   serviceName={service.name}
@@ -269,7 +271,7 @@ export function ServiceDetail() {
   ]
 
   return (
-    <div className="grid w-full gap-6">
+    <div className="grid w-full min-w-0 gap-6">
       <header className="grid gap-4 pb-5">
         <button
           className="flex w-fit items-center gap-2 text-label text-text-tertiary transition-colors hover:text-text-primary"
@@ -527,7 +529,10 @@ function OverviewPanel({
         telemetryAvailable={telemetryAvailable}
       />
       {service.kind === 'database' ? (
-        <DatabaseConnection serviceId={service.id} />
+        <>
+          <DatabaseNetworkAccess databaseId={service.spec_id ?? service.id} />
+          <DatabaseConnection serviceId={service.id} />
+        </>
       ) : null}
       {service.capabilities.can_manage_source &&
       (service.spec?.source_type === 'git' || Boolean(service.spec?.git_url)) ? (
@@ -538,6 +543,126 @@ function OverviewPanel({
         />
       ) : null}
     </div>
+  )
+}
+
+function DatabaseNetworkAccess({ databaseId }: { databaseId: string }) {
+  const detail = useDatabaseDetail(databaseId)
+  const database = detail.data?.database
+  const update = useUpdateDatabaseNetworkAccess(databaseId)
+  const [publicAccess, setPublicAccess] = useState(false)
+  const [externalPort, setExternalPort] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!database) return
+    setPublicAccess(database.public_access)
+    setExternalPort(String(database.external_port || database.internal_port))
+  }, [database?.external_port, database?.internal_port, database?.public_access])
+
+  const save = async () => {
+    if (!database) return
+    setError('')
+    try {
+      await update.mutateAsync({
+        public_access: publicAccess,
+        external_port: publicAccess ? Number(externalPort) : 0,
+      })
+      showToast('Network access saved. Deploy a revision to apply the change.', 'success')
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Network settings could not be saved.')
+    }
+  }
+
+  return (
+    <section className="grid gap-4 rounded-xl border border-border-subtle bg-surface-1 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <Typography as="h2" role="section-title">
+            Network access
+          </Typography>
+          <p className="text-supporting text-text-tertiary">
+            Internal access is available to services in this environment.
+          </p>
+        </div>
+        {database ? (
+          <div className="grid gap-1 text-right">
+            <span className="text-label text-text-subtle">INTERNAL HOST</span>
+            <span className="font-technical text-log text-text-secondary">
+              {database.internal_host}:{database.internal_port}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {detail.isLoading ? (
+        <p className="text-supporting text-text-tertiary">Loading network settings…</p>
+      ) : detail.isError || !database ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-supporting text-danger-strong" role="alert">
+            Network settings are unavailable.
+          </p>
+          <Button size="sm" tone="neutral" onClick={() => void detail.refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border-subtle pt-4">
+            <div className="grid gap-1">
+              <span className="text-supporting text-text-primary">Public access</span>
+              <span className="text-supporting text-text-secondary">
+                {publicAccess
+                  ? 'External TCP access is enabled for this database.'
+                  : 'This database is reachable only from services in its Aether environment.'}
+              </span>
+            </div>
+            <Switch
+              aria-label="Public access"
+              checked={publicAccess}
+              onChange={(event) => setPublicAccess(event.target.checked)}
+            />
+          </div>
+          {publicAccess ? (
+            <div className="grid gap-3 sm:max-w-sm">
+              <Field id="service-database-external-port" label="External port" required>
+                <Input
+                  inputMode="numeric"
+                  max={65535}
+                  min={1024}
+                  type="number"
+                  value={externalPort}
+                  onChange={(event) => setExternalPort(event.target.value)}
+                />
+              </Field>
+              <p className="text-supporting text-text-tertiary">
+                Public TCP access bypasses HTTP protections such as the WAF.
+              </p>
+            </div>
+          ) : null}
+          {error ? (
+            <p className="text-supporting text-danger-strong" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
+            <p className="text-supporting text-text-tertiary">
+              Changes are saved now and applied on the next deploy.
+            </p>
+            <Button
+              disabled={
+                update.isPending ||
+                (publicAccess &&
+                  (Number(externalPort) < 1024 || Number(externalPort) > 65535))
+              }
+              size="sm"
+              onClick={() => void save()}
+            >
+              {update.isPending ? 'Saving…' : 'Save network access'}
+            </Button>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 

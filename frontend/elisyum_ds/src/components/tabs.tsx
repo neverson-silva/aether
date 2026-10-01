@@ -28,7 +28,7 @@ export function Tabs({
 
   return (
     <BaseTabs.Root
-      className={`grid gap-4 ${className}`}
+      className={`grid min-w-0 gap-4 ${className}`}
       defaultValue={defaultValue}
       onValueChange={(nextValue) => {
         const nextTab = String(nextValue)
@@ -53,7 +53,7 @@ export function Tabs({
       </BaseTabs.List>
       {items.map((item) => (
         <BaseTabs.Panel
-          className="text-body text-text-secondary transition-opacity duration-[var(--ely-duration-standard)] data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-reduce:transition-none"
+          className="min-w-0 text-body text-text-secondary transition-opacity duration-[var(--ely-duration-standard)] data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-reduce:transition-none"
           key={item.value}
           value={item.value}
         >
