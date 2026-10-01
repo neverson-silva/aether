@@ -257,24 +257,29 @@ type CronJob struct {
 }
 
 type Database struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	Name          string        `json:"name"`
-	Engine        string        `json:"engine"`
-	Version       string        `json:"version"`
-	Port          int32         `json:"port"`
-	DbName        string        `json:"db_name"`
-	DbUser        string        `json:"db_user"`
-	PassEnc       string        `json:"pass_enc"`
-	MemMb         int32         `json:"mem_mb"`
-	StorageMb     int32         `json:"storage_mb"`
-	Status        string        `json:"status"`
-	ContainerID   string        `json:"container_id"`
-	CreatedAt     time.Time     `json:"created_at"`
-	ServiceID     uuid.UUID     `json:"service_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
-	Cpus          string        `json:"cpus"`
+	ID               uuid.UUID     `json:"id"`
+	OrgID            uuid.UUID     `json:"org_id"`
+	ProjectID        uuid.UUID     `json:"project_id"`
+	Name             string        `json:"name"`
+	Engine           string        `json:"engine"`
+	Version          string        `json:"version"`
+	Port             int32         `json:"port"`
+	DbName           string        `json:"db_name"`
+	DbUser           string        `json:"db_user"`
+	PassEnc          string        `json:"pass_enc"`
+	MemMb            int32         `json:"mem_mb"`
+	StorageMb        int32         `json:"storage_mb"`
+	Status           string        `json:"status"`
+	ContainerID      string        `json:"container_id"`
+	CreatedAt        time.Time     `json:"created_at"`
+	ServiceID        uuid.UUID     `json:"service_id"`
+	EnvironmentID    uuid.NullUUID `json:"environment_id"`
+	Cpus             string        `json:"cpus"`
+	InternalPort     int32         `json:"internal_port"`
+	PublicAccess     bool          `json:"public_access"`
+	ExternalPort     int32         `json:"external_port"`
+	DataVolume       string        `json:"data_volume"`
+	DataVolumeTarget string        `json:"data_volume_target"`
 }
 
 type Deployment struct {
@@ -665,6 +670,22 @@ type Service struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`
 	DeletedAt     sql.NullTime  `json:"deleted_at"`
+}
+
+type ServiceLifecycleOperation struct {
+	ID          uuid.UUID    `json:"id"`
+	ServiceID   uuid.UUID    `json:"service_id"`
+	OrgID       uuid.UUID    `json:"org_id"`
+	SpecID      uuid.UUID    `json:"spec_id"`
+	Kind        string       `json:"kind"`
+	Action      string       `json:"action"`
+	Status      string       `json:"status"`
+	Attempts    int32        `json:"attempts"`
+	Error       string       `json:"error"`
+	LeaseUntil  sql.NullTime `json:"lease_until"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	CompletedAt sql.NullTime `json:"completed_at"`
 }
 
 type ServiceSource struct {

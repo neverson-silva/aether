@@ -195,7 +195,7 @@ func Run(ctx context.Context, stop context.CancelFunc, cfg *config.Config, secre
 		slog.Error("cipher de senhas", "err", err)
 		os.Exit(1)
 	}
-	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, Network: cfg.IngressNetwork, PublishedNetwork: cfg.PublishedNetwork, LogsDir: cfg.LogsDir, Deployments: deployStore}
+	databasesSvc := &databasesApp.Databases{Store: databasesStore, Apps: appsStore, Passwords: dbCipher, Runtime: deployWorkerRuntime, LogsDir: cfg.LogsDir, Deployments: deployStore, Audit: auditRecorder{store: store}}
 	databasesStudio := &databasesApp.Studio{Databases: databasesSvc, Timeout: 30 * time.Second, MaxRows: 1000}
 	databasesHandler := databaseshttp.New(databasesSvc, databasesStudio, cfg.CORSOrigins...)
 	databasesHandler.WithRuntime(deployWorkerRuntime)

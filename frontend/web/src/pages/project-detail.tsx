@@ -33,7 +33,7 @@ import {
   Stop,
   TrashSimple,
 } from '@phosphor-icons/react'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import type { ServiceSummary } from '../api/types'
@@ -684,12 +684,6 @@ export function ProjectDetail() {
                   template={findServiceTemplate(service, templatesQuery.data ?? [])}
                   selected={selectedServiceIds.has(service.id)}
                   onSelect={() => toggleService(service.id)}
-                  onOpen={() =>
-                    navigate({
-                      to: `/services/${service.id}`,
-                      search: { from: 'project', projectId },
-                    })
-                  }
                 />
               ))}
             </div>
@@ -759,14 +753,12 @@ function ServiceCard({
   template,
   selected,
   onSelect,
-  onOpen,
 }: {
   projectId: string
   service: ServiceSummary
   template?: TemplateItem
   selected: boolean
   onSelect: () => void
-  onOpen: () => void
 }) {
   const runtimeCount = service.runtime?.containers.length ?? 0
   const transitioning = service.status === 'starting' || service.status === 'stopping'
@@ -820,27 +812,16 @@ function ServiceCard({
                   : service.status === 'degraded'
                     ? 'Degraded'
                     : 'Unknown'
-  const serviceHref = `/services/${service.id}?from=project&projectId=${encodeURIComponent(projectId)}`
   return (
     <article
       className={`group grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 rounded-xl border p-4 transition-[background-color,border-color] duration-[var(--ely-duration-fast)] motion-reduce:transition-none sm:p-5 ${selected ? 'border-action/50 bg-action-soft/60' : 'border-border-subtle bg-surface-2 hover:border-border-default hover:bg-surface-3'}`}
     >
-      <a
+      <Link
         aria-label={`Open ${service.name}`}
         className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-4 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-focus"
-        href={serviceHref}
-        onClick={(event) => {
-          if (
-            event.button !== 0 ||
-            event.metaKey ||
-            event.ctrlKey ||
-            event.shiftKey ||
-            event.altKey
-          )
-            return
-          event.preventDefault()
-          onOpen()
-        }}
+        params={{ serviceId: service.id }}
+        search={{ from: 'project', projectId }}
+        to="/services/$serviceId"
       >
         <span
           className={`grid size-14 shrink-0 place-items-center rounded-xl bg-action-soft transition-colors duration-[var(--ely-duration-fast)] group-hover:bg-action/15 motion-reduce:transition-none ${service.kind === 'database' ? 'text-text-primary' : 'text-action-strong'}`}
@@ -909,7 +890,7 @@ function ServiceCard({
             />
           </span>
         </div>
-      </a>
+      </Link>
       <label
         className={`grid size-8 place-items-center self-center rounded-md text-text-tertiary transition-[opacity,color,background-color] focus-within:opacity-100 motion-reduce:transition-none ${transitioning ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-surface-2 hover:text-text-primary'} ${selected ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}
         aria-label={`Select ${service.name}`}

@@ -555,15 +555,27 @@ func (w *Worker) deploy(ctx context.Context, dep *deploydomain.Deployment) error
 		"aether.service-id":   serviceID.String(),
 		"aether.spec-id":      dep.AppID.String(),
 	}
+	var environmentNetworks []string
 	if w.Apps != nil {
 		if app, err := w.Apps.GetAppByID(ctx, dep.AppID); err == nil {
 			labels["aether.service-name"] = app.Name
 			labels["aether.project-id"] = app.ProjectID.String()
+			if app.EnvironmentID != nil {
+				networkName := EnvironmentNetworkName(*app.EnvironmentID)
+				networkRuntime, ok := w.Runtime.(NetworkRuntime)
+				if !ok {
+					return w.fail(ctx, dep, "", errors.New("environment network runtime is not configured"))
+				}
+				if err := networkRuntime.EnsureNetwork(ctx, networkName, map[string]string{"io.aether.component": "environment", "io.aether.environment-id": app.EnvironmentID.String()}); err != nil {
+					return w.fail(ctx, dep, "", err)
+				}
+				environmentNetworks = append(environmentNetworks, networkName)
+			}
 		}
 	}
 	containerID, err := w.Runtime.Run(ctx, RunSpec{
 		Name: spec.Name, Image: spec.Image, Env: spec.Env, Port: runtimePort, ContainerPort: containerPort, HostIP: "0.0.0.0",
-		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8], AdditionalNetworks: []string{w.PublishedNetwork},
+		Network: w.IngressNetwork, NetworkAlias: "app-" + dep.AppID.String()[:8], AdditionalNetworks: append([]string{w.PublishedNetwork}, environmentNetworks...),
 		MemMB: spec.MemMB, CPUs: spec.CPUs, StorageMB: spec.StorageMB, Labels: labels,
 	})
 	if err != nil {

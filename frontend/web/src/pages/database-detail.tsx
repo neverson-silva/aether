@@ -2,15 +2,21 @@ import {
   Button,
   Card,
   EmptyState,
+  Field,
+  Input,
   Marker,
   RuntimeStatus,
   Skeleton,
+  Switch,
   Tabs,
   Typography,
 } from '@aether/elisyum-ds'
 import {
   ArrowLeft,
+  CopySimple,
   Database as DatabaseIcon,
+  Eye,
+  EyeSlash,
   HardDrives,
   Play,
   Repeat,
@@ -19,13 +25,16 @@ import {
   WarningCircle,
 } from '@phosphor-icons/react'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import type { BackupJob, Database } from '../api/types'
+import { useEffect, useState } from 'react'
+import type { BackupJob, Database, DatabaseConnectionDetails } from '../api/types'
 import { useDatabaseBackupConfig } from '../hooks/use-database-backup-config'
 import { useDatabaseBackups } from '../hooks/use-database-backups'
 import { useDatabaseDeploy } from '../hooks/use-database-deploy'
 import { useDatabaseDetail } from '../hooks/use-database-detail'
+import { useRevealDatabaseConnection } from '../hooks/use-reveal-database-connection'
 import { useServiceAction } from '../hooks/use-service-action'
 import { useServiceDetails } from '../hooks/use-service-details'
+import { useUpdateDatabaseNetworkAccess } from '../hooks/use-update-database-network-access'
 
 export function DatabaseDetail() {
   const { dbId } = useParams({ from: '/_shell/databases/$dbId' })
@@ -125,7 +134,7 @@ export function DatabaseDetail() {
         <div className="grid gap-1 font-technical text-log text-text-subtle sm:grid-cols-3">
           <span>DATABASE ID / {database.id}</span>
           <span>PROJECT / {database.project_id}</span>
-          <span>PUBLIC HOST / {record.public_host || 'PRIVATE'}</span>
+          <span>PUBLIC HOST / {database.public_access ? record.public_host || 'Unavailable' : 'PRIVATE'}</span>
         </div>
       </header>
       <Tabs
@@ -137,7 +146,7 @@ export function DatabaseDetail() {
               <Overview
                 database={database}
                 status={serviceStatus}
-                publicHost={record.public_host}
+                publicHost={database.public_access ? record.public_host : ''}
               />
             ),
           },
@@ -153,10 +162,10 @@ export function DatabaseDetail() {
             ),
           },
           {
-            value: 'connection',
-            label: 'Connection',
+            value: 'settings',
+            label: 'Settings',
             content: (
-              <ConnectionSurface
+              <NetworkAccessSettings
                 database={database}
                 publicHost={record.public_host}
               />
@@ -226,8 +235,8 @@ function Overview({
               value={database.db_name}
             />
             <Fact
-              label="PORT"
-              value={String(database.port)}
+              label="INTERNAL PORT"
+              value={String(database.internal_port)}
             />
             <Fact
               label="MEMORY"
@@ -394,49 +403,224 @@ function BackupRow({ backup }: { backup: BackupJob }) {
   )
 }
 
-function ConnectionSurface({
+function NetworkAccessSettings({
   database,
   publicHost,
 }: {
   database: Database
   publicHost: string
 }) {
+  const update = useUpdateDatabaseNetworkAccess(database.id)
+  const [publicAccess, setPublicAccess] = useState(database.public_access)
+  const [externalPort, setExternalPort] = useState(
+    String(database.external_port || database.internal_port),
+  )
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    setPublicAccess(database.public_access)
+    setExternalPort(String(database.external_port || database.internal_port))
+  }, [database.external_port, database.internal_port, database.public_access])
+
+  const save = async () => {
+    setError('')
+    setMessage('')
+    try {
+      await update.mutateAsync({
+        public_access: publicAccess,
+        external_port: publicAccess ? Number(externalPort) : 0,
+      })
+      setMessage('Network access saved. Deploy a revision to apply the change.')
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Network settings could not be saved.')
+    }
+  }
+
   return (
-    <Card className="grid max-w-3xl gap-5 rounded-2xl border-border-subtle bg-surface-1 p-5">
-      <div className="flex items-center gap-3">
-        <WarningCircle
-          size={19}
-          className="text-warning"
+    <div className="grid gap-4">
+      <Card className="grid gap-5 rounded-2xl border-border-subtle bg-surface-1 p-5">
+        <div className="grid gap-1">
+          <Typography as="h2" role="section-title">
+            Network Access
+          </Typography>
+          <Typography role="supporting">
+            Internal access is always available to services in this environment.
+          </Typography>
+        </div>
+        <div className="grid gap-2 rounded-xl bg-surface-2 p-4 sm:grid-cols-2">
+          <Fact label="INTERNAL HOST" value={database.internal_host} />
+          <Fact label="INTERNAL PORT" value={String(database.internal_port)} />
+          <Fact label="DATABASE" value={database.db_name} />
+          <Fact
+            label="ENVIRONMENT NETWORK"
+            value={`aether-env-${(database.environment_id || database.project_id).replaceAll('-', '')}`}
+          />
+        </div>
+        <div className="grid gap-4 border-t border-border-subtle pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="grid gap-1">
+              <span className="text-supporting text-text-primary">Public Access</span>
+              <span className="text-supporting text-text-secondary">
+                {publicAccess
+                  ? 'External TCP access is enabled for this database.'
+                  : 'Keep this database accessible only to services inside the Aether private network.'}
+              </span>
+            </div>
+            <Switch
+              aria-label="Public access"
+              checked={publicAccess}
+              onChange={(event) => setPublicAccess(event.target.checked)}
+            />
+          </div>
+          {publicAccess ? (
+            <div className="grid gap-3 sm:max-w-sm">
+              <Field id="database-external-port" label="External port" required>
+                <Input
+                  inputMode="numeric"
+                  max={65535}
+                  min={1024}
+                  type="number"
+                  value={externalPort}
+                  onChange={(event) => setExternalPort(event.target.value)}
+                />
+              </Field>
+              <Typography role="supporting">
+                {publicHost || 'Public host'}:{externalPort} → {database.internal_host}:{database.internal_port}
+              </Typography>
+              <Typography role="supporting">
+                This exposes a database TCP port directly. HTTP WAF rules do not protect database protocols.
+              </Typography>
+            </div>
+          ) : null}
+          {error ? <span className="text-supporting text-danger">{error}</span> : null}
+          {message ? <span className="text-supporting text-success">{message}</span> : null}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Typography role="supporting">
+              Changes are saved now and take effect on the next deploy.
+            </Typography>
+            <Button
+              disabled={update.isPending || (publicAccess && (Number(externalPort) < 1024 || Number(externalPort) > 65535))}
+              onClick={() => void save()}
+            >
+              {update.isPending ? 'Saving…' : 'Save network settings'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+      <ConnectionCredentials
+        database={database}
+        publicAccess={publicAccess}
+        publicHost={publicHost}
+      />
+    </div>
+  )
+}
+
+function ConnectionCredentials({
+  database,
+  publicAccess,
+  publicHost,
+}: {
+  database: Database
+  publicAccess: boolean
+  publicHost: string
+}) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <CredentialCard database={database} scope="internal" />
+      {publicAccess ? (
+        <CredentialCard
+          database={database}
+          scope="external"
+          host={publicHost}
+          available={database.public_access}
         />
-        <Typography
-          as="h2"
-          role="section-title"
-        >
-          Connection context
+      ) : null}
+    </div>
+  )
+}
+
+function CredentialCard({
+  database,
+  scope,
+  host,
+  available = true,
+}: {
+  database: Database
+  scope: 'internal' | 'external'
+  host?: string
+  available?: boolean
+}) {
+  const reveal = useRevealDatabaseConnection(database.id)
+  const [credentials, setCredentials] = useState<DatabaseConnectionDetails | null>(null)
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [error, setError] = useState('')
+  const title = scope === 'internal' ? 'Internal Credentials' : 'External Credentials'
+
+  const revealCredentials = async () => {
+    setError('')
+    try {
+      setCredentials(await reveal.mutateAsync(scope))
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Credentials could not be revealed.')
+    }
+  }
+
+  const copy = async (value: string) => {
+    await navigator.clipboard.writeText(value)
+  }
+
+  return (
+    <Card className="grid content-start gap-4 rounded-2xl border-border-subtle bg-surface-1 p-5">
+      <div className="grid gap-1">
+        <Typography as="h2" role="section-title">{title}</Typography>
+        <Typography role="supporting">
+          {scope === 'internal'
+            ? 'Use this connection from services attached to the same environment.'
+            : `Connect from outside Aether through ${host || 'the configured public host'}.`}
         </Typography>
       </div>
-      <Typography role="supporting">
-        Credentials are intentionally not rendered in the workspace. Use the service
-        connection contract from a protected client or secret.
-      </Typography>
-      <div className="grid gap-2 rounded-xl bg-surface-2 p-4 sm:grid-cols-2">
-        <Fact
-          label="HOST"
-          value={publicHost || 'Private network'}
-        />
-        <Fact
-          label="PORT"
-          value={String(database.port)}
-        />
-        <Fact
-          label="DATABASE"
-          value={database.db_name}
-        />
-        <Fact
-          label="USER"
-          value={database.user}
-        />
-      </div>
+      {credentials ? (
+        <div className="grid gap-3 rounded-xl bg-surface-2 p-4">
+          <Fact label="HOST" value={credentials.host} />
+          <Fact label="PORT" value={String(credentials.port)} />
+          <Fact label="DATABASE" value={credentials.database} />
+          <Fact label="USERNAME" value={credentials.username} />
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <Fact label="PASSWORD" value={passwordVisible ? credentials.password : '••••••••••••'} />
+            </div>
+            <Button tone="neutral" onClick={() => setPasswordVisible((visible) => !visible)}>
+              {passwordVisible ? <EyeSlash size={16} /> : <Eye size={16} />}
+              {passwordVisible ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          <Fact label="CONNECTION URL" value={credentials.url} />
+          <div className="flex flex-wrap gap-2">
+            <Button tone="neutral" onClick={() => void copy(credentials.host)}><CopySimple size={15} /> Copy host</Button>
+            <Button tone="neutral" onClick={() => void copy(credentials.url)}><CopySimple size={15} /> Copy URL</Button>
+            <Button tone="neutral" onClick={() => void copy(credentials.username)}><CopySimple size={15} /> Copy username</Button>
+            <Button tone="neutral" onClick={() => void copy(credentials.password)}><CopySimple size={15} /> Copy password</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid justify-items-start gap-2">
+          <Button
+            tone="neutral"
+            disabled={reveal.isPending || !available}
+            onClick={() => void revealCredentials()}
+          >
+            {reveal.isPending ? 'Loading credentials…' : 'Reveal credentials'}
+          </Button>
+          {!available ? (
+            <Typography role="supporting">
+              Save network settings before revealing external credentials.
+            </Typography>
+          ) : null}
+        </div>
+      )}
+      {error ? <span className="text-supporting text-danger">{error}</span> : null}
     </Card>
   )
 }

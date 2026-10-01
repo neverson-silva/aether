@@ -1248,6 +1248,10 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		if err != nil {
 			return "", fmt.Errorf("inject compose port environment: %w", err)
 		}
+		injected, err = c.materializeEnvironmentNetwork(ctx, app, injected)
+		if err != nil {
+			return "", fmt.Errorf("attach compose services to environment network: %w", err)
+		}
 		injected, err = injectComposeSecurityDefaults(injected)
 		if err != nil {
 			return "", fmt.Errorf("inject compose security defaults: %w", err)
@@ -1307,6 +1311,62 @@ func (c *Compose) runComposeForService(ctx context.Context, app *domain.ComposeA
 		logSink(output)
 	}
 	return output, nil
+}
+
+func (c *Compose) materializeEnvironmentNetwork(ctx context.Context, app *domain.ComposeApp, content string) (string, error) {
+	if app.EnvironmentID == nil {
+		return content, nil
+	}
+	runtime, ok := c.Runtime.(worker.NetworkRuntime)
+	if !ok {
+		return "", errors.New("environment network runtime is not configured")
+	}
+	networkName := worker.EnvironmentNetworkName(*app.EnvironmentID)
+	if err := runtime.EnsureNetwork(ctx, networkName, map[string]string{"io.aether.component": "environment", "io.aether.environment-id": app.EnvironmentID.String()}); err != nil {
+		return "", err
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return "", err
+	}
+	services, ok := document["services"].(map[string]any)
+	if !ok || len(services) == 0 {
+		return "", errors.New("compose document has no services")
+	}
+	networks, ok := document["networks"].(map[string]any)
+	if !ok {
+		networks = make(map[string]any)
+		document["networks"] = networks
+	}
+	networks[networkName] = map[string]any{"name": networkName, "external": true}
+	for name, raw := range services {
+		service, ok := raw.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("compose service %s is invalid", name)
+		}
+		switch configured := service["networks"].(type) {
+		case map[string]any:
+			configured[networkName] = nil
+		case []any:
+			found := false
+			for _, value := range configured {
+				if value == networkName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				service["networks"] = append(configured, networkName)
+			}
+		default:
+			service["networks"] = []any{networkName}
+		}
+	}
+	encoded, err := yaml.Marshal(document)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
 }
 
 func hasComposeCommand(args []string, command string) bool {

@@ -315,6 +315,10 @@ export interface Database {
   engine: string
   version: string
   port: number
+  internal_port: number
+  internal_host: string
+  public_access: boolean
+  external_port: number
   db_name: string
   cpus: string
   mem_mb: number
@@ -323,6 +327,15 @@ export interface Database {
   container_id: string
   user: string
   created_at: string
+}
+
+export interface DatabaseConnectionDetails {
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  url: string
 }
 
 export interface CronJob {

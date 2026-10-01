@@ -774,15 +774,13 @@ func (r *DockerRuntime) Run(ctx context.Context, spec RunSpec) (string, error) {
 			return "", runtimeError("configure container port", err)
 		}
 		config.ExposedPorts = nat.PortSet{port: struct{}{}}
-		publicPort := ""
 		if spec.Port > 0 {
-			publicPort = strconv.Itoa(spec.Port)
+			hostIP := spec.HostIP
+			if hostIP == "" && spec.Labels["aether.owner"] == "user" {
+				hostIP = "127.0.0.1"
+			}
+			hostConfig.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: hostIP, HostPort: strconv.Itoa(spec.Port)}}}
 		}
-		hostIP := spec.HostIP
-		if hostIP == "" && spec.Labels["aether.owner"] == "user" {
-			hostIP = "127.0.0.1"
-		}
-		hostConfig.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: hostIP, HostPort: publicPort}}}
 	}
 	for _, binding := range spec.Ports {
 		if binding.ContainerPort <= 0 {
@@ -894,9 +892,60 @@ func (r *DockerRuntime) Port(ctx context.Context, containerID string) (string, e
 	return "", errors.New("no published port")
 }
 
+func (r *DockerRuntime) PortInUse(ctx context.Context, port int, exceptContainerID string) (bool, error) {
+	items, err := r.client.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return false, runtimeError("inspect published ports", err)
+	}
+	for _, item := range items {
+		if item.ID == exceptContainerID {
+			continue
+		}
+		for _, binding := range item.Ports {
+			if binding.PublicPort == uint16(port) && binding.PublicPort != 0 {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (r *DockerRuntime) ContainerMountSources(ctx context.Context, containerID string) (map[string]string, error) {
+	inspected, err := r.client.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return nil, containerError("inspect container mounts", err)
+	}
+	sources := make(map[string]string, len(inspected.Mounts))
+	for _, mount := range inspected.Mounts {
+		if mount.Type == "volume" && mount.Name != "" {
+			sources[mount.Destination] = mount.Name
+		}
+	}
+	return sources, nil
+}
+
+func (r *DockerRuntime) ContainerIDsByLabel(ctx context.Context, label string) ([]string, error) {
+	items, err := r.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(filters.Arg("label", label))})
+	if err != nil {
+		return nil, runtimeError("find containers by label", err)
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	return ids, nil
+}
+
 func (r *DockerRuntime) Remove(ctx context.Context, containerID string) error {
 	if err := r.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
 		return containerError("remove container", err)
+	}
+	return nil
+}
+
+func (r *DockerRuntime) RemoveWithVolumes(ctx context.Context, containerID string) error {
+	if err := r.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true, RemoveVolumes: true}); err != nil {
+		return containerError("remove container and anonymous volumes", err)
 	}
 	return nil
 }

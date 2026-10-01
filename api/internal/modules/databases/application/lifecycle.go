@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -90,6 +89,30 @@ func dbEnv(db *domain.Database, pass string) []string {
 	}
 }
 
+func databaseDataTarget(engine domain.Engine, version string) string {
+	switch engine {
+	case domain.EnginePostgres:
+		versionNumber := strings.TrimFunc(version, func(value rune) bool { return value < '0' || value > '9' })
+		major, err := strconv.Atoi(strings.SplitN(versionNumber, ".", 2)[0])
+		if err == nil && major >= 18 || version == "latest" {
+			return "/var/lib/postgresql"
+		}
+		return "/var/lib/postgresql/data"
+	case domain.EngineMysql, domain.EngineMariaDB:
+		return "/var/lib/mysql"
+	case domain.EngineMongoDB:
+		return "/data/db"
+	case domain.EngineRedis:
+		return "/data"
+	case domain.EngineMSSQL:
+		return "/var/opt/mssql"
+	case domain.EngineOracle:
+		return "/opt/oracle/oradata"
+	default:
+		return ""
+	}
+}
+
 func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, error) {
 	if d.Runtime == nil {
 		return "", errors.New("database runtime not configured")
@@ -109,40 +132,133 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 	if err != nil {
 		return "", domain.ErrValidation
 	}
-	if db.ContainerID != "" {
-		_ = d.Runtime.Remove(ctx, db.ContainerID)
-	}
-	_ = d.Runtime.Remove(ctx, "db-"+db.Name)
-	containerPort := defaultPorts[db.Engine]
+	containerPort := db.InternalPort
 	if containerPort == 0 {
-		containerPort = db.Port
+		containerPort = defaultPorts[db.Engine]
 	}
-	hostPort := d.allocHostPort(db.Port)
-	if hostPort == 0 {
-		return "", errors.New("no free host port available")
+	if containerPort == 0 {
+		return "", fmt.Errorf("%w: missing internal port for %s", domain.ErrValidation, db.Engine)
 	}
-	if hostPort != db.Port {
-		if err := d.Store.UpdateDatabasePort(ctx, db.ID, hostPort); err != nil {
+	if db.PublicAccess && (db.ExternalPort < 1024 || db.ExternalPort > 65535) {
+		return "", fmt.Errorf("%w: invalid external port", domain.ErrValidation)
+	}
+	environmentID := db.ProjectID
+	if db.EnvironmentID != nil {
+		environmentID = *db.EnvironmentID
+	}
+	environmentNetwork := worker.EnvironmentNetworkName(environmentID)
+	networks, ok := d.Runtime.(worker.NetworkRuntime)
+	if !ok {
+		return "", errors.New("environment network runtime is not configured")
+	}
+	if err := networks.EnsureNetwork(ctx, environmentNetwork, map[string]string{"io.aether.component": "environment", "io.aether.environment-id": environmentID.String()}); err != nil {
+		return "", err
+	}
+	oldContainerID := db.ContainerID
+	if oldContainerID == "" {
+		finder, ok := d.Runtime.(interface {
+			ContainerIDsByLabel(context.Context, string) ([]string, error)
+		})
+		if ok {
+			ids, findErr := finder.ContainerIDsByLabel(ctx, "aether.database-id="+db.ID.String())
+			if findErr != nil {
+				return "", findErr
+			}
+			if len(ids) > 1 {
+				return "", errors.New("cannot safely redeploy database with multiple existing containers")
+			}
+			if len(ids) == 1 {
+				oldContainerID = ids[0]
+			}
+		} else if db.Status == "running" || db.Status == "stopped" {
+			return "", errors.New("cannot safely redeploy database without locating its existing container")
+		}
+	}
+	if db.PublicAccess {
+		checker, ok := d.Runtime.(interface {
+			PortInUse(context.Context, int, string) (bool, error)
+		})
+		if !ok {
+			return "", errors.New("published port validation is unavailable")
+		}
+		inUse, checkErr := checker.PortInUse(ctx, db.ExternalPort, oldContainerID)
+		if checkErr != nil {
+			return "", checkErr
+		}
+		if inUse {
+			return "", fmt.Errorf("%w: port %d is already in use on this server", domain.ErrConflict, db.ExternalPort)
+		}
+	}
+	dataTarget := db.DataVolumeTarget
+	if dataTarget == "" {
+		dataTarget = databaseDataTarget(db.Engine, db.Version)
+	}
+	if dataTarget == "" {
+		return "", fmt.Errorf("%w: no data volume target for %s", domain.ErrValidation, db.Engine)
+	}
+	dataVolume := db.DataVolume
+	if dataVolume == "" && oldContainerID != "" {
+		inspector, ok := d.Runtime.(interface {
+			ContainerMountSources(context.Context, string) (map[string]string, error)
+		})
+		if !ok {
+			return "", errors.New("cannot safely redeploy database without inspecting its existing data volume")
+		}
+		sources, inspectErr := inspector.ContainerMountSources(ctx, oldContainerID)
+		if inspectErr != nil {
+			return "", inspectErr
+		}
+		dataVolume = sources[dataTarget]
+		if dataVolume == "" && db.Engine == domain.EnginePostgres {
+			for _, candidate := range []string{"/var/lib/postgresql/data", "/var/lib/postgresql"} {
+				if source := sources[candidate]; source != "" {
+					dataTarget, dataVolume = candidate, source
+					break
+				}
+			}
+		}
+		if dataVolume == "" {
+			return "", errors.New("cannot safely redeploy database because its existing data volume was not found")
+		}
+	}
+	if dataVolume == "" {
+		dataVolume = "aether-db-" + strings.ReplaceAll(db.ID.String(), "-", "")
+		volumes, ok := d.Runtime.(worker.VolumeRuntime)
+		if !ok {
+			return "", errors.New("database volume runtime is not configured")
+		}
+		if err := volumes.CreateVolume(ctx, dataVolume, map[string]string{"aether.owner": "aether", "aether.database-id": db.ID.String()}); err != nil {
 			return "", err
 		}
-		db.Port = hostPort
+	}
+	if dataVolume != db.DataVolume || dataTarget != db.DataVolumeTarget {
+		if err := d.Store.UpdateDatabaseDataVolume(ctx, db.ID, dataVolume, dataTarget); err != nil {
+			return "", err
+		}
+		db.DataVolume, db.DataVolumeTarget = dataVolume, dataTarget
+	}
+	if oldContainerID != "" {
+		if err := d.Runtime.Remove(ctx, oldContainerID); err != nil && !errors.Is(err, worker.ErrContainerNotFound) {
+			return "", err
+		}
 	}
 	serviceID := db.ServiceID
 	if serviceID == uuid.Nil {
 		serviceID = db.ID
 	}
 	spec := worker.RunSpec{
-		Name:               "db-" + db.Name,
-		Image:              image,
-		Env:                d.runtimeEnv(ctx, db, pass),
-		Port:               hostPort,
-		ContainerPort:      containerPort,
-		Network:            d.Network,
-		NetworkAlias:       "db-" + db.ID.String()[:8],
-		AdditionalNetworks: []string{d.PublishedNetwork},
-		MemMB:              db.MemMB,
-		CPUs:               db.CPUs,
-		StorageMB:          db.StorageMB,
+		Name:          "db-" + strings.ReplaceAll(db.ID.String(), "-", ""),
+		Image:         image,
+		Env:           d.runtimeEnv(ctx, db, pass),
+		Port:          0,
+		ContainerPort: containerPort,
+		HostIP:        "0.0.0.0",
+		Network:       environmentNetwork,
+		NetworkAlias:  domain.InternalHost(db.Name, db.ID),
+		MemMB:         db.MemMB,
+		CPUs:          db.CPUs,
+		StorageMB:     db.StorageMB,
+		Mounts:        []worker.MountSpec{{Source: dataVolume, Target: dataTarget}},
 		Labels: map[string]string{
 			"aether.owner":        "aether",
 			"aether.service-type": "database",
@@ -151,6 +267,12 @@ func (d *Databases) deploy(ctx context.Context, db *domain.Database) (string, er
 			"aether.project-id":   db.ProjectID.String(),
 			"aether.database-id":  db.ID.String(),
 		},
+	}
+	if db.Engine == domain.EngineRedis {
+		spec.Command = []string{"redis-server", "--requirepass", pass, "--appendonly", "yes"}
+	}
+	if db.PublicAccess {
+		spec.Port = db.ExternalPort
 	}
 	containerID, err := d.Runtime.Run(ctx, spec)
 	if err != nil {
@@ -186,69 +308,46 @@ func (d *Databases) runtimeEnv(ctx context.Context, db *domain.Database, pass st
 	return env
 }
 
-func hostPortFree(port int) bool {
-	if port <= 0 {
-		return false
-	}
-	for _, host := range []string{"host.containers.internal", "127.0.0.1"} {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 300*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			return false
-		}
-	}
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return false
-	}
-	_ = l.Close()
-	return true
-}
-
 const databaseHealthTimeout = 120 * time.Second
 
 func (d *Databases) waitHealthy(ctx context.Context, db *domain.Database, containerID string, containerPort int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
-	if db.Engine == domain.EnginePostgres {
-		for {
-			_, stderr, err := d.Runtime.Exec(ctx, containerID, nil, "pg_isready", "-q", "-h", "127.0.0.1", "-p", strconv.Itoa(containerPort))
-			if err == nil {
-				return nil
-			}
-			if stderr != "" {
-				lastErr = fmt.Errorf("pg_isready: %s", strings.TrimSpace(stderr))
-			} else {
-				lastErr = err
-			}
-			if time.Now().After(deadline) {
-				return lastErr
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(time.Second):
-			}
-		}
+	password, err := d.Passwords.Decrypt(db.PassEnc)
+	if err != nil {
+		return domain.ErrValidation
 	}
-	targets := []struct {
-		host string
-		port int
-	}{
-		{host: "db-" + db.ID.String()[:8], port: containerPort},
-		{host: "host.docker.internal", port: db.Port},
-		{host: "host.containers.internal", port: db.Port},
-		{host: "127.0.0.1", port: db.Port},
+	var command []string
+	var env []string
+	switch db.Engine {
+	case domain.EnginePostgres:
+		command = []string{"pg_isready", "-q", "-h", "127.0.0.1", "-p", strconv.Itoa(containerPort)}
+	case domain.EngineMysql, domain.EngineMariaDB:
+		command = []string{"mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root"}
+		env = []string{"MYSQL_PWD=" + password}
+	case domain.EngineRedis:
+		command = []string{"redis-cli", "ping"}
+		env = []string{"REDISCLI_AUTH=" + password}
+	case domain.EngineMongoDB:
+		command = []string{"sh", "-c", "mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\""}
+		env = []string{"MONGO_INITDB_ROOT_USERNAME=" + db.User, "MONGO_INITDB_ROOT_PASSWORD=" + password}
+	case domain.EngineMSSQL:
+		command = []string{"sh", "-c", "for p in /opt/mssql-tools18/bin/sqlcmd /opt/mssql-tools/bin/sqlcmd; do if [ -x \"$p\" ]; then \"$p\" -C -S localhost -U sa -P \"$MSSQL_SA_PASSWORD\" -Q 'SELECT 1'; exit $?; fi; done; exit 1"}
+		env = []string{"MSSQL_SA_PASSWORD=" + password}
+	case domain.EngineOracle:
+		command = []string{"bash", "-lc", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s system/$ORACLE_PASSWORD@localhost/FREEPDB1"}
+		env = []string{"ORACLE_PASSWORD=" + password}
+	default:
+		return fmt.Errorf("%w: unsupported database health check", domain.ErrValidation)
 	}
 	for {
-		lastErr = nil
-		for _, target := range targets {
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", target.host, target.port), 2*time.Second)
-			if err == nil {
-				conn.Close()
-				return nil
-			}
-			lastErr = err
+		_, stderr, err := d.Runtime.Exec(ctx, containerID, env, command...)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if stderr != "" {
+			lastErr = fmt.Errorf("database health check: %s", strings.TrimSpace(stderr))
 		}
 		if time.Now().After(deadline) {
 			return lastErr
@@ -259,23 +358,6 @@ func (d *Databases) waitHealthy(ctx context.Context, db *domain.Database, contai
 		case <-time.After(time.Second):
 		}
 	}
-}
-
-func (d *Databases) allocHostPort(stored int) int {
-	start := stored
-	if start <= 0 {
-		return 0
-	}
-	limit := start + 1000
-	if limit > 65535 {
-		limit = 65535
-	}
-	for p := start; p <= limit; p++ {
-		if hostPortFree(p) {
-			return p
-		}
-	}
-	return 0
 }
 
 func (d *Databases) Deploy(ctx context.Context, id, orgID uuid.UUID) (*domain.Database, error) {
@@ -320,9 +402,9 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 	}
 	d.appendDeployLog(ctx, deploymentID, "Container started: "+containerID)
 	_ = d.Store.UpdateDatabaseStatus(ctx, id, "starting", containerID)
-	containerPort := defaultPorts[db.Engine]
+	containerPort := db.InternalPort
 	if containerPort == 0 {
-		containerPort = db.Port
+		containerPort = defaultPorts[db.Engine]
 	}
 	if err := d.waitHealthy(ctx, db, containerID, containerPort, databaseHealthTimeout); err != nil {
 		if lines, logErr := d.Runtime.LogTail(ctx, containerID, 40); logErr == nil {
@@ -339,7 +421,7 @@ func (d *Databases) deployWithTrigger(ctx context.Context, id, orgID uuid.UUID, 
 		_ = d.Store.UpdateDatabaseStatus(ctx, id, "failed", containerID)
 		return nil, fmt.Errorf("database did not become healthy: %w", err)
 	}
-	d.appendDeployLog(ctx, deploymentID, "Database is healthy on port "+strconv.Itoa(db.Port))
+	d.appendDeployLog(ctx, deploymentID, "Database is healthy on internal port "+strconv.Itoa(containerPort))
 	if dep != nil {
 		d.finishDeployment(ctx, dep.ID, deploydomain.StatusReady, containerID, "")
 		d.notifyDeployment(ctx, dep, deploydomain.StatusReady, "Database is healthy")

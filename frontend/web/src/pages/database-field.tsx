@@ -185,6 +185,9 @@ function CreateDatabaseDialog() {
       }
     >
       <div className="grid gap-4">
+        <Typography role="supporting">
+          Databases are private by default. Configure external TCP access later in the database Settings.
+        </Typography>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             id="database-project"

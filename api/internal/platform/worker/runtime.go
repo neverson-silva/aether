@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -191,6 +192,10 @@ type Runtime interface {
 type NetworkRuntime interface {
 	EnsureNetwork(ctx context.Context, name string, labels map[string]string) error
 	RemoveNetwork(ctx context.Context, name string) error
+}
+
+func EnvironmentNetworkName(id uuid.UUID) string {
+	return "aether-env-" + strings.ReplaceAll(id.String(), "-", "")
 }
 
 type VolumeRuntime interface {

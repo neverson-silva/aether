@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -19,15 +21,16 @@ import (
 )
 
 type Databases struct {
-	Store            domain.Store
-	Apps             AppStore
-	Passwords        domain.PasswordCipher
-	Runtime          ContainerRuntime
-	Network          string
-	PublishedNetwork string
-	LogsDir          string
-	Deployments      deploydomain.Store
-	Variables        interface {
+	Store       domain.Store
+	Apps        AppStore
+	Passwords   domain.PasswordCipher
+	Runtime     ContainerRuntime
+	LogsDir     string
+	Deployments deploydomain.Store
+	Audit       interface {
+		Record(context.Context, uuid.UUID, string, string, string, string)
+	}
+	Variables interface {
 		Effective(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error)
 	}
 	Notifier interface {
@@ -146,11 +149,14 @@ func (d *Databases) create(ctx context.Context, orgID, projectID uuid.UUID, envi
 	}
 	db, err := d.Store.CreateDatabase(ctx, &domain.Database{
 		OrgID: orgID, ProjectID: projectID, EnvironmentID: environmentID, Name: name, Engine: engine,
-		Version: version, Port: defaultPorts[engine], DBName: name, User: user,
+		Version: version, Port: defaultPorts[engine], InternalPort: defaultPorts[engine], DBName: name, User: user,
 		PassEnc: passEnc, CPUs: cpus, MemMB: memMB, StorageMB: storageMB, Status: "creating",
 	})
 	if err != nil {
 		return nil, err
+	}
+	if d.Audit != nil {
+		d.Audit.Record(ctx, orgID, "database.created", "database", db.ID.String(), string(engine))
 	}
 	return db, nil
 }
@@ -234,25 +240,140 @@ func (d *Databases) ConnectionStringByServiceID(ctx context.Context, serviceID, 
 }
 
 func (d *Databases) connectionString(db *domain.Database) (string, error) {
+	return d.connectionStringFor(db, "internal", "")
+}
+
+func (d *Databases) ConnectionDetails(ctx context.Context, id, orgID uuid.UUID, scope string) (ConnectionDetails, error) {
+	db, err := d.Get(ctx, id, orgID)
+	if err != nil {
+		return ConnectionDetails{}, err
+	}
+	if scope != "internal" && scope != "external" {
+		return ConnectionDetails{}, domain.ErrValidation
+	}
+	if scope == "external" && !db.PublicAccess {
+		return ConnectionDetails{}, domain.ErrForbidden
+	}
+	dsn, err := d.connectionStringFor(db, scope, hostinfo.PublicIP())
+	if err != nil {
+		return ConnectionDetails{}, err
+	}
+	password, err := d.Passwords.Decrypt(db.PassEnc)
+	if err != nil {
+		return ConnectionDetails{}, err
+	}
+	port := db.InternalPort
+	host := domain.InternalHost(db.Name, db.ID)
+	if scope == "external" {
+		port = db.ExternalPort
+		host = hostinfo.PublicIP()
+	}
+	username := db.User
+	if db.Engine == domain.EngineRedis {
+		username = ""
+	} else if db.Engine == domain.EngineMSSQL {
+		username = "sa"
+	} else if db.Engine == domain.EngineOracle {
+		username = "system"
+	}
+	return ConnectionDetails{Host: host, Port: port, Database: db.DBName, Username: username, Password: password, URL: dsn}, nil
+}
+
+type ConnectionDetails struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Database string `json:"database"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	URL      string `json:"url"`
+}
+
+func (d *Databases) UpdateNetworkAccess(ctx context.Context, id, orgID uuid.UUID, publicAccess bool, externalPort int) (*domain.Database, error) {
+	db, err := d.Get(ctx, id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	previousPublicAccess, previousExternalPort := db.PublicAccess, db.ExternalPort
+	if publicAccess && (externalPort < 1024 || externalPort > 65535) {
+		return nil, domain.ErrValidation
+	}
+	if !publicAccess {
+		externalPort = 0
+	}
+	if publicAccess && (!db.PublicAccess || db.ExternalPort != externalPort) {
+		checker, ok := d.Runtime.(interface {
+			PortInUse(context.Context, int, string) (bool, error)
+		})
+		if !ok {
+			return nil, errors.New("published port validation is unavailable")
+		}
+		inUse, checkErr := checker.PortInUse(ctx, externalPort, db.ContainerID)
+		if checkErr != nil {
+			return nil, checkErr
+		}
+		if inUse {
+			return nil, fmt.Errorf("%w: port %d is already in use on this server", domain.ErrConflict, externalPort)
+		}
+	}
+	if err := d.Store.UpdateDatabaseNetwork(ctx, id, publicAccess, externalPort); err != nil {
+		return nil, err
+	}
+	if d.Audit != nil && (previousPublicAccess != publicAccess || previousExternalPort != externalPort) {
+		action := "database.public_access.disabled"
+		details := ""
+		if publicAccess && !previousPublicAccess {
+			action = "database.public_access.enabled"
+			details = fmt.Sprintf("external_port=%d", externalPort)
+		} else if publicAccess && previousExternalPort != externalPort {
+			action = "database.external_port.changed"
+			details = fmt.Sprintf("external_port=%d", externalPort)
+		}
+		d.Audit.Record(ctx, orgID, action, "database", id.String(), details)
+	}
+	db.PublicAccess = publicAccess
+	db.ExternalPort = externalPort
+	return db, nil
+}
+
+func (d *Databases) connectionStringFor(db *domain.Database, scope, publicHost string) (string, error) {
 	pass, err := d.Passwords.Decrypt(db.PassEnc)
 	if err != nil {
 		return "", err
 	}
-	host := hostinfo.PublicIP()
+	host, port := domain.InternalHost(db.Name, db.ID), db.InternalPort
+	if scope == "external" {
+		host, port = publicHost, db.ExternalPort
+	}
+	username := db.User
+	if db.Engine == domain.EngineRedis {
+		username = ""
+	} else if db.Engine == domain.EngineMSSQL {
+		username = "sa"
+	} else if db.Engine == domain.EngineOracle {
+		username = "system"
+	}
+	scheme := string(db.Engine)
+	path := db.DBName
+	query := ""
 	switch db.Engine {
 	case domain.EnginePostgres:
-		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s", db.User, pass, host, db.Port, db.DBName), nil
+		scheme = "postgresql"
 	case domain.EngineMysql, domain.EngineMariaDB:
-		return fmt.Sprintf("mysql://%s:%s@%s:%d/%s", db.User, pass, host, db.Port, db.DBName), nil
+		scheme = "mysql"
 	case domain.EngineRedis:
-		return fmt.Sprintf("redis://:%s@%s:%d/0", pass, host, db.Port), nil
+		path = "0"
 	case domain.EngineMongoDB:
-		return fmt.Sprintf("mongodb://%s:%s@%s:%d/%s", db.User, pass, host, db.Port, db.DBName), nil
+		query = "authSource=admin"
 	case domain.EngineMSSQL:
-		return fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s", db.User, pass, host, db.Port, db.DBName), nil
-	default:
-		return fmt.Sprintf("%s://%s:%s@%s:%d/%s", db.Engine, db.User, pass, host, db.Port, db.DBName), nil
+		scheme = "sqlserver"
+		path = ""
+		query = "database=" + url.QueryEscape(db.DBName)
 	}
+	connection := url.URL{Scheme: scheme, User: url.UserPassword(username, pass), Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: path}
+	if query != "" {
+		connection.RawQuery = query
+	}
+	return connection.String(), nil
 }
 
 func randomPassword() (string, error) {

@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +37,31 @@ func (e Engine) Valid() bool {
 	return false
 }
 
+func InternalHost(name string, id uuid.UUID) string {
+	var slug strings.Builder
+	for _, character := range strings.ToLower(name) {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' {
+			slug.WriteRune(character)
+			continue
+		}
+		if slug.Len() > 0 && slug.String()[slug.Len()-1] != '-' {
+			slug.WriteByte('-')
+		}
+	}
+	value := strings.Trim(slug.String(), "-")
+	if len(value) > 48 {
+		value = strings.TrimRight(value[:48], "-")
+	}
+	identifier := strings.ReplaceAll(id.String(), "-", "")
+	if len(identifier) > 8 {
+		identifier = identifier[:8]
+	}
+	if value == "" {
+		return "db-" + identifier
+	}
+	return "db-" + value + "-" + identifier
+}
+
 type TableColumn struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
@@ -51,24 +77,29 @@ type CreateTableInput struct {
 }
 
 type Database struct {
-	ID            uuid.UUID
-	ServiceID     uuid.UUID
-	OrgID         uuid.UUID
-	ProjectID     uuid.UUID
-	EnvironmentID *uuid.UUID
-	Name          string
-	Engine        Engine
-	Version       string
-	Port          int
-	DBName        string
-	User          string
-	PassEnc       string
-	CPUs          string
-	MemMB         int
-	StorageMB     int
-	Status        string
-	ContainerID   string
-	CreatedAt     time.Time
+	ID               uuid.UUID
+	ServiceID        uuid.UUID
+	OrgID            uuid.UUID
+	ProjectID        uuid.UUID
+	EnvironmentID    *uuid.UUID
+	Name             string
+	Engine           Engine
+	Version          string
+	Port             int
+	InternalPort     int
+	PublicAccess     bool
+	ExternalPort     int
+	DataVolume       string
+	DataVolumeTarget string
+	DBName           string
+	User             string
+	PassEnc          string
+	CPUs             string
+	MemMB            int
+	StorageMB        int
+	Status           string
+	ContainerID      string
+	CreatedAt        time.Time
 }
 
 type PasswordCipher interface {
@@ -81,7 +112,8 @@ type Store interface {
 	GetDatabase(ctx context.Context, id uuid.UUID) (*Database, error)
 	ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Database, error)
 	UpdateDatabaseStatus(ctx context.Context, id uuid.UUID, status, containerID string) error
-	UpdateDatabasePort(ctx context.Context, id uuid.UUID, port int) error
+	UpdateDatabaseNetwork(ctx context.Context, id uuid.UUID, publicAccess bool, externalPort int) error
+	UpdateDatabaseDataVolume(ctx context.Context, id uuid.UUID, volume, target string) error
 	DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error
 }
 

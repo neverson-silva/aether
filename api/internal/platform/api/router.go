@@ -312,6 +312,8 @@ func (r *Router) routes() {
 		authed.POST("/databases", r.databases.Create)
 		authed.GET("/databases", r.databases.List)
 		authed.GET("/databases/:dbID", r.databases.Get)
+		authed.PATCH("/databases/:dbID/network-access", r.databases.UpdateNetworkAccess)
+		authed.POST("/databases/:dbID/connection/reveal", r.databases.RevealConnection)
 		authed.DELETE("/databases/:dbID", r.databases.Delete)
 		authed.POST("/databases/:dbID/deploy", r.databases.Deploy)
 		authed.POST("/databases/:dbID/rebuild", r.databases.Rebuild)

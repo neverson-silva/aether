@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -73,6 +74,15 @@ type createDBReq struct {
 	StorageMB     *int   `json:"storage_mb"`
 }
 
+type networkAccessReq struct {
+	PublicAccess bool `json:"public_access"`
+	ExternalPort int  `json:"external_port"`
+}
+
+type revealConnectionReq struct {
+	Scope string `json:"scope"`
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	var req createDBReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -133,7 +143,47 @@ func (h *Handler) Get(c *gin.Context) {
 		abort(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"database": databaseDTO(db), "public_host": hostinfo.PublicIP()})
+	c.JSON(http.StatusOK, gin.H{"database": databaseDTO(db), "public_host": hostinfo.PublicIP(), "internal_host": domain.InternalHost(db.Name, db.ID)})
+}
+
+func (h *Handler) UpdateNetworkAccess(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	var req networkAccessReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	db, err := h.databases.UpdateNetworkAccess(c.Request.Context(), id, orgID(c), req.PublicAccess, req.ExternalPort)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, databaseDTO(db))
+}
+
+func (h *Handler) RevealConnection(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("dbID"))
+	if err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	var req revealConnectionReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		abort(c, domain.ErrValidation)
+		return
+	}
+	credentials, err := h.databases.ConnectionDetails(c.Request.Context(), id, orgID(c), req.Scope)
+	if err != nil {
+		abort(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	c.JSON(http.StatusOK, credentials)
 }
 
 func (h *Handler) Delete(c *gin.Context) {
@@ -335,7 +385,8 @@ func (h *Handler) DeploymentLog(c *gin.Context) {
 func databaseDTO(db *domain.Database) gin.H {
 	return gin.H{
 		"id": db.ID, "service_id": db.ServiceID, "org_id": db.OrgID, "project_id": db.ProjectID, "environment_id": db.EnvironmentID, "name": db.Name,
-		"engine": db.Engine, "version": db.Version, "port": db.Port, "db_name": db.DBName,
+		"engine": db.Engine, "version": db.Version, "port": db.InternalPort, "internal_port": db.InternalPort,
+		"public_access": db.PublicAccess, "external_port": db.ExternalPort, "internal_host": domain.InternalHost(db.Name, db.ID), "db_name": db.DBName,
 		"user": db.User, "cpus": db.CPUs, "mem_mb": db.MemMB, "storage_mb": db.StorageMB, "status": db.Status,
 		"container_id": db.ContainerID, "created_at": db.CreatedAt,
 	}
@@ -357,7 +408,11 @@ func abort(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
 	case errors.Is(err, domain.ErrConflict):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "already exists"})
+		message := "already exists"
+		if strings.Contains(err.Error(), "port ") && strings.Contains(err.Error(), "already in use") {
+			message = strings.TrimPrefix(err.Error(), "conflict: ")
+		}
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": message})
 	case errors.Is(err, domain.ErrValidation):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 	case errors.Is(err, domain.ErrForbidden):

@@ -13,9 +13,9 @@ import (
 )
 
 const createDatabase = `-- name: CreateDatabase :one
-INSERT INTO databases (org_id, project_id, environment_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
+INSERT INTO databases (org_id, project_id, environment_id, name, engine, version, port, internal_port, public_access, external_port, data_volume, data_volume_target, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, 0, '', '', $9, $10, $11, $12, $13, $14)
+RETURNING id, org_id, project_id, name, engine, version, port, internal_port, public_access, external_port, data_volume, data_volume_target, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 `
 
 type CreateDatabaseParams struct {
@@ -26,6 +26,7 @@ type CreateDatabaseParams struct {
 	Engine        string        `json:"engine"`
 	Version       string        `json:"version"`
 	Port          int32         `json:"port"`
+	InternalPort  int32         `json:"internal_port"`
 	DbName        string        `json:"db_name"`
 	DbUser        string        `json:"db_user"`
 	PassEnc       string        `json:"pass_enc"`
@@ -35,24 +36,29 @@ type CreateDatabaseParams struct {
 }
 
 type CreateDatabaseRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	Name          string        `json:"name"`
-	Engine        string        `json:"engine"`
-	Version       string        `json:"version"`
-	Port          int32         `json:"port"`
-	DbName        string        `json:"db_name"`
-	DbUser        string        `json:"db_user"`
-	PassEnc       string        `json:"pass_enc"`
-	Cpus          string        `json:"cpus"`
-	MemMb         int32         `json:"mem_mb"`
-	StorageMb     int32         `json:"storage_mb"`
-	Status        string        `json:"status"`
-	ContainerID   string        `json:"container_id"`
-	CreatedAt     time.Time     `json:"created_at"`
-	ServiceID     uuid.UUID     `json:"service_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	ID               uuid.UUID     `json:"id"`
+	OrgID            uuid.UUID     `json:"org_id"`
+	ProjectID        uuid.UUID     `json:"project_id"`
+	Name             string        `json:"name"`
+	Engine           string        `json:"engine"`
+	Version          string        `json:"version"`
+	Port             int32         `json:"port"`
+	InternalPort     int32         `json:"internal_port"`
+	PublicAccess     bool          `json:"public_access"`
+	ExternalPort     int32         `json:"external_port"`
+	DataVolume       string        `json:"data_volume"`
+	DataVolumeTarget string        `json:"data_volume_target"`
+	DbName           string        `json:"db_name"`
+	DbUser           string        `json:"db_user"`
+	PassEnc          string        `json:"pass_enc"`
+	Cpus             string        `json:"cpus"`
+	MemMb            int32         `json:"mem_mb"`
+	StorageMb        int32         `json:"storage_mb"`
+	Status           string        `json:"status"`
+	ContainerID      string        `json:"container_id"`
+	CreatedAt        time.Time     `json:"created_at"`
+	ServiceID        uuid.UUID     `json:"service_id"`
+	EnvironmentID    uuid.NullUUID `json:"environment_id"`
 }
 
 func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) (CreateDatabaseRow, error) {
@@ -64,6 +70,7 @@ func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) 
 		arg.Engine,
 		arg.Version,
 		arg.Port,
+		arg.InternalPort,
 		arg.DbName,
 		arg.DbUser,
 		arg.PassEnc,
@@ -80,6 +87,11 @@ func (q *Queries) CreateDatabase(ctx context.Context, arg CreateDatabaseParams) 
 		&i.Engine,
 		&i.Version,
 		&i.Port,
+		&i.InternalPort,
+		&i.PublicAccess,
+		&i.ExternalPort,
+		&i.DataVolume,
+		&i.DataVolumeTarget,
 		&i.DbName,
 		&i.DbUser,
 		&i.PassEnc,
@@ -111,30 +123,35 @@ func (q *Queries) DeleteDatabase(ctx context.Context, arg DeleteDatabaseParams) 
 }
 
 const getDatabase = `-- name: GetDatabase :one
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
+SELECT id, org_id, project_id, name, engine, version, port, internal_port, public_access, external_port, data_volume, data_volume_target, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE id = $1
 `
 
 type GetDatabaseRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	Name          string        `json:"name"`
-	Engine        string        `json:"engine"`
-	Version       string        `json:"version"`
-	Port          int32         `json:"port"`
-	DbName        string        `json:"db_name"`
-	DbUser        string        `json:"db_user"`
-	PassEnc       string        `json:"pass_enc"`
-	Cpus          string        `json:"cpus"`
-	MemMb         int32         `json:"mem_mb"`
-	StorageMb     int32         `json:"storage_mb"`
-	Status        string        `json:"status"`
-	ContainerID   string        `json:"container_id"`
-	CreatedAt     time.Time     `json:"created_at"`
-	ServiceID     uuid.UUID     `json:"service_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	ID               uuid.UUID     `json:"id"`
+	OrgID            uuid.UUID     `json:"org_id"`
+	ProjectID        uuid.UUID     `json:"project_id"`
+	Name             string        `json:"name"`
+	Engine           string        `json:"engine"`
+	Version          string        `json:"version"`
+	Port             int32         `json:"port"`
+	InternalPort     int32         `json:"internal_port"`
+	PublicAccess     bool          `json:"public_access"`
+	ExternalPort     int32         `json:"external_port"`
+	DataVolume       string        `json:"data_volume"`
+	DataVolumeTarget string        `json:"data_volume_target"`
+	DbName           string        `json:"db_name"`
+	DbUser           string        `json:"db_user"`
+	PassEnc          string        `json:"pass_enc"`
+	Cpus             string        `json:"cpus"`
+	MemMb            int32         `json:"mem_mb"`
+	StorageMb        int32         `json:"storage_mb"`
+	Status           string        `json:"status"`
+	ContainerID      string        `json:"container_id"`
+	CreatedAt        time.Time     `json:"created_at"`
+	ServiceID        uuid.UUID     `json:"service_id"`
+	EnvironmentID    uuid.NullUUID `json:"environment_id"`
 }
 
 func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (GetDatabaseRow, error) {
@@ -148,6 +165,11 @@ func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (GetDatabaseRow
 		&i.Engine,
 		&i.Version,
 		&i.Port,
+		&i.InternalPort,
+		&i.PublicAccess,
+		&i.ExternalPort,
+		&i.DataVolume,
+		&i.DataVolumeTarget,
 		&i.DbName,
 		&i.DbUser,
 		&i.PassEnc,
@@ -164,31 +186,36 @@ func (q *Queries) GetDatabase(ctx context.Context, id uuid.UUID) (GetDatabaseRow
 }
 
 const listDatabasesByOrg = `-- name: ListDatabasesByOrg :many
-SELECT id, org_id, project_id, name, engine, version, port, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
+SELECT id, org_id, project_id, name, engine, version, port, internal_port, public_access, external_port, data_volume, data_volume_target, db_name, db_user, pass_enc, cpus, mem_mb, storage_mb, status, container_id, created_at, service_id, environment_id
 FROM databases
 WHERE org_id = $1
 ORDER BY name
 `
 
 type ListDatabasesByOrgRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"org_id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	Name          string        `json:"name"`
-	Engine        string        `json:"engine"`
-	Version       string        `json:"version"`
-	Port          int32         `json:"port"`
-	DbName        string        `json:"db_name"`
-	DbUser        string        `json:"db_user"`
-	PassEnc       string        `json:"pass_enc"`
-	Cpus          string        `json:"cpus"`
-	MemMb         int32         `json:"mem_mb"`
-	StorageMb     int32         `json:"storage_mb"`
-	Status        string        `json:"status"`
-	ContainerID   string        `json:"container_id"`
-	CreatedAt     time.Time     `json:"created_at"`
-	ServiceID     uuid.UUID     `json:"service_id"`
-	EnvironmentID uuid.NullUUID `json:"environment_id"`
+	ID               uuid.UUID     `json:"id"`
+	OrgID            uuid.UUID     `json:"org_id"`
+	ProjectID        uuid.UUID     `json:"project_id"`
+	Name             string        `json:"name"`
+	Engine           string        `json:"engine"`
+	Version          string        `json:"version"`
+	Port             int32         `json:"port"`
+	InternalPort     int32         `json:"internal_port"`
+	PublicAccess     bool          `json:"public_access"`
+	ExternalPort     int32         `json:"external_port"`
+	DataVolume       string        `json:"data_volume"`
+	DataVolumeTarget string        `json:"data_volume_target"`
+	DbName           string        `json:"db_name"`
+	DbUser           string        `json:"db_user"`
+	PassEnc          string        `json:"pass_enc"`
+	Cpus             string        `json:"cpus"`
+	MemMb            int32         `json:"mem_mb"`
+	StorageMb        int32         `json:"storage_mb"`
+	Status           string        `json:"status"`
+	ContainerID      string        `json:"container_id"`
+	CreatedAt        time.Time     `json:"created_at"`
+	ServiceID        uuid.UUID     `json:"service_id"`
+	EnvironmentID    uuid.NullUUID `json:"environment_id"`
 }
 
 func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListDatabasesByOrgRow, error) {
@@ -208,6 +235,11 @@ func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Li
 			&i.Engine,
 			&i.Version,
 			&i.Port,
+			&i.InternalPort,
+			&i.PublicAccess,
+			&i.ExternalPort,
+			&i.DataVolume,
+			&i.DataVolumeTarget,
 			&i.DbName,
 			&i.DbUser,
 			&i.PassEnc,
@@ -233,19 +265,37 @@ func (q *Queries) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]Li
 	return items, nil
 }
 
-const updateDatabasePort = `-- name: UpdateDatabasePort :exec
+const updateDatabaseDataVolume = `-- name: UpdateDatabaseDataVolume :exec
 UPDATE databases
-SET port = $2
+SET data_volume = $2, data_volume_target = $3
 WHERE id = $1
 `
 
-type UpdateDatabasePortParams struct {
-	ID   uuid.UUID `json:"id"`
-	Port int32     `json:"port"`
+type UpdateDatabaseDataVolumeParams struct {
+	ID               uuid.UUID `json:"id"`
+	DataVolume       string    `json:"data_volume"`
+	DataVolumeTarget string    `json:"data_volume_target"`
 }
 
-func (q *Queries) UpdateDatabasePort(ctx context.Context, arg UpdateDatabasePortParams) error {
-	_, err := q.db.ExecContext(ctx, updateDatabasePort, arg.ID, arg.Port)
+func (q *Queries) UpdateDatabaseDataVolume(ctx context.Context, arg UpdateDatabaseDataVolumeParams) error {
+	_, err := q.db.ExecContext(ctx, updateDatabaseDataVolume, arg.ID, arg.DataVolume, arg.DataVolumeTarget)
+	return err
+}
+
+const updateDatabaseNetwork = `-- name: UpdateDatabaseNetwork :exec
+UPDATE databases
+SET public_access = $2, external_port = $3
+WHERE id = $1
+`
+
+type UpdateDatabaseNetworkParams struct {
+	ID           uuid.UUID `json:"id"`
+	PublicAccess bool      `json:"public_access"`
+	ExternalPort int32     `json:"external_port"`
+}
+
+func (q *Queries) UpdateDatabaseNetwork(ctx context.Context, arg UpdateDatabaseNetworkParams) error {
+	_, err := q.db.ExecContext(ctx, updateDatabaseNetwork, arg.ID, arg.PublicAccess, arg.ExternalPort)
 	return err
 }
 

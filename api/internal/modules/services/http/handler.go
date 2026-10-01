@@ -595,9 +595,10 @@ func (h *Handler) enrichSpec(c *gin.Context, service gin.H, kind servicedomain.K
 		}
 	case servicedomain.KindDatabase:
 		var engine, version, dbName, user string
-		var port, memMB, storageMB int
-		if err := h.db.QueryRow(c.Request.Context(), `SELECT engine, version, port, db_name, db_user, mem_mb, storage_mb FROM databases WHERE id = $1`, specID).Scan(&engine, &version, &port, &dbName, &user, &memMB, &storageMB); err == nil {
-			spec = gin.H{"engine": engine, "version": version, "port": port, "database_name": dbName, "user": user, "mem_mb": memMB, "storage_mb": storageMB}
+		var port, externalPort, memMB, storageMB int
+		var publicAccess bool
+		if err := h.db.QueryRow(c.Request.Context(), `SELECT engine, version, internal_port, public_access, external_port, db_name, db_user, mem_mb, storage_mb FROM databases WHERE id = $1`, specID).Scan(&engine, &version, &port, &publicAccess, &externalPort, &dbName, &user, &memMB, &storageMB); err == nil {
+			spec = gin.H{"engine": engine, "version": version, "port": port, "internal_port": port, "public_access": publicAccess, "external_port": externalPort, "database_name": dbName, "user": user, "mem_mb": memMB, "storage_mb": storageMB}
 		}
 	}
 	if spec != nil {

@@ -234,7 +234,8 @@ type Querier interface {
 	UpdateComposeApp(ctx context.Context, arg UpdateComposeAppParams) error
 	UpdateComposePort(ctx context.Context, arg UpdateComposePortParams) error
 	UpdateCronJob(ctx context.Context, arg UpdateCronJobParams) (CronJob, error)
-	UpdateDatabasePort(ctx context.Context, arg UpdateDatabasePortParams) error
+	UpdateDatabaseDataVolume(ctx context.Context, arg UpdateDatabaseDataVolumeParams) error
+	UpdateDatabaseNetwork(ctx context.Context, arg UpdateDatabaseNetworkParams) error
 	UpdateDatabaseStatus(ctx context.Context, arg UpdateDatabaseStatusParams) error
 	UpdateDeploymentStatus(ctx context.Context, arg UpdateDeploymentStatusParams) error
 	UpdateDomainFields(ctx context.Context, arg UpdateDomainFieldsParams) error

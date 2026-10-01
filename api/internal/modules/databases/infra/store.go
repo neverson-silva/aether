@@ -66,7 +66,7 @@ func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domai
 	}
 	row, err := gen.New(tx).CreateDatabase(ctx, gen.CreateDatabaseParams{
 		OrgID: db.OrgID, ProjectID: db.ProjectID, EnvironmentID: nullableUUID(db.EnvironmentID), Name: db.Name, Engine: string(db.Engine),
-		Version: db.Version, Port: int32(db.Port), DbName: db.DBName, DbUser: db.User,
+		Version: db.Version, Port: int32(db.Port), InternalPort: int32(db.InternalPort), DbName: db.DBName, DbUser: db.User,
 		PassEnc: db.PassEnc, Cpus: db.CPUs, MemMb: int32(db.MemMB), StorageMb: int32(db.StorageMB),
 	})
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Store) CreateDatabase(ctx context.Context, db *domain.Database) (*domai
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return databaseFromRow(gen.Database{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name, Engine: row.Engine, Version: row.Version, Port: row.Port, DbName: row.DbName, DbUser: row.DbUser, PassEnc: row.PassEnc, Cpus: row.Cpus, MemMb: row.MemMb, StorageMb: row.StorageMb, Status: row.Status, ContainerID: row.ContainerID, CreatedAt: row.CreatedAt, ServiceID: row.ServiceID, EnvironmentID: row.EnvironmentID}), nil
+	return databaseFromRow(gen.Database{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name, Engine: row.Engine, Version: row.Version, Port: row.Port, InternalPort: row.InternalPort, PublicAccess: row.PublicAccess, ExternalPort: row.ExternalPort, DataVolume: row.DataVolume, DataVolumeTarget: row.DataVolumeTarget, DbName: row.DbName, DbUser: row.DbUser, PassEnc: row.PassEnc, Cpus: row.Cpus, MemMb: row.MemMb, StorageMb: row.StorageMb, Status: row.Status, ContainerID: row.ContainerID, CreatedAt: row.CreatedAt, ServiceID: row.ServiceID, EnvironmentID: row.EnvironmentID}), nil
 }
 
 func checkOrganizationStorage(ctx context.Context, tx *sql.Tx, orgID uuid.UUID, requested int) error {
@@ -99,7 +99,7 @@ func (s *Store) GetDatabase(ctx context.Context, id uuid.UUID) (*domain.Database
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return databaseFromRow(gen.Database{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name, Engine: row.Engine, Version: row.Version, Port: row.Port, DbName: row.DbName, DbUser: row.DbUser, PassEnc: row.PassEnc, Cpus: row.Cpus, MemMb: row.MemMb, StorageMb: row.StorageMb, Status: row.Status, ContainerID: row.ContainerID, CreatedAt: row.CreatedAt, ServiceID: row.ServiceID, EnvironmentID: row.EnvironmentID}), nil
+	return databaseFromRow(gen.Database{ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, Name: row.Name, Engine: row.Engine, Version: row.Version, Port: row.Port, InternalPort: row.InternalPort, PublicAccess: row.PublicAccess, ExternalPort: row.ExternalPort, DataVolume: row.DataVolume, DataVolumeTarget: row.DataVolumeTarget, DbName: row.DbName, DbUser: row.DbUser, PassEnc: row.PassEnc, Cpus: row.Cpus, MemMb: row.MemMb, StorageMb: row.StorageMb, Status: row.Status, ContainerID: row.ContainerID, CreatedAt: row.CreatedAt, ServiceID: row.ServiceID, EnvironmentID: row.EnvironmentID}), nil
 }
 
 func (s *Store) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Database, error) {
@@ -109,7 +109,7 @@ func (s *Store) ListDatabasesByOrg(ctx context.Context, orgID uuid.UUID) ([]doma
 	}
 	out := make([]domain.Database, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, *databaseFromRow(gen.Database{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, Name: r.Name, Engine: r.Engine, Version: r.Version, Port: r.Port, DbName: r.DbName, DbUser: r.DbUser, PassEnc: r.PassEnc, Cpus: r.Cpus, MemMb: r.MemMb, StorageMb: r.StorageMb, Status: r.Status, ContainerID: r.ContainerID, CreatedAt: r.CreatedAt, ServiceID: r.ServiceID, EnvironmentID: r.EnvironmentID}))
+		out = append(out, *databaseFromRow(gen.Database{ID: r.ID, OrgID: r.OrgID, ProjectID: r.ProjectID, Name: r.Name, Engine: r.Engine, Version: r.Version, Port: r.Port, InternalPort: r.InternalPort, PublicAccess: r.PublicAccess, ExternalPort: r.ExternalPort, DataVolume: r.DataVolume, DataVolumeTarget: r.DataVolumeTarget, DbName: r.DbName, DbUser: r.DbUser, PassEnc: r.PassEnc, Cpus: r.Cpus, MemMb: r.MemMb, StorageMb: r.StorageMb, Status: r.Status, ContainerID: r.ContainerID, CreatedAt: r.CreatedAt, ServiceID: r.ServiceID, EnvironmentID: r.EnvironmentID}))
 	}
 	return out, nil
 }
@@ -131,8 +131,12 @@ func (s *Store) UpdateDatabaseStatus(ctx context.Context, id uuid.UUID, status, 
 	return mapErr(s.q.UpdateDatabaseStatus(ctx, gen.UpdateDatabaseStatusParams{ID: id, Status: status, ContainerID: containerID}))
 }
 
-func (s *Store) UpdateDatabasePort(ctx context.Context, id uuid.UUID, port int) error {
-	return mapErr(s.q.UpdateDatabasePort(ctx, gen.UpdateDatabasePortParams{ID: id, Port: int32(port)}))
+func (s *Store) UpdateDatabaseNetwork(ctx context.Context, id uuid.UUID, publicAccess bool, externalPort int) error {
+	return mapErr(s.q.UpdateDatabaseNetwork(ctx, gen.UpdateDatabaseNetworkParams{ID: id, PublicAccess: publicAccess, ExternalPort: int32(externalPort)}))
+}
+
+func (s *Store) UpdateDatabaseDataVolume(ctx context.Context, id uuid.UUID, volume, target string) error {
+	return mapErr(s.q.UpdateDatabaseDataVolume(ctx, gen.UpdateDatabaseDataVolumeParams{ID: id, DataVolume: volume, DataVolumeTarget: target}))
 }
 
 func (s *Store) DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error {
@@ -142,7 +146,8 @@ func (s *Store) DeleteDatabase(ctx context.Context, id, orgID uuid.UUID) error {
 func databaseFromRow(row gen.Database) *domain.Database {
 	return &domain.Database{
 		ID: row.ID, ServiceID: row.ServiceID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: nullableUUIDPointer(row.EnvironmentID), Name: row.Name,
-		Engine: domain.Engine(row.Engine), Version: row.Version, Port: int(row.Port),
+		Engine: domain.Engine(row.Engine), Version: row.Version, Port: int(row.Port), InternalPort: int(row.InternalPort),
+		PublicAccess: row.PublicAccess, ExternalPort: int(row.ExternalPort), DataVolume: row.DataVolume, DataVolumeTarget: row.DataVolumeTarget,
 		DBName: row.DbName, User: row.DbUser, PassEnc: row.PassEnc, CPUs: row.Cpus, MemMB: int(row.MemMb),
 		StorageMB: int(row.StorageMb), Status: row.Status, ContainerID: row.ContainerID,
 		CreatedAt: row.CreatedAt,
