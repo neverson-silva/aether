@@ -1219,6 +1219,17 @@ func (h *Handler) Stats(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"state": state, "stats": gin.H{"cpu_percent": 0, "mem_bytes": 0, "mem_limit": 0, "mem_percent": 0}, "containers": containerStats})
 		return
 	}
+	for index := range items {
+		if items[index].State != "running" && items[index].State != "restarting" {
+			continue
+		}
+		stats, statsErr := h.runtime.Stats(c.Request.Context(), items[index].ID)
+		if statsErr != nil {
+			continue
+		}
+		items[index].Stats = stats
+		items[index].HasStats = true
+	}
 	states := make([]servicedomain.ContainerState, 0, len(items))
 	for _, item := range items {
 		states = append(states, servicedomain.ContainerState{ID: item.ID, Name: item.Name, Status: item.State, Healthy: item.Healthy})
